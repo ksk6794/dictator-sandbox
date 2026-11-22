@@ -1,5 +1,5 @@
 # Takes a clean clone to a verified build: stock content, compile, asset generation, lighting bake, unit tests,
-# scenario suite.
+# scenario suite, push matrix.
 #   powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1
 # Needs: Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
 # Windows SDK 10.0.22621. Stops at the first failing step. Writes Saved\Tools\bootstrap.json.
@@ -11,7 +11,8 @@ $steps = @(
     @{ name = 'gen-assets';          script = 'gen-assets.ps1' },
     @{ name = 'bake-lighting';       script = 'bake-lighting.ps1' },
     @{ name = 'test';                script = 'test.ps1' },
-    @{ name = 'suite';               script = 'suite.ps1' }
+    @{ name = 'suite';               script = 'suite.ps1' },
+    @{ name = 'push-matrix';         script = 'push-matrix.ps1' }
 )
 
 $results = @()

@@ -13,6 +13,8 @@
   },
   "expect": {
     "fell": false,
+    "state_sequence": "standing",
+    "max_joint_limit_violation_deg": 1.0,
     "tuning_changes": 0,
     "max_pelvis_drift_cm": 5.0,
     "min_head_height_cm": 150.0,

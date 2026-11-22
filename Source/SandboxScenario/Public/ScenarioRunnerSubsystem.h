@@ -56,10 +56,21 @@ private:
 	};
 	TArray<FPin> Pins;
 
+	/** An impulse event with a duration: one equal share of it is applied on each of the frames left. */
+	struct FPush
+	{
+		FName Body;
+		FVector ImpulsePerFrameNs = FVector::ZeroVector;
+		int32 FramesLeft = 0;
+	};
+	TArray<FPush> Pushes;
+
 	void SpawnEnvironment(UWorld& World);
 	bool SpawnBody(UWorld& World, FString& OutError);
 	void SampleFrame(float DeltaTime);
 	void ApplyDueEvents(double SimTimeS);
+	void ApplyImpulse(FName Bone, const FVector& ImpulseNs);
+	void ContinuePushes();
 	bool CopyTuningFiles(FString& OutError);
 	bool EditTuningFiles(const FScenarioEvent& Event, FString& OutError);
 	void Finish();
@@ -118,6 +129,11 @@ private:
 	TMap<FName, FVector2D> SettledBodySpeeds;
 	double MaxJointSpeedRadS = 0.0;
 	FName FastestJoint;
+	double MaxJointLimitViolationDeg = 0.0;
+	FName WorstLimitJoint;
+	/** How many entries of the controller's state log have been seen, and the timeline built from them. */
+	int32 SeenStateChanges = 0;
+	TArray<TSharedPtr<FJsonValue>> StateTimeline;
 
 	// Falling, judged by the pelvis alone: fallen once it is below half the height above the spawn point
 	// that it started at. A body that sits down with a straight back has fallen; its head has not dropped far.

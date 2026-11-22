@@ -1,0 +1,22 @@
+{
+  "name": "push_thigh_200_falls",
+  "duration_s": 10.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "events": [
+    {"t": 3.0, "type": "impulse", "body": "thigh_l", "impulse_ns": 200, "direction": [-1, 0, 0], "duration_s": 0.1}
+  ],
+  "expect": {
+    "end_state": "lying",
+    "fell": true,
+    "min_fall_time_s": 3.0,
+    "max_joint_stretch_cm": 2.0
+  }
+}

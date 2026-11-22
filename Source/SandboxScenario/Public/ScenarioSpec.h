@@ -17,6 +17,8 @@ struct FScenarioEvent
 	FName Body;
 	/** Impulse magnitude in newton-seconds. */
 	double ImpulseNs = 0.0;
+	/** "impulse": time over which it is delivered, as a steady force. 0 is a single blow. */
+	double DurationS = 0.0;
 	/** Unit direction in world space. */
 	FVector Direction = FVector::ForwardVector;
 	/** "console": the command line. */
@@ -52,6 +54,12 @@ struct FScenarioExpect
 	TOptional<double> MinFallTimeS;
 	/** Exact number of times the running body took new tuning values. */
 	TOptional<double> TuningChanges;
+	/** Furthest any joint may be found outside its limits, in degrees. */
+	TOptional<double> MaxJointLimitViolationDeg;
+	/** State the body must be in at the end: "standing", "flinch", "falling" or "lying". Active control only. */
+	TOptional<FString> EndState;
+	/** Every state the body must go through, in order: "standing>flinch>standing". Active control only. */
+	TOptional<FString> StateSequence;
 };
 
 /** How the body is driven. */

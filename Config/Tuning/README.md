@@ -25,6 +25,15 @@ in `metrics.json`. Several files are merged into one set of names; a name may be
 | `assist.<body>.angular_nm_per_rad` | N·m/rad | Turn of the body toward its standing orientation |
 | `assist.<body>.damping_s` | s | Damping of the three assist springs, as a time |
 | `solver.position_iterations`, `velocity_iterations`, `projection_iterations` | count | Solver effort on the character's bodies. Whole numbers, at most 255 |
+| `thresholds.flinch_impulse_ns` | N·s | A hit of at least this impulse makes a standing body flinch |
+| `thresholds.flinch_window_s` | s | Impulses that arrive within this time of each other count as one hit (a push delivered over several frames) |
+| `thresholds.fall_pelvis_offset_cm` | cm | Balance is lost once the pelvis is this far, horizontally, from where it stands. 15 cm is about the edge of the feet's support |
+| `thresholds.fall_pelvis_drop_cm` | cm | ...or this far below its standing height (the legs gave way) |
+| `thresholds.fall_tilt_deg` | degrees | ...or tilted this far from its standing orientation |
+| `thresholds.rest_speed_mps`, `rest_angular_speed_rads` | m/s, rad/s | A fallen body is at rest when it moves and turns no faster than this as a whole (root mean square over its bodies, weighted by mass) |
+| `thresholds.rest_time_s` | s | ...for this long |
+| `reactions.flinch_weakening` | fraction | Stiffness of the hit region's muscles at the moment of a hit, as a fraction of normal |
+| `reactions.flinch_recovery_s` | s | Time over which they return to full strength, in a straight line; also how long a flinch lasts |
 
 Groups are `spine`, `neck`, `arms`, `legs`; assist bodies are `pelvis`, `chest`, `head`, `feet`. The ranges
 that are accepted are in `FSandboxBodyTuning::Validate`; they catch a slipped decimal point, not physics.
@@ -46,9 +55,19 @@ not set comes from the base values above.
 ```
 
 The names are `states.falling.muscles.legs.stiffness_nm_per_rad` and so on. Known states are `standing`,
-`flinch`, `stagger`, `falling`, `lying` and `get_up`. The files, overrides and checks understand this
-section now; the body starts using it when the states themselves arrive (M2 step 3). Until then it reads the
-base values only, so the file has no `states` section yet.
+`flinch`, `stagger`, `falling`, `lying` and `get_up`. The body has `standing`, `flinch`, `falling` and `lying`
+so far; `stagger` and `get_up` come in M3.
+
+| State | The body is | Leaves when |
+| --- | --- | --- |
+| `standing` | Upright on the base values | A hit reaches `thresholds.flinch_impulse_ns`; or the pelvis leaves its place by more than a fall threshold |
+| `flinch` | Upright, the muscles of the hit region (spine, neck, arms or legs) weakened and recovering | `reactions.flinch_recovery_s` has passed; or a fall threshold is crossed |
+| `falling` | Let go: no balance assist, weak muscles with strong damping | It has been at rest for `thresholds.rest_time_s` |
+| `lying` | Down and limp | Not yet (getting up is M3) |
+
+A state does not inherit from another state, only from the base values: `lying` has to switch the assist
+off itself, although `falling` did so before it. The body's checks make sure every state that sets values
+gives a usable tuning, and a unit test that `falling` and `lying` have no assist left.
 
 ## Changing values
 

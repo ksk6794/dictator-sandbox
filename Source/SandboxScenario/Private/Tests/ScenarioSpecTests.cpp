@@ -125,6 +125,38 @@ bool FScenarioSpecTuningTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecStatesTest, "DictatorSandbox.Scenario.Spec.ParsesPushesAndStates", SandboxTestFlags)
+bool FScenarioSpecStatesTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* Text = TEXT(R"({
+		"name": "push",
+		"duration_s": 8.0,
+		"body": { "mesh": "/Game/Some.Mesh", "control": "active" },
+		"events": [
+			{ "t": 2.0, "type": "impulse", "body": "thigh_l", "impulse_ns": 200, "direction": [-1, 0, 0], "duration_s": 0.1 },
+			{ "t": 1.0, "type": "impulse", "body": "head", "impulse_ns": 10, "direction": [0, 1, 0] }
+		],
+		"expect": { "end_state": "lying", "state_sequence": "standing>flinch>falling>lying", "max_joint_limit_violation_deg": 5 }
+	})");
+
+	FScenarioSpec Spec;
+	FString Error;
+	if (!TestTrue(TEXT("spec with a push and states parses"), FScenarioSpec::FromString(Text, Spec, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	if (TestEqual(TEXT("event count"), Spec.Events.Num(), 2))
+	{
+		TestEqual(TEXT("a blow has no duration"), Spec.Events[0].DurationS, 0.0);
+		TestEqual(TEXT("a push has one"), Spec.Events[1].DurationS, 0.1);
+	}
+	TestEqual(TEXT("end state"), Spec.Expect.EndState.Get(FString()), FString(TEXT("lying")));
+	TestEqual(TEXT("state sequence"), Spec.Expect.StateSequence.Get(FString()), FString(TEXT("standing>flinch>falling>lying")));
+	TestEqual(TEXT("limit violation"), Spec.Expect.MaxJointLimitViolationDeg.Get(0.0), 5.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecInvalidTest, "DictatorSandbox.Scenario.Spec.RejectsInvalidSpecs", SandboxTestFlags)
 bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 {
@@ -146,6 +178,12 @@ bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "edit_tuning_file", "values": {} } ] })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "edit_tuning_file", "values": { "solver.position_iterations": "many" } } ] })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "fell": 1 } })"),
+		// A state that does not exist could never be reached.
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "end_state": "sitting" } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "end_state": "standing>lying" } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "state_sequence": "standing>>lying" } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "state_sequence": 3 } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "impulse", "body": "head", "impulse_ns": 10, "direction": [0, 1, 0], "duration_s": -1 } ] })"),
 	};
 
 	for (const TCHAR* Text : Invalid)

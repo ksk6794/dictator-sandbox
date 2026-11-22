@@ -279,6 +279,133 @@ Not measured: hot reload in a live interactive session (there is no pawn to run 
 and per-state values on a body (the store resolves them and unit tests cover that; the body has no states
 before step 3).
 
+### M2 step 3 (states and the push matrix), 2026-11-22
+
+Same machine and settings. Three things changed: the joints of `PA_SandboxNPC` are built from anatomy
+(`Specs/README.md`), the body has the states Standing, Flinch, Falling and Lying, and `Tools\push-matrix.ps1`
+exists. Every hash of an NPC scenario changed with the joints; the figures below replace the earlier ones.
+
+**Joints.** Where the reference pose sat in the joint limits, before and after:
+
+| Joint | Before (stock axes): left / right | After: left / right |
+| --- | --- | --- |
+| Elbow | twist -40.0 / +32.9 of a limit of 70 | 36.6 degrees of bend on both sides, range 0 to 140 |
+| Knee | twist -54.0 / -49.0 of a limit of 60 | straight on both sides, range -2 to 150 |
+| Shoulder | swing1 -46.1 / -63.0, swing2 39.1 / 20.1 | identical on both sides |
+| Hip | swing2 -20.0 / +20.0 (mirrored), swing1 40.0 / 40.0 | identical on both sides |
+
+No joint is outside its limits in the reference pose, and every left and right pair reads the same to the
+last digit (`spawn_*_deg` in `metrics.json`).
+
+The knee's range is -2 to 150 degrees, not the plan's 0 to 150. With the limit at 0 a standing knee sits
+exactly on it:
+
+| Knee range | Fastest foot after 2 s, left / right | Pelvis drift, maximum |
+| --- | --- | --- |
+| 0 to 150 | 0.072 / 0.133 rad/s | 0.81 cm |
+| -2 to 150 | 0.071 / 0.079 rad/s | 0.95 cm |
+| -5 to 150 | 0.070 / 0.078 rad/s | 0.95 cm |
+| -10 to 150 | 0.070 / 0.077 rad/s | 0.95 cm |
+
+**Standing on the new joints** (default tuning, bare floor, headless):
+
+| Measure | `stand_npc` (10 s) | `stand_npc_10min` (600 s) | Step 1 (10 s) | Limit |
+| --- | --- | --- | --- | --- |
+| Pelvis drift, maximum | 0.95 cm | 0.95 cm | 0.76 cm | 5 cm |
+| Lowest head height | 158.3 cm | 158.3 cm | 158.3 cm | 150 cm |
+| Largest joint stretch | under 0.01 cm | under 0.01 cm | under 0.01 cm | 2 cm |
+| Fastest body after 2 s, angular (a foot) | 0.079 rad/s | 0.106 rad/s | 0.07 rad/s | 0.3 rad/s |
+| Assist load, force over body weight | 0.047 | 0.051 | 0.044 | |
+| Largest joint-limit violation | 0.01 degrees | 0.01 degrees | not measured | 1 degree |
+| Solver time per frame, mean | 0.41 ms | 0.41 ms | 0.40 ms | 1.5 ms |
+
+The state machine adds nothing measurable to a standing run: with it and without it the hashes of
+`stand_npc` were equal.
+
+**States.** Scenarios of the suite, with the time each state began:
+
+| Scenario | Stimulus | States | Notes |
+| --- | --- | --- | --- |
+| `hit_chest_10_stands` | 10 N*s blow on the chest at 3 s | flinch 3.00 s, standing 3.36 s | Pelvis moves 1.2 cm |
+| `hit_head_30_stands` | 30 N*s blow on the head | flinch 3.00 s, standing 3.36 s | Neck turns at up to 13.0 rad/s; pelvis moves 4.3 cm |
+| `hit_chest_200_falls` | 200 N*s blow on the chest | flinch 3.00 s, falling 3.08 s, lying 4.14 s | Fallen (pelvis below half height) at 3.40 s; joint stretch 0.04 cm |
+| `push_thigh_200_falls` | 200 N*s on the left thigh over 0.1 s | flinch 3.00 s, falling 3.13 s, lying 5.38 s | Joint stretch 0.16 cm; a hip 4.7 degrees past its limit |
+| `tune_live_override` | Leg muscles switched off at 4 s | falling 4.42 s, lying 6.22 s | Falling because the pelvis sank 20 cm; before step 3 this body ended sitting upright |
+| `hang_npc_hand` | Pinned by the right hand in the air | falling 0.38 s | Never at rest: it swings |
+
+Screenshots of `hit_chest_200_falls` (on its back, limbs loosely straight) and of the passive `drop_npc`
+(prone, one leg bent) show no joint bent the wrong way.
+
+What the flinch does, measured on `hit_head_30_stands`: with the hit muscles weakened to 30% the neck turns
+at up to 13.0 rad/s; with `reactions.flinch_weakening=1` (no weakening) at 9.8 rad/s. The body stands in
+both runs.
+
+**Push matrix.** 128 runs, 8 at a time, 169 s. Each cell is how many of the 8 directions ended in a fall;
+the M2 rules are the first and the last column.
+
+Single blow (the default, and what `Tools\bootstrap.ps1` runs):
+
+| Body | 10 N*s | 30 N*s | 80 N*s | 200 N*s |
+| --- | --- | --- | --- | --- |
+| Head (`neck_01`) | 0 of 8 | 0 of 8 | 8 of 8 | 8 of 8 |
+| Chest (`spine_04`) | 0 of 8 | 0 of 8 | 1 of 8 (straight back) | 8 of 8 |
+| Left thigh | 0 of 8 | 0 of 8 | 0 of 8 | 8 of 8 |
+| Right thigh | 0 of 8 | 0 of 8 | 0 of 8 | 8 of 8 |
+| Pelvis movement of those that stood | 1 to 3 cm | 2 to 8 cm | 7 to 14 cm | |
+| Fastest joint | 4 rad/s | 13 rad/s | 31 rad/s | 40 rad/s |
+| Largest joint stretch | 0.01 cm | 0.01 cm | 0.12 cm | 0.31 cm |
+
+Every mirror-image pair (the same push reflected left to right, on the other side's body) ended the same
+way: 56 pairs, none different. The same impulses delivered as pushes over 0.1 s (`-PushSeconds 0.1`,
+measured before the knee's range was changed) gave the same table of falls, with a fastest joint of
+32 rad/s and a largest stretch of 0.18 cm.
+
+How the fall threshold was set. With `thresholds.fall_pelvis_offset_cm` at 20, a 200 N*s push on a thigh
+moved the pelvis by 18.4 to 19.6 cm and the character came back upright in 12 of 16 cases: the feet are
+held by their assist and the legs are stiff. At 15 cm, which is about where the centre of mass leaves the
+feet's support, every 200 N*s push ends in a fall and 80 N*s on the chest still stands in 7 directions of 8.
+The outcomes for 30 and 80 N*s are recorded, not judged: the outcome table is an M3 criterion.
+
+**Solver iterations decide the stretch under load.** Hanging from one hand, 10 s:
+
+| Body | Position iterations | Largest joint stretch (wrist) | The pin gives by |
+| --- | --- | --- | --- |
+| Passive, new joints | 8 (engine default) | 2.88 cm | 9.0 cm |
+| Passive, new joints | 64 (console variable) | 0.51 cm | 2.0 cm |
+| The NPC under active control (falls limp at 0.38 s) | 64 (its own) | 0.13 cm | 0.5 cm |
+
+`hang_npc_hand` now runs the third row, with a limit of 2 cm: a passive NPC does not exist in the product.
+This supersedes the "world pin gives by 9.7 cm" finding of step 1 for the NPC proper; a grab in M4 starts
+from 0.5 cm.
+
+**Passive bodies overrun their joint limits.** The new metric shows a passive body dropped on the floor
+pushing a joint 36 to 40 degrees past its limit (`drop_npc`, `room_drop_npc`), against 0.2 to 4.7 degrees
+for the NPC under control in the fall scenarios. The limits are soft (stiffness 50, damping 5, still the
+template's) and a passive body has 8 iterations. Not a problem for the NPC as it runs, but the softness is
+untuned.
+
+Repeatability, final build of the step:
+
+| Scenario | Runs compared | Result |
+| --- | --- | --- |
+| `stand_npc` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `stand_npc_10min` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `hit_chest_10_stands` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `hit_chest_200_falls` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `push_thigh_200_falls` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `hang_npc_hand` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `drop_npc` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+
+The matrix runs eight scenario processes side by side; each uses a fixed timestep, so its result does not
+depend on the others. `hit_chest_200_falls` and `push_thigh_200_falls` gave the same hashes inside the
+suite and alone.
+
+`Tools\bootstrap.ps1` now takes about 7.5 minutes: the suite of 20 scenarios 4.3 minutes, the push matrix
+2.8 minutes.
+
+Not measured: hits by another body (there are no effectors before step 4), the flinch's effect on anything
+but the neck, and falls against walls or furniture.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

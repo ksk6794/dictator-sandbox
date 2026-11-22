@@ -7,20 +7,13 @@
     "attached_meshes": [
       "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
     ],
-    "location_cm": [
-      0,
-      0,
-      200
-    ]
+    "location_cm": [0, 0, 200],
+    "control": "active"
   },
   "events": [
-    {
-      "t": 0.0,
-      "type": "pin",
-      "body": "hand_r"
-    }
+    { "t": 0.0, "type": "pin", "body": "hand_r" }
   ],
   "expect": {
-    "max_joint_stretch_cm": 3.0
+    "max_joint_stretch_cm": 2.0
   }
 }

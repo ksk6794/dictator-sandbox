@@ -23,21 +23,15 @@
     {"bone": "foot_r", "mass_fraction": 0.0137, "shapes": [{"type": "box", "center_cm": [-14.9, 7.0, 3.25], "size_cm": [9.5, 26.0, 6.5], "yaw_deg": 8.5}]}
   ],
   "joints": [
-    {"child": "spine_02", "swing1": 25, "swing2": 25, "twist": 25},
-    {"child": "spine_04", "swing1": 15, "swing2": 10, "twist": 10},
-    {"child": "neck_01", "swing1": 35, "swing2": 30, "twist": 60},
-    {"child": "upperarm_l", "swing1": 90, "swing2": 90, "twist": 40},
-    {"child": "lowerarm_l", "swing1": 5, "swing2": 5, "twist": 70},
-    {"child": "hand_l", "swing1": 15, "swing2": 50, "twist": 45},
-    {"child": "thigh_l", "swing1": 65, "swing2": 30, "twist": 20},
-    {"child": "calf_l", "swing1": 5, "swing2": 5, "twist": 60},
-    {"child": "foot_l", "swing1": 10, "swing2": 20, "twist": 35},
-    {"child": "upperarm_r", "swing1": 90, "swing2": 90, "twist": 40},
-    {"child": "lowerarm_r", "swing1": 5, "swing2": 5, "twist": 70},
-    {"child": "hand_r", "swing1": 15, "swing2": 50, "twist": 45},
-    {"child": "thigh_r", "swing1": 65, "swing2": 30, "twist": 20},
-    {"child": "calf_r", "swing1": 5, "swing2": 5, "twist": 60},
-    {"child": "foot_r", "swing1": 10, "swing2": 20, "twist": 35}
+    {"child": "spine_02", "along": "spine_04", "swing1_axis": [1, 0, 0], "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15]},
+    {"child": "spine_04", "along": "neck_01", "swing1_axis": [1, 0, 0], "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15]},
+    {"child": "neck_01", "along": "head", "swing1_axis": [1, 0, 0], "swing1": [-60, 75], "swing2": [-45, 45], "twist": [-80, 80]},
+    {"child": "upperarm_l", "mirror": "upperarm_r", "along": "lowerarm_l", "swing1_axis": [0, -1, 0], "swing1": [-50, 160], "swing2": [-60, 150], "twist": [-80, 80]},
+    {"child": "lowerarm_l", "mirror": "lowerarm_r", "along": "hand_l", "swing1_axis": "bend", "swing1": [0, 140], "swing2": "locked", "twist": "locked"},
+    {"child": "hand_l", "mirror": "hand_r", "along": "middle_01_l", "swing1_axis": {"from": "pinky_01_l", "to": "index_01_l"}, "swing1": [-60, 60], "swing2": [-25, 25], "twist": [-70, 70]},
+    {"child": "thigh_l", "mirror": "thigh_r", "along": "calf_l", "swing1_axis": [1, 0, 0], "swing1": [-30, 100], "swing2": [-40, 20], "twist": [-40, 50]},
+    {"child": "calf_l", "mirror": "calf_r", "along": "foot_l", "swing1_axis": [-1, 0, 0], "swing1": [-2, 150], "swing2": "locked", "twist": "locked"},
+    {"child": "foot_l", "mirror": "foot_r", "along": "ball_l", "swing1_axis": [1, 0, 0], "swing1": [-20, 30], "swing2": [-10, 10], "twist": [-15, 15]}
   ],
   "collision": {"disable": [], "enable": []}
 }

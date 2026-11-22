@@ -74,26 +74,35 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 		}
 		TestEqual(Label + TEXT(": total mass"), TotalMass, Spec.TotalMassKg, 1.0e-2);
 
-		for (const FPhysicsJointSpec& JointSpec : Spec.Joints)
+		// Every body but the root has a joint: one written in the spec, or the mirror image of one.
+		for (const FPhysicsBodySpec& ChildBody : Spec.Bodies)
 		{
-			const FString JointLabel = FString::Printf(TEXT("%s: joint %s"), *Label, *JointSpec.Child.ToString());
-			const int32 Index = Asset->FindConstraintIndex(JointSpec.Child);
-			if (!TestTrue(JointLabel + TEXT(" exists"), Index != INDEX_NONE))
+			const FName ChildName = ChildBody.Bone;
+			if (FPhysicsAssetGenerator::FindParentBodyBone(Spec, Mesh, ChildName).IsNone())
+			{
+				continue;
+			}
+			const FString JointLabel = FString::Printf(TEXT("%s: joint %s"), *Label, *ChildName.ToString());
+			const int32 Index = Asset->FindConstraintIndex(ChildName);
+			FPhysicsJointFrames Frames;
+			if (!TestTrue(JointLabel + TEXT(" exists"), Index != INDEX_NONE) ||
+				!TestTrue(JointLabel + TEXT(" is described in the spec"), FPhysicsAssetGenerator::ComputeJointFrames(Spec, Mesh, ChildName, Frames, Error)))
 			{
 				continue;
 			}
 			const FConstraintInstance& Instance = Asset->ConstraintSetup[Index]->DefaultInstance;
-			TestEqual(JointLabel + TEXT(" child"), Instance.ConstraintBone1, JointSpec.Child);
-			TestEqual(JointLabel + TEXT(" parent"), Instance.ConstraintBone2, FPhysicsAssetGenerator::FindParentBodyBone(Spec, Mesh, JointSpec.Child));
+			TestEqual(JointLabel + TEXT(" child"), Instance.ConstraintBone1, ChildName);
+			TestEqual(JointLabel + TEXT(" parent"), Instance.ConstraintBone2, FPhysicsAssetGenerator::FindParentBodyBone(Spec, Mesh, ChildName));
 			TestTrue(JointLabel + TEXT(" is rigid"),
 				Instance.GetLinearXMotion() == LCM_Locked && Instance.GetLinearYMotion() == LCM_Locked && Instance.GetLinearZMotion() == LCM_Locked);
 
-			TestEqual(JointLabel + TEXT(" swing1 motion"), static_cast<int32>(Instance.GetAngularSwing1Motion()), static_cast<int32>(JointSpec.Swing1.Motion));
-			TestEqual(JointLabel + TEXT(" swing2 motion"), static_cast<int32>(Instance.GetAngularSwing2Motion()), static_cast<int32>(JointSpec.Swing2.Motion));
-			TestEqual(JointLabel + TEXT(" twist motion"), static_cast<int32>(Instance.GetAngularTwistMotion()), static_cast<int32>(JointSpec.Twist.Motion));
-			if (JointSpec.Swing1.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing1 limit"), static_cast<double>(Instance.GetAngularSwing1Limit()), JointSpec.Swing1.LimitDeg, 1.0e-3); }
-			if (JointSpec.Swing2.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing2 limit"), static_cast<double>(Instance.GetAngularSwing2Limit()), JointSpec.Swing2.LimitDeg, 1.0e-3); }
-			if (JointSpec.Twist.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" twist limit"), static_cast<double>(Instance.GetAngularTwistLimit()), JointSpec.Twist.LimitDeg, 1.0e-3); }
+			// The engine's limit is half the range, around the parent-side frame.
+			TestEqual(JointLabel + TEXT(" swing1 motion"), static_cast<int32>(Instance.GetAngularSwing1Motion()), static_cast<int32>(Frames.Swing1.Motion));
+			TestEqual(JointLabel + TEXT(" swing2 motion"), static_cast<int32>(Instance.GetAngularSwing2Motion()), static_cast<int32>(Frames.Swing2.Motion));
+			TestEqual(JointLabel + TEXT(" twist motion"), static_cast<int32>(Instance.GetAngularTwistMotion()), static_cast<int32>(Frames.Twist.Motion));
+			if (Frames.Swing1.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing1 limit"), static_cast<double>(Instance.GetAngularSwing1Limit()), Frames.Swing1.HalfRangeDeg(), 1.0e-3); }
+			if (Frames.Swing2.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing2 limit"), static_cast<double>(Instance.GetAngularSwing2Limit()), Frames.Swing2.HalfRangeDeg(), 1.0e-3); }
+			if (Frames.Twist.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" twist limit"), static_cast<double>(Instance.GetAngularTwistLimit()), Frames.Twist.HalfRangeDeg(), 1.0e-3); }
 
 			// No motors in the asset: a drive copied from the template would pull the joint away from the
 			// reference pose. Muscles are created at run time.
@@ -112,6 +121,12 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 				const FVector ChildAnchor = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ComponentSpace[ChildBone]).GetLocation();
 				const FVector ParentAnchor = (Instance.GetRefFrame(EConstraintFrame::Frame2) * ComponentSpace[ParentBone]).GetLocation();
 				TestEqual(JointLabel + TEXT(" anchor gap in the reference pose, cm"), FVector::Dist(ChildAnchor, ParentAnchor), 0.0, 1.0e-2);
+
+				// The asset's frames are the ones the spec describes.
+				const FQuat ChildFrame = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ComponentSpace[ChildBone]).GetRotation();
+				const FQuat ParentFrame = (Instance.GetRefFrame(EConstraintFrame::Frame2) * ComponentSpace[ParentBone]).GetRotation();
+				TestEqual(JointLabel + TEXT(" child frame differs from the spec, degrees"), FMath::RadiansToDegrees(ChildFrame.AngularDistance(Frames.Child.GetRotation())), 0.0, 0.05);
+				TestEqual(JointLabel + TEXT(" parent frame differs from the spec, degrees"), FMath::RadiansToDegrees(ParentFrame.AngularDistance(Frames.Parent.GetRotation())), 0.0, 0.05);
 			}
 
 			// Jointed bodies must not collide with each other.
@@ -121,6 +136,154 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			{
 				TestFalse(JointLabel + TEXT(" bodies do not collide"), Asset->IsCollisionEnabled(Child, Parent));
 			}
+		}
+	}
+	return true;
+}
+
+/**
+ * Joints are described by anatomy: a mirrored joint must be the exact mirror image of the written one, and
+ * the ranges must open the way the body bends. Checked on the frames the generator works out, so it needs
+ * the mesh but not the generated asset.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPhysicsJointAnatomyTest, "DictatorSandbox.Generated.PhysicsAsset.JointsFollowAnatomy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FPhysicsJointAnatomyTest::RunTest(const FString& Parameters)
+{
+	for (const FString& SpecFile : FPhysicsAssetSpec::FindSpecFiles())
+	{
+		const FString Label = FPaths::GetBaseFilename(SpecFile);
+		FPhysicsAssetSpec Spec;
+		FString Error;
+		if (!FPhysicsAssetSpec::LoadFile(SpecFile, Spec, Error))
+		{
+			AddError(Error);
+			continue;
+		}
+		const USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *Spec.SkeletalMeshPath);
+		if (!TestNotNull(*(Label + TEXT(": skeletal mesh")), Mesh))
+		{
+			continue;
+		}
+		const FReferenceSkeleton& Skeleton = Mesh->GetRefSkeleton();
+		TArray<FTransform> ComponentSpace;
+		FAnimationRuntime::FillUpComponentSpaceTransforms(Skeleton, Skeleton.GetRefBonePose(), ComponentSpace);
+		const auto BoneLocation = [&](FName Bone) { return ComponentSpace[FMath::Max(Skeleton.FindBoneIndex(Bone), 0)].GetLocation(); };
+
+		// Reflection in the body's midplane, x = 0.
+		const auto Mirror = [](const FVector& V) { return FVector(-V.X, V.Y, V.Z); };
+
+		// Where a point of the child body ends up, relative to the joint, when the joint is turned from the
+		// reference pose to the middle of its ranges.
+		const auto AtMiddle = [](const FPhysicsJointFrames& Frames, const FVector& Point)
+		{
+			const FQuat Turn = Frames.Parent.GetRotation() * Frames.Child.GetRotation().Inverse();
+			return Turn.RotateVector(Point - Frames.Child.GetLocation());
+		};
+
+		for (const FPhysicsJointSpec& Joint : Spec.Joints)
+		{
+			const FString JointLabel = FString::Printf(TEXT("%s: joint %s"), *Label, *Joint.Child.ToString());
+			FPhysicsJointFrames Left;
+			if (!TestTrue(JointLabel + TEXT(" can be built"), FPhysicsAssetGenerator::ComputeJointFrames(Spec, Mesh, Joint.Child, Left, Error)))
+			{
+				AddError(Error);
+				continue;
+			}
+
+			// The twist axis runs along the limb.
+			const FVector Limb = BoneLocation(Joint.Along) - BoneLocation(Joint.Child);
+			TestEqual(JointLabel + TEXT(" twist axis off the limb, degrees"),
+				FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Left.Child.GetRotation().GetAxisX(), Limb.GetSafeNormal()), -1.0, 1.0))), 0.0, 0.05);
+
+			if (Joint.Mirror.IsNone())
+			{
+				continue;
+			}
+			FPhysicsJointFrames Right;
+			if (!TestTrue(JointLabel + TEXT(" mirror can be built"), FPhysicsAssetGenerator::ComputeJointFrames(Spec, Mesh, Joint.Mirror, Right, Error)))
+			{
+				AddError(Error);
+				continue;
+			}
+			TestEqual(JointLabel + TEXT(" mirror: joint position off the mirror image, cm"), FVector::Dist(Right.Child.GetLocation(), Mirror(Left.Child.GetLocation())), 0.0, 0.05);
+			TestEqual(JointLabel + TEXT(" mirror: swing1 range"), Right.Swing1.HalfRangeDeg(), Left.Swing1.HalfRangeDeg(), 1.0e-6);
+			TestEqual(JointLabel + TEXT(" mirror: swing2 range"), Right.Swing2.HalfRangeDeg(), Left.Swing2.HalfRangeDeg(), 1.0e-6);
+			TestEqual(JointLabel + TEXT(" mirror: twist range"), Right.Twist.HalfRangeDeg(), Left.Twist.HalfRangeDeg(), 1.0e-6);
+
+			// Turning both sides by the same angles about their own axes must give mirror-image motion.
+			// Tried with three turns, one about each axis, on a point off every axis.
+			const FVector Probe(3.0, 5.0, 7.0);
+			const FQuat Turns[] = { FQuat(FVector::XAxisVector, 0.4), FQuat(FVector::YAxisVector, 0.4), FQuat(FVector::ZAxisVector, 0.4) };
+			for (const FQuat& Turn : Turns)
+			{
+				const FVector LeftPoint = Left.Child.GetRotation().RotateVector(Turn.RotateVector(Left.Child.GetRotation().UnrotateVector(Probe)));
+				const FVector RightPoint = Right.Child.GetRotation().RotateVector(Turn.RotateVector(Right.Child.GetRotation().UnrotateVector(Mirror(Probe))));
+				TestEqual(JointLabel + TEXT(" mirror: the same turn on both sides is off the mirror image, cm"), FVector::Dist(RightPoint, Mirror(LeftPoint)), 0.0, 1.0e-3);
+			}
+
+			// The middle of the ranges is a mirror-image pose too.
+			const FVector LeftEnd = AtMiddle(Left, BoneLocation(Joint.Along));
+			const FVector RightEnd = AtMiddle(Right, Mirror(BoneLocation(Joint.Along)));
+			TestEqual(JointLabel + TEXT(" mirror: limb at the middle of the ranges is off the mirror image, cm"), FVector::Dist(RightEnd, Mirror(LeftEnd)), 0.0, 0.05);
+		}
+
+		// Which way the NPC's joints open. In the mesh's space the character faces +y, its left is +x.
+		if (Spec.Name != TEXT("npc_body"))
+		{
+			continue;
+		}
+		const auto EndAtMiddle = [&](const TCHAR* Child, const TCHAR* Along, FVector& OutEnd)
+		{
+			FPhysicsJointFrames Frames;
+			if (!FPhysicsAssetGenerator::ComputeJointFrames(Spec, Mesh, Child, Frames, Error))
+			{
+				AddError(Error);
+				return false;
+			}
+			OutEnd = AtMiddle(Frames, BoneLocation(Along));
+			return true;
+		};
+		FVector End;
+		if (EndAtMiddle(TEXT("calf_l"), TEXT("foot_l"), End))
+		{
+			// A knee bent to the middle of its range has the foot well behind it and higher than the ankle of a straight leg.
+			TestTrue(TEXT("npc_body: the knee bends backward"), End.Y < -30.0 && End.Z > -20.0);
+		}
+		if (EndAtMiddle(TEXT("thigh_l"), TEXT("calf_l"), End))
+		{
+			// The hip's range is 100 degrees of flexion against 30 of extension: its middle has the knee in front.
+			TestTrue(TEXT("npc_body: the hip flexes forward"), End.Y > 15.0);
+			// And more abduction than adduction: the knee of the left leg is further to the left.
+			TestTrue(TEXT("npc_body: the hip opens outward"), End.X > BoneLocation(TEXT("calf_l")).X - BoneLocation(TEXT("thigh_l")).X);
+		}
+		if (EndAtMiddle(TEXT("lowerarm_l"), TEXT("hand_l"), End))
+		{
+			// An elbow bent to the middle of 0..140 degrees brings the hand closer to the shoulder.
+			const FVector ElbowToShoulder = BoneLocation(TEXT("upperarm_l")) - BoneLocation(TEXT("lowerarm_l"));
+			const FVector HandInReferencePose = BoneLocation(TEXT("hand_l")) - BoneLocation(TEXT("lowerarm_l"));
+			TestTrue(TEXT("npc_body: the elbow folds the forearm toward the upper arm"), FVector::Dist(End, ElbowToShoulder) < FVector::Dist(HandInReferencePose, ElbowToShoulder) - 5.0);
+		}
+		if (EndAtMiddle(TEXT("foot_l"), TEXT("ball_l"), End))
+		{
+			// The ankle allows more dorsiflexion (30) than plantar flexion (20): at the middle the toes are raised.
+			TestTrue(TEXT("npc_body: the ankle lifts the toes"), End.Z > BoneLocation(TEXT("ball_l")).Z - BoneLocation(TEXT("foot_l")).Z);
+		}
+		if (EndAtMiddle(TEXT("neck_01"), TEXT("head"), End))
+		{
+			// The neck extends further back (75) than it bends forward (60).
+			TestTrue(TEXT("npc_body: the neck's middle leans back"), End.Y < BoneLocation(TEXT("head")).Y - BoneLocation(TEXT("neck_01")).Y);
+		}
+		if (EndAtMiddle(TEXT("spine_02"), TEXT("spine_04"), End))
+		{
+			// The spine bends further forward (22.5 per joint) than back (12.5).
+			TestTrue(TEXT("npc_body: the spine's middle leans forward"), End.Y > BoneLocation(TEXT("spine_04")).Y - BoneLocation(TEXT("spine_02")).Y);
+		}
+		if (EndAtMiddle(TEXT("upperarm_l"), TEXT("lowerarm_l"), End))
+		{
+			// The shoulder raises the arm outward and forward much further than it lets it cross behind the body.
+			const FVector Reference = BoneLocation(TEXT("lowerarm_l")) - BoneLocation(TEXT("upperarm_l"));
+			TestTrue(TEXT("npc_body: the shoulder's middle has the arm raised and forward"), End.Z > Reference.Z + 5.0 && End.Y > Reference.Y + 5.0);
 		}
 	}
 	return true;

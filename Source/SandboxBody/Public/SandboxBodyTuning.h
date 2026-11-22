@@ -60,6 +60,51 @@ struct FSandboxSolverTuning
 	double ProjectionIterations = 0.0;
 };
 
+/** What the body is doing. The names double as the state names of the tuning files ("states.falling..."). */
+enum class ESandboxBodyState : uint8
+{
+	/** Upright, muscles and balance assist at full strength. */
+	Standing,
+	/** Just hit: still upright, the muscles of the hit region are weak for a moment. */
+	Flinch,
+	/** Balance is lost: the assist is off and the body goes down. */
+	Falling,
+	/** Down and at rest. */
+	Lying
+};
+
+/** When the body changes state. */
+struct FSandboxThresholdTuning
+{
+	/** A hit of at least this impulse makes a standing body flinch. N*s. */
+	double FlinchImpulseNs = 0.0;
+	/** Impulses that arrive within this time of each other count as one hit. Seconds. */
+	double FlinchWindowS = 0.0;
+	/** Balance is lost once the pelvis is this far, horizontally, from where it stands. cm. */
+	double FallPelvisOffsetCm = 0.0;
+	/** ...or this far below its standing height: the legs gave way. cm. */
+	double FallPelvisDropCm = 0.0;
+	/** ...or tilted this far from its standing orientation. Degrees. */
+	double FallTiltDeg = 0.0;
+	/**
+	 * A fallen body is at rest when it moves and turns no faster than this as a whole (root mean square
+	 * over its bodies, weighted by mass)... m/s, rad/s.
+	 */
+	double RestSpeedMps = 0.0;
+	double RestAngularSpeedRadS = 0.0;
+	/** ...for this long. Seconds. */
+	double RestTimeS = 0.0;
+};
+
+/** How the body reacts to a hit. */
+struct FSandboxReactionTuning
+{
+	/** Stiffness of the hit region's muscles at the moment of a hit, as a fraction of normal. 0..1. */
+	double FlinchWeakening = 0.0;
+	/** Time over which those muscles come back to full strength, which is also how long a flinch lasts. Seconds. */
+	double FlinchRecoveryS = 0.0;
+};
+
 /** Which bones the balance assist holds ("rig.pelvis" and so on). Each must have a body in the physics asset. */
 struct FSandboxBodyRig
 {
@@ -95,6 +140,8 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxAssistTuning Feet;
 
 	FSandboxSolverTuning Solver;
+	FSandboxThresholdTuning Thresholds;
+	FSandboxReactionTuning Reactions;
 
 	/**
 	 * Tells a parameter store which names the body understands and which states may carry values of their
@@ -130,4 +177,6 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	/** Group a joint belongs to, from the name of its child bone (UE5 mannequin and MetaHuman naming). */
 	static ESandboxMuscleGroup GroupOfBone(FName ChildBone);
 	static const TCHAR* GroupName(ESandboxMuscleGroup Group);
+	/** "standing", "flinch", "falling" or "lying": the state's name in tuning files and result files. */
+	static const TCHAR* StateName(ESandboxBodyState State);
 };

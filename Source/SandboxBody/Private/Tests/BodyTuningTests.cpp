@@ -57,6 +57,30 @@ bool FBodyTuningRepoFilesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("muscle values are listed"), Names.Contains(TEXT("muscles.legs.stiffness_nm_per_rad")));
 	TestTrue(TEXT("assist values are listed"), Names.Contains(TEXT("assist.pelvis.horizontal_n_per_m")));
 	TestTrue(TEXT("solver values are listed"), Names.Contains(TEXT("solver.position_iterations")));
+	TestTrue(TEXT("thresholds are listed"), Names.Contains(TEXT("thresholds.fall_pelvis_offset_cm")));
+	TestTrue(TEXT("reactions are listed"), Names.Contains(TEXT("reactions.flinch_weakening")));
+
+	// What the states are for: a flinch weakens, a falling body is let go and goes limp, a lying one more so.
+	TestTrue(TEXT("a flinch weakens the hit muscles"), Tuning.Reactions.FlinchWeakening < 1.0 && Tuning.Reactions.FlinchRecoveryS > 0.0);
+	FSandboxBodyTuning Standing, Falling, Lying;
+	if (TestTrue(TEXT("the standing state reads"), FSandboxBodyTuning::FromParams(Store, FSandboxBodyTuning::StateName(ESandboxBodyState::Standing), Standing, Error)) &&
+		TestTrue(TEXT("the falling state reads"), FSandboxBodyTuning::FromParams(Store, FSandboxBodyTuning::StateName(ESandboxBodyState::Falling), Falling, Error)) &&
+		TestTrue(TEXT("the lying state reads"), FSandboxBodyTuning::FromParams(Store, FSandboxBodyTuning::StateName(ESandboxBodyState::Lying), Lying, Error)))
+	{
+		TestTrue(TEXT("standing uses the base values"), Standing.HasSameValues(Tuning));
+		const FSandboxBodyTuning* Down[] = { &Falling, &Lying };
+		for (const FSandboxBodyTuning* State : Down)
+		{
+			const FSandboxAssistTuning* Assists[] = { &State->Pelvis, &State->Chest, &State->Head, &State->Feet };
+			for (const FSandboxAssistTuning* Assist : Assists)
+			{
+				TestTrue(TEXT("a body that is going down or lying has no balance assist"),
+					Assist->HorizontalNPerM == 0.0 && Assist->VerticalNPerM == 0.0 && Assist->AngularNmPerRad == 0.0);
+			}
+		}
+		TestTrue(TEXT("falling muscles are weaker than standing ones"), Falling.Legs.StiffnessNmPerRad < Standing.Legs.StiffnessNmPerRad && Falling.Spine.StiffnessNmPerRad < Standing.Spine.StiffnessNmPerRad);
+		TestTrue(TEXT("lying muscles are weaker still"), Lying.Legs.StiffnessNmPerRad < Falling.Legs.StiffnessNmPerRad && Lying.Spine.StiffnessNmPerRad < Falling.Spine.StiffnessNmPerRad);
+	}
 	return true;
 }
 
@@ -115,12 +139,12 @@ bool FBodyTuningStatesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// What part 3 will write into the "states" section of the file, here as overrides.
+	// A state the files give no values of their own, so the test does not depend on the tuning in force.
 	TestTrue(TEXT("a state can carry its own values"),
-		Store.SetOverrides(TEXT("states.falling.muscles.legs.stiffness_nm_per_rad=50,states.falling.assist.pelvis.horizontal_n_per_m=0"), Error));
+		Store.SetOverrides(TEXT("states.stagger.muscles.legs.stiffness_nm_per_rad=50,states.stagger.assist.pelvis.horizontal_n_per_m=0"), Error));
 
 	FSandboxBodyTuning Falling, Standing, Again;
-	TestTrue(TEXT("the state reads"), FSandboxBodyTuning::FromParams(Store, TEXT("falling"), Falling, Error));
+	TestTrue(TEXT("the state reads"), FSandboxBodyTuning::FromParams(Store, TEXT("stagger"), Falling, Error));
 	TestEqual(TEXT("its own muscle value"), Falling.Legs.StiffnessNmPerRad, 50.0);
 	TestEqual(TEXT("its own assist value"), Falling.Pelvis.HorizontalNPerM, 0.0);
 	TestEqual(TEXT("the rest comes from the base"), Falling.Arms.StiffnessNmPerRad, Base.Arms.StiffnessNmPerRad);

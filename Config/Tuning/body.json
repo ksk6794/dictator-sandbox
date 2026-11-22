@@ -22,5 +22,49 @@
     "position_iterations": 64,
     "velocity_iterations": 2,
     "projection_iterations": 1
+  },
+  "thresholds": {
+    "flinch_impulse_ns": 5,
+    "flinch_window_s": 0.15,
+    "fall_pelvis_offset_cm": 15,
+    "fall_pelvis_drop_cm": 20,
+    "fall_tilt_deg": 35,
+    "rest_speed_mps": 0.05,
+    "rest_angular_speed_rads": 0.2,
+    "rest_time_s": 0.5
+  },
+  "reactions": {
+    "flinch_weakening": 0.3,
+    "flinch_recovery_s": 0.35
+  },
+  "states": {
+    "falling": {
+      "muscles": {
+        "spine": { "stiffness_nm_per_rad": 150, "damping_s": 0.3 },
+        "neck": { "stiffness_nm_per_rad": 40, "damping_s": 0.3 },
+        "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.3 },
+        "legs": { "stiffness_nm_per_rad": 100, "damping_s": 0.3 }
+      },
+      "assist": {
+        "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 0 },
+        "chest": { "angular_nm_per_rad": 0 },
+        "head": { "angular_nm_per_rad": 0 },
+        "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
+      }
+    },
+    "lying": {
+      "muscles": {
+        "spine": { "stiffness_nm_per_rad": 40, "damping_s": 0.5 },
+        "neck": { "stiffness_nm_per_rad": 15, "damping_s": 0.5 },
+        "arms": { "stiffness_nm_per_rad": 15, "damping_s": 0.5 },
+        "legs": { "stiffness_nm_per_rad": 30, "damping_s": 0.5 }
+      },
+      "assist": {
+        "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 0 },
+        "chest": { "angular_nm_per_rad": 0 },
+        "head": { "angular_nm_per_rad": 0 },
+        "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
+      }
+    }
   }
 }

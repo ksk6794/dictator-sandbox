@@ -52,6 +52,16 @@ namespace
 		Visitor(FString(TEXT("solver.position_iterations")), Tuning.Solver.PositionIterations);
 		Visitor(FString(TEXT("solver.velocity_iterations")), Tuning.Solver.VelocityIterations);
 		Visitor(FString(TEXT("solver.projection_iterations")), Tuning.Solver.ProjectionIterations);
+		Visitor(FString(TEXT("thresholds.flinch_impulse_ns")), Tuning.Thresholds.FlinchImpulseNs);
+		Visitor(FString(TEXT("thresholds.flinch_window_s")), Tuning.Thresholds.FlinchWindowS);
+		Visitor(FString(TEXT("thresholds.fall_pelvis_offset_cm")), Tuning.Thresholds.FallPelvisOffsetCm);
+		Visitor(FString(TEXT("thresholds.fall_pelvis_drop_cm")), Tuning.Thresholds.FallPelvisDropCm);
+		Visitor(FString(TEXT("thresholds.fall_tilt_deg")), Tuning.Thresholds.FallTiltDeg);
+		Visitor(FString(TEXT("thresholds.rest_speed_mps")), Tuning.Thresholds.RestSpeedMps);
+		Visitor(FString(TEXT("thresholds.rest_angular_speed_rads")), Tuning.Thresholds.RestAngularSpeedRadS);
+		Visitor(FString(TEXT("thresholds.rest_time_s")), Tuning.Thresholds.RestTimeS);
+		Visitor(FString(TEXT("reactions.flinch_weakening")), Tuning.Reactions.FlinchWeakening);
+		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
 	}
 }
 
@@ -224,6 +234,26 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		return false;
 	}
 
+	// Thresholds. A fall threshold of zero would have the body fall where it stands.
+	if (!CheckRange(Thresholds.FlinchImpulseNs, 1000.0, TEXT("thresholds"), TEXT("flinch_impulse_ns"), OutError) ||
+		!CheckRange(Thresholds.FlinchWindowS, 5.0, TEXT("thresholds"), TEXT("flinch_window_s"), OutError) ||
+		!CheckRange(Thresholds.FallPelvisOffsetCm, 500.0, TEXT("thresholds"), TEXT("fall_pelvis_offset_cm"), OutError) ||
+		!CheckRange(Thresholds.FallPelvisDropCm, 500.0, TEXT("thresholds"), TEXT("fall_pelvis_drop_cm"), OutError) ||
+		!CheckRange(Thresholds.FallTiltDeg, 180.0, TEXT("thresholds"), TEXT("fall_tilt_deg"), OutError) ||
+		!CheckRange(Thresholds.RestSpeedMps, 10.0, TEXT("thresholds"), TEXT("rest_speed_mps"), OutError) ||
+		!CheckRange(Thresholds.RestAngularSpeedRadS, 100.0, TEXT("thresholds"), TEXT("rest_angular_speed_rads"), OutError) ||
+		!CheckRange(Thresholds.RestTimeS, 60.0, TEXT("thresholds"), TEXT("rest_time_s"), OutError) ||
+		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
+		!CheckRange(Reactions.FlinchRecoveryS, 10.0, TEXT("reactions"), TEXT("flinch_recovery_s"), OutError))
+	{
+		return false;
+	}
+	if (Thresholds.FallPelvisOffsetCm <= 0.0 || Thresholds.FallPelvisDropCm <= 0.0 || Thresholds.FallTiltDeg <= 0.0)
+	{
+		OutError = TEXT("thresholds: fall_pelvis_offset_cm, fall_pelvis_drop_cm and fall_tilt_deg must be above 0");
+		return false;
+	}
+
 	const FName RigBones[] = { Rig.Pelvis, Rig.Chest, Rig.Head, Rig.FootLeft, Rig.FootRight };
 	for (const FName Bone : RigBones)
 	{
@@ -264,6 +294,17 @@ ESandboxMuscleGroup FSandboxBodyTuning::GroupOfBone(FName ChildBone)
 		return ESandboxMuscleGroup::Legs;
 	}
 	return ESandboxMuscleGroup::Spine;
+}
+
+const TCHAR* FSandboxBodyTuning::StateName(ESandboxBodyState State)
+{
+	switch (State)
+	{
+	case ESandboxBodyState::Flinch: return TEXT("flinch");
+	case ESandboxBodyState::Falling: return TEXT("falling");
+	case ESandboxBodyState::Lying: return TEXT("lying");
+	default: return TEXT("standing");
+	}
 }
 
 const TCHAR* FSandboxBodyTuning::GroupName(ESandboxMuscleGroup Group)

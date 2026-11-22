@@ -66,7 +66,7 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		return false;
 	}
 	FSandboxBodyTuning InTuning;
-	if (!FSandboxBodyTuning::FromParams(InParams, FString(), InTuning, OutError))
+	if (!FSandboxBodyTuning::FromParams(InParams, FSandboxBodyTuning::StateName(ESandboxBodyState::Standing), InTuning, OutError))
 	{
 		return false;
 	}
@@ -166,6 +166,9 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	AddTickPrerequisiteComponent(Mesh);
 	Params = &InParams;
 	ParamsRevision = InParams.GetRevision();
+	State = ESandboxBodyState::Standing;
+	StateLog.Reset();
+	StateLog.Add(FSandboxStateChange{ 0.0, State, TEXT("started") });
 	bStarted = true;
 
 	UE_LOG(LogSandbox, Display, TEXT("Body controller started: %d muscles, %d assist controls, %.1f kg, centre of mass %.2f m above the origin"),
@@ -229,6 +232,139 @@ void USandboxBodyController::ReleaseIslandRefresh()
 	}
 }
 
+bool USandboxBodyController::ReadStateTuning(FSandboxBodyTuning& OutTuning, FString& OutError) const
+{
+	return FSandboxBodyTuning::FromParams(*Params, FSandboxBodyTuning::StateName(State), OutTuning, OutError);
+}
+
+double USandboxBodyController::MuscleScale(ESandboxMuscleGroup Group) const
+{
+	if (State != ESandboxBodyState::Flinch || Group != FlinchGroup)
+	{
+		return 1.0;
+	}
+	// Weak at the moment of the hit, back to full strength in a straight line.
+	const double Recovered = Tuning.Reactions.FlinchRecoveryS > 0.0 ? FMath::Clamp((ElapsedS - StateEnteredS) / Tuning.Reactions.FlinchRecoveryS, 0.0, 1.0) : 1.0;
+	return FMath::Lerp(Tuning.Reactions.FlinchWeakening, 1.0, Recovered);
+}
+
+void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FString& Reason)
+{
+	State = NewState;
+	StateEnteredS = ElapsedS;
+	RestS = 0.0;
+	StateLog.Add(FSandboxStateChange{ ElapsedS, NewState, Reason });
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: %s at %.3f s (%s)"), FSandboxBodyTuning::StateName(NewState), ElapsedS, *Reason);
+
+	// Each state has its own values. The store has checked every state that sets any, so this reads.
+	FSandboxBodyTuning NewTuning;
+	FString Error;
+	if (!ReadStateTuning(NewTuning, Error) || !ApplyTuning(NewTuning, Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps the previous state's tuning: %s"), *Error);
+	}
+}
+
+void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
+{
+	FBodyInstance* Body = bStarted ? Mesh->GetBodyInstance(Bone) : nullptr;
+	if (!Body || !Body->IsValidBodyInstance())
+	{
+		return;
+	}
+	// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
+	Body->AddImpulse(ImpulseNs * 100.0, /*bVelChange*/ false);
+
+	// What is felt is the hit as a whole: impulses that follow each other closely are added up.
+	if (ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS)
+	{
+		HitImpulseNs = FVector::ZeroVector;
+		HitStartedS = ElapsedS;
+	}
+	HitImpulseNs += ImpulseNs;
+
+	if (State == ESandboxBodyState::Standing && HitImpulseNs.Size() >= Tuning.Thresholds.FlinchImpulseNs)
+	{
+		FlinchGroup = FSandboxBodyTuning::GroupOfBone(Bone);
+		EnterState(ESandboxBodyState::Flinch, FString::Printf(TEXT("hit of %.1f N*s on %s"), HitImpulseNs.Size(), *Bone.ToString()));
+		HitImpulseNs = FVector::ZeroVector;
+	}
+}
+
+void USandboxBodyController::UpdateState(float DeltaTime)
+{
+	if (State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch)
+	{
+		// Balance level 0 has no way to win balance back: once the pelvis has left the place the assist
+		// holds it in, by distance, by height or by tilt, the body is let go.
+		const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+		const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+		if (Body && Body->IsValidBodyInstance())
+		{
+			const FTransform Now = Body->GetUnrealWorldTransform();
+			const double OffsetCm = FVector::Dist2D(Now.GetLocation(), Pelvis->Target.GetLocation());
+			const double DropCm = Pelvis->Target.GetLocation().Z - Now.GetLocation().Z;
+			// How far the direction that pointed up when standing has turned away from up.
+			const FVector Up = Now.GetRotation().RotateVector(Pelvis->Target.GetRotation().UnrotateVector(FVector::UpVector));
+			const double TiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Up.Z, -1.0, 1.0)));
+
+			const FSandboxThresholdTuning& Limits = Tuning.Thresholds;
+			if (OffsetCm > Limits.FallPelvisOffsetCm)
+			{
+				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("pelvis %.1f cm from where it stood"), OffsetCm));
+			}
+			else if (DropCm > Limits.FallPelvisDropCm)
+			{
+				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("pelvis %.1f cm below its standing height"), DropCm));
+			}
+			else if (TiltDeg > Limits.FallTiltDeg)
+			{
+				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("pelvis tilted by %.1f degrees"), TiltDeg));
+			}
+		}
+	}
+
+	if (State == ESandboxBodyState::Flinch)
+	{
+		if (ElapsedS - StateEnteredS >= Tuning.Reactions.FlinchRecoveryS)
+		{
+			EnterState(ESandboxBodyState::Standing, TEXT("recovered from the hit"));
+		}
+		else
+		{
+			// The hit muscles regain strength every tick.
+			PushTuningToControls();
+		}
+	}
+	else if (State == ESandboxBodyState::Falling)
+	{
+		// The speed of the body as a whole: the root mean square over its bodies, weighted by mass. A hand
+		// that trembles against the floor does not keep an 80 kg character from being at rest; a moving
+		// trunk does.
+		double MassKg = 0.0;
+		double LinearSquared = 0.0;
+		double AngularSquared = 0.0;
+		for (const FBodyInstance* Body : Mesh->Bodies)
+		{
+			if (Body && Body->IsValidBodyInstance())
+			{
+				const double BodyMassKg = Body->GetBodyMass();
+				MassKg += BodyMassKg;
+				LinearSquared += BodyMassKg * (Body->GetUnrealWorldVelocity() * 0.01).SizeSquared();
+				AngularSquared += BodyMassKg * Body->GetUnrealWorldAngularVelocityInRadians().SizeSquared();
+			}
+		}
+		const bool bAtRest = MassKg > 0.0 &&
+			FMath::Sqrt(LinearSquared / MassKg) <= Tuning.Thresholds.RestSpeedMps &&
+			FMath::Sqrt(AngularSquared / MassKg) <= Tuning.Thresholds.RestAngularSpeedRadS;
+		RestS = bAtRest ? RestS + DeltaTime : 0.0;
+		if (bAtRest && RestS >= Tuning.Thresholds.RestTimeS)
+		{
+			EnterState(ESandboxBodyState::Lying, FString::Printf(TEXT("at rest for %.2f s"), RestS));
+		}
+	}
+}
+
 void USandboxBodyController::FollowParams()
 {
 	ParamsRevision = Params->GetRevision();
@@ -236,7 +372,7 @@ void USandboxBodyController::FollowParams()
 	// The store has already put a new set through the body's own checks, so a failure here is not expected.
 	FSandboxBodyTuning NewTuning;
 	FString Error;
-	if (!FSandboxBodyTuning::FromParams(*Params, FString(), NewTuning, Error))
+	if (!ReadStateTuning(NewTuning, Error))
 	{
 		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its tuning: %s"), *Error);
 		return;
@@ -274,7 +410,7 @@ void USandboxBodyController::PushTuningToControls()
 	for (const FMuscle& Muscle : Muscles)
 	{
 		const FSandboxMuscleTuning& Group = Tuning.Muscle(Muscle.Group);
-		const double Spring = Group.StiffnessNmPerRad * TorqueToUnreal / ChaosAngularDriveScale;
+		const double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * TorqueToUnreal / ChaosAngularDriveScale;
 		FPhysicsControlData Data;
 		// Force mode: the spring is a real torque per radian. In the plugin's default (acceleration) mode
 		// it would be scaled by the inertia of the two jointed bodies alone, which leaves an ankle or a hip
@@ -334,8 +470,12 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	}
 
 	Control->UpdateTargetCaches(DeltaTime);
+	UpdateState(DeltaTime);
 	UpdateAssistLoad();
 	Control->UpdateControls(DeltaTime);
+
+	// Advanced last: during a tick this is the time at which the coming physics step begins.
+	ElapsedS += DeltaTime;
 }
 
 void USandboxBodyController::UpdateAssistLoad()

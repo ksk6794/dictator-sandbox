@@ -6,7 +6,7 @@
 
 namespace
 {
-	/** An axis is a number (limited to +/- that many degrees) or the word "locked" or "free". */
+	/** An axis is a range [min, max] in degrees, or the word "locked" or "free". */
 	bool ParseAxis(const TSharedPtr<FJsonObject>& Json, const FString& Field, const FString& Context, FPhysicsAxisSpec& OutAxis, FString& OutError)
 	{
 		const TSharedPtr<FJsonValue> Value = Json->TryGetField(Field);
@@ -16,35 +16,65 @@ namespace
 			return false;
 		}
 
-		double Degrees = 0.0;
+		const TArray<TSharedPtr<FJsonValue>>* Range = nullptr;
 		FString Word;
-		if (Value->Type == EJson::Number && Value->TryGetNumber(Degrees))
+		if (Value->Type == EJson::Array && Value->TryGetArray(Range))
 		{
-			if (Degrees <= 0.0 || Degrees > 180.0)
+			if (Range->Num() != 2 || (*Range)[0]->Type != EJson::Number || (*Range)[1]->Type != EJson::Number)
 			{
-				OutError = FString::Printf(TEXT("%s.%s must be between 0 and 180 degrees"), *Context, *Field);
+				OutError = FString::Printf(TEXT("%s.%s must be [min, max] in degrees"), *Context, *Field);
 				return false;
 			}
 			OutAxis.Motion = ACM_Limited;
-			OutAxis.LimitDeg = Degrees;
+			OutAxis.MinDeg = (*Range)[0]->AsNumber();
+			OutAxis.MaxDeg = (*Range)[1]->AsNumber();
+			// The engine's limit is a half-angle; anything wider than a full turn has no meaning.
+			if (OutAxis.MaxDeg <= OutAxis.MinDeg || OutAxis.MaxDeg - OutAxis.MinDeg > 360.0)
+			{
+				OutError = FString::Printf(TEXT("%s.%s: max must be above min and the range at most 360 degrees"), *Context, *Field);
+				return false;
+			}
 			return true;
 		}
-		if (Value->TryGetString(Word))
+		if (Value->Type == EJson::String && Value->TryGetString(Word))
 		{
-			if (Word == TEXT("locked"))
+			if (Word == TEXT("locked") || Word == TEXT("free"))
 			{
-				OutAxis.Motion = ACM_Locked;
-				OutAxis.LimitDeg = 0.0;
-				return true;
-			}
-			if (Word == TEXT("free"))
-			{
-				OutAxis.Motion = ACM_Free;
-				OutAxis.LimitDeg = 0.0;
+				OutAxis = FPhysicsAxisSpec();
+				OutAxis.Motion = Word == TEXT("locked") ? ACM_Locked : ACM_Free;
 				return true;
 			}
 		}
-		OutError = FString::Printf(TEXT("%s.%s must be a number of degrees, \"locked\" or \"free\""), *Context, *Field);
+		OutError = FString::Printf(TEXT("%s.%s must be [min, max] in degrees, \"locked\" or \"free\""), *Context, *Field);
+		return false;
+	}
+
+	/** The swing1 axis is [x, y, z], {"from": bone, "to": bone} or the word "bend". */
+	bool ParseSwingAxis(const TSharedPtr<FJsonObject>& Json, const FString& Context, FPhysicsJointSpec& OutJoint, FString& OutError)
+	{
+		const TSharedPtr<FJsonValue> Value = Json->TryGetField(TEXT("swing1_axis"));
+		FString Word;
+		const TSharedPtr<FJsonObject>* Bones = nullptr;
+		if (Value.IsValid() && Value->Type == EJson::Array && SandboxJson::TryGetVector(Json, TEXT("swing1_axis"), OutJoint.Swing1Axis) && !OutJoint.Swing1Axis.IsNearlyZero())
+		{
+			OutJoint.Swing1AxisKind = EPhysicsSwingAxis::Vector;
+			return true;
+		}
+		if (Value.IsValid() && Value->Type == EJson::String && Value->TryGetString(Word) && Word == TEXT("bend"))
+		{
+			OutJoint.Swing1AxisKind = EPhysicsSwingAxis::Bend;
+			return true;
+		}
+		FString From, To;
+		if (Value.IsValid() && Value->TryGetObject(Bones) && (*Bones)->TryGetStringField(TEXT("from"), From) && (*Bones)->TryGetStringField(TEXT("to"), To) &&
+			!From.IsEmpty() && !To.IsEmpty() && From != To)
+		{
+			OutJoint.Swing1AxisKind = EPhysicsSwingAxis::Bones;
+			OutJoint.Swing1AxisFrom = FName(*From);
+			OutJoint.Swing1AxisTo = FName(*To);
+			return true;
+		}
+		OutError = FString::Printf(TEXT("%s.swing1_axis must be a non-zero [x, y, z], {\"from\": bone, \"to\": bone} or \"bend\""), *Context);
 		return false;
 	}
 
@@ -75,9 +105,14 @@ const FPhysicsBodySpec* FPhysicsAssetSpec::FindBody(FName Bone) const
 	return Bodies.FindByPredicate([Bone](const FPhysicsBodySpec& Body) { return Body.Bone == Bone; });
 }
 
-const FPhysicsJointSpec* FPhysicsAssetSpec::FindJoint(FName Child) const
+const FPhysicsJointSpec* FPhysicsAssetSpec::FindJoint(FName Child, bool* bOutMirrored) const
 {
-	return Joints.FindByPredicate([Child](const FPhysicsJointSpec& Joint) { return Joint.Child == Child; });
+	const FPhysicsJointSpec* Found = Joints.FindByPredicate([Child](const FPhysicsJointSpec& Joint) { return Joint.Child == Child || Joint.Mirror == Child; });
+	if (bOutMirrored)
+	{
+		*bOutMirrored = Found && Found->Child != Child;
+	}
+	return Found;
 }
 
 bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& OutSpec, FString& OutError)
@@ -171,8 +206,21 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 		if (!OutSpec.FindBody(Joint.Child)) { return Fail(FString::Printf(TEXT("%s: child '%s' is not one of the bodies"), *Context, *Child)); }
 		if (OutSpec.FindJoint(Joint.Child)) { return Fail(FString::Printf(TEXT("%s: child '%s' already has a joint"), *Context, *Child)); }
 
+		FString Mirror;
+		if (JointJson->TryGetStringField(TEXT("mirror"), Mirror))
+		{
+			Joint.Mirror = FName(*Mirror);
+			if (Joint.Mirror == Joint.Child || !OutSpec.FindBody(Joint.Mirror)) { return Fail(FString::Printf(TEXT("%s: mirror '%s' is not another one of the bodies"), *Context, *Mirror)); }
+			if (OutSpec.FindJoint(Joint.Mirror)) { return Fail(FString::Printf(TEXT("%s: mirror '%s' already has a joint"), *Context, *Mirror)); }
+		}
+
+		FString Along;
+		if (!JointJson->TryGetStringField(TEXT("along"), Along) || Along.IsEmpty() || Along == Child) { return Fail(Context + TEXT(".along must name the bone the limb runs toward")); }
+		Joint.Along = FName(*Along);
+
 		FString AxisError;
-		if (!ParseAxis(JointJson, TEXT("swing1"), Context, Joint.Swing1, AxisError) ||
+		if (!ParseSwingAxis(JointJson, Context, Joint, AxisError) ||
+			!ParseAxis(JointJson, TEXT("swing1"), Context, Joint.Swing1, AxisError) ||
 			!ParseAxis(JointJson, TEXT("swing2"), Context, Joint.Swing2, AxisError) ||
 			!ParseAxis(JointJson, TEXT("twist"), Context, Joint.Twist, AxisError))
 		{

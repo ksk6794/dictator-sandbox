@@ -1,5 +1,6 @@
 # Runs one scenario and reports its metrics.
 #   powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive
+#   ... -File <path>     run a scenario file from anywhere instead of Scenarios\<Name>.json (generated scenarios)
 #   ... -Rendered        render offscreen with the GPU instead of running without a renderer
 #   ... -Shot            also save <Out>\final.png (implies -Rendered)
 #   ... -VR              run in the headset through OpenXR (headset on, runtime running); frames are paced by
@@ -13,7 +14,8 @@
 # Prints a one-line verdict plus the checks and writes <Out>\metrics.json and <Out>\trace.json.
 # Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
 param(
-    [Parameter(Mandatory = $true)][string]$Name,
+    [string]$Name,
+    [string]$File,
     [switch]$Rendered,
     [switch]$VR,
     [string]$CVars,
@@ -26,7 +28,15 @@ param(
 )
 . "$PSScriptRoot\common.ps1"
 
-$scenarioFile = Join-Path $RepoRoot "Scenarios\$Name.json"
+if ($File) {
+    $scenarioFile = [System.IO.Path]::GetFullPath($File)
+    $Name = [System.IO.Path]::GetFileNameWithoutExtension($scenarioFile)
+} elseif ($Name) {
+    $scenarioFile = Join-Path $RepoRoot "Scenarios\$Name.json"
+} else {
+    Write-Output 'SCENARIO ERROR: give -Name <scenario> or -File <path>'
+    exit 2
+}
 if (-not (Test-Path $scenarioFile)) {
     Write-Output "SCENARIO ERROR: $scenarioFile does not exist"
     exit 2

@@ -66,6 +66,23 @@ namespace
 	// The body has fallen once its pelvis is below this fraction of the height it started at.
 	constexpr double FallenPelvisHeightFraction = 0.5;
 
+	/**
+	 * How far a joint is outside its limits, in degrees, axis by axis. The engine limits the two swings
+	 * together, as an ellipse, so this box test can read 0 for a joint that is slightly outside; what it
+	 * does report is real.
+	 */
+	double JointLimitViolationDeg(const FConstraintInstance& Constraint)
+	{
+		const auto Excess = [](EAngularConstraintMotion Motion, double AngleRad, double LimitDeg)
+		{
+			return Motion == ACM_Free ? 0.0 : FMath::Max(FMath::Abs(FMath::RadiansToDegrees(AngleRad)) - (Motion == ACM_Limited ? LimitDeg : 0.0), 0.0);
+		};
+		return FMath::Max3(
+			Excess(Constraint.GetAngularTwistMotion(), Constraint.GetCurrentTwist(), Constraint.GetAngularTwistLimit()),
+			Excess(Constraint.GetAngularSwing1Motion(), Constraint.GetCurrentSwing1(), Constraint.GetAngularSwing1Limit()),
+			Excess(Constraint.GetAngularSwing2Motion(), Constraint.GetCurrentSwing2(), Constraint.GetAngularSwing2Limit()));
+	}
+
 	uint32 HashDoubles(const double* Values, int32 Count, uint32 Previous)
 	{
 		return FCrc::MemCrc32(Values, Count * sizeof(double), Previous);
@@ -500,6 +517,7 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 	// Tickables run after the physics step of this frame, so the state seen here is after FrameIndex + 1 steps.
 	const double SimTimeS = (FrameIndex + 1) * FixedDt;
 	SampleFrame(DeltaTime);
+	ContinuePushes();
 	ApplyDueEvents(SimTimeS);
 
 	// Hot reload: a look at the tuning files' size and time every few frames. It reads no clock and does
@@ -601,6 +619,20 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		FastestJoint = FrameFastestJoint;
 	}
 
+	// Joints pushed past their limits. The first frames are left out, as for stretch.
+	if (FrameIndex >= JointSettleFrames)
+	{
+		for (const FConstraintInstance* Constraint : Mesh->Constraints)
+		{
+			const double Violation = Constraint ? JointLimitViolationDeg(*Constraint) : 0.0;
+			if (Violation > MaxJointLimitViolationDeg)
+			{
+				MaxJointLimitViolationDeg = Violation;
+				WorstLimitJoint = Constraint->JointName;
+			}
+		}
+	}
+
 	if (const USandboxBodyController* Controller = Ragdoll->GetController())
 	{
 		if (bSettled)
@@ -611,6 +643,30 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			AssistTorqueShareSum += Load.TorqueShare;
 			AssistTorqueShareMax = FMath::Max(AssistTorqueShareMax, Load.TorqueShare);
 			++AssistSamples;
+		}
+
+		if (Controller->GetStateLog().Num() != SeenStateChanges)
+		{
+			// The timeline is kept in the run's own time, like everything else in the result: a state seen
+			// here for the first time is the one the physics step of this frame was made in.
+			for (int32 Index = SeenStateChanges; Index < Controller->GetStateLog().Num(); ++Index)
+			{
+				const FSandboxStateChange& Change = Controller->GetStateLog()[Index];
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetNumberField(TEXT("t"), FrameIndex * FixedDt);
+				Entry->SetNumberField(TEXT("frame"), FrameIndex);
+				Entry->SetStringField(TEXT("state"), FSandboxBodyTuning::StateName(Change.State));
+				Entry->SetStringField(TEXT("reason"), Change.Reason);
+				StateTimeline.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+
+			// A new state brings its own tuning. That is not a tuning change: only an edited file or an
+			// override counts as one, so the values to compare the next change against start here.
+			SeenStateChanges = Controller->GetStateLog().Num();
+			if (Controller->GetTuningChangeCount() == SeenTuningChanges)
+			{
+				Controller->GetTuning().ListValues(LastTuningValues);
+			}
 		}
 
 		if (Controller->GetTuningChangeCount() != SeenTuningChanges)
@@ -748,10 +804,43 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 		}
 		else
 		{
-			// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
-			Body->AddImpulse(Event.Direction * Event.ImpulseNs * 100.0, /*bVelChange*/ false);
+			// A blow lands at once. A push is spread evenly over the frames of its duration, the first
+			// share now and the rest from ContinuePushes.
+			const int32 Frames = FMath::Max(FMath::RoundToInt32(Event.DurationS / FixedDt), 1);
+			const FVector ShareNs = Event.Direction * (Event.ImpulseNs / Frames);
+			ApplyImpulse(Event.Body, ShareNs);
+			if (Frames > 1)
+			{
+				Pushes.Add(FPush{ Event.Body, ShareNs, Frames - 1 });
+			}
 		}
 		++EventsApplied;
+	}
+}
+
+void UScenarioRunnerSubsystem::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
+{
+	// An actively controlled body takes the impulse itself, so that it can react to being hit.
+	if (USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr)
+	{
+		Controller->ApplyImpulse(Bone, ImpulseNs);
+	}
+	else if (FBodyInstance* Body = Ragdoll ? Ragdoll->GetBodyMesh()->GetBodyInstance(Bone) : nullptr)
+	{
+		// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
+		Body->AddImpulse(ImpulseNs * 100.0, /*bVelChange*/ false);
+	}
+}
+
+void UScenarioRunnerSubsystem::ContinuePushes()
+{
+	for (int32 Index = Pushes.Num() - 1; Index >= 0; --Index)
+	{
+		ApplyImpulse(Pushes[Index].Body, Pushes[Index].ImpulsePerFrameNs);
+		if (--Pushes[Index].FramesLeft <= 0)
+		{
+			Pushes.RemoveAt(Index);
+		}
 	}
 }
 
@@ -945,6 +1034,32 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.TuningChanges.GetValue();
 		AddCheck(TEXT("tuning_changes"), TuningChanges.Num() == Limit, Number(TuningChanges.Num()), Number(Limit));
 	}
+	if (Spec.Expect.MaxJointLimitViolationDeg.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxJointLimitViolationDeg.GetValue();
+		AddCheck(TEXT("max_joint_limit_violation_deg"), MaxJointLimitViolationDeg <= Limit, Number(MaxJointLimitViolationDeg), Number(Limit));
+	}
+
+	// The states the body went through, as names joined by '>'.
+	FString StateSequence;
+	FString EndState;
+	if (Controller)
+	{
+		for (const FSandboxStateChange& Change : Controller->GetStateLog())
+		{
+			EndState = FSandboxBodyTuning::StateName(Change.State);
+			StateSequence += (StateSequence.IsEmpty() ? TEXT("") : TEXT(">")) + EndState;
+		}
+	}
+	const auto Text = [](const FString& Value) -> TSharedPtr<FJsonValue> { return MakeShared<FJsonValueString>(Value); };
+	if (Spec.Expect.EndState.IsSet())
+	{
+		AddCheck(TEXT("end_state"), Controller && EndState == Spec.Expect.EndState.GetValue(), Controller ? Text(EndState) : Null(), Text(Spec.Expect.EndState.GetValue()));
+	}
+	if (Spec.Expect.StateSequence.IsSet())
+	{
+		AddCheck(TEXT("state_sequence"), Controller && StateSequence == Spec.Expect.StateSequence.GetValue(), Controller ? Text(StateSequence) : Null(), Text(Spec.Expect.StateSequence.GetValue()));
+	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetBoolField(TEXT("ok"), true);
@@ -1065,6 +1180,8 @@ void UScenarioRunnerSubsystem::Finish()
 	Metrics->SetNumberField(TEXT("max_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS);
 	Metrics->SetNumberField(TEXT("max_joint_speed_rads"), MaxJointSpeedRadS);
 	Metrics->SetStringField(TEXT("fastest_joint"), FastestJoint.IsNone() ? FString() : FastestJoint.ToString());
+	Metrics->SetNumberField(TEXT("max_joint_limit_violation_deg"), MaxJointLimitViolationDeg);
+	Metrics->SetStringField(TEXT("worst_limit_joint"), WorstLimitJoint.IsNone() ? FString() : WorstLimitJoint.ToString());
 	Root->SetObjectField(TEXT("metrics"), Metrics);
 
 	const TSharedRef<FJsonObject> ControlJson = MakeShared<FJsonObject>();
@@ -1111,6 +1228,11 @@ void UScenarioRunnerSubsystem::Finish()
 		}
 		Source->SetObjectField(TEXT("overrides"), OverridesJson);
 		ControlJson->SetObjectField(TEXT("tuning_source"), Source);
+
+		// The state timeline: every state with the time it began and what caused it.
+		ControlJson->SetArrayField(TEXT("states"), StateTimeline);
+		ControlJson->SetStringField(TEXT("end_state"), EndState);
+		ControlJson->SetStringField(TEXT("state_sequence"), StateSequence);
 		ControlJson->SetArrayField(TEXT("tuning_changes"), TuningChanges);
 	}
 	Root->SetObjectField(TEXT("control"), ControlJson);

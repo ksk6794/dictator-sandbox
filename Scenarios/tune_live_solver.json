@@ -17,7 +17,8 @@
   "expect": {
     "tuning_changes": 1,
     "fell": false,
-    "min_settled_angular_speed_rads": 0.3,
+    "end_state": "standing",
+    "min_settled_angular_speed_rads": 0.25,
     "max_joint_stretch_cm": 2.0
   }
 }

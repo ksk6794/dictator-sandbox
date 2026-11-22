@@ -4,10 +4,11 @@ Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the 
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
 Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
 launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core, is in progress.**
-Steps 1 and 2 of 5 are done: the NPC stands under full simulation for 10 minutes (muscles and balance assist
-through Physics Control), and every tuning value lives in `Config/Tuning`, is hot-reloaded and can be
-overridden from the console and the command line. Still to do: Standing/Flinch/Falling/Lying states and the
-push matrix, desktop pawn with effectors, overlays and strike scenarios.
+Steps 1 to 3 of 5 are done: the NPC stands under full simulation for 10 minutes (muscles and balance assist
+through Physics Control); every tuning value lives in `Config/Tuning`, is hot-reloaded and can be overridden
+from the console and the command line; the body has the states Standing, Flinch, Falling and Lying, joint
+limits from anatomy that mirror left to right, and passes the push matrix. Still to do: desktop pawn with
+effectors, overlays and strike scenarios.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -27,6 +28,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
+| Push matrix (128 pushes, the M2 fall rules) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values) |
+| One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
 | Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` (`-Force` also rebuilds up-to-date maps) |
@@ -34,7 +37,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 3 minutes.
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 4 minutes, the push matrix 3 minutes.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
 scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
@@ -44,10 +47,10 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles and balance assist), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements). |
 | `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
-| `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs. |
+| `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
@@ -114,6 +117,19 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   through stiff joints does not converge: the feet rock at 0.5 rad/s and walk across the floor. The
   controller asks for 64 on the NPC's own bodies (`solver.position_iterations`); it costs 0.4 ms per frame
   instead of 0.26. Shock-propagation and mass-ratio console variables made no difference.
+- **A passive body runs on the engine's 8 solver iterations; the NPC's 64 come from its controller.** A
+  figure taken from a passive scenario is not the NPC's: hanging from one hand, the wrist stretches by
+  2.9 cm at 8 iterations and 0.5 cm at 64 (`-CVars "p.Chaos.Solver.Iterations.Position=64"` to compare).
+- **The engine's joint axes: twist is the frame's X, swing1 its Z, swing2 its Y, and limits are symmetric
+  around the parent-side frame.** An asymmetric range needs that frame turned to the middle of the range;
+  `FPhysicsAssetGenerator::ComputeJointFrames` does it. The two swings are limited together as an ellipse,
+  so a shoulder cannot have 180 degrees in two planes.
+- **Do not judge "at rest" by the fastest body.** A hand trembling against the floor (0.5 kg) kept a lying
+  character "falling" for good. The controller uses the mass-weighted root mean square over all bodies.
+- **Scenario time and controller time differ by one frame:** the controller's first tick comes one frame
+  after the body is spawned. Result files use the run's own frame count; do not mix the two.
+- **A bash heredoc breaks on an apostrophe in its body when run through the agent's shell tool.** Write the
+  script to a file with the file tool and run that.
 - **Chaos ignores new solver iteration counts on a body whose simulation island does not change.** The
   island's counts are worked out only when something joins or leaves it (`FPBDIslandManager`; the engine
   source has a todo about it). Set before the first step they apply; set on a standing character they were

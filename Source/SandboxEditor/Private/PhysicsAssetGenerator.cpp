@@ -63,6 +63,124 @@ FName FPhysicsAssetGenerator::FindParentBodyBone(const FPhysicsAssetSpec& Spec, 
 	return NAME_None;
 }
 
+bool FPhysicsAssetGenerator::ComputeJointFrames(const FPhysicsAssetSpec& Spec, const USkeletalMesh* Mesh, FName ChildBone, FPhysicsJointFrames& OutFrames, FString& OutError)
+{
+	bool bMirrored = false;
+	const FPhysicsJointSpec* Joint = Spec.FindJoint(ChildBone, &bMirrored);
+	if (!Joint || !Mesh)
+	{
+		OutError = FString::Printf(TEXT("No joint is described for '%s'"), *ChildBone.ToString());
+		return false;
+	}
+
+	const FReferenceSkeleton& Skeleton = Mesh->GetRefSkeleton();
+	TArray<FTransform> ComponentSpace;
+	FAnimationRuntime::FillUpComponentSpaceTransforms(Skeleton, Skeleton.GetRefBonePose(), ComponentSpace);
+	const auto BoneLocation = [&](FName Bone, FVector& OutLocation)
+	{
+		const int32 Index = Skeleton.FindBoneIndex(Bone);
+		if (Index == INDEX_NONE)
+		{
+			OutError = FString::Printf(TEXT("Joint '%s': bone '%s' does not exist"), *Joint->Child.ToString(), *Bone.ToString());
+			return false;
+		}
+		OutLocation = ComponentSpace[Index].GetLocation();
+		return true;
+	};
+
+	// Everything is worked out on the written side; a mirrored joint is reflected at the end.
+	FVector JointLocation, AlongLocation, ParentLocation, MirroredLocation;
+	const FName ParentBone = FindParentBodyBone(Spec, Mesh, Joint->Child);
+	if (ParentBone.IsNone())
+	{
+		OutError = FString::Printf(TEXT("Joint '%s' has no parent body: it is the root and must not be listed"), *Joint->Child.ToString());
+		return false;
+	}
+	if (!BoneLocation(Joint->Child, JointLocation) || !BoneLocation(Joint->Along, AlongLocation) || !BoneLocation(ParentBone, ParentLocation) ||
+		(bMirrored && !BoneLocation(ChildBone, MirroredLocation)))
+	{
+		return false;
+	}
+
+	const FVector TwistAxis = (AlongLocation - JointLocation).GetSafeNormal();
+	if (TwistAxis.IsNearlyZero())
+	{
+		OutError = FString::Printf(TEXT("Joint '%s': bone '%s' sits on the joint and gives no direction"), *Joint->Child.ToString(), *Joint->Along.ToString());
+		return false;
+	}
+
+	OutFrames.Swing1 = Joint->Swing1;
+	OutFrames.Swing2 = Joint->Swing2;
+	OutFrames.Twist = Joint->Twist;
+
+	FVector SwingAxis = Joint->Swing1Axis;
+	if (Joint->Swing1AxisKind == EPhysicsSwingAxis::Bones)
+	{
+		FVector From, To;
+		if (!BoneLocation(Joint->Swing1AxisFrom, From) || !BoneLocation(Joint->Swing1AxisTo, To))
+		{
+			return false;
+		}
+		SwingAxis = To - From;
+	}
+	else if (Joint->Swing1AxisKind == EPhysicsSwingAxis::Bend)
+	{
+		// The limb is already bent in the reference pose: it bends in the plane of its two segments, and
+		// turning further about that plane's normal folds the child back toward the parent.
+		const FVector ParentSegment = (JointLocation - ParentLocation).GetSafeNormal();
+		const double BendDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(ParentSegment, TwistAxis), -1.0, 1.0)));
+		if (BendDeg < 5.0)
+		{
+			OutError = FString::Printf(TEXT("Joint '%s': the limb is bent by only %.1f degrees in the reference pose, too little to tell its bending plane; give swing1_axis as a direction"),
+				*Joint->Child.ToString(), BendDeg);
+			return false;
+		}
+		SwingAxis = FVector::CrossProduct(ParentSegment, TwistAxis);
+		// The spec measures a bending joint from the straight limb; the frames are built on the reference pose.
+		OutFrames.Swing1.MinDeg -= BendDeg;
+		OutFrames.Swing1.MaxDeg -= BendDeg;
+	}
+	// Made perpendicular to the twist axis. An axis that runs nearly along the limb cannot say which way
+	// swing1 turns.
+	SwingAxis = SwingAxis.GetSafeNormal();
+	SwingAxis -= TwistAxis * FVector::DotProduct(SwingAxis, TwistAxis);
+	if (SwingAxis.Size() < 0.2)
+	{
+		OutError = FString::Printf(TEXT("Joint '%s': the swing1 axis runs along the limb"), *Joint->Child.ToString());
+		return false;
+	}
+
+	const TPair<const TCHAR*, const FPhysicsAxisSpec*> Axes[] = { { TEXT("swing1"), &OutFrames.Swing1 }, { TEXT("swing2"), &OutFrames.Swing2 }, { TEXT("twist"), &OutFrames.Twist } };
+	for (const TPair<const TCHAR*, const FPhysicsAxisSpec*>& Axis : Axes)
+	{
+		// A body spawned outside its limits is thrown back inside by the first physics step.
+		if (Axis.Value->Motion == ACM_Limited && (Axis.Value->MinDeg > 0.01 || Axis.Value->MaxDeg < -0.01))
+		{
+			OutError = FString::Printf(TEXT("Joint '%s': the reference pose lies outside the %s range (%.1f to %.1f degrees from it)"),
+				*Joint->Child.ToString(), Axis.Key, Axis.Value->MinDeg, Axis.Value->MaxDeg);
+			return false;
+		}
+	}
+
+	// X = twist, Z = swing1, Y = Z x X = swing2: the engine's joint axes.
+	const FQuat ChildRotation = FRotationMatrix::MakeFromXZ(TwistAxis, SwingAxis).ToQuat();
+	const auto Middle = [](const FPhysicsAxisSpec& Axis) { return Axis.Motion == ACM_Limited ? FMath::DegreesToRadians(Axis.MidDeg()) : 0.0; };
+	const FQuat ToMiddle =
+		FQuat(FVector::ZAxisVector, Middle(OutFrames.Swing1)) * FQuat(FVector::YAxisVector, Middle(OutFrames.Swing2)) * FQuat(FVector::XAxisVector, Middle(OutFrames.Twist));
+	OutFrames.Child = FTransform(ChildRotation, JointLocation);
+	OutFrames.Parent = FTransform(ChildRotation * ToMiddle, JointLocation);
+
+	if (bMirrored)
+	{
+		// Reflection in the plane x = 0. A rotation axis is reflected and reversed, which for the three
+		// axes of a frame together is half a turn about x; the ranges then carry over unchanged.
+		const FQuat HalfTurn(FVector::XAxisVector, UE_DOUBLE_PI);
+		OutFrames.Child = FTransform(HalfTurn * OutFrames.Child.GetRotation(), MirroredLocation);
+		OutFrames.Parent = FTransform(HalfTurn * OutFrames.Parent.GetRotation(), MirroredLocation);
+	}
+	return true;
+}
+
 UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, FString& OutError)
 {
 	USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *Spec.SkeletalMeshPath);
@@ -171,7 +289,7 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		Body->DefaultInstance.SetMassOverride(static_cast<float>(BodySpec.MassFraction * Spec.TotalMassKg), true);
 	}
 
-	// ---- Joints: frames from the template, limits from the spec.
+	// ---- Joints: axes and limits from the spec; softness and projection settings from the template's joint.
 	TSet<FRigidBodyIndexPair> JointedPairs;
 	for (const FPhysicsBodySpec& BodySpec : Spec.Bodies)
 	{
@@ -180,10 +298,14 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		{
 			continue; // the root body has no joint
 		}
-		const FPhysicsJointSpec* JointSpec = Spec.FindJoint(BodySpec.Bone);
-		if (!JointSpec)
+		if (!Spec.FindJoint(BodySpec.Bone))
 		{
 			OutError = FString::Printf(TEXT("Body '%s' has a parent body ('%s') but no entry in 'joints'"), *BodySpec.Bone.ToString(), *ParentBone.ToString());
+			return nullptr;
+		}
+		FPhysicsJointFrames Frames;
+		if (!ComputeJointFrames(Spec, Mesh, BodySpec.Bone, Frames, OutError))
+		{
 			return nullptr;
 		}
 		const UPhysicsConstraintTemplate* TemplateJoint = FindRigidTemplateJoint(Template, BodySpec.Bone);
@@ -193,33 +315,18 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 			return nullptr;
 		}
 
-		// Passing the template joint copies its frames and drive settings.
+		// Passing the template joint copies its profile (limit softness, projection); frames, limits and
+		// drives are replaced below.
 		const int32 JointIndex = FPhysicsAssetUtils::CreateNewConstraint(Asset, BodySpec.Bone, const_cast<UPhysicsConstraintTemplate*>(TemplateJoint));
 		UPhysicsConstraintTemplate* Joint = Asset->ConstraintSetup[JointIndex];
 		FConstraintInstance& Instance = Joint->DefaultInstance;
 		Instance.ConstraintBone1 = BodySpec.Bone;
 		Instance.ConstraintBone2 = ParentBone;
 
-		// If the parent body changed (a template body was merged away), move the parent-side frame into
-		// the new parent's space so the joint keeps its rest orientation.
-		const FName TemplateParent = TemplateJoint->DefaultInstance.ConstraintBone2;
-		if (TemplateParent != ParentBone)
-		{
-			FTransform OldParent, NewParent;
-			if (!BoneTransform(TemplateParent, OldParent) || !BoneTransform(ParentBone, NewParent))
-			{
-				OutError = FString::Printf(TEXT("Joint '%s': cannot resolve parent bones"), *BodySpec.Bone.ToString());
-				return nullptr;
-			}
-			const FTransform Frame2 = TemplateJoint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2);
-			Instance.SetRefFrame(EConstraintFrame::Frame2, (Frame2 * OldParent).GetRelativeTransform(NewParent));
-		}
-
-		// The template's anchor positions were authored for another body's proportions: on this mesh the
-		// two anchors of a joint end up centimetres apart, and the solver would close every gap in the
-		// first step, squashing the skeleton. Keep the child-side anchor and the orientation of both
-		// frames (they define the limit axes), and put the parent-side anchor exactly where the child's
-		// is in this mesh's reference pose.
+		// The frames are the generator's own, not the template's. The stock MetaHuman asset places its
+		// joints for another body's proportions (anchors centimetres apart on this mesh, which the solver
+		// would close in the first step) and its axes are not mirror images on the two sides. Both anchors
+		// sit on the child bone, so they coincide in the reference pose by construction.
 		{
 			FTransform ChildBone, NewParentBone;
 			if (!BoneTransform(BodySpec.Bone, ChildBone) || !BoneTransform(ParentBone, NewParentBone))
@@ -227,10 +334,8 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 				OutError = FString::Printf(TEXT("Joint '%s': cannot resolve its bones"), *BodySpec.Bone.ToString());
 				return nullptr;
 			}
-			const FVector Anchor = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ChildBone).GetLocation();
-			FTransform Frame2 = Instance.GetRefFrame(EConstraintFrame::Frame2);
-			Frame2.SetLocation(NewParentBone.InverseTransformPosition(Anchor));
-			Instance.SetRefFrame(EConstraintFrame::Frame2, Frame2);
+			Instance.SetRefFrame(EConstraintFrame::Frame1, Frames.Child.GetRelativeTransform(ChildBone));
+			Instance.SetRefFrame(EConstraintFrame::Frame2, Frames.Parent.GetRelativeTransform(NewParentBone));
 		}
 
 		// The stock MetaHuman joints carry orientation motors (SLERP drives, stiffness 1000 to 5000) that pull
@@ -241,16 +346,16 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		Instance.ProfileInstance.LinearDrive = FLinearDriveConstraint();
 
 		Instance.SetLinearLimits(LCM_Locked, LCM_Locked, LCM_Locked, 0.0f);
-		Instance.SetAngularSwing1Limit(JointSpec->Swing1.Motion, static_cast<float>(JointSpec->Swing1.LimitDeg));
-		Instance.SetAngularSwing2Limit(JointSpec->Swing2.Motion, static_cast<float>(JointSpec->Swing2.LimitDeg));
-		Instance.SetAngularTwistLimit(JointSpec->Twist.Motion, static_cast<float>(JointSpec->Twist.LimitDeg));
+		Instance.SetAngularSwing1Limit(Frames.Swing1.Motion, static_cast<float>(Frames.Swing1.HalfRangeDeg()));
+		Instance.SetAngularSwing2Limit(Frames.Swing2.Motion, static_cast<float>(Frames.Swing2.HalfRangeDeg()));
+		Instance.SetAngularTwistLimit(Frames.Twist.Motion, static_cast<float>(Frames.Twist.HalfRangeDeg()));
 		Joint->SetDefaultProfile(Instance);
 
 		JointedPairs.Add(FRigidBodyIndexPair(Asset->FindBodyIndex(BodySpec.Bone), Asset->FindBodyIndex(ParentBone)));
 	}
 	for (const FPhysicsJointSpec& JointSpec : Spec.Joints)
 	{
-		if (FindParentBodyBone(Spec, Mesh, JointSpec.Child).IsNone())
+		if (FindParentBodyBone(Spec, Mesh, JointSpec.Child).IsNone() || (!JointSpec.Mirror.IsNone() && FindParentBodyBone(Spec, Mesh, JointSpec.Mirror).IsNone()))
 		{
 			OutError = FString::Printf(TEXT("Joint '%s' has no parent body: it is the root and must not be listed"), *JointSpec.Child.ToString());
 			return nullptr;

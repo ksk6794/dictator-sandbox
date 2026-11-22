@@ -45,6 +45,11 @@ namespace
 				return false;
 			}
 			OutEvent.Direction = Direction.GetSafeNormal();
+			if (Json->HasField(TEXT("duration_s")) && (!Json->TryGetNumberField(TEXT("duration_s"), OutEvent.DurationS) || OutEvent.DurationS < 0.0))
+			{
+				OutError = FString::Printf(TEXT("events[%d].duration_s must be a number >= 0"), Index);
+				return false;
+			}
 			return true;
 		}
 
@@ -254,6 +259,7 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_joint_speed_rads"), &OutSpec.Expect.MaxJointSpeedRadS },
 			{ TEXT("max_physics_step_mean_ms"), &OutSpec.Expect.MaxPhysicsStepMeanMs },
 			{ TEXT("min_fall_time_s"), &OutSpec.Expect.MinFallTimeS },
+			{ TEXT("max_joint_limit_violation_deg"), &OutSpec.Expect.MaxJointLimitViolationDeg },
 			{ TEXT("tuning_changes"), &OutSpec.Expect.TuningChanges } };
 
 		// Every key must be a known expectation with a numeric value: a misspelt one would otherwise
@@ -269,6 +275,31 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 					return false;
 				}
 				OutSpec.Expect.Fell = Entry.Value->AsBool();
+				continue;
+			}
+
+			if (Entry.Key == TEXT("end_state") || Entry.Key == TEXT("state_sequence"))
+			{
+				// Each name must be a state of the body; a misspelt one could never be reached.
+				FString Text;
+				TArray<FString> Names;
+				if (Entry.Value.IsValid() && Entry.Value->Type == EJson::String)
+				{
+					Text = Entry.Value->AsString();
+					Text.ParseIntoArray(Names, TEXT(">"), /*bCullEmpty*/ false);
+				}
+				bool bValid = Names.Num() > 0 && (Entry.Key == TEXT("state_sequence") || Names.Num() == 1);
+				for (const FString& Name : Names)
+				{
+					bValid &= Name == TEXT("standing") || Name == TEXT("flinch") || Name == TEXT("falling") || Name == TEXT("lying");
+				}
+				if (!bValid)
+				{
+					OutError = FString::Printf(TEXT("'expect.%s' must be %s of standing, flinch, falling, lying"), *Entry.Key,
+						Entry.Key == TEXT("end_state") ? TEXT("one") : TEXT("a '>'-separated list"));
+					return false;
+				}
+				(Entry.Key == TEXT("end_state") ? OutSpec.Expect.EndState : OutSpec.Expect.StateSequence) = Text;
 				continue;
 			}
 

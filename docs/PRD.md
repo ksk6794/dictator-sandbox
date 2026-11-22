@@ -216,13 +216,15 @@ stateDiagram-v2
 
 Being grabbed is not a state. A grab constraint is an external force like any other, and the balance controller responds to its effect.
 
+As built in M2: Standing, Flinch, Falling and Lying exist; Stagger and Get-up are M3. Without the capture point, Standing and Flinch end in Falling when the pelvis leaves its place by more than a threshold (distance, height or tilt), and Lying is where the body stays. The values of every state and the thresholds between them are in `Config/Tuning/body.json`.
+
 Balance is built in three levels so each milestone has a working character. Level 0 is the assist alone. Level 1 adds capture-point fall detection and animated stumble steps. Level 2, a stretch goal, places the stepping foot procedurally.
 
 ### Physics asset
 
 Sixteen bodies and fifteen joints: pelvis, two spine segments, head, and per side upper arm, forearm, hand, thigh, shank and foot. Capsules everywhere, boxes for feet and chest, no fingers, no convex hulls. Collision is off between adjacent bodies and on between arms and torso and between the legs.
 
-As built in M2: shapes come from the stock MetaHuman asset except the feet, which are boxes written out in the spec with a flat sole on the floor (the chest is still capsules). The generator places every joint on this mesh's own reference pose and removes the stock asset's joint motors; both stock values break a fully simulated body.
+As built in M2: shapes come from the stock MetaHuman asset except the feet, which are boxes written out in the spec with a flat sole on the floor (the chest is still capsules). Joints are the generator's own, built from an anatomical description in the spec (limb direction, bending axis, a range per axis), with the right side as the mirror image of the left; the stock asset's joint positions, axes and motors all break a fully simulated body. The format is in `Specs/README.md`.
 
 Masses follow de Leva's 1996 segment fractions, here for an 80 kg male. Every parent-to-child mass ratio stays under 10, which the joint solver needs.
 
@@ -241,7 +243,7 @@ Masses follow de Leva's 1996 segment fractions, here for an 80 kg male. Every pa
 
 Leg values were checked against [a paper reproducing de Leva's table](https://pmc.ncbi.nlm.nih.gov/articles/PMC9602786/table/healthcare-10-02054-t005). Trunk, head and arm values were not confirmed against the original and need a check before they are locked.
 
-Joint limits start about 10% inside clinical range of motion ([WikEM table](<https://wikem.org/wiki/Joint_ROM_(Table)>)). Knees and elbows are hinges.
+Joint limits start about 10% inside clinical range of motion ([WikEM table](<https://wikem.org/wiki/Joint_ROM_(Table)>)). Knees and elbows are hinges. As built in M2 the table is in force, except the shoulder, which the engine's single limit cone can only approximate, and the knee, which has 2 degrees of slack past straight; the choices made where the table leaves room are listed in `Specs/README.md`.
 
 | Joint | Starting limits (degrees) |
 | --- | --- |
@@ -460,7 +462,7 @@ Every physical behaviour has a scenario: a JSON file that places the NPC, applie
 
 Event types are a direct impulse on a named body, an effector trajectory (strike or push), a grab with a hand path, and a parameter override. Recorded live sessions replay through the same format.
 
-As built so far: `impulse`, `pin`, `console` (any console command at a simulated time; a parameter override is `Sandbox.Tune ...`) and `edit_tuning_file` (an edit of the run's own copy of the tuning files, to test hot reload). The format in force is in `Scenarios/README.md`.
+As built so far: `impulse` (a single blow, or a push when it has a duration), `pin`, `console` (any console command at a simulated time; a parameter override is `Sandbox.Tune ...`) and `edit_tuning_file` (an edit of the run's own copy of the tuning files, to test hot reload). Expectations include the end state and the whole state sequence. The format in force is in `Scenarios/README.md`.
 
 ### Standard suite
 
@@ -562,13 +564,13 @@ Assemble and import the MetaHuman. Generate the physics asset from its JSON spec
 Muscles, balance assist at level 0, and the Standing, Flinch, Falling and Lying states. Parameter file with hot reload. Desktop pawn with effectors, impulse tool, drag handle and overlays.
 
 - [x] Stand scenario passes: 10 minutes, drift under 5 cm
-- [ ] Push matrix: 10 N·s never causes a fall, 200 N·s always does, left and right agree
+- [x] Push matrix: 10 N·s never causes a fall, 200 N·s always does, left and right agree
 - [ ] Strike scenarios show no tunnelling and no joint above 30 rad/s
 - [ ] No scenario shows joint stretch above 2 cm
 - [x] A parameter edit takes effect in a running session
 - [ ] Physics step averages 1.5 ms or less
 
-**M2 is in progress; steps 1 and 2 of 5 are done. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
+**M2 is in progress; steps 1 to 3 of 5 are done. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
 
 Decisions taken in step 1:
 
@@ -596,6 +598,22 @@ Decisions taken in step 2:
 Found in step 2: Chaos does not apply new per-body solver iteration counts to a body whose simulation island is not changing, so the first live change of `solver.position_iterations` was accepted and did nothing. The controller now adds a constraint that restricts nothing for one frame, which makes the island take the new counts.
 
 Not done in step 2: the torque caps are still at "no cap" and the N·m/rad conversion is still uncalibrated, as after step 1; there is no `sweep` script yet (`-Tune` and `-TuningDir` are what it will be built on); the tuning directory is not yet staged for a packaged build, which M5 needs.
+
+**Step 3 of 5, "states and the push matrix", was finished on 22 November 2026.** The body has the states Standing, Flinch, Falling and Lying, joint limits that follow the table above and are mirror images left and right, and it passes the push matrix: 128 pushes (10, 30, 80 and 200 N·s on head, chest and both thighs from 8 directions), of which no 10 N·s push causes a fall, every 200 N·s push does, and every mirror-image pair ends the same way. The largest joint stretch in the matrix is 0.31 cm. Measurements are in `docs/testing.md`.
+
+Decisions taken in step 3:
+
+- **Joints are described by anatomy, not copied from the stock asset.** The spec gives each joint the direction of its limb, the axis it bends about and a range per axis that need not be symmetric (a knee bends one way only); the generator builds the engine's frames from that. The right side is generated as the mirror image of the left, so the two cannot differ. The stock asset's own axes were not mirror images, and the reference pose sat off-centre in its limits.
+- **A fall is decided by the pelvis.** Balance level 0 cannot win balance back, so the body is let go once its pelvis is more than 15 cm from where it stands (about the edge of the feet's support), 20 cm below its standing height, or tilted by more than 35 degrees. All three are tuning values. The capture point replaces this in M3.
+- **A hit reaches the body through its own entry point,** `USandboxBodyController::ApplyImpulse`, which applies the impulse and lets the character feel it. Impulses within 0.15 s of each other are one hit. Hits by other bodies will arrive through contact events once there are effectors (step 4).
+- **A flinch weakens the muscles of the hit region** (spine, neck, arms or legs) to 30% and brings them back in a straight line over 0.35 s.
+- **A fallen body is at rest when it is slow as a whole** (mass-weighted speed), not when its fastest body is: a trembling hand must not keep it from lying.
+- **The push matrix is a tool of its own,** `Tools\push-matrix.ps1`: it generates the 128 scenarios, runs them eight at a time (about 3 minutes) and checks the rules. Four representative hits and pushes are also in the ordinary suite. `Tools\bootstrap.ps1` runs both.
+- **Each impulse of the matrix is a single blow by default,** as the plan words it. Delivered as a push over 0.1 s the rules hold as well; both tables are recorded.
+
+Found in step 3: a passive body runs on the engine's 8 solver iterations, the NPC on its own 64, and the difference decides the stretch under load: hanging from one hand, the wrist stretches by 2.9 cm at 8 iterations and 0.1 cm as the NPC proper. The hanging scenario now runs the NPC under active control, as it would be when grabbed.
+
+Deviations and what is not done in step 3: the shoulder is an approximation, because the engine limits the two swings together as one cone (it reaches straight up and hangs at the side, but reaches back by about 20 degrees instead of 50), accepted for M2 and to be looked at again in M4; the knee's range is -2 to 150 degrees, not 0 to 150, because a standing knee that sits exactly on its limit makes the feet rock almost twice as fast; the flinch has no pose offset yet, only the weakening (the offset comes in M3, with the protective pose); the fall has no protective pose (M3); outcomes for 30 and 80 N·s are recorded but not judged, since the outcome table is an M3 criterion; the torque caps are still at "no cap" and the N·m/rad conversion is still uncalibrated.
 
 ### M3: Balance and recovery (3 to 4 weeks)
 

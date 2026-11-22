@@ -22,6 +22,16 @@ struct FSandboxAssistLoad
 	double TorqueShare = 0.0;
 };
 
+/** One change of the body's state, for result files and overlays. */
+struct FSandboxStateChange
+{
+	/** Simulated time since the controller started, at the beginning of the first step in the new state. */
+	double TimeS = 0.0;
+	ESandboxBodyState State = ESandboxBodyState::Standing;
+	/** What caused it, in a few words. */
+	FString Reason;
+};
+
 /**
  * Turns a fully simulated skeletal mesh into an active ragdoll.
  *
@@ -29,6 +39,12 @@ struct FSandboxAssistLoad
  *                   the child body toward the animation pose (the reference pose while no animation plays).
  *   Balance assist  world-space controls on pelvis, chest, head and both feet, with targets captured from
  *                   the pose the body was started in. Balance level 0: the assist alone keeps it upright.
+ *   States          Standing, Flinch, Falling, Lying. Each state reads its own tuning ("states.falling...");
+ *                   the thresholds that move the body between them are tuning values too.
+ *
+ *                     Standing --hit--> Flinch --recovered--> Standing
+ *                     Standing or Flinch --pelvis too far, too low or too tilted--> Falling
+ *                     Falling --at rest for a while--> Lying
  *
  * All bodies stay dynamic. The controller owns a UPhysicsControlComponent and drives it by hand each tick,
  * after the mesh has evaluated its pose and before physics, so the order of work is the same in every run.
@@ -53,11 +69,22 @@ public:
 	/** Replaces strengths and damping of the existing controls. The rig cannot change after Start. */
 	bool ApplyTuning(const FSandboxBodyTuning& InTuning, FString& OutError);
 
+	/**
+	 * A blow to one body: applies the impulse (world space, N*s) and lets the character feel it. A standing
+	 * character flinches if the impulse reaches thresholds.flinch_impulse_ns. This is how a scripted hit
+	 * enters; hits by other bodies will arrive through contact events.
+	 */
+	void ApplyImpulse(FName Bone, const FVector& ImpulseNs);
+
 	bool IsStarted() const { return bStarted; }
-	/** The values the controls have now. */
+	/** The values of the current state, as the tuning files and overrides give them. */
 	const FSandboxBodyTuning& GetTuning() const { return Tuning; }
-	/** How many times the tuning has been replaced by different values since Start. */
+	/** How many times an edited file or an override changed the values of the state the body was in. */
 	int32 GetTuningChangeCount() const { return TuningChangeCount; }
+
+	ESandboxBodyState GetState() const { return State; }
+	/** Every state the body has been in, the first entry being Standing at time 0. */
+	const TArray<FSandboxStateChange>& GetStateLog() const { return StateLog; }
 	int32 GetMuscleCount() const { return Muscles.Num(); }
 	int32 GetAssistCount() const { return Assists.Num(); }
 
@@ -86,6 +113,11 @@ private:
 	};
 
 	const FSandboxAssistTuning& AssistTuning(EAssistSlot Slot) const;
+	bool ReadStateTuning(FSandboxBodyTuning& OutTuning, FString& OutError) const;
+	void EnterState(ESandboxBodyState NewState, const FString& Reason);
+	void UpdateState(float DeltaTime);
+	/** Strength of a muscle group right now, as a fraction of its tuning: below 1 only while flinching. */
+	double MuscleScale(ESandboxMuscleGroup Group) const;
 	void FollowParams();
 	void PushTuningToControls();
 	void RefreshSolverIsland();
@@ -110,6 +142,20 @@ private:
 	TObjectPtr<UPhysicsControlComponent> Control;
 
 	FSandboxBodyTuning Tuning;
+
+	ESandboxBodyState State = ESandboxBodyState::Standing;
+	TArray<FSandboxStateChange> StateLog;
+	/** Simulated time since Start: the sum of the tick intervals, never the clock. */
+	double ElapsedS = 0.0;
+	double StateEnteredS = 0.0;
+	/** Flinch: the muscle group that was hit. */
+	ESandboxMuscleGroup FlinchGroup = ESandboxMuscleGroup::Spine;
+	/** Impulses received since HitStartedS, added up: a push delivered over several frames is one hit. */
+	FVector HitImpulseNs = FVector::ZeroVector;
+	double HitStartedS = 0.0;
+	/** Falling: how long every body has been below the rest speeds. */
+	double RestS = 0.0;
+
 	TArray<FMuscle> Muscles;
 	TArray<FAssist> Assists;
 	FSandboxAssistLoad AssistLoad;

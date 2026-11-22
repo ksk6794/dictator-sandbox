@@ -20,7 +20,12 @@ generated asset matches its spec.
       {"type": "box", "center_cm": [14.9, 7.0, 3.25], "size_cm": [9.5, 26.0, 6.5], "yaw_deg": -8.5}]}
   ],
   "joints": [
-    {"child": "spine_04", "swing1": 15, "swing2": 10, "twist": 10}
+    {"child": "spine_04", "along": "neck_01", "swing1_axis": [1, 0, 0],
+     "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15]},
+    {"child": "calf_l", "mirror": "calf_r", "along": "foot_l", "swing1_axis": [-1, 0, 0],
+     "swing1": [-2, 150], "swing2": "locked", "twist": "locked"},
+    {"child": "lowerarm_l", "mirror": "lowerarm_r", "along": "hand_l", "swing1_axis": "bend",
+     "swing1": [0, 140], "swing2": "locked", "twist": "locked"}
   ],
   "collision": {"disable": [], "enable": []}
 }
@@ -29,23 +34,58 @@ generated asset matches its spec.
 | Field | Meaning |
 | --- | --- |
 | `output` | Package path of the generated asset |
-| `template` | Existing physics asset that supplies collision shapes and joint frames |
+| `template` | Existing physics asset that supplies collision shapes, and the softness and projection settings of the joints |
 | `total_mass_kg` | Body mass; each body gets `mass_fraction` of it. Fractions must sum to 1 |
 | `bodies[].bone` | Bone the body is attached to. Bones without a body follow their parent rigidly |
 | `bodies[].shapes_from` | Template bodies whose shapes this body takes over. Listing several merges them |
 | `bodies[].shapes` | Boxes written out in the spec: `center_cm` and `yaw_deg` (rotation about the vertical) in the mesh's reference-pose space, where the floor is z = 0, and `size_cm` along the box's own axes. A body needs `shapes_from`, `shapes` or both |
-| `joints[].child` | Child body. Its parent is the nearest ancestor bone that has a body. One joint per non-root body |
-| `joints[].swing1`, `swing2`, `twist` | A number limits the axis to plus or minus that many degrees; `"locked"` and `"free"` are the alternatives |
+| `joints[].child` | Child body. Its parent is the nearest ancestor bone that has a body. One joint per non-root body, written out or mirrored |
+| `joints[].mirror` | Child body of the same joint on the other side. It is generated as the exact mirror image, with the same ranges, so left and right cannot differ |
+| `joints[].along` | Bone the limb runs toward from the joint. The twist axis points from the child bone to this bone |
+| `joints[].swing1_axis` | The axis the joint's main bending turns about: a direction `[x, y, z]` in the mesh's reference-pose space, `{"from": bone, "to": bone}`, or `"bend"` (see below). It is made perpendicular to the twist axis |
+| `joints[].swing1`, `swing2`, `twist` | `[min, max]` in degrees, `"locked"` or `"free"`. A range need not be symmetric |
 | `collision.disable`, `enable` | Extra `[boneA, boneB]` pairs. Jointed bodies never collide. Other pairs start "off" if any pair of the template bodies they were built from was off |
 
-What comes from the template and what from the spec: shapes (unless written out) and the orientation of
-the joint axes are the template's; the set of bodies, masses, joint limits and collision pairs are the spec's.
-Three things the generator sets itself, because the template's values break a fully simulated body:
+### Joints
 
-- **Joint positions.** The parent-side anchor of every joint is put where the child-side anchor is in this
-  mesh's reference pose. The stock MetaHuman asset places them for another body's proportions: on SandboxNPC
-  the anchors of all 15 joints were 1.5 to 3.6 cm apart, and the solver closed the gaps in the first step,
-  shortening the skeleton by 12 cm.
+A joint is described by its anatomy, and the generator builds the engine's joint frames from that and the
+mesh's reference pose:
+
+- **twist** turns about the limb's own length (the direction of `along`);
+- **swing1** turns about `swing1_axis`;
+- **swing2** turns about the third axis, `swing1_axis` x twist axis.
+
+A positive angle turns the child body about its axis the way `FQuat(Axis, Angle)` does. In the mesh's space
+the character faces +y and its left is +x, so for a leg hanging down with `"swing1_axis": [1, 0, 0]` positive
+swing1 swings it forward (hip flexion), positive swing2 swings a left leg toward the other one (adduction)
+and positive twist turns a left foot outward.
+
+Angles are measured from the reference pose, which must lie inside every range: a body spawned outside its
+limits is thrown back by the first physics step, so the generator refuses such a spec. The exception is
+`"swing1_axis": "bend"`, for a limb that is already bent in the reference pose (an elbow in an A-pose): the
+axis is the normal of the plane of the two segments, swing1 is measured from the straight limb and positive
+bends it further, so an elbow is simply `[0, 140]`.
+
+The engine's limits are symmetric around the parent-side frame. An asymmetric range is expressed by turning
+that frame to the middle of the range: a knee of -2 to 150 degrees becomes plus or minus 76 around a frame
+bent by 74. `metrics.json` therefore shows the knee of a standing character at 74 degrees with a limit of 76
+(`spawn_swing1_deg`, `swing1_deg`).
+
+A mirrored joint is the reflection of the written one in the body's midplane. Reflecting a rotation axis also
+reverses it, so the three axes of the frame together make half a turn about x, and the same ranges then mean
+mirror-image motion. The test `DictatorSandbox.Generated.PhysicsAsset.JointsFollowAnatomy` checks that, and
+that the NPC's knee bends backward, its elbow folds, its hip flexes forward.
+
+What comes from the template and what from the spec: shapes (unless written out) and the joints' softness
+and projection settings are the template's; the set of bodies, masses, joint axes, joint limits and
+collision pairs are the spec's. Three things differ from the stock MetaHuman asset on purpose, because its
+values break a fully simulated body:
+
+- **Joint positions and axes.** Both anchors of a joint sit on the child bone, so they coincide in the
+  reference pose. The stock asset places them for another body's proportions: on SandboxNPC the anchors of
+  all 15 joints were 1.5 to 3.6 cm apart, and the solver closed the gaps in the first step, shortening the
+  skeleton by 12 cm. Its axes are not mirror images on the two sides either (the left elbow read -40 degrees
+  of twist in the reference pose, the right one +33).
 - **No motors.** The stock joints carry orientation drives that pull each joint toward the zero of its
   axes, which is not the reference pose: they flex elbows and knees. The generated asset has none; muscles
   are added at run time by `USandboxBodyController`.
@@ -56,16 +96,23 @@ Three things the generator sets itself, because the template's values break a fu
 The generator log (`Saved\Tools\gen-assets.log`) lists colliding body pairs whose bounding boxes overlap in
 the reference pose. Bounding boxes overstate capsules, so a small overlap can be a false alarm.
 
-Current limitations, to be lifted when joint behaviour is tuned in M2:
+The ranges in `npc_body.json` are the starting limits of `docs/PRD.md`, with these choices where the table
+or the engine leaves room:
 
-- Limits are symmetric around the template's joint frame. An asymmetric range such as a knee's 0 to 150
-  degrees cannot be expressed yet.
-- `npc_body.json` carries the stock MetaHuman limits, summed where two template joints were merged into one
-  (neck and shoulder). They are not yet the clinical ranges listed in `docs/PRD.md`.
-- The template's joint axes are not mirror images of each other on the left and right side: in the reference
-  pose the left elbow reads -40 degrees of twist and the right one +33. The limits are therefore not
-  symmetric between sides yet. Scenario metrics show it per joint (`spawn_twist_deg` and the like).
-- Limit softness (stiffness 50, damping 5 on every cone and twist limit) is still the template's.
+- **Shoulder.** The engine limits the two swings together, as an elliptical cone around one direction, so
+  180 degrees of flexion and 180 of abduction cannot both be given. The cone is 105 degrees wide around a
+  direction forward and to the side: the arm hangs at the side and reaches straight up, both with 15
+  degrees to spare, but reaches back by only about 20 degrees instead of 50.
+- **Spine.** The table's totals are split evenly over the two spine joints.
+- **Neck.** One joint carries the whole range; head and neck are one body.
+- **Forearm rotation** is on the wrist's twist (plus or minus 70), because the forearm is one body.
+- **Ankle.** Sideways tilt (plus or minus 15) and turning (plus or minus 10) are not in the table.
+- **Knee and elbow** are hinges with nothing else free.
+- **Knee: -2 to 150, not 0 to 150.** With the limit at 0 a standing knee sits exactly on it, the limit works
+  against the leg muscles in every solver step and the feet rock almost twice as fast (0.13 rad/s against
+  0.08). Two degrees of slack remove that; five and ten change nothing further.
+
+Still the template's: limit softness (stiffness 50, damping 5 on every cone and twist limit).
 
 ## rooms/*.json: room maps
 
