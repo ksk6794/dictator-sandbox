@@ -33,6 +33,7 @@ The file name must equal the `name` field (a unit test checks this).
 | --- | --- | --- |
 | `name` | yes | Scenario name; equals the file name |
 | `duration_s` | yes | Simulated time |
+| `map` | no | Map package to run in, e.g. `/Game/Generated/Maps/TestRoom`. Without it the runner builds a bare floor and two lights |
 | `fixed_fps` | no, default 90 | Engine frames per simulated second. Physics substeps come from `Config/DefaultEngine.ini` |
 | `checkpoint_interval_s` | no, default 0.5 | How often body and bone transforms are written to `trace.json` |
 | `body.mesh` | yes | Skeletal mesh object path |

@@ -544,7 +544,7 @@ Assemble and import the MetaHuman. Generate the physics asset from its JSON spec
 
 - [ ] Character in the baked test room renders in stereo within 9 ms of GPU time at headset resolution
 - [x] Regenerated physics asset matches the spec's body count, masses and limits, checked by a test
-- [ ] The lighting bake completes from the command line
+- [x] The lighting bake completes from the command line
 - [ ] The same build launches in VR with `-vr` and flat with `-nohmd`
 - [x] Joint stretch under an 80 kg hanging load stays under 3 cm
 - [ ] Renderer path, character source and solver settings are confirmed or switched to their fallbacks

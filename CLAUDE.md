@@ -3,7 +3,8 @@
 Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
 Current milestone: **M1 in progress.** Done: MetaHuman by script, physics asset from a JSON spec, hanging-load
-test. Open: generated room with baked lighting, OpenXR launch and stereo cost (see `docs/PRD.md`).
+test, room map from a spec with lighting baked from the command line. Open: OpenXR launch and stereo
+rendering cost on the headset (see `docs/PRD.md`).
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 
@@ -22,7 +23,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
-| Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` |
+| Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` (`-Force` also rebuilds up-to-date maps) |
+| Bake a map's lighting | `powershell -ExecutionPolicy Bypass -File Tools\bake-lighting.ps1 [-Quality Preview] [-Force]` |
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 10 s, full build 80 s, one scenario 8 s,
@@ -40,7 +42,7 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs. |
-| `Specs/` | Text specs for generated assets; format in `Specs/README.md`. |
+| `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
@@ -85,6 +87,11 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   (see the `pin` event in `UScenarioRunnerSubsystem`).
 - **The stock MetaHuman physics asset has a 3.6 cm anchor offset at `spine_02` in the reference pose.** It
   shows up as `initial_joint_offset_cm`, not as stretch. The generated asset inherits it from the template.
+- **Regenerating a map discards its baked lighting,** and the bake re-saves the map. So map generation is
+  skipped while the map is newer than its spec, and the bake keeps a `.bake.json` stamp beside the map to
+  know whether it is current. File times alone cannot tell.
+- **The first lighting bake on a machine takes about 90 s, later ones 12 to 17 s** (Preview quality, the
+  test room).
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

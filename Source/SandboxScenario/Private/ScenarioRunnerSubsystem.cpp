@@ -16,6 +16,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Crc.h"
 #include "Misc/EngineVersion.h"
+#include "Misc/PackageName.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -147,17 +148,27 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
 {
-	// Floor: a 20 m x 20 m slab whose top face is at z = 0.
-	if (UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")))
+	// A scenario map brings its own floor and lighting; only the camera is added.
+	const bool bOwnMap = !Spec.MapPath.IsEmpty();
+	if (bOwnMap && !World.GetOutermost()->GetName().EndsWith(FPackageName::GetShortName(Spec.MapPath)))
 	{
-		AStaticMeshActor* Floor = World.SpawnActor<AStaticMeshActor>(FVector(0.0, 0.0, -50.0), FRotator::ZeroRotator);
-		Floor->SetMobility(EComponentMobility::Movable);
-		Floor->GetStaticMeshComponent()->SetStaticMesh(Cube);
-		Floor->SetActorScale3D(FVector(20.0, 20.0, 1.0));
+		UE_LOG(LogSandbox, Warning, TEXT("Scenario asks for map '%s' but the loaded world is '%s'"), *Spec.MapPath, *World.GetOutermost()->GetName());
 	}
-	else
+
+	if (!bOwnMap)
 	{
-		UE_LOG(LogSandbox, Warning, TEXT("Scenario: floor mesh /Engine/BasicShapes/Cube not found; the body will fall forever"));
+		// Floor: a 20 m x 20 m slab whose top face is at z = 0.
+		if (UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")))
+		{
+			AStaticMeshActor* Floor = World.SpawnActor<AStaticMeshActor>(FVector(0.0, 0.0, -50.0), FRotator::ZeroRotator);
+			Floor->SetMobility(EComponentMobility::Movable);
+			Floor->GetStaticMeshComponent()->SetStaticMesh(Cube);
+			Floor->SetActorScale3D(FVector(20.0, 20.0, 1.0));
+		}
+		else
+		{
+			UE_LOG(LogSandbox, Warning, TEXT("Scenario: floor mesh /Engine/BasicShapes/Cube not found; the body will fall forever"));
+		}
 	}
 
 	if (!FApp::CanEverRender())
@@ -165,7 +176,15 @@ void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
 		return;
 	}
 
-	// Rendered runs only: two lights and a fixed camera, so screenshots show the result.
+	const FVector CameraLocation = Spec.bHasCamera ? Spec.CameraLocationCm : FVector(-420.0, 260.0, 170.0);
+	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : FVector(0.0, 0.0, 50.0);
+	Camera = World.SpawnActor<ACameraActor>(CameraLocation, (LookAt - CameraLocation).Rotation());
+	if (bOwnMap)
+	{
+		return;
+	}
+
+	// Rendered runs without a map: two lights, so screenshots show the result.
 	ADirectionalLight* Key = World.SpawnActor<ADirectionalLight>(FVector(0.0, 0.0, 500.0), FRotator(-50.0, -30.0, 0.0));
 	Key->GetLightComponent()->SetMobility(EComponentMobility::Movable);
 	Key->GetLightComponent()->SetIntensity(6.0f);
@@ -175,9 +194,6 @@ void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
 	Fill->GetLightComponent()->SetIntensity(2.0f);
 	Fill->GetLightComponent()->SetCastShadows(false);
 
-	const FVector CameraLocation = Spec.bHasCamera ? Spec.CameraLocationCm : FVector(-420.0, 260.0, 170.0);
-	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : FVector(0.0, 0.0, 50.0);
-	Camera = World.SpawnActor<ACameraActor>(CameraLocation, (LookAt - CameraLocation).Rotation());
 }
 
 bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
@@ -466,6 +482,7 @@ void UScenarioRunnerSubsystem::Finish()
 	Root->SetStringField(TEXT("scenario_file"), ScenarioFile);
 	Root->SetStringField(TEXT("engine_version"), FEngineVersion::Current().ToString());
 	Root->SetBoolField(TEXT("rendered"), FApp::CanEverRender());
+	Root->SetStringField(TEXT("map"), GetWorldRef().GetOutermost()->GetName());
 
 	const TSharedRef<FJsonObject> Timing = MakeShared<FJsonObject>();
 	Timing->SetNumberField(TEXT("fixed_dt_s"), FixedDt);

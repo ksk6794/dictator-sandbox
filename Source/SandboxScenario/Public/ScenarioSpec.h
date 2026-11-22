@@ -37,6 +37,9 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	int32 FixedFps = 90;
 	double CheckpointIntervalS = 0.5;
 
+	/** Optional map package (e.g. /Game/Generated/Maps/TestRoom). Empty: the runner builds a bare floor. */
+	FString MapPath;
+
 	FString MeshPath;
 	FString PhysicsAssetPath;
 	FVector SpawnLocationCm = FVector(0.0, 0.0, 150.0);

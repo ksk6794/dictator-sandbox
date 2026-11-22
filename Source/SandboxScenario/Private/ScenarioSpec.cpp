@@ -101,6 +101,8 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 		}
 	}
 
+	Json->TryGetStringField(TEXT("map"), OutSpec.MapPath);
+
 	const TSharedPtr<FJsonObject>* Body = nullptr;
 	if (!Json->TryGetObjectField(TEXT("body"), Body))
 	{

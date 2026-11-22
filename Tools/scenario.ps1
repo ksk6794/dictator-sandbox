@@ -36,6 +36,8 @@ foreach ($stale in @('metrics.json', 'trace.json', 'final.png')) {
 }
 
 $arguments = "-game -Scenario=`"$scenarioFile`" -Out=`"$Out`" -UseFixedTimeStep -FPS=$fps"
+# A scenario may name a map; it goes first, as the URL the engine opens.
+if ($spec.map) { $arguments = "$($spec.map) $arguments" }
 if ($Shot) { $Rendered = $true }
 if ($Rendered) {
     $arguments += ' -RenderOffscreen -windowed -ResX=1280 -ResY=720'

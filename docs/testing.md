@@ -53,6 +53,10 @@ Same machine and settings. MetaHuman body `SKM_SandboxNPC_BodyMesh`; the generat
 
 Headless and rendered runs of `drop_npc` and `hang_npc_hand` gave identical hashes.
 
+Lighting: the test room (5 m by 4 m by 2.7 m, two point lights, 128-texel lightmaps) bakes from the command
+line with CPU Lightmass at Preview quality in 90 s the first time and 12 to 17 s afterwards. No Lightmass
+problems of the kind reported on the forums for 5.6 to 5.8 appeared. Higher qualities were not tried.
+
 Two findings to carry forward:
 
 - **The world pin itself gave by up to 3.7 cm** in `hang_npc_hand` (`max_pin_error_cm`), far more than any

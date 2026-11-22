@@ -45,3 +45,29 @@ Current limitations, to be lifted when joint behaviour is tuned in M2:
   degrees cannot be expressed yet.
 - `npc_body.json` carries the stock MetaHuman limits, summed where two template joints were merged into one
   (neck and shoulder). They are not yet the clinical ranges listed in `docs/PRD.md`.
+
+## rooms/*.json: room maps
+
+```json
+{
+  "name": "test_room",
+  "output": "/Game/Generated/Maps/TestRoom",
+  "size_cm": [500, 400, 270],
+  "wall_thickness_cm": 20,
+  "lightmap_resolution": 128,
+  "lights": [
+    {"location_cm": [-120, -80, 240], "intensity": 1800, "color": [1.0, 0.93, 0.82],
+     "attenuation_radius_cm": 900, "source_radius_cm": 12, "mobility": "static"}
+  ]
+}
+```
+
+A box room centred on the origin with the floor's top face at z = 0: floor, ceiling and four walls built
+from the engine cube, point lights, one reflection capture and a player start. `mobility` is `static`
+(fully baked) or `stationary` (baked bounce light, dynamic shadows on movable objects).
+
+The generator saves the map unlit. `Tools\bake-lighting.ps1` then builds lightmaps and reflection captures
+with CPU Lightmass. A map is regenerated only when its spec file is newer than the map, because regenerating
+throws the baked lighting away; `Tools\gen-assets.ps1 -Force` regenerates regardless.
+
+Limitations: box shape only, engine grid material, no windows, doors or furniture yet.

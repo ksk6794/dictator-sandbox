@@ -1,0 +1,11 @@
+{
+  "name": "test_room",
+  "output": "/Game/Generated/Maps/TestRoom",
+  "size_cm": [500, 400, 270],
+  "wall_thickness_cm": 20,
+  "lightmap_resolution": 128,
+  "lights": [
+    {"location_cm": [-120, -80, 240], "intensity": 1800, "color": [1.0, 0.93, 0.82], "attenuation_radius_cm": 900, "source_radius_cm": 12, "mobility": "static"},
+    {"location_cm": [140, 90, 240], "intensity": 1800, "color": [1.0, 0.93, 0.82], "attenuation_radius_cm": 900, "source_radius_cm": 12, "mobility": "stationary"}
+  ]
+}
