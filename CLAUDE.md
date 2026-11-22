@@ -2,9 +2,10 @@
 
 Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
-Current milestone: **M1 in progress.** Done: MetaHuman by script, physics asset from a JSON spec, hanging-load
-test, room map from a spec with lighting baked from the command line. Open: OpenXR launch and stereo
-rendering cost on the headset (see `docs/PRD.md`).
+Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
+launch in the headset, 7.1 ms of GPU time per stereo frame). Next: **M2, active ragdoll core** (muscles through
+Physics Control, balance assist, flinch and fall states, parameter file, desktop effectors).
+DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 
@@ -20,6 +21,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Unit tests | `powershell -ExecutionPolicy Bypass -File Tools\test.ps1` |
 | One scenario, headless | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive` |
 | One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics) |
+| One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
@@ -92,6 +94,13 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   know whether it is current. File times alone cannot tell.
 - **The first lighting bake on a machine takes about 90 s, later ones 12 to 17 s** (Preview quality, the
   test room).
+- **`-nohmd` does not stop the OpenXR plugin from creating an OpenXR instance at start-up.** With SteamVR
+  as the runtime and no headset on, that call took 26 s per launch and ended in "Instance is not viable".
+  So every tool launch passes `-nohmd -DisablePlugins=OpenXR` (`Invoke-Editor` in `Tools\common.ps1`); a VR
+  run must leave both out. The plugin stays enabled in the `.uproject`.
+- **Do not switch anti-aliasing back to TSR for VR.** At the headset's render target it cost 8.5 ms by
+  itself and halved the frame rate. Renderer experiments go through `Tools\scenario.ps1 -VR -CVars "a=1,b=2"`,
+  and every rendered run records the deciding console variables in `metrics.json` (`renderer`).
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

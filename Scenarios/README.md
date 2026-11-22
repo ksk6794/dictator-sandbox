@@ -64,6 +64,11 @@ timestep, and every event found its body.
 
 ## Output
 
+Rendered runs add `performance` (GPU, render-thread and game-thread time per frame and the frame interval:
+mean, median, 99th percentile, maximum, after a 90-frame warm-up) and `xr` (whether the run was in stereo,
+the runtime, and the headset's render target size). In a headset the game-thread figure includes waiting
+for the compositor, so use `gpu_ms` against the frame budget.
+
 `metrics.json` has `pass`, the list of `checks` with value and limit, `metrics` (peak speeds, stretch, time to
 rest), `body` (every body's mass and every joint's parent and limits, as instanced), `timing`, and two `hashes`: a CRC of all body transforms over every frame and one of all bone
 transforms. Equal hashes mean two runs were identical in every frame. `trace.json` holds the transforms at

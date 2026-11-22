@@ -1,0 +1,30 @@
+{
+  "name": "vr_room_perf",
+  "map": "/Game/Generated/Maps/TestRoom",
+  "duration_s": 15.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "simulate": false,
+    "location_cm": [
+      0,
+      40,
+      0
+    ]
+  },
+  "camera": {
+    "location_cm": [
+      0,
+      180,
+      150
+    ],
+    "look_at_cm": [
+      0,
+      40,
+      110
+    ]
+  }
+}

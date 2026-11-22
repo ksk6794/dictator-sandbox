@@ -11,7 +11,12 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformMisc.h"
+#include "DynamicRHI.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
+#include "IHeadMountedDisplay.h"
+#include "IXRTrackingSystem.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Crc.h"
@@ -23,6 +28,8 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "PhysicsEngine/PhysicsSettings.h"
+#include "RenderTimer.h"
+#include "StereoRendering.h"
 #include "SandboxBodyProbe.h"
 #include "SandboxCore.h"
 #include "SandboxJson.h"
@@ -41,6 +48,14 @@ namespace
 	constexpr int32 JointSettleFrames = 5;
 	// Frames rendered after the camera is re-aimed and before the screenshot is requested.
 	constexpr int32 CameraSettleFrames = 30;
+	// Rendered frames skipped before frame timings are collected (shader and streaming warm-up).
+	constexpr int32 TimingWarmupFrames = 90;
+	// Console variables written to metrics.json: the ones that decide what a frame costs.
+	const TCHAR* const RendererCVars[] = {
+		TEXT("r.ForwardShading"), TEXT("vr.InstancedStereo"), TEXT("xr.SecondaryScreenPercentage.HMDRenderTarget"), TEXT("r.ScreenPercentage"),
+		TEXT("r.AntiAliasingMethod"), TEXT("r.DynamicGlobalIlluminationMethod"), TEXT("r.ReflectionMethod"),
+		TEXT("r.Shadow.Virtual.Enable"), TEXT("r.MotionBlurQuality"), TEXT("r.AmbientOcclusionLevels"),
+		TEXT("r.SkeletalMeshLODBias"), TEXT("r.RayTracing") };
 	// Frames to keep rendering after the request so it is serviced before the process exits.
 	constexpr int32 ScreenshotFrames = 30;
 
@@ -68,6 +83,31 @@ namespace
 	}
 
 	TSharedPtr<FJsonValue> Number(double Value) { return MakeShared<FJsonValueNumber>(Value); }
+
+	/** Mean, median, 99th percentile and maximum of a list of millisecond samples. */
+	TSharedRef<FJsonObject> Summarise(TArray<float> Samples)
+	{
+		const TSharedRef<FJsonObject> Summary = MakeShared<FJsonObject>();
+		if (Samples.Num() == 0)
+		{
+			return Summary;
+		}
+		Samples.Sort();
+		double Sum = 0.0;
+		for (const float Sample : Samples)
+		{
+			Sum += Sample;
+		}
+		const auto Percentile = [&Samples](double Fraction)
+		{
+			return Samples[FMath::Clamp(FMath::CeilToInt32(Fraction * Samples.Num()) - 1, 0, Samples.Num() - 1)];
+		};
+		Summary->SetNumberField(TEXT("mean"), Sum / Samples.Num());
+		Summary->SetNumberField(TEXT("p50"), Percentile(0.50));
+		Summary->SetNumberField(TEXT("p99"), Percentile(0.99));
+		Summary->SetNumberField(TEXT("max"), Samples.Last());
+		return Summary;
+	}
 	TSharedPtr<FJsonValue> Boolean(bool bValue) { return MakeShared<FJsonValueBoolean>(bValue); }
 	TSharedPtr<FJsonValue> Null() { return MakeShared<FJsonValueNull>(); }
 }
@@ -86,6 +126,11 @@ bool UScenarioRunnerSubsystem::DoesSupportWorldType(const EWorldType::Type World
 TStatId UScenarioRunnerSubsystem::GetStatId() const
 {
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UScenarioRunnerSubsystem, STATGROUP_Tickables);
+}
+
+bool UScenarioRunnerSubsystem::IsStereo() const
+{
+	return GEngine && GEngine->XRSystem.IsValid() && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
 }
 
 void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
@@ -176,9 +221,18 @@ void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
 		return;
 	}
 
-	const FVector CameraLocation = Spec.bHasCamera ? Spec.CameraLocationCm : FVector(-420.0, 260.0, 170.0);
+	FVector CameraLocation = Spec.bHasCamera ? Spec.CameraLocationCm : FVector(-420.0, 260.0, 170.0);
 	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : FVector(0.0, 0.0, 50.0);
-	Camera = World.SpawnActor<ACameraActor>(CameraLocation, (LookAt - CameraLocation).Rotation());
+	FRotator CameraRotation = (LookAt - CameraLocation).Rotation();
+	if (IsStereo())
+	{
+		// In the headset the camera actor is the tracking origin: on the floor, level, facing the target.
+		// A pitched or raised origin would tilt or lift the whole world for the wearer.
+		GEngine->XRSystem->SetTrackingOrigin(EHMDTrackingOrigin::LocalFloor);
+		CameraLocation.Z = 0.0;
+		CameraRotation = FRotator(0.0, CameraRotation.Yaw, 0.0);
+	}
+	Camera = World.SpawnActor<ACameraActor>(CameraLocation, CameraRotation);
 	if (bOwnMap)
 	{
 		return;
@@ -269,6 +323,19 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 			Controller->bAutoManageActiveCameraTarget = false;
 			Controller->SetViewTarget(Camera);
 		}
+	}
+
+	if (FApp::CanEverRender())
+	{
+		const double NowS = FPlatformTime::Seconds();
+		if (FrameIndex >= TimingWarmupFrames)
+		{
+			FrameWallMs.Add(static_cast<float>((NowS - LastFrameWallS) * 1000.0));
+			FrameGpuMs.Add(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()));
+			FrameGameMs.Add(FPlatformTime::ToMilliseconds(GGameThreadTime));
+			FrameRenderMs.Add(FPlatformTime::ToMilliseconds(GRenderThreadTime));
+		}
+		LastFrameWallS = NowS;
 	}
 
 	// Tickables run after the physics step of this frame, so the state seen here is after FrameIndex + 1 steps.
@@ -570,6 +637,44 @@ void UScenarioRunnerSubsystem::Finish()
 
 	Root->SetArrayField(TEXT("checks"), Checks);
 
+	if (FrameWallMs.Num() > 0)
+	{
+		// Frame times of a rendered run. In a headset the frame interval is paced by the compositor,
+		// so gpu_ms is the figure to hold against the frame budget.
+		const TSharedRef<FJsonObject> Performance = MakeShared<FJsonObject>();
+		Performance->SetNumberField(TEXT("frames"), FrameWallMs.Num());
+		Performance->SetObjectField(TEXT("frame_interval_ms"), Summarise(FrameWallMs));
+		Performance->SetObjectField(TEXT("gpu_ms"), Summarise(FrameGpuMs));
+		Performance->SetObjectField(TEXT("game_thread_ms"), Summarise(FrameGameMs));
+		Performance->SetObjectField(TEXT("render_thread_ms"), Summarise(FrameRenderMs));
+		Root->SetObjectField(TEXT("performance"), Performance);
+	}
+
+	const TSharedRef<FJsonObject> Renderer = MakeShared<FJsonObject>();
+	for (const TCHAR* Name : RendererCVars)
+	{
+		if (const IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			Renderer->SetStringField(Name, Variable->GetString());
+		}
+	}
+	Root->SetObjectField(TEXT("renderer"), Renderer);
+
+	const TSharedRef<FJsonObject> Xr = MakeShared<FJsonObject>();
+	Xr->SetBoolField(TEXT("stereo"), IsStereo());
+	if (GEngine && GEngine->XRSystem.IsValid())
+	{
+		Xr->SetStringField(TEXT("system"), GEngine->XRSystem->GetSystemName().ToString());
+		Xr->SetStringField(TEXT("version"), GEngine->XRSystem->GetVersionString());
+		if (IHeadMountedDisplay* Hmd = GEngine->XRSystem->GetHMDDevice())
+		{
+			const FIntPoint Size = Hmd->GetIdealRenderTargetSize();
+			Xr->SetNumberField(TEXT("render_target_width"), Size.X);
+			Xr->SetNumberField(TEXT("render_target_height"), Size.Y);
+		}
+	}
+	Root->SetObjectField(TEXT("xr"), Xr);
+
 	const TSharedRef<FJsonObject> Trace = MakeShared<FJsonObject>();
 	Trace->SetStringField(TEXT("scenario"), Spec.Name);
 	Trace->SetBoolField(TEXT("rendered"), FApp::CanEverRender());
@@ -593,7 +698,7 @@ void UScenarioRunnerSubsystem::Finish()
 	if (!ShotPath.IsEmpty() && FApp::CanEverRender())
 	{
 		// Frame the body wherever it ended up, unless the scenario fixed the camera.
-		if (Camera && Mesh && Mesh->Bodies.Num() > 0 && !Spec.bHasCamera)
+		if (Camera && Mesh && Mesh->Bodies.Num() > 0 && !Spec.bHasCamera && !IsStereo())
 		{
 			const FVector Center = Mesh->Bounds.Origin;
 			const FVector CameraLocation = Center + FVector(-260.0, 180.0, 140.0);

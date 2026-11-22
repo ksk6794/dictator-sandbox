@@ -41,7 +41,7 @@ $env:SANDBOX_MH_QUALITY = $Quality
 
 # Full editor (not a commandlet): the cloud requests and the sign-in need the editor's main loop.
 $editor = Join-Path (Get-EngineRoot) 'Engine\Binaries\Win64\UnrealEditor.exe'
-$arguments = "`"$ProjectFile`" -ExecutePythonScript=`"$script`" -nosplash -nopause -abslog=`"$logFile`""
+$arguments = "`"$ProjectFile`" -ExecutePythonScript=`"$script`" -nohmd -DisablePlugins=OpenXR -nosplash -nopause -abslog=`"$logFile`""
 New-Item -ItemType Directory -Force $ToolsOut | Out-Null
 if (Test-Path $logFile) { Remove-Item $logFile -Force }
 $run = Invoke-Process -FilePath $editor -ArgumentString $arguments -TimeoutSec $TimeoutSec

@@ -18,7 +18,7 @@ Three unknowns decide the schedule and are measured first: the MetaHuman's stere
 | Physics | Chaos world simulation with `UPhysicsControlComponent` | Two-way collision with room, props and hands; Chaos Visual Debugger; Epic's maintained path | Rigid Body anim node (one-way world collision); Jolt, MuJoCo and Box3D plugins (a second physics world with no skeletal or VR story) |
 | Body control | Joint drives, weak world-space assist, capture-point state machine | What shipped games converge on; buildable and tunable by a small team | Learned controllers (no training path inside UE, days of training); full procedural walking balance |
 | Timing | Synchronous physics, fixed 90 Hz with 2 substeps | No interpolation latency between hands and picture | Async physics (kept as fallback) |
-| Rendering | Deferred, baked lighting, DLSS | Best fidelity per millisecond for a static room | Lumen in VR (desktop tier only); forward renderer (kept as fallback) |
+| Rendering | Deferred, baked lighting, TAA at 85% headset render scale; DLSS to be evaluated in M5 | Best fidelity per millisecond for a static room | Lumen in VR (desktop tier only); forward renderer (kept as fallback) |
 | Character | MetaHuman, Optimized assembly, hair cards | Highest fidelity; scriptable assembly; free at this scale | Character Creator 5 (kept as fallback) |
 | XR | Built-in OpenXR plugin, no vendor SDK | One code path for every PCVR headset | Meta XR plugin (not needed on PC); SteamVR plugin (removed from the engine) |
 | Player contact | Force-capped dynamic effectors | Correct momentum transfer; same model in desktop, VR and tests | Kinematic hands (infinite mass) |
@@ -542,12 +542,14 @@ Install UE 5.8.4 and the MSVC 14.50 toolset. Create the C++ project with its fiv
 
 Assemble and import the MetaHuman. Generate the physics asset from its JSON spec. Generate and bake a graybox room from CLI. Launch through OpenXR and measure stereo cost. Hang the ragdoll from one hand constraint to stress the joints.
 
-- [ ] Character in the baked test room renders in stereo within 9 ms of GPU time at headset resolution
+- [x] Character in the baked test room renders in stereo within 9 ms of GPU time at headset resolution
 - [x] Regenerated physics asset matches the spec's body count, masses and limits, checked by a test
 - [x] The lighting bake completes from the command line
-- [ ] The same build launches in VR with `-vr` and flat with `-nohmd`
+- [x] The same build launches in VR with `-vr` and flat with `-nohmd`
 - [x] Joint stretch under an 80 kg hanging load stays under 3 cm
-- [ ] Renderer path, character source and solver settings are confirmed or switched to their fallbacks
+- [x] Renderer path, character source and solver settings are confirmed or switched to their fallbacks
+
+**M1 completed on 22 November 2026.** The MetaHuman is created by script; the physics asset (16 bodies, 80 kg) and the test room are generated from JSON specs; lighting bakes from the command line; hanging the body from one hand stretches no joint by more than 0.49 cm. In the PlayStation VR2 the test scene takes 7.1 ms of GPU time (7.8 ms at the 99th percentile) at 90 FPS with TAA and an 85% render scale; at SteamVR's full target it takes 10.6 ms. The owner confirmed the choices: deferred renderer with baked lighting and TAA, MetaHuman, synchronous physics at 90 Hz with two substeps. DLSS evaluation is deferred to M5. Deviations: collision shapes and joint frames come from the stock MetaHuman asset as a template, joint limits are still the stock values, and flat launches switch the OpenXR plugin off because `-nohmd` alone costs 26 s at start-up. Measurements are in `docs/testing.md`.
 
 ### M2: Active ragdoll core (about 3 weeks)
 

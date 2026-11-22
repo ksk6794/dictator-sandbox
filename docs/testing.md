@@ -39,7 +39,7 @@ Other numbers from these runs:
   scenario process, including engine start-up, takes about 8 s.
 - Largest rigid-joint separation during a 1.5 m drop: 0.86 cm.
 
-### M1 (in progress), 2026-11-22
+### M1, 2026-11-22
 
 Same machine and settings. MetaHuman body `SKM_SandboxNPC_BodyMesh`; the generated physics asset
 `PA_SandboxNPC` has 16 bodies and 80.0 kg, the stock MetaHuman asset 21 bodies and 80.6 kg.
@@ -56,6 +56,57 @@ Headless and rendered runs of `drop_npc` and `hang_npc_hand` gave identical hash
 Lighting: the test room (5 m by 4 m by 2.7 m, two point lights, 128-texel lightmaps) bakes from the command
 line with CPU Lightmass at Preview quality in 90 s the first time and 12 to 17 s afterwards. No Lightmass
 problems of the kind reported on the forums for 5.6 to 5.8 appeared. Higher qualities were not tried.
+
+Flat launch with the OpenXR plugin enabled (headset off, SteamVR not running): `-nohmd` alone still let the
+plugin create an OpenXR instance, which took 26.5 s and was then rejected as not viable. The run itself
+passed with unchanged hashes and SteamVR was not left running. With `-DisablePlugins=OpenXR` added the same
+rendered scenario takes 10.7 s end to end. Start-up time of a flat launch with the headset connected has
+not been measured yet.
+
+First run in the headset (PlayStation VR2 through SteamVR 2.18.4, OpenXR), scenario `vr_room_look`: the
+MetaHuman standing in the baked test room, 30 simulated seconds, engine renderer settings untouched.
+
+| Measure | Value |
+| --- | --- |
+| Render target chosen by SteamVR | 7456 x 3800 for both eyes (3728 x 3800 per eye, about 28 megapixels) |
+| GPU time per frame | 19.7 ms mean, 22.1 ms at the 99th percentile |
+| Frame interval | 22.4 ms mean: the headset ran at half rate (45 FPS) with reprojection |
+| Render thread | 6.0 ms mean |
+| Same scene flat at 1280 x 720 | 1.2 ms GPU |
+
+This misses the 9 ms GPU budget by a factor of two, as expected before any VR tuning. Known contributors:
+instanced stereo is off (the log says so), the render target is about three times the pixel count assumed
+in the plan, no upscaler is in use, and SteamVR reported no visibility mask for the headset ("Failed to
+create all visibility mask meshes"), so the hidden corners of each eye are shaded too.
+
+Renderer sweep in the headset, scenario `vr_room_perf` (same scene, 15 simulated seconds, 1260 timed frames
+per run). "Scale" is `xr.SecondaryScreenPercentage.HMDRenderTarget`, a percentage of SteamVR's target per axis.
+
+| Anti-aliasing | Scale | Other | GPU ms, mean / p99 | Frame interval ms | Headset rate |
+| --- | --- | --- | --- | --- | --- |
+| TSR (engine default) | 100 | | 19.1 / 19.7 | 22.2 | 45 FPS |
+| TAA | 100 | | 10.6 / 12.0 | 11.2 | 90 FPS, at the limit |
+| TAA | 100 | instanced stereo | 10.9 / 11.5 | 11.7 | drops frames |
+| TAA | 85 | | 7.5 / 7.9 | 11.1 | 90 FPS |
+| TAA | 85 | instanced stereo | 7.6 / 8.0 | 11.1 | 90 FPS |
+| TAA | 70 | | 5.0 / 5.4 | 11.1 | 90 FPS |
+| TAA | 70 | no screen-space reflections, no ambient occlusion | 3.7 / 4.1 | 11.1 | 90 FPS |
+| FXAA | 70 | | 4.9 / 5.2 | 11.1 | 90 FPS |
+
+Conclusions:
+
+- **TSR was the dominant cost**: about 8.5 ms of the 19 ms at the full target. The project default is now TAA.
+- **The project default scale is 85%** (about 20 megapixels per frame, still 2.5 times the panels' pixel
+  count). With both defaults and no overrides the scene measures 7.1 ms mean and 7.8 ms at the 99th
+  percentile, inside the 9 ms budget, at a steady 90 FPS.
+- **At SteamVR's full target the budget is missed** (10.6 ms).
+- **Instanced stereo gained nothing** in this scene on GPU or render thread, and has open bugs in 5.8, so it
+  stays off.
+- These numbers are for a grey-box room and a MetaHuman without hair. Final materials, furniture, hair,
+  the animated face rig and the active ragdoll will all add cost; the measured headroom is about 2 ms.
+- DLSS has not been tried: the NVIDIA plugin is not installed.
+- The owner viewed the scene in the headset with the project defaults (TAA, 85% scale) and judged the image
+  sharp and acceptable, with the stutter of the 45 FPS runs gone.
 
 Two findings to carry forward:
 

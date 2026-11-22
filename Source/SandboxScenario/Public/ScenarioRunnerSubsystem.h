@@ -16,6 +16,8 @@ class ACameraActor;
  *   -Scenario=<file or name>   Scenarios/<name>.json, or a path (relative paths resolve against the project dir)
  *   -Out=<dir>                 output directory (default Saved/Scenarios/<name>)
  *   -Shot=<file.png>           optional screenshot of the final frame (rendered runs only)
+ *   -vr                        engine flag: run in the headset. The camera becomes the tracking origin on
+ *                              the floor, and metrics.json gains the headset's render size
  *
  * Writes <Out>/metrics.json (summary, checks, pass) and <Out>/trace.json (body and bone transforms at
  * checkpoints). Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
@@ -97,4 +99,12 @@ private:
 	uint32 BodyHash = 0;
 	uint32 BoneHash = 0;
 	TArray<TSharedPtr<FJsonValue>> Checkpoints;
+
+	// Rendered runs only: per-frame timings in milliseconds, collected after a warm-up.
+	bool IsStereo() const;
+	double LastFrameWallS = 0.0;
+	TArray<float> FrameWallMs;
+	TArray<float> FrameGpuMs;
+	TArray<float> FrameGameMs;
+	TArray<float> FrameRenderMs;
 };

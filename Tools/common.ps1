@@ -87,14 +87,20 @@ function Invoke-Process {
 
 function Invoke-Editor {
     # Runs UnrealEditor-Cmd.exe on the project, unattended, logging to $LogFile.
+    # Flat by default: the OpenXR plugin is switched off for the run. -nohmd alone is not enough, because the
+    # plugin still creates an OpenXR instance at start-up, which takes about 26 s on SteamVR with no headset.
+    # Pass -VR to leave the plugin on.
     param(
         [string]$ArgumentString,
         [string]$LogFile,
-        [int]$TimeoutSec = 900
+        [int]$TimeoutSec = 900,
+        [switch]$VR
     )
     New-Item -ItemType Directory -Force (Split-Path -Parent $LogFile) | Out-Null
     if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
-    $all = "`"$ProjectFile`" $ArgumentString -unattended -nopause -nosplash -nosound -abslog=`"$LogFile`""
+    $hmd = '-nohmd -DisablePlugins=OpenXR'
+    if ($VR) { $hmd = '' }
+    $all = "`"$ProjectFile`" $ArgumentString $hmd -unattended -nopause -nosplash -nosound -abslog=`"$LogFile`""
     return (Invoke-Process -FilePath (Get-EditorCmd) -ArgumentString $all -TimeoutSec $TimeoutSec)
 }
 
