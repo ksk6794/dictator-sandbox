@@ -11,6 +11,8 @@
     "control": "active"
   },
   "expect": {
+    "fell": false,
+    "tuning_changes": 0,
     "max_pelvis_drift_cm": 5.0,
     "min_head_height_cm": 150.0,
     "max_joint_stretch_cm": 2.0,

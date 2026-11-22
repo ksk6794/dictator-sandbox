@@ -1,6 +1,6 @@
 using UnrealBuildTool;
 
-// Shared services: logging, JSON helpers. Later: parameter store, metric types.
+// Shared services: logging, JSON helpers, the parameter store behind Config/Tuning. Later: metric types.
 // Every other Sandbox module may depend on this one; it depends on none of them.
 public class SandboxCore : ModuleRules
 {

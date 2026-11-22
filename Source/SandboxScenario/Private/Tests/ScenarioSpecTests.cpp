@@ -88,6 +88,43 @@ bool FScenarioSpecActiveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecTuningTest, "DictatorSandbox.Scenario.Spec.ParsesTuningEvents", SandboxTestFlags)
+bool FScenarioSpecTuningTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* Text = TEXT(R"({
+		"name": "tune",
+		"duration_s": 8.0,
+		"body": { "mesh": "/Game/Some.Mesh", "control": "active" },
+		"events": [
+			{ "t": 5.0, "type": "edit_tuning_file", "values": { "muscles.legs.stiffness_nm_per_rad": 0, "solver.position_iterations": 32 } },
+			{ "t": 4.0, "type": "console", "command": "Sandbox.Tune muscles.arms.stiffness_nm_per_rad=20" }
+		],
+		"expect": { "fell": true, "min_fall_time_s": 4.0, "tuning_changes": 2, "min_settled_angular_speed_rads": 0.3 }
+	})");
+
+	FScenarioSpec Spec;
+	FString Error;
+	if (!TestTrue(TEXT("spec with tuning events parses"), FScenarioSpec::FromString(Text, Spec, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	if (TestEqual(TEXT("event count"), Spec.Events.Num(), 2))
+	{
+		TestEqual(TEXT("console event"), Spec.Events[0].Type, FString(TEXT("console")));
+		TestEqual(TEXT("its command"), Spec.Events[0].Command, FString(TEXT("Sandbox.Tune muscles.arms.stiffness_nm_per_rad=20")));
+		TestEqual(TEXT("file event"), Spec.Events[1].Type, FString(TEXT("edit_tuning_file")));
+		TestEqual(TEXT("its values"), Spec.Events[1].Values.Num(), 2);
+	}
+	TestTrue(TEXT("the spec knows it edits tuning files"), Spec.HasEvent(TEXT("edit_tuning_file")));
+	TestFalse(TEXT("and that it pins nothing"), Spec.HasEvent(TEXT("pin")));
+	TestTrue(TEXT("fell expectation"), Spec.Expect.Fell.IsSet() && Spec.Expect.Fell.GetValue());
+	TestEqual(TEXT("fall time expectation"), Spec.Expect.MinFallTimeS.Get(0.0), 4.0);
+	TestEqual(TEXT("tuning changes expectation"), Spec.Expect.TuningChanges.Get(0.0), 2.0);
+	TestEqual(TEXT("lower bound on settled angular speed"), Spec.Expect.MinSettledAngularSpeedRadS.Get(0.0), 0.3);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecInvalidTest, "DictatorSandbox.Scenario.Spec.RejectsInvalidSpecs", SandboxTestFlags)
 bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 {
@@ -105,6 +142,10 @@ bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M", "control": "puppet" } })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M", "control": "active", "simulate": false } })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "settle_s": -1, "body": { "mesh": "/Game/M.M" } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "console" } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "edit_tuning_file", "values": {} } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "edit_tuning_file", "values": { "solver.position_iterations": "many" } } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "fell": 1 } })"),
 	};
 
 	for (const TCHAR* Text : Invalid)

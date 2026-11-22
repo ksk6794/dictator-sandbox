@@ -8,7 +8,7 @@ class UPhysicsAsset;
 class USandboxBodyController;
 class USkeletalMesh;
 class USkeletalMeshComponent;
-struct FSandboxBodyTuning;
+class FSandboxParamStore;
 
 /**
  * A skeletal mesh whose every body is simulated in the Chaos world.
@@ -38,9 +38,10 @@ public:
 
 	/**
 	 * Makes the simulated body an active ragdoll that holds the pose it is in now. Call after InitBody with
-	 * bSimulate, before the first physics step. Returns false with a reason on failure.
+	 * bSimulate, before the first physics step. The tuning comes from the store, which the body keeps
+	 * following (see USandboxBodyController::Start). Returns false with a reason on failure.
 	 */
-	bool StartActiveControl(const FSandboxBodyTuning& Tuning, FString& OutError);
+	bool StartActiveControl(const FSandboxParamStore& Params, FString& OutError);
 
 	USkeletalMeshComponent* GetBodyMesh() const { return BodyMesh; }
 

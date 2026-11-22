@@ -204,6 +204,81 @@ Repeatability:
 | `stand_npc` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
 | `stand_npc_10min` | 2 headless + 1 rendered | Identical hashes in all 3 runs (54,000 frames each) |
 
+### M2 step 2 (the parameter file), 2026-11-22
+
+Same machine and settings. The body's tuning now comes from `Config/Tuning/body.json` through
+`FSandboxParamStore`, and every active run watches the tuning files (size and modification time, every 30
+frames).
+
+Nothing changed for a run that changes nothing. The whole suite was run before the step and after it, and
+the hashes of all 13 earlier scenarios are equal. For the two stand scenarios:
+
+| Scenario | Hashes before (values in code) | Hashes after (values from the file, files watched) |
+| --- | --- | --- |
+| `stand_npc` | bodies 55b1e27c, bones d4f09323 | the same |
+| `stand_npc_10min` | bodies dde3a3e2, bones a38aa1a1 | the same |
+
+So the numbers read from JSON are the same doubles the compiler made of the constants, and the 1,800 looks
+at the files during the 10-minute run leave no trace. Their cost is not measurable either: the run takes
+51.4 s of wall-clock time, as before (51.1 s).
+
+A change in the middle of a run, by each route:
+
+| Scenario | Route | Change | Reaches the body at | Result |
+| --- | --- | --- | --- | --- |
+| `tune_live_override` | Console command `Sandbox.Tune`, run at t = 4 s | Leg muscles 800 to 0 N*m/rad | t = 4.000 s (frame 360) | Pelvis from 90.0 cm to 17.3 cm; fallen at 5.10 s |
+| `tune_live_file` | The value written into the file at t = 4 s; the session notices it | The same | t = 4.011 s (frame 361, after the look at frame 360) | The same; fallen at 5.11 s |
+| `tune_live_solver` | Console command, run at t = 3 s | Position iterations 64 to 8 | t = 3.000 s (frame 270) | Feet start to rock: 0.54 rad/s after 4 s, against 0.07 unchanged |
+
+Without leg muscles the character does not topple: it sinks and ends sitting on the floor with a straight
+back, held there by the spine muscles and the upright assist (checked on a screenshot). Its head stays at
+77 cm, which is why "fallen" is judged by the pelvis (below half its starting height), not by the head.
+Joint stretch in these runs stays under 0.06 cm and the fastest joint reaches 9.2 rad/s.
+
+Checks made once, with throw-away scenarios, that every kind of value applies to a running body:
+
+| Changed at t = 3 s of a 10 s stand | Measure after t = 4 s | Changed live | Set from the start (`-Tune`) | Unchanged |
+| --- | --- | --- | --- | --- |
+| `solver.position_iterations` 64 to 8 | Fastest foot | 0.544 rad/s | 0.537 rad/s | 0.074 rad/s |
+| | Assist force share | 0.147 | 0.153 | 0.044 |
+| | Solver time per frame, median | 0.27 ms | 0.25 ms | 0.42 ms |
+| All assist stiffness to 0 | Assist force share | 0 | 0 | 0.044 |
+| A value out of range (`muscles.arms.stiffness_nm_per_rad=-1`) | Tuning changes | 0, with the reason in the log; hashes equal to the unchanged run | the run does not start | |
+
+The first row did not hold at first. The live change of the iteration count was accepted by the store and
+the controller and recorded as a tuning change, and the run's hashes were equal to the unchanged run: the
+solver never saw it. Chaos takes a simulation island's iteration counts from its bodies only when something
+joins or leaves the island, and a standing character's island never changes. The controller now adds a
+constraint that restricts nothing for one frame whenever the counts change. `tune_live_solver` guards this
+with a lower bound on the jitter, which only the reduced count reaches.
+
+An edit from outside the process, once, by hand: `stand_npc_10min` was started on a copy of the tuning
+files (`-TuningDir`), and 25 s later a script changed `muscles.arms.stiffness_nm_per_rad` from 150 to 120
+in that copy. The run reported the reload 12 ms after the write, at 217.3 s of simulated time, and finished
+with the new value. Where such an edit lands in simulated time depends on the wall clock, so a run that is
+edited from outside is not repeatable; that is the nature of the edit, not of the watching.
+
+What stops a run before it starts (exit code 2, with the reason): an unknown name in `-Tune`, a value out
+of range, a misspelt name in a tuning file, a value missing from the tuning files.
+
+Repeatability:
+
+| Scenario | Runs compared | Result |
+| --- | --- | --- |
+| `stand_npc` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `stand_npc_10min` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `tune_live_override` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `tune_live_file` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `tune_live_solver` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+
+`tune_live_file` is repeatable because the scenario runner looks at the files on fixed frames of the run
+and the scenario writes the file itself at a fixed simulated time. Outside scenarios the store looks every
+30 engine frames, counted from start-up.
+
+Not measured: hot reload in a live interactive session (there is no pawn to run one with before step 4),
+and per-state values on a body (the store resolves them and unit tests cover that; the body has no states
+before step 3).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

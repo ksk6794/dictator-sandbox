@@ -42,7 +42,7 @@ The file name must equal the `name` field (a unit test checks this).
 | `body.rotation_deg` | no | `[pitch, yaw, roll]` |
 | `body.attached_meshes` | no | Extra skeletal meshes that follow the body's pose and have no collision (a MetaHuman face) |
 | `body.simulate` | no, default `true` | `false` keeps the body kinematic in its reference pose, for portraits and rendering-cost scenes |
-| `body.control` | no, default `"passive"` | `"passive"` is a plain ragdoll. `"active"` adds muscles and balance assist: the character holds the pose it is spawned in. Spawn it with the feet on the floor (`location_cm` z = 0) |
+| `body.control` | no, default `"passive"` | `"passive"` is a plain ragdoll. `"active"` adds muscles and balance assist, tuned by the files in `Config/Tuning`: the character holds the pose it is spawned in. Spawn it with the feet on the floor (`location_cm` z = 0) |
 | `settle_s` | no, default 2 | Start-up time left out of the "settled" metrics and expectations |
 | `camera` | no | `{ "location_cm": [x, y, z], "look_at_cm": [x, y, z] }` for rendered runs. Without it the runner frames the body |
 | `events` | no | Scripted stimuli, applied at simulated time `t` |
@@ -53,6 +53,13 @@ Event types. Unknown types are a parse error.
 - `impulse` applies `impulse_ns` newton-seconds along `direction` (normalised for you) to the body on bone `body`.
 - `pin` fixes the body on bone `body` at its current world position with a ball joint; the rest of the
   character hangs from it. `metrics.max_pin_error_cm` reports how far the body strayed from the pin point.
+- `console` runs `command` as if it were typed into the console of the running session, for example
+  `"Sandbox.Tune muscles.legs.stiffness_nm_per_rad=0"`. It counts as applied when the engine knows the
+  command; whether a tuning command changed anything shows in `control.tuning_changes`.
+- `edit_tuning_file` writes the numbers in `values` (tuning name to value) into the tuning files and does
+  nothing else: the running session has to notice the edit by itself, as it would after a save in an
+  editor. A scenario with such an event runs on its own copy of the tuning files in `<Out>\tuning`, so
+  `Config/Tuning` is never written to. Active control only.
 
 Expectations. A name that is not in this table is a parse error, so a misspelt one cannot pass unnoticed.
 
@@ -63,6 +70,10 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_pelvis_drift_cm` | The pelvis (the root body) never gets further from where it was spawned, over the whole run |
 | `min_head_height_cm` | The head body's centre of mass never drops below this height above the spawn point. Active control only |
 | `max_settled_speed_mps`, `max_settled_angular_speed_rads` | No body moves or turns faster after `settle_s`: the measure of jitter at rest |
+| `min_settled_angular_speed_rads` | Some body does turn at least this fast after `settle_s`. For scenarios that make the body less steady on purpose and must show that the change took effect |
+| `fell` | `true`: the body fell during the run. `false`: it did not. Fallen means the pelvis (the root body) got below half the height above the spawn point that it started at; a body that sits down on the floor has fallen |
+| `min_fall_time_s` | The body did not fall before this time (not falling at all also passes; combine with `fell`) |
+| `tuning_changes` | The running body took new tuning values exactly this many times. 0 in a scenario that changes nothing shows that watching the tuning files left the run alone |
 | `max_joint_speed_rads` | No joint's two bodies rotate faster relative to each other, over the whole run |
 | `max_physics_step_mean_ms` | The solver's mean wall-clock time per frame (all substeps) stays below it |
 
@@ -76,9 +87,16 @@ physics asset got a muscle.
 
 ## Tuning overrides
 
+The body's tuning comes from the files in `Config/Tuning`; names, units and the ways to change a value
+are in `Config/Tuning/README.md`.
+
 `Tools\scenario.ps1 -Name stand_npc -Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`
-changes body tuning values for one run. The names are those of `FSandboxBodyTuning`; an unknown name stops
-the run. Every active run writes the full set of values it used to `control.tuning` in `metrics.json`.
+overrides values for one run, and `-TuningDir <dir>` reads the files from another directory. An unknown
+name, a value out of range or a tuning file that cannot be used stops the run with the reason
+(`SCENARIO ERROR`, exit code 2).
+
+The run keeps watching the tuning files, every 30 frames, and takes over an edit made while it runs. With
+files that do not change this has no effect on the result.
 
 ## Output
 
@@ -90,13 +108,18 @@ for the compositor, so use `gpu_ms` against the frame budget.
 `metrics.json` has `pass`, the list of `checks` with value and limit, and these blocks:
 
 - `metrics`: peak speeds, stretch, time to rest, drift of the pelvis and of the centre of mass, lowest head
-  height, peak speeds after `settle_s`, the fastest joint.
+  height, peak speeds after `settle_s`, the fastest joint, and whether and when the body fell (`fell`,
+  `fall_time_s`, with the pelvis height that counts as fallen in `fall_pelvis_height_cm`).
 - `body`: every body's mass and its peak speeds after `settle_s` (which body jitters), and every joint's
   parent and limits as instanced. Each joint also reports where the spawn pose sits against those limits
   (`spawn_twist_deg`, `spawn_swing1_deg`, `spawn_swing2_deg`) and the gap between its two anchors in the
   spawn pose (`spawn_anchor_offset_cm`).
 - `control`: `passive` or `active`; for active runs the number of muscles and assist controls, the tuning
-  values used, and `assist_load`. The load is the balance assist's commanded force as a fraction of body
+  and `assist_load`. `tuning` holds every value the body had at the end of the run, `tuning_source` the
+  directory and files they were read from and the overrides in force, and `tuning_changes` one entry for
+  each time the running body took new values: the frame and simulated time of the first physics step that
+  used them, each changed value as `from` and `to`, and the pelvis height at that moment. A run that
+  changes nothing has an empty list. The load is the balance assist's commanded force as a fraction of body
   weight (`force_share_*`) and its commanded torque as a fraction of weight times centre-of-mass height
   (`torque_share_*`), mean and maximum after `settle_s`. It is computed from the assist springs' settings
   and the bodies' distance from their targets, because the solver does not report drive forces.

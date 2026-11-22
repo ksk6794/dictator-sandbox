@@ -1,7 +1,12 @@
 #include "SandboxBodyTuning.h"
 
+#include "SandboxParamStore.h"
+
 namespace
 {
+	// States of the body that may carry tuning values of their own (docs/PRD.md, "States").
+	const TCHAR* const StateNames[] = { TEXT("standing"), TEXT("flinch"), TEXT("stagger"), TEXT("falling"), TEXT("lying"), TEXT("get_up") };
+
 	// Upper bounds that catch a slipped decimal point or a wrong unit, not physical limits: a human hip
 	// reaches a few thousand N*m/rad only when fully braced.
 	constexpr double MaxAngularStiffness = 20000.0;
@@ -74,24 +79,89 @@ bool FSandboxBodyTuning::SetValue(const FString& Key, double Value, FString& Out
 	return bFound;
 }
 
-bool FSandboxBodyTuning::ApplyOverrides(const FString& Overrides, FString& OutError)
+namespace
 {
-	TArray<FString> Entries;
-	Overrides.ParseIntoArray(Entries, TEXT(","), /*bCullEmpty*/ true);
-	for (const FString& Entry : Entries)
+	/** Calls Visitor(name, bone) for every bone of the rig. */
+	template <typename RigType, typename VisitorType>
+	void VisitRig(RigType& Rig, VisitorType&& Visitor)
 	{
-		FString Key, ValueText;
-		if (!Entry.Split(TEXT("="), &Key, &ValueText) || !ValueText.TrimStartAndEnd().IsNumeric())
-		{
-			OutError = FString::Printf(TEXT("Tuning override '%s' is not name=number"), *Entry);
-			return false;
-		}
-		if (!SetValue(Key.TrimStartAndEnd(), FCString::Atod(*ValueText.TrimStartAndEnd()), OutError))
-		{
-			return false;
-		}
+		Visitor(TEXT("rig.pelvis"), Rig.Pelvis);
+		Visitor(TEXT("rig.chest"), Rig.Chest);
+		Visitor(TEXT("rig.head"), Rig.Head);
+		Visitor(TEXT("rig.foot_left"), Rig.FootLeft);
+		Visitor(TEXT("rig.foot_right"), Rig.FootRight);
 	}
-	return true;
+}
+
+void FSandboxBodyTuning::DeclareParams(FSandboxParamStore& Params)
+{
+	FSandboxBodyTuning Names;
+	VisitValues(Names, [&Params](const FString& Key, double&) { Params.DeclareNumber(Key); });
+	VisitRig(Names.Rig, [&Params](const TCHAR* Key, FName&) { Params.DeclareString(Key); });
+	for (const TCHAR* State : StateNames)
+	{
+		Params.DeclareState(State);
+	}
+
+	// The base values, and every state that sets something, must give a tuning the body can use.
+	Params.AddValidator([](const FSandboxParamStore& Store, FString& OutError)
+	{
+		FSandboxBodyTuning Tuning;
+		if (!FromParams(Store, FString(), Tuning, OutError))
+		{
+			return false;
+		}
+		TArray<FString> States;
+		Store.GetStatesInUse(States);
+		for (const FString& State : States)
+		{
+			if (!FromParams(Store, State, Tuning, OutError))
+			{
+				OutError = FString::Printf(TEXT("state '%s': %s"), *State, *OutError);
+				return false;
+			}
+		}
+		return true;
+	});
+}
+
+bool FSandboxBodyTuning::FromParams(const FSandboxParamStore& Params, const FString& State, FSandboxBodyTuning& OutTuning, FString& OutError)
+{
+	OutTuning = FSandboxBodyTuning();
+	FString Missing;
+	VisitValues(OutTuning, [&](const FString& Key, double& Target)
+	{
+		if (!Params.FindNumber(Key, State, Target) && Missing.IsEmpty())
+		{
+			Missing = Key;
+		}
+	});
+	VisitRig(OutTuning.Rig, [&](const TCHAR* Key, FName& Bone)
+	{
+		FString Name;
+		if (Params.FindString(Key, Name))
+		{
+			Bone = FName(*Name);
+		}
+		else if (Missing.IsEmpty())
+		{
+			Missing = Key;
+		}
+	});
+	if (!Missing.IsEmpty())
+	{
+		OutError = FString::Printf(TEXT("'%s' is missing from the tuning files"), *Missing);
+		return false;
+	}
+	return OutTuning.Validate(OutError);
+}
+
+bool FSandboxBodyTuning::HasSameValues(const FSandboxBodyTuning& Other) const
+{
+	TArray<TPair<FString, double>> Mine, Theirs;
+	ListValues(Mine);
+	Other.ListValues(Theirs);
+	return Mine == Theirs;
 }
 
 const FSandboxMuscleTuning& FSandboxBodyTuning::Muscle(ESandboxMuscleGroup Group) const

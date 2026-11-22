@@ -60,6 +60,37 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("console"))
+		{
+			if (!Json->TryGetStringField(TEXT("command"), OutEvent.Command) || OutEvent.Command.TrimStartAndEnd().IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("events[%d].command is missing"), Index);
+				return false;
+			}
+			return true;
+		}
+
+		if (OutEvent.Type == TEXT("edit_tuning_file"))
+		{
+			const TSharedPtr<FJsonObject>* Values = nullptr;
+			if (!Json->TryGetObjectField(TEXT("values"), Values) || (*Values)->Values.Num() == 0)
+			{
+				OutError = FString::Printf(TEXT("events[%d].values must be an object of tuning names and numbers"), Index);
+				return false;
+			}
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Values)->Values)
+			{
+				double Value = 0.0;
+				if (!Entry.Value.IsValid() || !Entry.Value->TryGetNumber(Value))
+				{
+					OutError = FString::Printf(TEXT("events[%d].values.%s must be a number"), Index, *Entry.Key);
+					return false;
+				}
+				OutEvent.Values.Emplace(Entry.Key, Value);
+			}
+			return true;
+		}
+
 		OutError = FString::Printf(TEXT("events[%d].type '%s' is not supported"), Index, *OutEvent.Type);
 		return false;
 	}
@@ -219,13 +250,28 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("min_head_height_cm"), &OutSpec.Expect.MinHeadHeightCm },
 			{ TEXT("max_settled_speed_mps"), &OutSpec.Expect.MaxSettledSpeedMps },
 			{ TEXT("max_settled_angular_speed_rads"), &OutSpec.Expect.MaxSettledAngularSpeedRadS },
+			{ TEXT("min_settled_angular_speed_rads"), &OutSpec.Expect.MinSettledAngularSpeedRadS },
 			{ TEXT("max_joint_speed_rads"), &OutSpec.Expect.MaxJointSpeedRadS },
-			{ TEXT("max_physics_step_mean_ms"), &OutSpec.Expect.MaxPhysicsStepMeanMs } };
+			{ TEXT("max_physics_step_mean_ms"), &OutSpec.Expect.MaxPhysicsStepMeanMs },
+			{ TEXT("min_fall_time_s"), &OutSpec.Expect.MinFallTimeS },
+			{ TEXT("tuning_changes"), &OutSpec.Expect.TuningChanges } };
 
 		// Every key must be a known expectation with a numeric value: a misspelt one would otherwise
 		// never be checked and the scenario would pass for the wrong reason.
 		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Expect)->Values)
 		{
+			if (Entry.Key == TEXT("fell"))
+			{
+				// Checked by type: the JSON reader would take a number for a boolean.
+				if (!Entry.Value.IsValid() || Entry.Value->Type != EJson::Boolean)
+				{
+					OutError = TEXT("'expect.fell' must be true or false");
+					return false;
+				}
+				OutSpec.Expect.Fell = Entry.Value->AsBool();
+				continue;
+			}
+
 			double Value = 0.0;
 			bool bKnown = false;
 			for (const TPair<const TCHAR*, TOptional<double>*>& Field : Fields)

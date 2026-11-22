@@ -53,7 +53,7 @@ bool ASandboxRagdollActor::InitBody(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsA
 	return true;
 }
 
-bool ASandboxRagdollActor::StartActiveControl(const FSandboxBodyTuning& Tuning, FString& OutError)
+bool ASandboxRagdollActor::StartActiveControl(const FSandboxParamStore& Params, FString& OutError)
 {
 	if (Controller)
 	{
@@ -68,7 +68,7 @@ bool ASandboxRagdollActor::StartActiveControl(const FSandboxBodyTuning& Tuning, 
 
 	USandboxBodyController* NewController = NewObject<USandboxBodyController>(this, TEXT("BodyController"));
 	NewController->RegisterComponent();
-	if (!NewController->Start(BodyMesh, Tuning, OutError))
+	if (!NewController->Start(BodyMesh, Params, OutError))
 	{
 		NewController->DestroyComponent();
 		return false;

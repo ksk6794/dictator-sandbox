@@ -4,8 +4,9 @@ Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the 
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
 Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
 launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core, is in progress.**
-Step 1 of 5 is done: the NPC stands under full simulation for 10 minutes (muscles and balance assist through
-Physics Control). Still to do: parameter file with hot reload, Standing/Flinch/Falling/Lying states and the
+Steps 1 and 2 of 5 are done: the NPC stands under full simulation for 10 minutes (muscles and balance assist
+through Physics Control), and every tuning value lives in `Config/Tuning`, is hot-reloaded and can be
+overridden from the console and the command line. Still to do: Standing/Flinch/Falling/Lying states and the
 push matrix, desktop pawn with effectors, overlays and strike scenarios.
 DLSS is deliberately deferred to M5.
 
@@ -24,7 +25,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | One scenario, headless | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive` |
 | One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics) |
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
-| One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"` |
+| One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
@@ -42,8 +43,8 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 
 | Path | Holds |
 | --- | --- |
-| `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers. Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles and balance assist), `FSandboxBodyTuning` (every tunable number, by name), `FSandboxBodyProbe` (measurements). |
+| `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles and balance assist), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements). |
 | `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs. |
@@ -51,6 +52,7 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
+| `Config/Tuning/` | Every tunable number of the body, as JSON; names, units and ways to change them in its `README.md`. |
 | `docs/` | `PRD.md` (plan), `testing.md` (repeatability policy and measurements). |
 
 ## Rules
@@ -61,6 +63,9 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **No Blueprint logic, no Animation Blueprints.** Gameplay, input and animation logic are C++.
 - **Text is the source of truth.** Never hand-edit `.uasset` or `.umap` files. Generated assets come from
   `Specs/` through the `GenerateAssets` commandlet; imported art is imported by script.
+- **Tuning values live in `Config/Tuning`, not in code.** A new tunable number gets a name in its module's
+  list (`VisitValues` in `SandboxBodyTuning.cpp` for the body) and a value in the JSON file; no default in
+  C++. A value missing from the files, or a name the code does not know, is an error by design.
 - **Physics timing is fixed.** Synchronous physics, 90 Hz frame, 2 substeps (180 Hz). Scenarios force a
   fixed engine timestep. Do not read wall-clock time in simulation code.
 - **Units.** Unreal units in code (cm, kg, cm/s). Scenario files and metrics use the unit in the field
@@ -109,6 +114,19 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   through stiff joints does not converge: the feet rock at 0.5 rad/s and walk across the floor. The
   controller asks for 64 on the NPC's own bodies (`solver.position_iterations`); it costs 0.4 ms per frame
   instead of 0.26. Shock-propagation and mass-ratio console variables made no difference.
+- **Chaos ignores new solver iteration counts on a body whose simulation island does not change.** The
+  island's counts are worked out only when something joins or leaves it (`FPBDIslandManager`; the engine
+  source has a todo about it). Set before the first step they apply; set on a standing character they were
+  silently dropped: same hashes as without the change. `USandboxBodyController::RefreshSolverIsland` adds
+  a constraint that restricts nothing for one frame, which counts as a change. Scenario `tune_live_solver`
+  guards it.
+- **A tuning change that "applied" has not necessarily reached the solver.** The case above was accepted by
+  every layer of our code. When a value becomes tunable at run time, change it in the middle of a run and
+  check that the hashes differ from the unchanged run.
+- **The JSON reader takes a number for a boolean and a boolean for a number.** `TryGetBool` succeeds on `1`.
+  Where the kind matters (scenario expectations, tuning values), check `FJsonValue::Type`.
+- **Automation tests fail on any logged error.** Code that tests call must hand its errors back
+  (`FString& OutError`) and leave logging to the caller, as `FSandboxParamStore` does.
 - **Regenerating a map discards its baked lighting,** and the bake re-saves the map. So map generation is
   skipped while the map is newer than its spec, and the bake keeps a `.bake.json` stamp beside the map to
   know whether it is current. File times alone cannot tell.

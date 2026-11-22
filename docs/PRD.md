@@ -144,7 +144,7 @@ Read top down: three interchangeable sources produce target poses, effectors tur
 
 | Module | Kind | Responsibility |
 | --- | --- | --- |
-| `SandboxCore` | Runtime | Parameter store with JSON loading, hot reload and console variables; metric types; logging |
+| `SandboxCore` | Runtime | Parameter store with JSON loading, hot reload, console and command-line overrides; metric types; logging |
 | `SandboxBody` | Runtime | NPC actor, Physics Control setup, muscles, balance assist, balance controller, state machine, reactions, native animation instance |
 | `SandboxInteraction` | Runtime | Effector component, grab constraints, strike verbs, target-source interface; player pawn with desktop and OpenXR sources, cameras, locomotion |
 | `SandboxScenario` | Runtime | Scenario loader and runner, metrics recorder, session recorder, debug overlays and console commands |
@@ -277,6 +277,8 @@ Every number above is a parameter in one text file, grouped as follows.
 | Solver | Substeps, iteration counts, joint solver type |
 | Effectors | Mass, spring, damper, force cap, strike speeds, grab break force |
 
+As built in M2: the files are the JSON files of `Config/Tuning` (today one, `body.json`, with the muscles, the balance assist, the solver counts and the names of the bones the assist holds). A value's name is its path in the file, `muscles.legs.stiffness_nm_per_rad`, and the same name is used in overrides and in result files. Per-state values go under a `states` section (`states.falling.muscles.legs.stiffness_nm_per_rad`) and replace the base value while the body is in that state. The code holds no defaults: a missing value or an unknown name is an error. `Config/Tuning/README.md` is the reference.
+
 ## Interaction: one effector model for desktop and VR
 
 The player touches the NPC only through effectors: dynamic rigid bodies pulled toward a target pose by a force-capped spring. Desktop, VR and automated tests differ only in where the target pose comes from.
@@ -371,7 +373,7 @@ Agents work through a small set of CLI scripts that build, generate assets, run 
 | What | Authored as | Becomes engine data by |
 | --- | --- | --- |
 | Gameplay, physics control, tools | C++ in `Source/` | `Build.bat` |
-| Physical parameters | JSON in `Config/Tuning/` | Loaded at runtime, hot-reloaded, overridable by console variable |
+| Physical parameters | JSON in `Config/Tuning/` | Loaded at runtime, hot-reloaded, overridable from the console (`Sandbox.Tune`) and the command line (`-Tune`) |
 | Physics asset: bodies, shapes, masses, limits | JSON spec | Editor-module commandlet using `FPhysicsAssetUtils` and constraint templates |
 | Room layout and lighting | JSON spec | Commandlet builds the map; lighting bake commandlet |
 | Animation logic | Native `UAnimInstance` with a custom proxy | Compiled; no Animation Blueprint |
@@ -457,6 +459,8 @@ Every physical behaviour has a scenario: a JSON file that places the NPC, applie
 ```
 
 Event types are a direct impulse on a named body, an effector trajectory (strike or push), a grab with a hand path, and a parameter override. Recorded live sessions replay through the same format.
+
+As built so far: `impulse`, `pin`, `console` (any console command at a simulated time; a parameter override is `Sandbox.Tune ...`) and `edit_tuning_file` (an edit of the run's own copy of the tuning files, to test hot reload). The format in force is in `Scenarios/README.md`.
 
 ### Standard suite
 
@@ -561,10 +565,10 @@ Muscles, balance assist at level 0, and the Standing, Flinch, Falling and Lying 
 - [ ] Push matrix: 10 N·s never causes a fall, 200 N·s always does, left and right agree
 - [ ] Strike scenarios show no tunnelling and no joint above 30 rad/s
 - [ ] No scenario shows joint stretch above 2 cm
-- [ ] A parameter edit takes effect in a running session
+- [x] A parameter edit takes effect in a running session
 - [ ] Physics step averages 1.5 ms or less
 
-**M2 is in progress. Step 1 of 5, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
+**M2 is in progress; steps 1 and 2 of 5 are done. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
 
 Decisions taken in step 1:
 
@@ -572,11 +576,26 @@ Decisions taken in step 1:
 - **Balance level 0 turned out lighter than planned.** With muscles of that strength the legs carry the body; the assist's commanded force is 4.6% of body weight and its main job is to stop the feet creeping across the floor. These figures are the baseline for the M3 assist-share criterion.
 - **64 solver position iterations on the NPC's bodies** (see Solver and timing).
 - **Feet are flat boxes** written out in the physics asset spec.
-- **Tuning values have names** (`muscles.legs.stiffness_nm_per_rad`, `assist.pelvis.horizontal_n_per_m`, `solver.position_iterations`) and can be overridden per run from the command line. The parameter file and hot reload are step 2.
+- **Tuning values have names** (`muscles.legs.stiffness_nm_per_rad`, `assist.pelvis.horizontal_n_per_m`, `solver.position_iterations`) and can be overridden per run from the command line. The parameter file and hot reload came in step 2, below.
 
 Corrections to M1 found in step 1. The stock MetaHuman physics asset, used as the template, has joint anchors 1.5 to 3.6 cm apart on all 15 joints (M1 recorded only the largest) and an orientation motor on every joint. A falling body hid both; a standing one could not start without its skeleton shortening by 12 cm and its elbows and knees flexing. The generator now fixes both. Without the motors the passive body is looser: joint stretch under the hanging load is 1.52 cm, not the 0.49 cm recorded at M1 (the limit of 3 cm is still met).
 
 Not done yet in step 1, against the plan: muscle torque caps exist as parameters but are left at "no cap" until the fall states need them; joint limits are still the stock symmetric values, and the stock joint axes differ between the left and right side, which the push matrix's left-right criterion will need fixed first.
+
+**Step 2 of 5, "the parameter file", was finished on 22 November 2026.** Every tuning value of the body is read from `Config/Tuning/body.json`; the code has no defaults left. A running session takes over an edited file within 30 frames and an override from the console or the command line on the next tick. Three scenarios prove it headless: muscles switched off from the console in the middle of a run (`tune_live_override`), the same through an edit of the file (`tune_live_file`), and a change of the solver counts (`tune_live_solver`). The stand scenarios give the same hashes as before the change, to the bit. Measurements are in `docs/testing.md`.
+
+Decisions taken in step 2:
+
+- **The store is generic and lives in `SandboxCore`; modules declare what they understand.** `FSandboxParamStore` knows files, names, overrides and revisions, not bodies. `SandboxBody` declares its names, its states and its range checks to it, and the store refuses any file or override that fails them. Every change is applied as a whole or not at all; a bad edit leaves the previous values in force.
+- **Hot reload is a poll, not a file-system watcher.** Every 30 frames the store compares the files' size and modification time with what it loaded. It counts frames and never reads the clock, so a run whose files do not change is not affected. In a scenario the runner polls on fixed frames of the run.
+- **Overrides are console commands, not one console variable per value.** `Sandbox.Tune name=value,...`, `Sandbox.TuneReset`, `Sandbox.TuneList`, `Sandbox.TuneReload`; on the command line `-Tune=` and `-TuningDir=`. Overrides lie on top of the files and survive a reload.
+- **Per-state values are part of the format now,** ahead of the states themselves: the store resolves `states.<state>.<name>` over `<name>`, and the body's checks cover every state that sets a value. The body reads only the base values until step 3.
+- **The rig's bone names moved to the file too.** They are read when the body starts and cannot change in a running body.
+- **Falling has a metric:** the pelvis below half its starting height. Scenarios can expect `fell`, a minimum fall time and an exact number of tuning changes.
+
+Found in step 2: Chaos does not apply new per-body solver iteration counts to a body whose simulation island is not changing, so the first live change of `solver.position_iterations` was accepted and did nothing. The controller now adds a constraint that restricts nothing for one frame, which makes the island take the new counts.
+
+Not done in step 2: the torque caps are still at "no cap" and the N·m/rad conversion is still uncalibrated, as after step 1; there is no `sweep` script yet (`-Tune` and `-TuningDir` are what it will be built on); the tuning directory is not yet staged for a packaged build, which M5 needs.
 
 ### M3: Balance and recovery (3 to 4 weeks)
 

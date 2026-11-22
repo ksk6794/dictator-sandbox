@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+class FSandboxParamStore;
+
 /** Joints are tuned in groups, not one by one. */
 enum class ESandboxMuscleGroup : uint8
 {
@@ -53,41 +55,63 @@ struct FSandboxSolverTuning
 	 * Position iterations per substep. The engine default of 8 does not converge for a heavy body standing
 	 * on light feet through stiff joints: the feet rock and creep across the floor.
 	 */
-	double PositionIterations = 64.0;
-	double VelocityIterations = 2.0;
-	double ProjectionIterations = 1.0;
+	double PositionIterations = 0.0;
+	double VelocityIterations = 0.0;
+	double ProjectionIterations = 0.0;
 };
 
-/** Which bones the balance assist holds. Each must have a body in the physics asset. */
+/** Which bones the balance assist holds ("rig.pelvis" and so on). Each must have a body in the physics asset. */
 struct FSandboxBodyRig
 {
-	FName Pelvis = TEXT("pelvis");
-	FName Chest = TEXT("spine_04");
+	FName Pelvis;
+	FName Chest;
 	/** The body that carries the head; in the NPC's physics asset head and neck are one body on neck_01. */
-	FName Head = TEXT("neck_01");
-	FName FootLeft = TEXT("foot_l");
-	FName FootRight = TEXT("foot_r");
+	FName Head;
+	FName FootLeft;
+	FName FootRight;
+
+	bool operator==(const FSandboxBodyRig& Other) const
+	{
+		return Pelvis == Other.Pelvis && Chest == Other.Chest && Head == Other.Head && FootLeft == Other.FootLeft && FootRight == Other.FootRight;
+	}
 };
 
 /**
- * Every number that shapes how the active ragdoll behaves. The defaults are the M2 standing values;
- * from the parameter-file step on they are read from Config/Tuning.
+ * Everything that shapes how the active ragdoll behaves. The values live in Config/Tuning/body.json and
+ * reach the code through FromParams; a default-constructed tuning is empty and does not validate.
  */
 struct SANDBOXBODY_API FSandboxBodyTuning
 {
 	FSandboxBodyRig Rig;
 
-	FSandboxMuscleTuning Spine{ 600.0, 0.06, 0.0 };
-	FSandboxMuscleTuning Neck{ 80.0, 0.06, 0.0 };
-	FSandboxMuscleTuning Arms{ 150.0, 0.06, 0.0 };
-	FSandboxMuscleTuning Legs{ 800.0, 0.06, 0.0 };
+	FSandboxMuscleTuning Spine;
+	FSandboxMuscleTuning Neck;
+	FSandboxMuscleTuning Arms;
+	FSandboxMuscleTuning Legs;
 
-	FSandboxAssistTuning Pelvis{ 1500.0, 0.0, 60.0, 0.2 };
-	FSandboxAssistTuning Chest{ 0.0, 0.0, 60.0, 0.2 };
-	FSandboxAssistTuning Head{ 0.0, 0.0, 10.0, 0.2 };
-	FSandboxAssistTuning Feet{ 1500.0, 1500.0, 15.0, 0.2 };
+	FSandboxAssistTuning Pelvis;
+	FSandboxAssistTuning Chest;
+	FSandboxAssistTuning Head;
+	FSandboxAssistTuning Feet;
 
 	FSandboxSolverTuning Solver;
+
+	/**
+	 * Tells a parameter store which names the body understands and which states may carry values of their
+	 * own, and adds the range checks of Validate to it, so the store refuses a file or an override the body
+	 * could not use.
+	 */
+	static void DeclareParams(FSandboxParamStore& Params);
+
+	/**
+	 * Reads the tuning for one state of the body ("falling"). An empty state reads the base values, which
+	 * are also what a state uses for everything it does not set itself. False with a reason if a value is
+	 * missing or does not validate.
+	 */
+	static bool FromParams(const FSandboxParamStore& Params, const FString& State, FSandboxBodyTuning& OutTuning, FString& OutError);
+
+	/** True if every number is the same. The rig is not compared. */
+	bool HasSameValues(const FSandboxBodyTuning& Other) const;
 
 	const FSandboxMuscleTuning& Muscle(ESandboxMuscleGroup Group) const;
 
@@ -102,9 +126,6 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 
 	/** Sets one number by name. False with a reason if the name is unknown. Does not validate the range. */
 	bool SetValue(const FString& Key, double Value, FString& OutError);
-
-	/** Applies "name=value,name=value". False with a reason on the first malformed or unknown entry. */
-	bool ApplyOverrides(const FString& Overrides, FString& OutError);
 
 	/** Group a joint belongs to, from the name of its child bone (UE5 mannequin and MetaHuman naming). */
 	static ESandboxMuscleGroup GroupOfBone(FName ChildBone);

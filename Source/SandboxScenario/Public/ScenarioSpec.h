@@ -5,8 +5,10 @@
 
 /**
  * A scripted stimulus applied at a fixed simulation time.
- *   "impulse"  an instantaneous impulse on one body
- *   "pin"      freezes one body where it is (it becomes kinematic); the rest of the body hangs from it
+ *   "impulse"           an instantaneous impulse on one body
+ *   "pin"               fixes one body where it is with a ball joint to the world; the rest hangs from it
+ *   "console"           runs a console command, as typed in a running session
+ *   "edit_tuning_file"  writes new values into the run's own copy of the tuning files, as an editor would
  */
 struct FScenarioEvent
 {
@@ -17,6 +19,10 @@ struct FScenarioEvent
 	double ImpulseNs = 0.0;
 	/** Unit direction in world space. */
 	FVector Direction = FVector::ForwardVector;
+	/** "console": the command line. */
+	FString Command;
+	/** "edit_tuning_file": tuning names and their new values. */
+	TArray<TPair<FString, double>> Values;
 };
 
 /** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
@@ -31,10 +37,21 @@ struct FScenarioExpect
 	/** Fastest any body may move or turn once the settle time has passed: no jitter at rest. */
 	TOptional<double> MaxSettledSpeedMps;
 	TOptional<double> MaxSettledAngularSpeedRadS;
+	/**
+	 * Some body must turn at least this fast once the settle time has passed. For scenarios that make the
+	 * body less steady on purpose and have to show that the change took effect.
+	 */
+	TOptional<double> MinSettledAngularSpeedRadS;
 	/** Fastest relative rotation allowed in any joint, over the whole run. */
 	TOptional<double> MaxJointSpeedRadS;
 	/** Largest allowed mean time of one frame's physics (all substeps), in milliseconds of wall-clock time. */
 	TOptional<double> MaxPhysicsStepMeanMs;
+	/** Whether the body must have fallen (the pelvis below half its starting height) during the run. */
+	TOptional<bool> Fell;
+	/** The body must not have fallen before this time. */
+	TOptional<double> MinFallTimeS;
+	/** Exact number of times the running body took new tuning values. */
+	TOptional<double> TuningChanges;
 };
 
 /** How the body is driven. */
@@ -81,6 +98,11 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 
 	TArray<FScenarioEvent> Events;
 	FScenarioExpect Expect;
+
+	bool HasEvent(const TCHAR* Type) const
+	{
+		return Events.ContainsByPredicate([Type](const FScenarioEvent& Event) { return Event.Type == Type; });
+	}
 
 	double FixedDt() const { return 1.0 / FixedFps; }
 	int32 TotalFrames() const { return FMath::RoundToInt32(DurationS * FixedFps); }

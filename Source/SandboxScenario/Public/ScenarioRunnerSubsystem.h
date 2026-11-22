@@ -17,6 +17,8 @@ class ACameraActor;
  *   -Scenario=<file or name>   Scenarios/<name>.json, or a path (relative paths resolve against the project dir)
  *   -Out=<dir>                 output directory (default Saved/Scenarios/<name>)
  *   -Shot=<file.png>           optional screenshot of the final frame (rendered runs only)
+ *   -Tune="name=value,..."     tuning overrides for this run (read by FSandboxParamStore, active control only)
+ *   -TuningDir=<dir>           tuning files to use instead of Config/Tuning (also read by the store)
  *   -vr                        engine flag: run in the headset. The camera becomes the tracking origin on
  *                              the floor, and metrics.json gains the headset's render size
  *
@@ -58,6 +60,8 @@ private:
 	bool SpawnBody(UWorld& World, FString& OutError);
 	void SampleFrame(float DeltaTime);
 	void ApplyDueEvents(double SimTimeS);
+	bool CopyTuningFiles(FString& OutError);
+	bool EditTuningFiles(const FScenarioEvent& Event, FString& OutError);
 	void Finish();
 	void FailAndExit(const FString& Message);
 	void RequestExit(uint8 Code);
@@ -114,6 +118,19 @@ private:
 	TMap<FName, FVector2D> SettledBodySpeeds;
 	double MaxJointSpeedRadS = 0.0;
 	FName FastestJoint;
+
+	// Falling, judged by the pelvis alone: fallen once it is below half the height above the spawn point
+	// that it started at. A body that sits down with a straight back has fallen; its head has not dropped far.
+	double PelvisStartHeightCm = 0.0;
+	double FinalPelvisHeightCm = 0.0;
+	int32 FallFrame = -1;
+
+	// Tuning. A scenario with an "edit_tuning_file" event runs on its own copy of the tuning files, so the
+	// event never writes to Config/Tuning. Every change of the running body's values is recorded.
+	bool bOwnTuningFiles = false;
+	int32 SeenTuningChanges = 0;
+	TArray<TPair<FString, double>> LastTuningValues;
+	TArray<TSharedPtr<FJsonValue>> TuningChanges;
 
 	// Joint angles in the spawn pose (twist, swing1, swing2 in degrees), by joint name, and how far the
 	// worst one lies outside its limits. A pose outside the limits is snapped inside by the first steps.

@@ -13,6 +13,7 @@
 #include "HAL/PlatformMisc.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
+#include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
 #include "IHeadMountedDisplay.h"
@@ -36,6 +37,7 @@
 #include "SandboxBodyProbe.h"
 #include "SandboxCore.h"
 #include "SandboxJson.h"
+#include "SandboxParamStore.h"
 #include "SandboxRagdollActor.h"
 #include "UnrealClient.h"
 
@@ -61,6 +63,8 @@ namespace
 		TEXT("r.SkeletalMeshLODBias"), TEXT("r.RayTracing") };
 	// Frames to keep rendering after the request so it is serviced before the process exits.
 	constexpr int32 ScreenshotFrames = 30;
+	// The body has fallen once its pelvis is below this fraction of the height it started at.
+	constexpr double FallenPelvisHeightFraction = 0.5;
 
 	uint32 HashDoubles(const double* Values, int32 Count, uint32 Previous)
 	{
@@ -370,20 +374,26 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 		Ragdoll->AddAttachedMesh(Attached);
 	}
 
+	// The tuning files are looked at from Tick, on fixed frames, instead of by the store's own poll: an
+	// edit made during a run then takes effect on the same frame every time.
+	FSandboxParamStore& Params = FSandboxParamStore::Get();
+	Params.SetAutoPoll(false);
+
 	if (Spec.Control == EScenarioBodyControl::Active)
 	{
-		// -Tune="name=value,..." changes tuning values for this run only.
-		FSandboxBodyTuning Tuning;
-		FString Overrides;
-		if (FParse::Value(FCommandLine::Get(), TEXT("Tune="), Overrides, /*bShouldStopOnSeparator*/ false) && !Tuning.ApplyOverrides(Overrides, OutError))
+		// The body's tuning: the files of Config/Tuning (or -TuningDir=), with -Tune="name=value,..." on
+		// top for this run only. Both are read by the store.
+		if (Spec.HasEvent(TEXT("edit_tuning_file")) && !CopyTuningFiles(OutError))
 		{
 			return false;
 		}
-		if (!Ragdoll->StartActiveControl(Tuning, OutError))
+		if (!Params.EnsureLoaded(OutError) || !Ragdoll->StartActiveControl(Params, OutError))
 		{
 			return false;
 		}
-		HeadBone = Ragdoll->GetController()->GetTuning().Rig.Head;
+		const USandboxBodyController* Controller = Ragdoll->GetController();
+		Controller->GetTuning().ListValues(LastTuningValues);
+		HeadBone = Controller->GetTuning().Rig.Head;
 	}
 
 	// Where the body starts: the reference for the drift metrics. The pelvis is the root body.
@@ -392,6 +402,8 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 	{
 		PelvisBone = BodyMesh->GetBoneName(Root->InstanceBoneIndex);
 		PelvisStartCm = Root->GetUnrealWorldTransform().GetLocation();
+		PelvisStartHeightCm = PelvisStartCm.Z - Spec.SpawnLocationCm.Z;
+		FinalPelvisHeightCm = PelvisStartHeightCm;
 	}
 	TArray<FSandboxBodySample> Bodies;
 	FSandboxBodyProbe::SampleBodies(BodyMesh, Bodies);
@@ -490,6 +502,13 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 	SampleFrame(DeltaTime);
 	ApplyDueEvents(SimTimeS);
 
+	// Hot reload: a look at the tuning files' size and time every few frames. It reads no clock and does
+	// nothing while the files stay as they are (and nothing at all in a passive run, which never loads them).
+	if (FrameIndex % FSandboxParamStore::AutoPollIntervalFrames == 0)
+	{
+		FSandboxParamStore::Get().PollFiles();
+	}
+
 	++FrameIndex;
 	if (FrameIndex >= TotalFrames)
 	{
@@ -551,6 +570,11 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		{
 			FinalPelvisDriftCm = FVector::Dist(Location, PelvisStartCm);
 			MaxPelvisDriftCm = FMath::Max(MaxPelvisDriftCm, FinalPelvisDriftCm);
+			FinalPelvisHeightCm = Location.Z - Spec.SpawnLocationCm.Z;
+			if (FallFrame < 0 && FinalPelvisHeightCm < FallenPelvisHeightFraction * PelvisStartHeightCm)
+			{
+				FallFrame = FrameIndex;
+			}
 		}
 		if (Body.Bone == HeadBone)
 		{
@@ -587,6 +611,34 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			AssistTorqueShareSum += Load.TorqueShare;
 			AssistTorqueShareMax = FMath::Max(AssistTorqueShareMax, Load.TorqueShare);
 			++AssistSamples;
+		}
+
+		if (Controller->GetTuningChangeCount() != SeenTuningChanges)
+		{
+			// The controller took new values before this frame's physics step: an edited tuning file or an
+			// override. Recorded with what changed, so the metrics can be read against it.
+			SeenTuningChanges = Controller->GetTuningChangeCount();
+			TArray<TPair<FString, double>> Values;
+			Controller->GetTuning().ListValues(Values);
+			const TSharedRef<FJsonObject> Changed = MakeShared<FJsonObject>();
+			for (int32 Index = 0; Index < Values.Num() && Index < LastTuningValues.Num(); ++Index)
+			{
+				if (Values[Index].Value != LastTuningValues[Index].Value)
+				{
+					const TSharedRef<FJsonObject> FromTo = MakeShared<FJsonObject>();
+					FromTo->SetNumberField(TEXT("from"), LastTuningValues[Index].Value);
+					FromTo->SetNumberField(TEXT("to"), Values[Index].Value);
+					Changed->SetObjectField(Values[Index].Key, FromTo);
+				}
+			}
+			LastTuningValues = MoveTemp(Values);
+
+			const TSharedRef<FJsonObject> Change = MakeShared<FJsonObject>();
+			Change->SetNumberField(TEXT("frame"), FrameIndex);
+			Change->SetNumberField(TEXT("t"), FrameIndex * FixedDt);
+			Change->SetNumberField(TEXT("pelvis_height_cm"), FinalPelvisHeightCm);
+			Change->SetObjectField(TEXT("values"), Changed);
+			TuningChanges.Add(MakeShared<FJsonValueObject>(Change));
 		}
 	}
 
@@ -643,6 +695,33 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 	while (NextEventIndex < Spec.Events.Num() && Spec.Events[NextEventIndex].TimeS <= SimTimeS + DtToleranceS)
 	{
 		const FScenarioEvent& Event = Spec.Events[NextEventIndex++];
+		if (Event.Type == TEXT("console"))
+		{
+			// The path a command typed into the console of a running session takes.
+			if (GEngine && GEngine->Exec(&GetWorldRef(), *Event.Command))
+			{
+				++EventsApplied;
+			}
+			else
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: console command '%s' was not recognised"), Event.TimeS, *Event.Command);
+			}
+			continue;
+		}
+		if (Event.Type == TEXT("edit_tuning_file"))
+		{
+			FString Error;
+			if (EditTuningFiles(Event, Error))
+			{
+				++EventsApplied;
+			}
+			else
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f could not edit the tuning files: %s"), Event.TimeS, *Error);
+			}
+			continue;
+		}
+
 		FBodyInstance* Body = Mesh ? Mesh->GetBodyInstance(Event.Body) : nullptr;
 		if (!Body || !Body->IsValidBodyInstance())
 		{
@@ -674,6 +753,86 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 		}
 		++EventsApplied;
 	}
+}
+
+bool UScenarioRunnerSubsystem::CopyTuningFiles(FString& OutError)
+{
+	FSandboxParamStore& Params = FSandboxParamStore::Get();
+	const FString Source = Params.GetDirectory();
+	const FString Copy = FPaths::Combine(OutDir, TEXT("tuning"));
+
+	IFileManager& Files = IFileManager::Get();
+	Files.DeleteDirectory(*Copy, /*RequireExists*/ false, /*Tree*/ true);
+	Files.MakeDirectory(*Copy, /*Tree*/ true);
+	TArray<FString> Names;
+	Files.FindFiles(Names, *FPaths::Combine(Source, TEXT("*.json")), /*Files*/ true, /*Directories*/ false);
+	if (Names.Num() == 0)
+	{
+		OutError = FString::Printf(TEXT("No tuning files (*.json) in '%s'"), *Source);
+		return false;
+	}
+	for (const FString& Name : Names)
+	{
+		if (Files.Copy(*FPaths::Combine(Copy, Name), *FPaths::Combine(Source, Name)) != COPY_OK)
+		{
+			OutError = FString::Printf(TEXT("Cannot copy tuning file '%s' to '%s'"), *Name, *Copy);
+			return false;
+		}
+	}
+	Params.SetDirectory(Copy);
+	bOwnTuningFiles = true;
+	return true;
+}
+
+bool UScenarioRunnerSubsystem::EditTuningFiles(const FScenarioEvent& Event, FString& OutError)
+{
+	if (!bOwnTuningFiles)
+	{
+		OutError = TEXT("the run has no tuning files of its own (the body is not under active control)");
+		return false;
+	}
+
+	// The values are written the way an editor would save them: into the file, and nothing else. The
+	// running session has to notice the change by itself.
+	const FSandboxParamStore& Params = FSandboxParamStore::Get();
+	TMap<FString, TSharedPtr<FJsonObject>> Documents;
+	for (const TPair<FString, double>& Value : Event.Values)
+	{
+		const FString File = Params.FindFile(Value.Key);
+		if (File.IsEmpty())
+		{
+			OutError = FString::Printf(TEXT("'%s' is not in the tuning files"), *Value.Key);
+			return false;
+		}
+		TSharedPtr<FJsonObject>& Document = Documents.FindOrAdd(File);
+		if (!Document.IsValid() && !SandboxJson::LoadObject(FPaths::Combine(Params.GetDirectory(), File), Document, OutError))
+		{
+			return false;
+		}
+
+		TArray<FString> Path;
+		Value.Key.ParseIntoArray(Path, TEXT("."));
+		TSharedPtr<FJsonObject> Object = Document;
+		for (int32 Index = 0; Index + 1 < Path.Num(); ++Index)
+		{
+			const TSharedPtr<FJsonObject>* Child = nullptr;
+			if (!Object->TryGetObjectField(Path[Index], Child))
+			{
+				OutError = FString::Printf(TEXT("'%s' is not written as nested objects in %s"), *Value.Key, *File);
+				return false;
+			}
+			Object = *Child;
+		}
+		Object->SetNumberField(Path.Last(), Value.Value);
+	}
+	for (const TPair<FString, TSharedPtr<FJsonObject>>& Document : Documents)
+	{
+		if (!SandboxJson::SaveObject(FPaths::Combine(Params.GetDirectory(), Document.Key), Document.Value.ToSharedRef(), OutError))
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 void UScenarioRunnerSubsystem::Finish()
@@ -752,6 +911,11 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxSettledAngularSpeedRadS.GetValue();
 		AddCheck(TEXT("max_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS <= Limit, Number(MaxSettledAngularSpeedRadS), Number(Limit));
 	}
+	if (Spec.Expect.MinSettledAngularSpeedRadS.IsSet())
+	{
+		const double Limit = Spec.Expect.MinSettledAngularSpeedRadS.GetValue();
+		AddCheck(TEXT("min_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS >= Limit, Number(MaxSettledAngularSpeedRadS), Number(Limit));
+	}
 	if (Spec.Expect.MaxJointSpeedRadS.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxJointSpeedRadS.GetValue();
@@ -762,6 +926,24 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxPhysicsStepMeanMs.GetValue();
 		const bool bMeasured = SortedStepMs.Num() > 0;
 		AddCheck(TEXT("max_physics_step_mean_ms"), bMeasured && PhysicsStepMeanMs <= Limit, bMeasured ? Number(PhysicsStepMeanMs) : Null(), Number(Limit));
+	}
+
+	const bool bFell = FallFrame >= 0;
+	const double FallTimeS = (FallFrame + 1) * FixedDt;
+	if (Spec.Expect.Fell.IsSet())
+	{
+		const bool bExpected = Spec.Expect.Fell.GetValue();
+		AddCheck(TEXT("fell"), bFell == bExpected, Boolean(bFell), Boolean(bExpected));
+	}
+	if (Spec.Expect.MinFallTimeS.IsSet())
+	{
+		const double Limit = Spec.Expect.MinFallTimeS.GetValue();
+		AddCheck(TEXT("min_fall_time_s"), !bFell || FallTimeS + DtToleranceS >= Limit, bFell ? Number(FallTimeS) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.TuningChanges.IsSet())
+	{
+		const double Limit = Spec.Expect.TuningChanges.GetValue();
+		AddCheck(TEXT("tuning_changes"), TuningChanges.Num() == Limit, Number(TuningChanges.Num()), Number(Limit));
 	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -875,6 +1057,10 @@ void UScenarioRunnerSubsystem::Finish()
 	Metrics->SetNumberField(TEXT("final_pelvis_drift_cm"), FinalPelvisDriftCm);
 	Metrics->SetNumberField(TEXT("max_com_drift_cm"), MaxComDriftCm);
 	Metrics->SetField(TEXT("min_head_height_cm"), bHaveHead ? Number(MinHeadHeightCm) : Null());
+	Metrics->SetNumberField(TEXT("final_pelvis_height_cm"), FinalPelvisHeightCm);
+	Metrics->SetNumberField(TEXT("fall_pelvis_height_cm"), FallenPelvisHeightFraction * PelvisStartHeightCm);
+	Metrics->SetBoolField(TEXT("fell"), bFell);
+	Metrics->SetField(TEXT("fall_time_s"), bFell ? Number(FallTimeS) : Null());
 	Metrics->SetNumberField(TEXT("max_settled_speed_mps"), MaxSettledSpeedCmS * 0.01);
 	Metrics->SetNumberField(TEXT("max_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS);
 	Metrics->SetNumberField(TEXT("max_joint_speed_rads"), MaxJointSpeedRadS);
@@ -896,7 +1082,8 @@ void UScenarioRunnerSubsystem::Finish()
 		Assist->SetNumberField(TEXT("torque_share_max"), AssistTorqueShareMax);
 		ControlJson->SetObjectField(TEXT("assist_load"), Assist);
 
-		// The tuning the run actually used, so a result can always be traced back to its parameters.
+		// The tuning the body had at the end of the run, where it came from and every change on the way,
+		// so a result can always be traced back to its parameters.
 		const TSharedRef<FJsonObject> TuningJson = MakeShared<FJsonObject>();
 		TArray<TPair<FString, double>> TuningValues;
 		Controller->GetTuning().ListValues(TuningValues);
@@ -905,6 +1092,26 @@ void UScenarioRunnerSubsystem::Finish()
 			TuningJson->SetNumberField(Value.Key, Value.Value);
 		}
 		ControlJson->SetObjectField(TEXT("tuning"), TuningJson);
+
+		const FSandboxParamStore& Params = FSandboxParamStore::Get();
+		const TSharedRef<FJsonObject> Source = MakeShared<FJsonObject>();
+		Source->SetStringField(TEXT("directory"), Params.GetDirectory());
+		TArray<FString> FileNames;
+		Params.GetFileNames(FileNames);
+		TArray<TSharedPtr<FJsonValue>> FileValues;
+		for (const FString& FileName : FileNames)
+		{
+			FileValues.Add(MakeShared<FJsonValueString>(FileName));
+		}
+		Source->SetArrayField(TEXT("files"), FileValues);
+		const TSharedRef<FJsonObject> OverridesJson = MakeShared<FJsonObject>();
+		for (const TPair<FString, double>& Override : Params.GetOverrides())
+		{
+			OverridesJson->SetNumberField(Override.Key, Override.Value);
+		}
+		Source->SetObjectField(TEXT("overrides"), OverridesJson);
+		ControlJson->SetObjectField(TEXT("tuning_source"), Source);
+		ControlJson->SetArrayField(TEXT("tuning_changes"), TuningChanges);
 	}
 	Root->SetObjectField(TEXT("control"), ControlJson);
 

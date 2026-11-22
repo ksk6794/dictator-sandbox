@@ -1,0 +1,23 @@
+{
+  "name": "tune_live_solver",
+  "duration_s": 10.0,
+  "settle_s": 4.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "events": [
+    { "t": 3.0, "type": "console", "command": "Sandbox.Tune solver.position_iterations=8" }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": false,
+    "min_settled_angular_speed_rads": 0.3,
+    "max_joint_stretch_cm": 2.0
+  }
+}

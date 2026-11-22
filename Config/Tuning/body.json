@@ -1,0 +1,26 @@
+{
+  "rig": {
+    "pelvis": "pelvis",
+    "chest": "spine_04",
+    "head": "neck_01",
+    "foot_left": "foot_l",
+    "foot_right": "foot_r"
+  },
+  "muscles": {
+    "spine": { "stiffness_nm_per_rad": 600, "damping_s": 0.06, "max_torque_nm": 0 },
+    "neck": { "stiffness_nm_per_rad": 80, "damping_s": 0.06, "max_torque_nm": 0 },
+    "arms": { "stiffness_nm_per_rad": 150, "damping_s": 0.06, "max_torque_nm": 0 },
+    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 0 }
+  },
+  "assist": {
+    "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2 },
+    "chest": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2 },
+    "head": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 10, "damping_s": 0.2 },
+    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2 }
+  },
+  "solver": {
+    "position_iterations": 64,
+    "velocity_iterations": 2,
+    "projection_iterations": 1
+  }
+}

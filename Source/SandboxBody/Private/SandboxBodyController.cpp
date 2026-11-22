@@ -7,6 +7,7 @@
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxCore.h"
+#include "SandboxParamStore.h"
 
 namespace
 {
@@ -35,6 +36,12 @@ USandboxBodyController::USandboxBodyController()
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
 
+void USandboxBodyController::OnUnregister()
+{
+	ReleaseIslandRefresh();
+	Super::OnUnregister();
+}
+
 const FSandboxAssistTuning& USandboxBodyController::AssistTuning(EAssistSlot Slot) const
 {
 	switch (Slot)
@@ -46,7 +53,7 @@ const FSandboxAssistTuning& USandboxBodyController::AssistTuning(EAssistSlot Slo
 	}
 }
 
-bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandboxBodyTuning& InTuning, FString& OutError)
+bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandboxParamStore& InParams, FString& OutError)
 {
 	if (bStarted)
 	{
@@ -58,7 +65,8 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		OutError = TEXT("The body controller needs a skeletal mesh with physics bodies");
 		return false;
 	}
-	if (!InTuning.Validate(OutError))
+	FSandboxBodyTuning InTuning;
+	if (!FSandboxBodyTuning::FromParams(InParams, FString(), InTuning, OutError))
 	{
 		return false;
 	}
@@ -156,6 +164,8 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 
 	// Run after the mesh has evaluated its animation pose for this frame: that pose is the muscles' target.
 	AddTickPrerequisiteComponent(Mesh);
+	Params = &InParams;
+	ParamsRevision = InParams.GetRevision();
 	bStarted = true;
 
 	UE_LOG(LogSandbox, Display, TEXT("Body controller started: %d muscles, %d assist controls, %.1f kg, centre of mass %.2f m above the origin"),
@@ -175,10 +185,77 @@ bool USandboxBodyController::ApplyTuning(const FSandboxBodyTuning& InTuning, FSt
 		return false;
 	}
 	const FSandboxBodyRig Rig = Tuning.Rig;
+	const FSandboxSolverTuning Solver = Tuning.Solver;
 	Tuning = InTuning;
 	Tuning.Rig = Rig;
 	PushTuningToControls();
+	if (Solver.PositionIterations != Tuning.Solver.PositionIterations || Solver.VelocityIterations != Tuning.Solver.VelocityIterations ||
+		Solver.ProjectionIterations != Tuning.Solver.ProjectionIterations)
+	{
+		RefreshSolverIsland();
+	}
 	return true;
+}
+
+void USandboxBodyController::RefreshSolverIsland()
+{
+	// Chaos works out a simulation island's iteration counts from its bodies only when something joins or
+	// leaves the island (FPBDIslandManager, "this won't handle updates to per-body iterations after being
+	// added to an island"). A standing character's island never changes, so new counts would be ignored.
+	// A constraint to the world that leaves every axis free is such a change and applies no force; it is
+	// taken away again on the next tick, which is a second change and leaves nothing behind.
+	ReleaseIslandRefresh();
+	FBodyInstance* Body = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	if (!Body || !Body->IsValidBodyInstance())
+	{
+		return;
+	}
+	IslandRefresh = MakeUnique<FConstraintInstance>();
+	IslandRefresh->SetLinearLimits(LCM_Free, LCM_Free, LCM_Free, 0.0f);
+	IslandRefresh->SetAngularSwing1Motion(ACM_Free);
+	IslandRefresh->SetAngularSwing2Motion(ACM_Free);
+	IslandRefresh->SetAngularTwistMotion(ACM_Free);
+	IslandRefresh->SetRefFrame(EConstraintFrame::Frame1, FTransform::Identity);
+	IslandRefresh->SetRefFrame(EConstraintFrame::Frame2, Body->GetUnrealWorldTransform());
+	IslandRefresh->InitConstraint(Body, nullptr, 1.0f, this);
+}
+
+void USandboxBodyController::ReleaseIslandRefresh()
+{
+	if (IslandRefresh)
+	{
+		IslandRefresh->TermConstraint();
+		IslandRefresh.Reset();
+	}
+}
+
+void USandboxBodyController::FollowParams()
+{
+	ParamsRevision = Params->GetRevision();
+
+	// The store has already put a new set through the body's own checks, so a failure here is not expected.
+	FSandboxBodyTuning NewTuning;
+	FString Error;
+	if (!FSandboxBodyTuning::FromParams(*Params, FString(), NewTuning, Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its tuning: %s"), *Error);
+		return;
+	}
+	if (!(NewTuning.Rig == Tuning.Rig))
+	{
+		UE_LOG(LogSandbox, Warning, TEXT("Body controller: the rig bones changed in the tuning files; that takes effect when the body is next started"));
+	}
+	if (NewTuning.HasSameValues(Tuning))
+	{
+		return;
+	}
+	if (!ApplyTuning(NewTuning, Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its tuning: %s"), *Error);
+		return;
+	}
+	++TuningChangeCount;
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: new tuning values applied (change %d)"), TuningChangeCount);
 }
 
 void USandboxBodyController::PushTuningToControls()
@@ -246,6 +323,14 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	if (!bStarted || !Control || !Mesh || TickType != LEVELTICK_All)
 	{
 		return;
+	}
+
+	ReleaseIslandRefresh();
+
+	// One integer compared per tick: nothing else happens here while the tuning stays as it is.
+	if (Params && Params->GetRevision() != ParamsRevision)
+	{
+		FollowParams();
 	}
 
 	Control->UpdateTargetCaches(DeltaTime);
