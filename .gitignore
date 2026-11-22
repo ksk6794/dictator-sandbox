@@ -1,0 +1,27 @@
+# Unreal build and cache output
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# IDE files (regenerate with the engine's GenerateProjectFiles)
+.vs/
+.idea/
+*.sln
+*.slnx
+*.suo
+*.VC.db
+*.opensdf
+*.sdf
+*.xcworkspace
+
+# Stock engine content, copied by Tools/fetch-stock-content.ps1
+Content/Characters/Mannequins/
+
+# Generator output, rebuilt by Tools/gen-assets.ps1 from Specs/
+Content/Generated/
+
+# Local agent settings
+.claude/settings.local.json

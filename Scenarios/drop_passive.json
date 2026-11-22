@@ -1,0 +1,15 @@
+{
+  "name": "drop_passive",
+  "duration_s": 6.0,
+  "fixed_fps": 90,
+  "body": {
+    "mesh": "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple",
+    "location_cm": [0, 0, 150],
+    "rotation_deg": [0, 0, 0]
+  },
+  "events": [],
+  "expect": {
+    "rest_within_s": 5.0,
+    "max_joint_stretch_cm": 3.0
+  }
+}

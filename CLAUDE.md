@@ -1,0 +1,80 @@
+# DictatorSandbox
+
+Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
+and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
+Current milestone: **M0 done** (toolchain, scenario runner, passive ragdoll). Next: M1 feasibility spikes.
+
+Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
+
+## Commands
+
+Run from the repo root in PowerShell. Each script prints a one-line verdict first (`BUILD OK`,
+`SCENARIO FAIL: ...`), returns a meaningful exit code and writes a JSON result under `Saved\`.
+
+| Task | Command |
+| --- | --- |
+| Clean clone to verified build | `powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1` |
+| Compile | `powershell -ExecutionPolicy Bypass -File Tools\build.ps1` |
+| Unit tests | `powershell -ExecutionPolicy Bypass -File Tools\test.ps1` |
+| One scenario, headless | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive` |
+| One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics) |
+| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
+| Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
+| Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
+| Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` |
+
+Typical times on the reference machine: incremental build 4 to 10 s, full build 80 s, one scenario 8 s,
+unit tests 15 s.
+
+The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
+scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
+
+## Layout
+
+| Path | Holds |
+| --- | --- |
+| `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers. Depends on no other Sandbox module. |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `FSandboxBodyProbe` (measurements). |
+| `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
+| `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
+| `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet (text specs to assets). |
+| `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
+| `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
+| `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
+| `docs/` | `PRD.md` (plan), `testing.md` (repeatability policy and measurements). |
+
+## Rules
+
+- **Module dependencies.** `SandboxBody` and `SandboxInteraction` must not depend on each other; they meet
+  only as rigid bodies in the physics world. Both may depend on `SandboxCore`. `SandboxScenario` may depend
+  on all of them; nothing depends on it.
+- **No Blueprint logic, no Animation Blueprints.** Gameplay, input and animation logic are C++.
+- **Text is the source of truth.** Never hand-edit `.uasset` or `.umap` files. Generated assets come from
+  `Specs/` through the `GenerateAssets` commandlet; imported art is imported by script.
+- **Physics timing is fixed.** Synchronous physics, 90 Hz frame, 2 substeps (180 Hz). Scenarios force a
+  fixed engine timestep. Do not read wall-clock time in simulation code.
+- **Units.** Unreal units in code (cm, kg, cm/s). Scenario files and metrics use the unit in the field
+  name (`_cm`, `_s`, `_ns` for newton-seconds, `_mps`).
+- **Tests are named `DictatorSandbox.*`.** The filter is a substring match, and engine plugins already use
+  the word "Sandbox".
+- **Result files over exit codes.** Scripts decide success from the JSON a run writes; an editor process
+  can exit 0 after an error.
+- **Close the Unreal Editor before building.** It locks the module DLLs. Live Coding is not used.
+- Use `UE_LOG(LogSandbox, ...)` for project logging.
+
+## Things that have already bitten
+
+- **`/Engine/Tutorial/.../TutorialTPP` is not a usable ragdoll.** It explodes when all bodies simulate.
+  Use the stock mannequin copied by `Tools\fetch-stock-content.ps1`
+  (`/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple`).
+- **Physics assets can contain non-rigid constraints.** The stock mannequin has one (`UserConstraint_0`).
+  `FSandboxBodyProbe::MaxJointStretchCm` only measures joints with all linear axes locked.
+- **Headless runs do not render, so nothing is "recently rendered".** Skeletal meshes must use
+  `AlwaysTickPoseAndRefreshBones` and disable update-rate optimisation, as `ASandboxRagdollActor` does.
+- **Keep the `AndroidFileServer` plugin disabled in the `.uproject`.** When it is enabled, the editor
+  appends a section with a generated `SecurityToken` to `Config/DefaultEngine.ini` on first run, which
+  must not be committed.
+- **Toolchain.** Engine 5.8.4 from the Epic launcher; Visual Studio 2026 with MSVC 14.50 and Windows SDK
+  10.0.22621. The MSVC 14.51 toolset breaks 5.8. `Tools\common.ps1` finds the engine from the launcher's
+  install list, or from `UE_ROOT` if set.
+- **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
