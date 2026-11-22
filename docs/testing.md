@@ -39,6 +39,28 @@ Other numbers from these runs:
   scenario process, including engine start-up, takes about 8 s.
 - Largest rigid-joint separation during a 1.5 m drop: 0.86 cm.
 
+### M1 (in progress), 2026-11-22
+
+Same machine and settings. MetaHuman body `SKM_SandboxNPC_BodyMesh`; the generated physics asset
+`PA_SandboxNPC` has 16 bodies and 80.0 kg, the stock MetaHuman asset 21 bodies and 80.6 kg.
+
+| Scenario | Physics asset | Largest joint stretch | Notes |
+| --- | --- | --- | --- |
+| `drop_passive` | Stock mannequin | 0.86 cm | |
+| `drop_metahuman` | Stock MetaHuman | 0.14 cm | Rests after 5.3 s |
+| `drop_npc` | Generated | 0.13 cm | Rests after 4.4 s |
+| `hang_npc_hand` | Generated | 0.49 cm (right wrist) | Whole body hangs from the right hand for 10 s; M1 limit is 3 cm |
+
+Headless and rendered runs of `drop_npc` and `hang_npc_hand` gave identical hashes.
+
+Two findings to carry forward:
+
+- **The world pin itself gave by up to 3.7 cm** in `hang_npc_hand` (`max_pin_error_cm`), far more than any
+  skeleton joint. A grab in M4 is the same kind of constraint, so it will need attention there (iterations,
+  projection or a stiffer formulation).
+- **An earlier reading of 3.6 cm stretch for the MetaHuman was wrong.** It was the authored anchor offset
+  at `spine_02` being closed in the first frames, now reported separately as `initial_joint_offset_cm`.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

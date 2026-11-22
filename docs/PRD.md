@@ -543,10 +543,10 @@ Install UE 5.8.4 and the MSVC 14.50 toolset. Create the C++ project with its fiv
 Assemble and import the MetaHuman. Generate the physics asset from its JSON spec. Generate and bake a graybox room from CLI. Launch through OpenXR and measure stereo cost. Hang the ragdoll from one hand constraint to stress the joints.
 
 - [ ] Character in the baked test room renders in stereo within 9 ms of GPU time at headset resolution
-- [ ] Regenerated physics asset matches the spec's body count, masses and limits, checked by a test
+- [x] Regenerated physics asset matches the spec's body count, masses and limits, checked by a test
 - [ ] The lighting bake completes from the command line
 - [ ] The same build launches in VR with `-vr` and flat with `-nohmd`
-- [ ] Joint stretch under an 80 kg hanging load stays under 3 cm
+- [x] Joint stretch under an 80 kg hanging load stays under 3 cm
 - [ ] Renderer path, character source and solver settings are confirmed or switched to their fallbacks
 
 ### M2: Active ragdoll core (about 3 weeks)

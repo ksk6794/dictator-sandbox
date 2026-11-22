@@ -39,14 +39,24 @@ The file name must equal the `name` field (a unit test checks this).
 | `body.physics_asset` | no | Overrides the mesh's own physics asset |
 | `body.location_cm` | no, default `[0, 0, 150]` | Spawn location of the mesh origin (the feet). The floor's top is at z = 0 |
 | `body.rotation_deg` | no | `[pitch, yaw, roll]` |
+| `body.attached_meshes` | no | Extra skeletal meshes that follow the body's pose and have no collision (a MetaHuman face) |
+| `body.simulate` | no, default `true` | `false` keeps the body kinematic in its reference pose, for portraits and rendering-cost scenes |
+| `camera` | no | `{ "location_cm": [x, y, z], "look_at_cm": [x, y, z] }` for rendered runs. Without it the runner frames the body |
 | `events` | no | Scripted stimuli, applied at simulated time `t` |
 | `expect` | no | Pass criteria; omitted ones are not checked |
 
-Event types (M0): `impulse` applies `impulse_ns` newton-seconds along `direction` (normalised for you) to
-the body on bone `body`. Unknown types are a parse error.
+Event types. Unknown types are a parse error.
 
-Expectations (M0): `rest_within_s` (the body is at rest by that time and stays at rest),
-`max_joint_stretch_cm` (largest anchor separation of any rigid joint over the whole run).
+- `impulse` applies `impulse_ns` newton-seconds along `direction` (normalised for you) to the body on bone `body`.
+- `pin` fixes the body on bone `body` at its current world position with a ball joint; the rest of the
+  character hangs from it. `metrics.max_pin_error_cm` reports how far the body strayed from the pin point.
+
+Expectations: `rest_within_s` (the body is at rest by that time and stays at rest),
+`max_joint_stretch_cm` (largest anchor separation of any rigid joint, measured from the sixth frame on).
+
+A physics asset can be authored with joint anchors that do not coincide in the reference pose; the solver
+closes that gap in the first frames. It is reported as `metrics.initial_joint_offset_cm` and is not part of
+the stretch metric.
 
 Four checks always run: no NaN, the body stays within 50 m of the origin, every frame used the fixed
 timestep, and every event found its body.
@@ -54,6 +64,6 @@ timestep, and every event found its body.
 ## Output
 
 `metrics.json` has `pass`, the list of `checks` with value and limit, `metrics` (peak speeds, stretch, time to
-rest), `timing`, and two `hashes`: a CRC of all body transforms over every frame and one of all bone
+rest), `body` (every body's mass and every joint's parent and limits, as instanced), `timing`, and two `hashes`: a CRC of all body transforms over every frame and one of all bone
 transforms. Equal hashes mean two runs were identical in every frame. `trace.json` holds the transforms at
 each checkpoint for measuring how far two runs drifted apart (`Tools\compare-runs.ps1`).

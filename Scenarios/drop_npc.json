@@ -1,0 +1,20 @@
+{
+  "name": "drop_npc",
+  "duration_s": 7.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      150
+    ]
+  },
+  "expect": {
+    "rest_within_s": 6.5,
+    "max_joint_stretch_cm": 3.0
+  }
+}

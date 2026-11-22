@@ -2,7 +2,8 @@
 
 Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
-Current milestone: **M0 done** (toolchain, scenario runner, passive ragdoll). Next: M1 feasibility spikes.
+Current milestone: **M1 in progress.** Done: MetaHuman by script, physics asset from a JSON spec, hanging-load
+test. Open: generated room with baked lighting, OpenXR launch and stereo cost (see `docs/PRD.md`).
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 
@@ -38,7 +39,8 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `FSandboxBodyProbe` (measurements). |
 | `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
-| `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet (text specs to assets). |
+| `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs. |
+| `Specs/` | Text specs for generated assets; format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
@@ -78,6 +80,11 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **Toolchain.** Engine 5.8.4 from the Epic launcher; Visual Studio 2026 with MSVC 14.50 and Windows SDK
   10.0.22621. The MSVC 14.51 toolset breaks 5.8. `Tools\common.ps1` finds the engine from the launcher's
   install list, or from `UE_ROOT` if set.
+- **Do not make one ragdoll body kinematic to hold it in place.** Kinematic bones follow the component, and
+  the component follows the simulated root, so the body is dragged along. Constrain it to the world instead
+  (see the `pin` event in `UScenarioRunnerSubsystem`).
+- **The stock MetaHuman physics asset has a 3.6 cm anchor offset at `spine_02` in the reference pose.** It
+  shows up as `initial_joint_offset_cm`, not as stretch. The generated asset inherits it from the template.
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

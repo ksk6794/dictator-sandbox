@@ -1,0 +1,47 @@
+# Specs
+
+Text descriptions that `Tools\gen-assets.ps1` turns into binary assets under `Content/Generated/` (not
+committed). Edit the spec, regenerate, run the tests: `DictatorSandbox.Generated.*` checks that every
+generated asset matches its spec.
+
+## physics/*.json: physics assets
+
+```json
+{
+  "name": "npc_body",
+  "output": "/Game/Generated/Physics/PA_SandboxNPC",
+  "skeletal_mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+  "template": "/Game/MetaHumans/SandboxNPC/Body/PHYS_SandboxNPC.PHYS_SandboxNPC",
+  "total_mass_kg": 80.0,
+  "bodies": [
+    {"bone": "pelvis", "mass_fraction": 0.1117, "shapes_from": ["pelvis"]},
+    {"bone": "spine_04", "mass_fraction": 0.1596, "shapes_from": ["spine_04", "clavicle_l", "clavicle_r"]}
+  ],
+  "joints": [
+    {"child": "spine_04", "swing1": 15, "swing2": 10, "twist": 10}
+  ],
+  "collision": {"disable": [], "enable": []}
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `output` | Package path of the generated asset |
+| `template` | Existing physics asset that supplies collision shapes and joint frames |
+| `total_mass_kg` | Body mass; each body gets `mass_fraction` of it. Fractions must sum to 1 |
+| `bodies[].bone` | Bone the body is attached to. Bones without a body follow their parent rigidly |
+| `bodies[].shapes_from` | Template bodies whose shapes this body takes over. Listing several merges them |
+| `joints[].child` | Child body. Its parent is the nearest ancestor bone that has a body. One joint per non-root body |
+| `joints[].swing1`, `swing2`, `twist` | A number limits the axis to plus or minus that many degrees; `"locked"` and `"free"` are the alternatives |
+| `collision.disable`, `enable` | Extra `[boneA, boneB]` pairs. Jointed bodies never collide. Other pairs start "off" if any pair of the template bodies they were built from was off |
+
+What comes from the template and what from the spec: shapes and joint frames (where the joint sits and
+which way its axes point) are the template's; the set of bodies, masses, joint limits and collision pairs
+are the spec's.
+
+Current limitations, to be lifted when joint behaviour is tuned in M2:
+
+- Limits are symmetric around the template's joint frame. An asymmetric range such as a knee's 0 to 150
+  degrees cannot be expressed yet.
+- `npc_body.json` carries the stock MetaHuman limits, summed where two template joints were merged into one
+  (neck and shoulder). They are not yet the clinical ranges listed in `docs/PRD.md`.

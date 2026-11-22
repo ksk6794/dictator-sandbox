@@ -7,5 +7,6 @@ public class SandboxEditor : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "Json", "SandboxCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "PhysicsCore", "PhysicsUtilities", "AssetRegistry" });
 	}
 }

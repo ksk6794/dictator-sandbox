@@ -19,7 +19,7 @@ ASandboxRagdollActor::ASandboxRagdollActor()
 	BodyMesh->bEnableUpdateRateOptimizations = false;
 }
 
-bool ASandboxRagdollActor::InitPassiveRagdoll(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsAssetOverride, FString& OutError)
+bool ASandboxRagdollActor::InitBody(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsAssetOverride, bool bSimulate, FString& OutError)
 {
 	if (!Mesh)
 	{
@@ -38,14 +38,37 @@ bool ASandboxRagdollActor::InitPassiveRagdoll(USkeletalMesh* Mesh, UPhysicsAsset
 		OutError = FString::Printf(TEXT("Skeletal mesh '%s' has no physics asset"), *Mesh->GetPathName());
 		return false;
 	}
-
-	BodyMesh->SetAllBodiesSimulatePhysics(true);
-	BodyMesh->WakeAllRigidBodies();
-
 	if (BodyMesh->Bodies.Num() == 0)
 	{
 		OutError = FString::Printf(TEXT("Physics asset '%s' created no bodies"), *BodyMesh->GetPhysicsAsset()->GetPathName());
 		return false;
 	}
+
+	if (bSimulate)
+	{
+		BodyMesh->SetAllBodiesSimulatePhysics(true);
+		BodyMesh->WakeAllRigidBodies();
+	}
 	return true;
+}
+
+USkeletalMeshComponent* ASandboxRagdollActor::AddAttachedMesh(USkeletalMesh* Mesh)
+{
+	if (!Mesh)
+	{
+		return nullptr;
+	}
+
+	USkeletalMeshComponent* Component = NewObject<USkeletalMeshComponent>(this);
+	Component->SetupAttachment(BodyMesh);
+	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Component->SetGenerateOverlapEvents(false);
+	Component->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Component->bEnableUpdateRateOptimizations = false;
+	Component->RegisterComponent();
+	Component->SetSkeletalMeshAsset(Mesh);
+	// Bones the two skeletons share by name follow the body; the rest keep their reference pose.
+	Component->SetLeaderPoseComponent(BodyMesh);
+	AttachedMeshes.Add(Component);
+	return Component;
 }

@@ -3,7 +3,11 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 
-/** A scripted stimulus applied at a fixed simulation time. M0 supports one type: "impulse". */
+/**
+ * A scripted stimulus applied at a fixed simulation time.
+ *   "impulse"  an instantaneous impulse on one body
+ *   "pin"      freezes one body where it is (it becomes kinematic); the rest of the body hangs from it
+ */
 struct FScenarioEvent
 {
 	double TimeS = 0.0;
@@ -38,6 +42,15 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	FVector SpawnLocationCm = FVector(0.0, 0.0, 150.0);
 	/** Pitch, yaw, roll in degrees. */
 	FRotator SpawnRotation = FRotator::ZeroRotator;
+	/** Extra skeletal meshes that follow the body's pose (a MetaHuman face, for example). No collision. */
+	TArray<FString> AttachedMeshPaths;
+	/** False keeps the body kinematic in its reference pose: for portraits and rendering-cost scenes. */
+	bool bSimulate = true;
+
+	/** Optional fixed camera for rendered runs. When unset the runner frames the body itself. */
+	bool bHasCamera = false;
+	FVector CameraLocationCm = FVector::ZeroVector;
+	FVector CameraLookAtCm = FVector::ZeroVector;
 
 	TArray<FScenarioEvent> Events;
 	FScenarioExpect Expect;

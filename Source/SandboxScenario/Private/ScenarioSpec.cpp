@@ -48,6 +48,18 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("pin"))
+		{
+			FString Body;
+			if (!Json->TryGetStringField(TEXT("body"), Body) || Body.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("events[%d].body is missing"), Index);
+				return false;
+			}
+			OutEvent.Body = FName(*Body);
+			return true;
+		}
+
 		OutError = FString::Printf(TEXT("events[%d].type '%s' is not supported"), Index, *OutEvent.Type);
 		return false;
 	}
@@ -115,6 +127,38 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			return false;
 		}
 		OutSpec.SpawnRotation = FRotator(PitchYawRoll.X, PitchYawRoll.Y, PitchYawRoll.Z);
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Attached = nullptr;
+	if ((*Body)->TryGetArrayField(TEXT("attached_meshes"), Attached))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Attached)
+		{
+			FString Path;
+			if (!Value.IsValid() || !Value->TryGetString(Path) || Path.IsEmpty())
+			{
+				OutError = TEXT("'body.attached_meshes' must be an array of mesh paths");
+				return false;
+			}
+			OutSpec.AttachedMeshPaths.Add(Path);
+		}
+	}
+	if ((*Body)->HasField(TEXT("simulate")) && !(*Body)->TryGetBoolField(TEXT("simulate"), OutSpec.bSimulate))
+	{
+		OutError = TEXT("'body.simulate' must be true or false");
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* Camera = nullptr;
+	if (Json->TryGetObjectField(TEXT("camera"), Camera))
+	{
+		if (!SandboxJson::TryGetVector(*Camera, TEXT("location_cm"), OutSpec.CameraLocationCm) ||
+			!SandboxJson::TryGetVector(*Camera, TEXT("look_at_cm"), OutSpec.CameraLookAtCm))
+		{
+			OutError = TEXT("'camera' needs 'location_cm' and 'look_at_cm', each [x, y, z]");
+			return false;
+		}
+		OutSpec.bHasCamera = true;
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* Events = nullptr;

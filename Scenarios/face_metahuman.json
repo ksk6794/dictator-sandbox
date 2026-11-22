@@ -1,0 +1,28 @@
+{
+  "name": "face_metahuman",
+  "duration_s": 1.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "simulate": false,
+    "location_cm": [
+      0,
+      0,
+      0
+    ]
+  },
+  "camera": {
+    "location_cm": [
+      18,
+      75,
+      168
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      165
+    ]
+  }
+}

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonValue.h"
+#include "PhysicsEngine/ConstraintInstance.h"
 #include "ScenarioSpec.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ScenarioRunnerSubsystem.generated.h"
@@ -40,6 +41,15 @@ protected:
 private:
 	enum class EPhase : uint8 { Idle, Running, Finishing };
 
+	/** A body held at a fixed world position by a "pin" event. */
+	struct FPin
+	{
+		FName Body;
+		FVector WorldLocation = FVector::ZeroVector;
+		TUniquePtr<FConstraintInstance> Constraint;
+	};
+	TArray<FPin> Pins;
+
 	void SpawnEnvironment(UWorld& World);
 	bool SpawnBody(UWorld& World, FString& OutError);
 	void SampleFrame(float DeltaTime);
@@ -71,6 +81,8 @@ private:
 
 	// Accumulated over the run.
 	double MaxJointStretchCm = 0.0;
+	double InitialJointOffsetCm = 0.0;
+	double MaxPinErrorCm = 0.0;
 	FName WorstJoint;
 	double MaxBodySpeedCmS = 0.0;
 	double MaxAngularSpeedRadS = 0.0;

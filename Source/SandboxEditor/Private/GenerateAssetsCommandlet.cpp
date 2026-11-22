@@ -1,6 +1,8 @@
 #include "GenerateAssetsCommandlet.h"
 
 #include "Misc/Paths.h"
+#include "PhysicsAssetGenerator.h"
+#include "PhysicsAssetSpec.h"
 #include "Misc/Parse.h"
 #include "SandboxCore.h"
 #include "SandboxJson.h"
@@ -14,9 +16,23 @@ int32 UGenerateAssetsCommandlet::Main(const FString& Params)
 	}
 	ResultPath = FPaths::ConvertRelativePathToFull(ResultPath);
 
-	// Generators are added here as milestones need them (M1: physics asset, room map).
 	TArray<TSharedPtr<FJsonValue>> Generated;
 	TArray<TSharedPtr<FJsonValue>> Errors;
+
+	// Physics assets: one per Specs/physics/*.json.
+	for (const FString& SpecFile : FPhysicsAssetSpec::FindSpecFiles())
+	{
+		FPhysicsAssetSpec Spec;
+		FString Error;
+		if (!FPhysicsAssetSpec::LoadFile(SpecFile, Spec, Error) || !FPhysicsAssetGenerator::Generate(Spec, Error))
+		{
+			UE_LOG(LogSandbox, Error, TEXT("GenerateAssets: %s"), *Error);
+			Errors.Add(MakeShared<FJsonValueString>(Error));
+			continue;
+		}
+		UE_LOG(LogSandbox, Display, TEXT("GenerateAssets: %s (%d bodies) from %s"), *Spec.OutputPath, Spec.Bodies.Num(), *SpecFile);
+		Generated.Add(MakeShared<FJsonValueString>(Spec.OutputPath));
+	}
 
 	const TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
 	Result->SetBoolField(TEXT("ok"), Errors.Num() == 0);

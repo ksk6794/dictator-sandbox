@@ -1,0 +1,43 @@
+{
+  "name": "npc_body",
+  "output": "/Game/Generated/Physics/PA_SandboxNPC",
+  "skeletal_mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+  "template": "/Game/MetaHumans/SandboxNPC/Body/PHYS_SandboxNPC.PHYS_SandboxNPC",
+  "total_mass_kg": 80.0,
+  "bodies": [
+    {"bone": "pelvis", "mass_fraction": 0.1117, "shapes_from": ["pelvis"]},
+    {"bone": "spine_02", "mass_fraction": 0.1633, "shapes_from": ["spine_02"]},
+    {"bone": "spine_04", "mass_fraction": 0.1596, "shapes_from": ["spine_04", "clavicle_l", "clavicle_r"]},
+    {"bone": "neck_01", "mass_fraction": 0.0694, "shapes_from": ["neck_01", "head"]},
+    {"bone": "upperarm_l", "mass_fraction": 0.0271, "shapes_from": ["upperarm_l"]},
+    {"bone": "lowerarm_l", "mass_fraction": 0.0162, "shapes_from": ["lowerarm_l"]},
+    {"bone": "hand_l", "mass_fraction": 0.0061, "shapes_from": ["hand_l"]},
+    {"bone": "thigh_l", "mass_fraction": 0.1416, "shapes_from": ["thigh_l"]},
+    {"bone": "calf_l", "mass_fraction": 0.0433, "shapes_from": ["calf_l"]},
+    {"bone": "foot_l", "mass_fraction": 0.0137, "shapes_from": ["foot_l", "ball_l"]},
+    {"bone": "upperarm_r", "mass_fraction": 0.0271, "shapes_from": ["upperarm_r"]},
+    {"bone": "lowerarm_r", "mass_fraction": 0.0162, "shapes_from": ["lowerarm_r"]},
+    {"bone": "hand_r", "mass_fraction": 0.0061, "shapes_from": ["hand_r"]},
+    {"bone": "thigh_r", "mass_fraction": 0.1416, "shapes_from": ["thigh_r"]},
+    {"bone": "calf_r", "mass_fraction": 0.0433, "shapes_from": ["calf_r"]},
+    {"bone": "foot_r", "mass_fraction": 0.0137, "shapes_from": ["foot_r", "ball_r"]}
+  ],
+  "joints": [
+    {"child": "spine_02", "swing1": 25, "swing2": 25, "twist": 25},
+    {"child": "spine_04", "swing1": 15, "swing2": 10, "twist": 10},
+    {"child": "neck_01", "swing1": 35, "swing2": 30, "twist": 60},
+    {"child": "upperarm_l", "swing1": 90, "swing2": 90, "twist": 40},
+    {"child": "lowerarm_l", "swing1": 5, "swing2": 5, "twist": 70},
+    {"child": "hand_l", "swing1": 15, "swing2": 50, "twist": 45},
+    {"child": "thigh_l", "swing1": 65, "swing2": 30, "twist": 20},
+    {"child": "calf_l", "swing1": 5, "swing2": 5, "twist": 60},
+    {"child": "foot_l", "swing1": 10, "swing2": 20, "twist": 35},
+    {"child": "upperarm_r", "swing1": 90, "swing2": 90, "twist": 40},
+    {"child": "lowerarm_r", "swing1": 5, "swing2": 5, "twist": 70},
+    {"child": "hand_r", "swing1": 15, "swing2": 50, "twist": 45},
+    {"child": "thigh_r", "swing1": 65, "swing2": 30, "twist": 20},
+    {"child": "calf_r", "swing1": 5, "swing2": 5, "twist": 60},
+    {"child": "foot_r", "swing1": 10, "swing2": 20, "twist": 35}
+  ],
+  "collision": {"disable": [], "enable": []}
+}

@@ -21,14 +21,24 @@ public:
 	ASandboxRagdollActor();
 
 	/**
-	 * Assigns the mesh (and an optional physics asset override) and switches all bodies to simulation.
-	 * Returns false with a reason if the mesh ends up with no simulated bodies.
+	 * Assigns the mesh and an optional physics asset override. With bSimulate every body is switched to
+	 * simulation (a passive ragdoll); without it the mesh stays kinematic in its reference pose.
+	 * Returns false with a reason if the mesh has no usable physics bodies.
 	 */
-	bool InitPassiveRagdoll(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsAssetOverride, FString& OutError);
+	bool InitBody(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsAssetOverride, bool bSimulate, FString& OutError);
+
+	/**
+	 * Adds a skeletal mesh that copies the body's pose bone by bone (leader pose), such as a MetaHuman
+	 * face. It has no collision and no physics of its own.
+	 */
+	USkeletalMeshComponent* AddAttachedMesh(USkeletalMesh* Mesh);
 
 	USkeletalMeshComponent* GetBodyMesh() const { return BodyMesh; }
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Sandbox")
 	TObjectPtr<USkeletalMeshComponent> BodyMesh;
+
+	UPROPERTY(VisibleAnywhere, Category = "Sandbox")
+	TArray<TObjectPtr<USkeletalMeshComponent>> AttachedMeshes;
 };

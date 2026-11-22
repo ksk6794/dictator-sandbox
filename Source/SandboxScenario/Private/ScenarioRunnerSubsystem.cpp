@@ -19,6 +19,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "PhysicsEngine/BodyInstance.h"
+#include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "SandboxBodyProbe.h"
@@ -35,6 +36,8 @@ namespace
 	// Anything further than this from the origin has escaped the scene.
 	constexpr double BoundsRadiusCm = 5000.0;
 	constexpr double DtToleranceS = 1.0e-6;
+	// Frames at the start of a run during which authored joint offsets are still being closed.
+	constexpr int32 JointSettleFrames = 5;
 	// Frames rendered after the camera is re-aimed and before the screenshot is requested.
 	constexpr int32 CameraSettleFrames = 30;
 	// Frames to keep rendering after the request so it is serviced before the process exits.
@@ -172,8 +175,8 @@ void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
 	Fill->GetLightComponent()->SetIntensity(2.0f);
 	Fill->GetLightComponent()->SetCastShadows(false);
 
-	const FVector CameraLocation(-420.0, 260.0, 170.0);
-	const FVector LookAt(0.0, 0.0, 50.0);
+	const FVector CameraLocation = Spec.bHasCamera ? Spec.CameraLocationCm : FVector(-420.0, 260.0, 170.0);
+	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : FVector(0.0, 0.0, 50.0);
 	Camera = World.SpawnActor<ACameraActor>(CameraLocation, (LookAt - CameraLocation).Rotation());
 }
 
@@ -203,7 +206,22 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 		OutError = TEXT("Failed to spawn the ragdoll actor");
 		return false;
 	}
-	return Ragdoll->InitPassiveRagdoll(Mesh, PhysicsAssetOverride, OutError);
+	if (!Ragdoll->InitBody(Mesh, PhysicsAssetOverride, Spec.bSimulate, OutError))
+	{
+		return false;
+	}
+
+	for (const FString& Path : Spec.AttachedMeshPaths)
+	{
+		USkeletalMesh* Attached = LoadObject<USkeletalMesh>(nullptr, *Path);
+		if (!Attached)
+		{
+			OutError = FString::Printf(TEXT("Cannot load attached mesh '%s'"), *Path);
+			return false;
+		}
+		Ragdoll->AddAttachedMesh(Attached);
+	}
+	return true;
 }
 
 void UScenarioRunnerSubsystem::Tick(float DeltaTime)
@@ -296,12 +314,27 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		LastActiveFrame = FrameIndex;
 	}
 
+	// A physics asset can be authored with joint anchors that do not coincide in the reference pose.
+	// The solver closes that gap in the first steps; it is reported on its own and kept out of the
+	// stretch metric, which is about how far joints are pulled apart during the run.
 	FName FrameWorstJoint;
 	const double Stretch = FSandboxBodyProbe::MaxJointStretchCm(Mesh, &FrameWorstJoint);
-	if (Stretch > MaxJointStretchCm)
+	if (FrameIndex == 0)
+	{
+		InitialJointOffsetCm = Stretch;
+	}
+	else if (FrameIndex >= JointSettleFrames && Stretch > MaxJointStretchCm)
 	{
 		MaxJointStretchCm = Stretch;
 		WorstJoint = FrameWorstJoint;
+	}
+
+	for (const FPin& Pin : Pins)
+	{
+		if (const FBodyInstance* Pinned = Mesh->GetBodyInstance(Pin.Body))
+		{
+			MaxPinErrorCm = FMath::Max(MaxPinErrorCm, FVector::Dist(Pinned->GetUnrealWorldTransform().GetLocation(), Pin.WorldLocation));
+		}
 	}
 
 	// Component-space bone transforms are what rendering and animation see. Hashing them separately from
@@ -365,8 +398,29 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f targets unknown body '%s'"), Event.TimeS, *Event.Body.ToString());
 			continue;
 		}
-		// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
-		Body->AddImpulse(Event.Direction * Event.ImpulseNs * 100.0, /*bVelChange*/ false);
+		if (Event.Type == TEXT("pin"))
+		{
+			// A ball joint between the body and the world at the body's current position. Making the body
+			// kinematic would not pin it: kinematic bones of a ragdoll follow the component, which itself
+			// follows the simulated root.
+			const FTransform BodyTransform = Body->GetUnrealWorldTransform();
+			FPin& Pin = Pins.AddDefaulted_GetRef();
+			Pin.Body = Event.Body;
+			Pin.WorldLocation = BodyTransform.GetLocation();
+			Pin.Constraint = MakeUnique<FConstraintInstance>();
+			Pin.Constraint->SetLinearLimits(LCM_Locked, LCM_Locked, LCM_Locked, 0.0f);
+			Pin.Constraint->SetAngularSwing1Motion(ACM_Free);
+			Pin.Constraint->SetAngularSwing2Motion(ACM_Free);
+			Pin.Constraint->SetAngularTwistMotion(ACM_Free);
+			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame1, FTransform::Identity);
+			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame2, BodyTransform);
+			Pin.Constraint->InitConstraint(Body, nullptr, 1.0f, Ragdoll);
+		}
+		else
+		{
+			// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
+			Body->AddImpulse(Event.Direction * Event.ImpulseNs * 100.0, /*bVelChange*/ false);
+		}
 		++EventsApplied;
 	}
 }
@@ -431,11 +485,57 @@ void UScenarioRunnerSubsystem::Finish()
 	Body->SetNumberField(TEXT("constraint_count"), Mesh ? Mesh->Constraints.Num() : 0);
 	Body->SetNumberField(TEXT("bone_count"), Mesh ? Mesh->GetComponentSpaceTransforms().Num() : 0);
 	Body->SetNumberField(TEXT("total_mass_kg"), TotalMassKg);
+
+	// Structure of the physics asset as instanced: enough to check a generated asset against its spec.
+	const auto MotionName = [](EAngularConstraintMotion Motion)
+	{
+		return Motion == ACM_Locked ? TEXT("locked") : Motion == ACM_Limited ? TEXT("limited") : TEXT("free");
+	};
+	TArray<TSharedPtr<FJsonValue>> BodyList;
+	TArray<TSharedPtr<FJsonValue>> JointList;
+	if (Mesh)
+	{
+		for (const FBodyInstance* Instance : Mesh->Bodies)
+		{
+			if (!Instance || !Instance->IsValidBodyInstance())
+			{
+				continue;
+			}
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("bone"), Mesh->GetBoneName(Instance->InstanceBoneIndex).ToString());
+			Entry->SetNumberField(TEXT("mass_kg"), Instance->GetBodyMass());
+			BodyList.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		for (const FConstraintInstance* Constraint : Mesh->Constraints)
+		{
+			if (!Constraint)
+			{
+				continue;
+			}
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("name"), Constraint->JointName.ToString());
+			Entry->SetStringField(TEXT("child"), Constraint->GetChildBoneName().ToString());
+			Entry->SetStringField(TEXT("parent"), Constraint->GetParentBoneName().ToString());
+			Entry->SetBoolField(TEXT("linear_locked"),
+				Constraint->GetLinearXMotion() == LCM_Locked && Constraint->GetLinearYMotion() == LCM_Locked && Constraint->GetLinearZMotion() == LCM_Locked);
+			Entry->SetStringField(TEXT("swing1"), MotionName(Constraint->GetAngularSwing1Motion()));
+			Entry->SetNumberField(TEXT("swing1_deg"), Constraint->GetAngularSwing1Limit());
+			Entry->SetStringField(TEXT("swing2"), MotionName(Constraint->GetAngularSwing2Motion()));
+			Entry->SetNumberField(TEXT("swing2_deg"), Constraint->GetAngularSwing2Limit());
+			Entry->SetStringField(TEXT("twist"), MotionName(Constraint->GetAngularTwistMotion()));
+			Entry->SetNumberField(TEXT("twist_deg"), Constraint->GetAngularTwistLimit());
+			JointList.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+	}
+	Body->SetArrayField(TEXT("bodies"), BodyList);
+	Body->SetArrayField(TEXT("joints"), JointList);
 	Root->SetObjectField(TEXT("body"), Body);
 
 	const TSharedRef<FJsonObject> Metrics = MakeShared<FJsonObject>();
 	Metrics->SetNumberField(TEXT("max_joint_stretch_cm"), MaxJointStretchCm);
 	Metrics->SetStringField(TEXT("worst_joint"), WorstJoint.IsNone() ? FString() : WorstJoint.ToString());
+	Metrics->SetNumberField(TEXT("initial_joint_offset_cm"), InitialJointOffsetCm);
+	Metrics->SetNumberField(TEXT("max_pin_error_cm"), MaxPinErrorCm);
 	Metrics->SetNumberField(TEXT("max_body_speed_mps"), MaxBodySpeedCmS * 0.01);
 	Metrics->SetNumberField(TEXT("max_angular_speed_rads"), MaxAngularSpeedRadS);
 	Metrics->SetBoolField(TEXT("at_rest_at_end"), bAtRestAtEnd);
@@ -475,8 +575,8 @@ void UScenarioRunnerSubsystem::Finish()
 	ExitCode = bPass ? 0 : 1;
 	if (!ShotPath.IsEmpty() && FApp::CanEverRender())
 	{
-		// Frame the body wherever it ended up.
-		if (Camera && Mesh && Mesh->Bodies.Num() > 0)
+		// Frame the body wherever it ended up, unless the scenario fixed the camera.
+		if (Camera && Mesh && Mesh->Bodies.Num() > 0 && !Spec.bHasCamera)
 		{
 			const FVector Center = Mesh->Bounds.Origin;
 			const FVector CameraLocation = Center + FVector(-260.0, 180.0, 140.0);
@@ -513,6 +613,11 @@ void UScenarioRunnerSubsystem::FailAndExit(const FString& Message)
 
 void UScenarioRunnerSubsystem::RequestExit(uint8 Code)
 {
+	for (FPin& Pin : Pins)
+	{
+		Pin.Constraint->TermConstraint();
+	}
+	Pins.Reset();
 	Phase = EPhase::Idle;
 	FPlatformMisc::RequestExitWithStatus(/*Force*/ false, Code);
 }
