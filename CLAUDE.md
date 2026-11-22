@@ -81,6 +81,14 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
+- **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,
+  Options; about 6 GB). Without it the log says "Optional Content folder not found", skin textures are not
+  synthesised and the assembled character is incomplete.
+- **MetaHuman assembly raises script errors that are not failures.** `build_meta_human` throws "Cannot break
+  link ..." for Control Rig graphs in the engine's own face assets even when the assembly succeeds; the
+  script judges the build by the assets it produced and reports the message as a warning.
+- **A MetaHuman is two skeletal meshes** (body and face) plus a Blueprint that joins them. Loading only the
+  body mesh gives a headless character.
 - **MetaHuman scripting.** `Tools\metahuman.ps1` runs `Tools\python\metahuman_build.py` in the full editor
   (not a commandlet). The `rig` and `textures` steps call Epic's cloud; the first run opens a browser for an
   Epic sign-in, which a person must complete, and later runs reuse the stored sign-in. Never pass account
