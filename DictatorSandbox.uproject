@@ -49,6 +49,10 @@
 		{
 			"Name": "OpenXR",
 			"Enabled": true
+		},
+		{
+			"Name": "PhysicsControl",
+			"Enabled": true
 		}
 	]
 }

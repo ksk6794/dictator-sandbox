@@ -3,6 +3,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "SandboxBodyController.h"
 
 ASandboxRagdollActor::ASandboxRagdollActor()
 {
@@ -49,6 +50,30 @@ bool ASandboxRagdollActor::InitBody(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsA
 		BodyMesh->SetAllBodiesSimulatePhysics(true);
 		BodyMesh->WakeAllRigidBodies();
 	}
+	return true;
+}
+
+bool ASandboxRagdollActor::StartActiveControl(const FSandboxBodyTuning& Tuning, FString& OutError)
+{
+	if (Controller)
+	{
+		OutError = TEXT("Active control is already started");
+		return false;
+	}
+	if (BodyMesh->Bodies.Num() == 0 || !BodyMesh->IsAnySimulatingPhysics())
+	{
+		OutError = TEXT("Active control needs a simulating body: call InitBody with bSimulate first");
+		return false;
+	}
+
+	USandboxBodyController* NewController = NewObject<USandboxBodyController>(this, TEXT("BodyController"));
+	NewController->RegisterComponent();
+	if (!NewController->Start(BodyMesh, Tuning, OutError))
+	{
+		NewController->DestroyComponent();
+		return false;
+	}
+	Controller = NewController;
 	return true;
 }
 

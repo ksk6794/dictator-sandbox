@@ -151,6 +151,35 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 		return false;
 	}
 
+	if ((*Body)->HasField(TEXT("control")))
+	{
+		FString Control;
+		(*Body)->TryGetStringField(TEXT("control"), Control);
+		if (Control == TEXT("active"))
+		{
+			OutSpec.Control = EScenarioBodyControl::Active;
+		}
+		else if (Control != TEXT("passive"))
+		{
+			OutError = TEXT("'body.control' must be \"passive\" or \"active\"");
+			return false;
+		}
+		if (OutSpec.Control == EScenarioBodyControl::Active && !OutSpec.bSimulate)
+		{
+			OutError = TEXT("'body.control' \"active\" needs a simulated body ('body.simulate' must not be false)");
+			return false;
+		}
+	}
+
+	if (Json->HasField(TEXT("settle_s")))
+	{
+		if (!Json->TryGetNumberField(TEXT("settle_s"), OutSpec.SettleS) || OutSpec.SettleS < 0.0)
+		{
+			OutError = TEXT("'settle_s' must be a number >= 0");
+			return false;
+		}
+	}
+
 	const TSharedPtr<FJsonObject>* Camera = nullptr;
 	if (Json->TryGetObjectField(TEXT("camera"), Camera))
 	{
@@ -183,14 +212,40 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 	const TSharedPtr<FJsonObject>* Expect = nullptr;
 	if (Json->TryGetObjectField(TEXT("expect"), Expect))
 	{
-		double Value = 0.0;
-		if ((*Expect)->TryGetNumberField(TEXT("rest_within_s"), Value))
+		const TPair<const TCHAR*, TOptional<double>*> Fields[] = {
+			{ TEXT("rest_within_s"), &OutSpec.Expect.RestWithinS },
+			{ TEXT("max_joint_stretch_cm"), &OutSpec.Expect.MaxJointStretchCm },
+			{ TEXT("max_pelvis_drift_cm"), &OutSpec.Expect.MaxPelvisDriftCm },
+			{ TEXT("min_head_height_cm"), &OutSpec.Expect.MinHeadHeightCm },
+			{ TEXT("max_settled_speed_mps"), &OutSpec.Expect.MaxSettledSpeedMps },
+			{ TEXT("max_settled_angular_speed_rads"), &OutSpec.Expect.MaxSettledAngularSpeedRadS },
+			{ TEXT("max_joint_speed_rads"), &OutSpec.Expect.MaxJointSpeedRadS },
+			{ TEXT("max_physics_step_mean_ms"), &OutSpec.Expect.MaxPhysicsStepMeanMs } };
+
+		// Every key must be a known expectation with a numeric value: a misspelt one would otherwise
+		// never be checked and the scenario would pass for the wrong reason.
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Expect)->Values)
 		{
-			OutSpec.Expect.RestWithinS = Value;
-		}
-		if ((*Expect)->TryGetNumberField(TEXT("max_joint_stretch_cm"), Value))
-		{
-			OutSpec.Expect.MaxJointStretchCm = Value;
+			double Value = 0.0;
+			bool bKnown = false;
+			for (const TPair<const TCHAR*, TOptional<double>*>& Field : Fields)
+			{
+				if (Entry.Key == Field.Key)
+				{
+					bKnown = true;
+					if (!Entry.Value.IsValid() || !Entry.Value->TryGetNumber(Value))
+					{
+						OutError = FString::Printf(TEXT("'expect.%s' must be a number"), *Entry.Key);
+						return false;
+					}
+					*Field.Value = Value;
+				}
+			}
+			if (!bKnown)
+			{
+				OutError = FString::Printf(TEXT("'expect.%s' is not a known expectation"), *Entry.Key);
+				return false;
+			}
 		}
 	}
 

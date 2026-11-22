@@ -5,6 +5,7 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "ScenarioSpec.h"
 #include "Subsystems/WorldSubsystem.h"
+#include <atomic>
 #include "ScenarioRunnerSubsystem.generated.h"
 
 class ASandboxRagdollActor;
@@ -33,6 +34,7 @@ class SANDBOXSCENARIO_API UScenarioRunnerSubsystem : public UTickableWorldSubsys
 public:
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+	virtual void Deinitialize() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual bool IsTickable() const override { return Phase != EPhase::Idle; }
 	virtual TStatId GetStatId() const override;
@@ -96,6 +98,49 @@ private:
 	int32 EventsApplied = 0;
 	bool bSawNaN = false;
 	bool bLeftBounds = false;
+
+	// Standing metrics. Drift is measured from the pose the body was spawned in.
+	FName PelvisBone;
+	FName HeadBone;
+	FVector PelvisStartCm = FVector::ZeroVector;
+	FVector ComStartCm = FVector::ZeroVector;
+	double MaxPelvisDriftCm = 0.0;
+	double FinalPelvisDriftCm = 0.0;
+	double MaxComDriftCm = 0.0;
+	double MinHeadHeightCm = TNumericLimits<double>::Max();
+	double MaxSettledSpeedCmS = 0.0;
+	double MaxSettledAngularSpeedRadS = 0.0;
+	/** Per body, by bone: fastest linear (X, cm/s) and angular (Y, rad/s) speed after the settle time. */
+	TMap<FName, FVector2D> SettledBodySpeeds;
+	double MaxJointSpeedRadS = 0.0;
+	FName FastestJoint;
+
+	// Joint angles in the spawn pose (twist, swing1, swing2 in degrees), by joint name, and how far the
+	// worst one lies outside its limits. A pose outside the limits is snapped inside by the first steps.
+	TMap<FName, FVector> SpawnJointAnglesDeg;
+	/** Distance between each joint's two anchors in the spawn pose, cm. */
+	TMap<FName, double> SpawnJointOffsetCm;
+	double SpawnLimitViolationDeg = 0.0;
+	FName SpawnWorstLimitJoint;
+
+	// Balance-assist load after the settle time (active control only).
+	double AssistForceShareSum = 0.0;
+	double AssistForceShareMax = 0.0;
+	double AssistTorqueShareSum = 0.0;
+	double AssistTorqueShareMax = 0.0;
+	int32 AssistSamples = 0;
+
+	// Wall-clock time the solver spent on each frame, summed over its substeps. The two callbacks run on
+	// the physics task while the game thread waits for it, hence the atomics.
+	void StartPhysicsTimer(UWorld& World);
+	void StopPhysicsTimer();
+	FDelegateHandle PreSolveHandle;
+	FDelegateHandle PostSolveHandle;
+	std::atomic<uint64> SolveStartCycles{ 0 };
+	std::atomic<uint64> FrameSolveCycles{ 0 };
+	std::atomic<int32> FrameSolveSteps{ 0 };
+	TArray<float> PhysicsStepMs;
+	int64 SolverStepsTotal = 0;
 	uint32 BodyHash = 0;
 	uint32 BoneHash = 0;
 	TArray<TSharedPtr<FJsonValue>> Checkpoints;

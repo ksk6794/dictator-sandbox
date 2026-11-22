@@ -120,14 +120,35 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 		if (!BodyJson->TryGetNumberField(TEXT("mass_fraction"), Body.MassFraction) || Body.MassFraction <= 0.0) { return Fail(Context + TEXT(".mass_fraction must be a number > 0")); }
 		FractionSum += Body.MassFraction;
 
-		const TArray<TSharedPtr<FJsonValue>>* Shapes = nullptr;
-		if (!BodyJson->TryGetArrayField(TEXT("shapes_from"), Shapes) || Shapes->Num() == 0) { return Fail(Context + TEXT(".shapes_from must name at least one template body")); }
-		for (const TSharedPtr<FJsonValue>& Shape : *Shapes)
+		const TArray<TSharedPtr<FJsonValue>>* ShapesFrom = nullptr;
+		if (BodyJson->TryGetArrayField(TEXT("shapes_from"), ShapesFrom))
 		{
-			FString Source;
-			if (!Shape.IsValid() || !Shape->TryGetString(Source) || Source.IsEmpty()) { return Fail(Context + TEXT(".shapes_from must contain bone names")); }
-			Body.ShapesFrom.Add(FName(*Source));
+			for (const TSharedPtr<FJsonValue>& Shape : *ShapesFrom)
+			{
+				FString Source;
+				if (!Shape.IsValid() || !Shape->TryGetString(Source) || Source.IsEmpty()) { return Fail(Context + TEXT(".shapes_from must contain bone names")); }
+				Body.ShapesFrom.Add(FName(*Source));
+			}
 		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Shapes = nullptr;
+		if (BodyJson->TryGetArrayField(TEXT("shapes"), Shapes))
+		{
+			for (int32 ShapeIndex = 0; ShapeIndex < Shapes->Num(); ++ShapeIndex)
+			{
+				const TSharedPtr<FJsonObject> ShapeJson = (*Shapes)[ShapeIndex].IsValid() ? (*Shapes)[ShapeIndex]->AsObject() : nullptr;
+				const FString ShapeContext = FString::Printf(TEXT("%s.shapes[%d]"), *Context, ShapeIndex);
+				FString Type;
+				if (!ShapeJson.IsValid() || !ShapeJson->TryGetStringField(TEXT("type"), Type) || Type != TEXT("box")) { return Fail(ShapeContext + TEXT(".type must be \"box\"")); }
+
+				FPhysicsShapeSpec Shape;
+				if (!SandboxJson::TryGetVector(ShapeJson, TEXT("center_cm"), Shape.CenterCm)) { return Fail(ShapeContext + TEXT(".center_cm must be [x, y, z]")); }
+				if (!SandboxJson::TryGetVector(ShapeJson, TEXT("size_cm"), Shape.SizeCm) || Shape.SizeCm.GetMin() <= 0.0) { return Fail(ShapeContext + TEXT(".size_cm must be three lengths > 0")); }
+				if (ShapeJson->HasField(TEXT("yaw_deg")) && !ShapeJson->TryGetNumberField(TEXT("yaw_deg"), Shape.YawDeg)) { return Fail(ShapeContext + TEXT(".yaw_deg must be a number")); }
+				Body.Shapes.Add(Shape);
+			}
+		}
+		if (Body.ShapesFrom.Num() == 0 && Body.Shapes.Num() == 0) { return Fail(Context + TEXT(" needs 'shapes_from' (template bodies) or 'shapes' (boxes written out), or both")); }
 		OutSpec.Bodies.Add(MoveTemp(Body));
 	}
 	if (FMath::Abs(FractionSum - 1.0) > 1.0e-3)

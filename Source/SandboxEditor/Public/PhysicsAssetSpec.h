@@ -10,6 +10,19 @@ struct FPhysicsAxisSpec
 	double LimitDeg = 0.0;
 };
 
+/**
+ * A collision box written out in the spec, in the mesh's reference-pose space (floor at z = 0, z up).
+ * Used where the template's shapes do not do the job: a foot needs a flat sole on the floor.
+ */
+struct FPhysicsShapeSpec
+{
+	FVector CenterCm = FVector::ZeroVector;
+	/** Full lengths along the box's own x, y and z. */
+	FVector SizeCm = FVector::ZeroVector;
+	/** Rotation of the box about the vertical axis, degrees. */
+	double YawDeg = 0.0;
+};
+
 struct FPhysicsBodySpec
 {
 	/** Bone the body is attached to. */
@@ -18,6 +31,8 @@ struct FPhysicsBodySpec
 	double MassFraction = 0.0;
 	/** Template bodies whose collision shapes this body takes over (the first is usually its own bone). */
 	TArray<FName> ShapesFrom;
+	/** Shapes written out in the spec, added to those taken from the template. */
+	TArray<FPhysicsShapeSpec> Shapes;
 };
 
 struct FPhysicsJointSpec

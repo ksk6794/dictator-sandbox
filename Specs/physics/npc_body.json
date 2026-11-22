@@ -14,13 +14,13 @@
     {"bone": "hand_l", "mass_fraction": 0.0061, "shapes_from": ["hand_l"]},
     {"bone": "thigh_l", "mass_fraction": 0.1416, "shapes_from": ["thigh_l"]},
     {"bone": "calf_l", "mass_fraction": 0.0433, "shapes_from": ["calf_l"]},
-    {"bone": "foot_l", "mass_fraction": 0.0137, "shapes_from": ["foot_l", "ball_l"]},
+    {"bone": "foot_l", "mass_fraction": 0.0137, "shapes": [{"type": "box", "center_cm": [14.9, 7.0, 3.25], "size_cm": [9.5, 26.0, 6.5], "yaw_deg": -8.5}]},
     {"bone": "upperarm_r", "mass_fraction": 0.0271, "shapes_from": ["upperarm_r"]},
     {"bone": "lowerarm_r", "mass_fraction": 0.0162, "shapes_from": ["lowerarm_r"]},
     {"bone": "hand_r", "mass_fraction": 0.0061, "shapes_from": ["hand_r"]},
     {"bone": "thigh_r", "mass_fraction": 0.1416, "shapes_from": ["thigh_r"]},
     {"bone": "calf_r", "mass_fraction": 0.0433, "shapes_from": ["calf_r"]},
-    {"bone": "foot_r", "mass_fraction": 0.0137, "shapes_from": ["foot_r", "ball_r"]}
+    {"bone": "foot_r", "mass_fraction": 0.0137, "shapes": [{"type": "box", "center_cm": [-14.9, 7.0, 3.25], "size_cm": [9.5, 26.0, 6.5], "yaw_deg": 8.5}]}
   ],
   "joints": [
     {"child": "spine_02", "swing1": 25, "swing2": 25, "twist": 25},

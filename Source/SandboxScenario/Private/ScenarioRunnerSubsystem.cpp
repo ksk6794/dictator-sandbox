@@ -24,12 +24,15 @@
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "PBDRigidsSolver.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "RenderTimer.h"
 #include "StereoRendering.h"
+#include "SandboxBodyController.h"
 #include "SandboxBodyProbe.h"
 #include "SandboxCore.h"
 #include "SandboxJson.h"
@@ -110,6 +113,36 @@ namespace
 	}
 	TSharedPtr<FJsonValue> Boolean(bool bValue) { return MakeShared<FJsonValueBoolean>(bValue); }
 	TSharedPtr<FJsonValue> Null() { return MakeShared<FJsonValueNull>(); }
+
+	/** One entry of trace.json: world transforms of the bodies and component-space transforms of the bones. */
+	TSharedPtr<FJsonValue> MakeCheckpoint(double TimeS, int32 Frame, const TArray<FSandboxBodySample>& Bodies, const TArray<FTransform>& Bones)
+	{
+		const TSharedRef<FJsonObject> Checkpoint = MakeShared<FJsonObject>();
+		Checkpoint->SetNumberField(TEXT("t"), TimeS);
+		Checkpoint->SetNumberField(TEXT("frame"), Frame);
+
+		TArray<TSharedPtr<FJsonValue>> BodyValues;
+		for (const FSandboxBodySample& Body : Bodies)
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("bone"), Body.Bone.ToString());
+			Entry->SetArrayField(TEXT("p"), SandboxJson::VectorToArray(Body.WorldTransform.GetLocation()));
+			Entry->SetArrayField(TEXT("q"), SandboxJson::QuatToArray(Body.WorldTransform.GetRotation()));
+			BodyValues.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		Checkpoint->SetArrayField(TEXT("bodies"), BodyValues);
+
+		TArray<TSharedPtr<FJsonValue>> BoneValues;
+		for (const FTransform& Bone : Bones)
+		{
+			const FVector P = Bone.GetLocation();
+			const FQuat Q = Bone.GetRotation();
+			BoneValues.Add(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{
+				Number(P.X), Number(P.Y), Number(P.Z), Number(Q.X), Number(Q.Y), Number(Q.Z), Number(Q.W) }));
+		}
+		Checkpoint->SetArrayField(TEXT("bones"), BoneValues);
+		return MakeShared<FJsonValueObject>(Checkpoint);
+	}
 }
 
 bool UScenarioRunnerSubsystem::ShouldCreateSubsystem(UObject* Outer) const
@@ -186,9 +219,54 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 		return;
 	}
 
+	StartPhysicsTimer(InWorld);
 	WallStartS = FPlatformTime::Seconds();
 	Phase = EPhase::Running;
 	UE_LOG(LogSandbox, Display, TEXT("Scenario '%s': %d frames at %.6f s, output %s"), *Spec.Name, TotalFrames, FixedDt, *OutDir);
+}
+
+void UScenarioRunnerSubsystem::Deinitialize()
+{
+	StopPhysicsTimer();
+	Super::Deinitialize();
+}
+
+void UScenarioRunnerSubsystem::StartPhysicsTimer(UWorld& World)
+{
+	FPhysScene* Scene = World.GetPhysicsScene();
+	Chaos::FPhysicsSolver* Solver = Scene ? Scene->GetSolver() : nullptr;
+	if (!Solver)
+	{
+		return;
+	}
+	// The solver raises this pair around every substep. Timing them is measurement only: nothing in the
+	// simulation reads the result.
+	PreSolveHandle = Solver->AddPreAdvanceCallback(FSolverPreAdvance::FDelegate::CreateWeakLambda(this, [this](Chaos::FReal)
+	{
+		SolveStartCycles.store(FPlatformTime::Cycles64());
+	}));
+	PostSolveHandle = Solver->AddPostAdvanceCallback(FSolverPostAdvance::FDelegate::CreateWeakLambda(this, [this](Chaos::FReal)
+	{
+		FrameSolveCycles.fetch_add(FPlatformTime::Cycles64() - SolveStartCycles.load());
+		FrameSolveSteps.fetch_add(1);
+	}));
+}
+
+void UScenarioRunnerSubsystem::StopPhysicsTimer()
+{
+	if (!PreSolveHandle.IsValid() && !PostSolveHandle.IsValid())
+	{
+		return;
+	}
+	const UWorld* World = GetWorld();
+	FPhysScene* Scene = World ? World->GetPhysicsScene() : nullptr;
+	if (Chaos::FPhysicsSolver* Solver = Scene ? Scene->GetSolver() : nullptr)
+	{
+		Solver->RemovePreAdvanceCallback(PreSolveHandle);
+		Solver->RemovePostAdvanceCallback(PostSolveHandle);
+	}
+	PreSolveHandle.Reset();
+	PostSolveHandle.Reset();
 }
 
 void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
@@ -291,6 +369,65 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 		}
 		Ragdoll->AddAttachedMesh(Attached);
 	}
+
+	if (Spec.Control == EScenarioBodyControl::Active)
+	{
+		// -Tune="name=value,..." changes tuning values for this run only.
+		FSandboxBodyTuning Tuning;
+		FString Overrides;
+		if (FParse::Value(FCommandLine::Get(), TEXT("Tune="), Overrides, /*bShouldStopOnSeparator*/ false) && !Tuning.ApplyOverrides(Overrides, OutError))
+		{
+			return false;
+		}
+		if (!Ragdoll->StartActiveControl(Tuning, OutError))
+		{
+			return false;
+		}
+		HeadBone = Ragdoll->GetController()->GetTuning().Rig.Head;
+	}
+
+	// Where the body starts: the reference for the drift metrics. The pelvis is the root body.
+	const USkeletalMeshComponent* BodyMesh = Ragdoll->GetBodyMesh();
+	if (const FBodyInstance* Root = BodyMesh->GetBodyInstance())
+	{
+		PelvisBone = BodyMesh->GetBoneName(Root->InstanceBoneIndex);
+		PelvisStartCm = Root->GetUnrealWorldTransform().GetLocation();
+	}
+	TArray<FSandboxBodySample> Bodies;
+	FSandboxBodyProbe::SampleBodies(BodyMesh, Bodies);
+	ComStartCm = FSandboxBodyProbe::CenterOfMass(Bodies);
+
+	// Joint angles of the spawn pose against the joint limits.
+	for (const FConstraintInstance* Constraint : BodyMesh->Constraints)
+	{
+		if (!Constraint)
+		{
+			continue;
+		}
+		const FVector Angles(
+			FMath::RadiansToDegrees(Constraint->GetCurrentTwist()),
+			FMath::RadiansToDegrees(Constraint->GetCurrentSwing1()),
+			FMath::RadiansToDegrees(Constraint->GetCurrentSwing2()));
+		SpawnJointAnglesDeg.Add(Constraint->JointName, Angles);
+		SpawnJointOffsetCm.Add(Constraint->JointName, FSandboxBodyProbe::JointStretchCm(BodyMesh, *Constraint));
+
+		const auto Excess = [](EAngularConstraintMotion Motion, double Angle, double Limit)
+		{
+			return Motion == ACM_Free ? 0.0 : FMath::Max(FMath::Abs(Angle) - (Motion == ACM_Limited ? Limit : 0.0), 0.0);
+		};
+		const double Violation = FMath::Max3(
+			Excess(Constraint->GetAngularTwistMotion(), Angles.X, Constraint->GetAngularTwistLimit()),
+			Excess(Constraint->GetAngularSwing1Motion(), Angles.Y, Constraint->GetAngularSwing1Limit()),
+			Excess(Constraint->GetAngularSwing2Motion(), Angles.Z, Constraint->GetAngularSwing2Limit()));
+		if (Violation > SpawnLimitViolationDeg)
+		{
+			SpawnLimitViolationDeg = Violation;
+			SpawnWorstLimitJoint = Constraint->JointName;
+		}
+	}
+
+	// The trace opens with the pose the body was spawned in, before any physics step (frame -1).
+	Checkpoints.Add(MakeCheckpoint(0.0, -1, Bodies, BodyMesh->GetComponentSpaceTransforms()));
 	return true;
 }
 
@@ -338,6 +475,16 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 		LastFrameWallS = NowS;
 	}
 
+	// Solver time of the frame that has just been stepped. The first frames are left out: they carry
+	// one-off set-up work.
+	const double SolveMs = FPlatformTime::ToMilliseconds64(FrameSolveCycles.exchange(0));
+	const int32 SolveSteps = FrameSolveSteps.exchange(0);
+	if (FrameIndex >= JointSettleFrames && SolveSteps > 0)
+	{
+		PhysicsStepMs.Add(static_cast<float>(SolveMs));
+		SolverStepsTotal += SolveSteps;
+	}
+
 	// Tickables run after the physics step of this frame, so the state seen here is after FrameIndex + 1 steps.
 	const double SimTimeS = (FrameIndex + 1) * FixedDt;
 	SampleFrame(DeltaTime);
@@ -366,6 +513,9 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 	TArray<FSandboxBodySample> Bodies;
 	FSandboxBodyProbe::SampleBodies(Mesh, Bodies);
 
+	// The state sampled here is the one after FrameIndex + 1 steps.
+	const bool bSettled = (FrameIndex + 1) * FixedDt > Spec.SettleS + DtToleranceS;
+
 	bool bAtRest = true;
 	for (const FSandboxBodySample& Body : Bodies)
 	{
@@ -389,12 +539,55 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		{
 			bAtRest = false;
 		}
+		if (bSettled)
+		{
+			MaxSettledSpeedCmS = FMath::Max(MaxSettledSpeedCmS, Speed);
+			MaxSettledAngularSpeedRadS = FMath::Max(MaxSettledAngularSpeedRadS, AngularSpeed);
+			FVector2D& Fastest = SettledBodySpeeds.FindOrAdd(Body.Bone, FVector2D::ZeroVector);
+			Fastest.X = FMath::Max(Fastest.X, Speed);
+			Fastest.Y = FMath::Max(Fastest.Y, AngularSpeed);
+		}
+		if (Body.Bone == PelvisBone)
+		{
+			FinalPelvisDriftCm = FVector::Dist(Location, PelvisStartCm);
+			MaxPelvisDriftCm = FMath::Max(MaxPelvisDriftCm, FinalPelvisDriftCm);
+		}
+		if (Body.Bone == HeadBone)
+		{
+			MinHeadHeightCm = FMath::Min(MinHeadHeightCm, Body.CenterOfMass.Z - Spec.SpawnLocationCm.Z);
+		}
 
 		BodyHash = HashTransform(Body.WorldTransform, BodyHash);
 	}
 	if (!bAtRest)
 	{
 		LastActiveFrame = FrameIndex;
+	}
+
+	if (!bSawNaN)
+	{
+		MaxComDriftCm = FMath::Max(MaxComDriftCm, FVector::Dist2D(FSandboxBodyProbe::CenterOfMass(Bodies), ComStartCm));
+	}
+
+	FName FrameFastestJoint;
+	const double JointSpeed = FSandboxBodyProbe::MaxJointAngularSpeedRadS(Mesh, &FrameFastestJoint);
+	if (JointSpeed > MaxJointSpeedRadS)
+	{
+		MaxJointSpeedRadS = JointSpeed;
+		FastestJoint = FrameFastestJoint;
+	}
+
+	if (const USandboxBodyController* Controller = Ragdoll->GetController())
+	{
+		if (bSettled)
+		{
+			const FSandboxAssistLoad& Load = Controller->GetAssistLoad();
+			AssistForceShareSum += Load.ForceShare;
+			AssistForceShareMax = FMath::Max(AssistForceShareMax, Load.ForceShare);
+			AssistTorqueShareSum += Load.TorqueShare;
+			AssistTorqueShareMax = FMath::Max(AssistTorqueShareMax, Load.TorqueShare);
+			++AssistSamples;
+		}
 	}
 
 	// A physics asset can be authored with joint anchors that do not coincide in the reference pose.
@@ -440,32 +633,7 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			NextCheckpointTimeS += Spec.CheckpointIntervalS;
 		}
 
-		const TSharedRef<FJsonObject> Checkpoint = MakeShared<FJsonObject>();
-		Checkpoint->SetNumberField(TEXT("t"), SimTimeS);
-		Checkpoint->SetNumberField(TEXT("frame"), FrameIndex);
-
-		TArray<TSharedPtr<FJsonValue>> BodyValues;
-		for (const FSandboxBodySample& Body : Bodies)
-		{
-			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
-			Entry->SetStringField(TEXT("bone"), Body.Bone.ToString());
-			Entry->SetArrayField(TEXT("p"), SandboxJson::VectorToArray(Body.WorldTransform.GetLocation()));
-			Entry->SetArrayField(TEXT("q"), SandboxJson::QuatToArray(Body.WorldTransform.GetRotation()));
-			BodyValues.Add(MakeShared<FJsonValueObject>(Entry));
-		}
-		Checkpoint->SetArrayField(TEXT("bodies"), BodyValues);
-
-		TArray<TSharedPtr<FJsonValue>> BoneValues;
-		for (const FTransform& Bone : Bones)
-		{
-			const FVector P = Bone.GetLocation();
-			const FQuat Q = Bone.GetRotation();
-			BoneValues.Add(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{
-				Number(P.X), Number(P.Y), Number(P.Z), Number(Q.X), Number(Q.Y), Number(Q.Z), Number(Q.W) }));
-		}
-		Checkpoint->SetArrayField(TEXT("bones"), BoneValues);
-
-		Checkpoints.Add(MakeShared<FJsonValueObject>(Checkpoint));
+		Checkpoints.Add(MakeCheckpoint(SimTimeS, FrameIndex, Bodies, Bones));
 	}
 }
 
@@ -542,6 +710,60 @@ void UScenarioRunnerSubsystem::Finish()
 		AddCheck(TEXT("max_joint_stretch_cm"), MaxJointStretchCm <= Limit, Number(MaxJointStretchCm), Number(Limit));
 	}
 
+	const USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+	const bool bHaveHead = MinHeadHeightCm != TNumericLimits<double>::Max();
+	TArray<float> SortedStepMs = PhysicsStepMs;
+	double PhysicsStepMeanMs = 0.0;
+	for (const float Ms : SortedStepMs)
+	{
+		PhysicsStepMeanMs += Ms;
+	}
+	PhysicsStepMeanMs = SortedStepMs.Num() > 0 ? PhysicsStepMeanMs / SortedStepMs.Num() : 0.0;
+
+	if (Spec.Control == EScenarioBodyControl::Active)
+	{
+		// One muscle per joint of the physics asset, or the body is only partly driven.
+		const int32 Muscles = Controller ? Controller->GetMuscleCount() : 0;
+		int32 Joints = 0;
+		for (const FConstraintInstance* Constraint : Mesh ? Mesh->Constraints : TArray<FConstraintInstance*>())
+		{
+			Joints += Constraint && Constraint->GetLinearXMotion() == LCM_Locked && Constraint->GetLinearYMotion() == LCM_Locked &&
+				Constraint->GetLinearZMotion() == LCM_Locked ? 1 : 0;
+		}
+		AddCheck(TEXT("every_joint_has_a_muscle"), Controller && Muscles == Joints, Number(Muscles), Number(Joints));
+	}
+	if (Spec.Expect.MaxPelvisDriftCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxPelvisDriftCm.GetValue();
+		AddCheck(TEXT("max_pelvis_drift_cm"), MaxPelvisDriftCm <= Limit, Number(MaxPelvisDriftCm), Number(Limit));
+	}
+	if (Spec.Expect.MinHeadHeightCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinHeadHeightCm.GetValue();
+		AddCheck(TEXT("min_head_height_cm"), bHaveHead && MinHeadHeightCm >= Limit, bHaveHead ? Number(MinHeadHeightCm) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxSettledSpeedMps.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxSettledSpeedMps.GetValue();
+		AddCheck(TEXT("max_settled_speed_mps"), MaxSettledSpeedCmS * 0.01 <= Limit, Number(MaxSettledSpeedCmS * 0.01), Number(Limit));
+	}
+	if (Spec.Expect.MaxSettledAngularSpeedRadS.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxSettledAngularSpeedRadS.GetValue();
+		AddCheck(TEXT("max_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS <= Limit, Number(MaxSettledAngularSpeedRadS), Number(Limit));
+	}
+	if (Spec.Expect.MaxJointSpeedRadS.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxJointSpeedRadS.GetValue();
+		AddCheck(TEXT("max_joint_speed_rads"), MaxJointSpeedRadS <= Limit, Number(MaxJointSpeedRadS), Number(Limit));
+	}
+	if (Spec.Expect.MaxPhysicsStepMeanMs.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxPhysicsStepMeanMs.GetValue();
+		const bool bMeasured = SortedStepMs.Num() > 0;
+		AddCheck(TEXT("max_physics_step_mean_ms"), bMeasured && PhysicsStepMeanMs <= Limit, bMeasured ? Number(PhysicsStepMeanMs) : Null(), Number(Limit));
+	}
+
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetBoolField(TEXT("ok"), true);
 	Root->SetBoolField(TEXT("pass"), bPass);
@@ -588,6 +810,12 @@ void UScenarioRunnerSubsystem::Finish()
 			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
 			Entry->SetStringField(TEXT("bone"), Mesh->GetBoneName(Instance->InstanceBoneIndex).ToString());
 			Entry->SetNumberField(TEXT("mass_kg"), Instance->GetBodyMass());
+			if (const FVector2D* Fastest = SettledBodySpeeds.Find(Mesh->GetBoneName(Instance->InstanceBoneIndex)))
+			{
+				// Fastest this body moved and turned after the settle time: shows which body jitters.
+				Entry->SetNumberField(TEXT("max_settled_speed_mps"), Fastest->X * 0.01);
+				Entry->SetNumberField(TEXT("max_settled_angular_speed_rads"), Fastest->Y);
+			}
 			BodyList.Add(MakeShared<FJsonValueObject>(Entry));
 		}
 		for (const FConstraintInstance* Constraint : Mesh->Constraints)
@@ -608,6 +836,18 @@ void UScenarioRunnerSubsystem::Finish()
 			Entry->SetNumberField(TEXT("swing2_deg"), Constraint->GetAngularSwing2Limit());
 			Entry->SetStringField(TEXT("twist"), MotionName(Constraint->GetAngularTwistMotion()));
 			Entry->SetNumberField(TEXT("twist_deg"), Constraint->GetAngularTwistLimit());
+			if (const FVector* Spawn = SpawnJointAnglesDeg.Find(Constraint->JointName))
+			{
+				// Where the joint was in the spawn pose, in the same terms as its limits.
+				Entry->SetNumberField(TEXT("spawn_twist_deg"), Spawn->X);
+				Entry->SetNumberField(TEXT("spawn_swing1_deg"), Spawn->Y);
+				Entry->SetNumberField(TEXT("spawn_swing2_deg"), Spawn->Z);
+			}
+			if (const double* Offset = SpawnJointOffsetCm.Find(Constraint->JointName))
+			{
+				// Gap between the joint's two anchors in the spawn pose; the solver closes it at once.
+				Entry->SetNumberField(TEXT("spawn_anchor_offset_cm"), *Offset);
+			}
 			JointList.Add(MakeShared<FJsonValueObject>(Entry));
 		}
 	}
@@ -628,7 +868,54 @@ void UScenarioRunnerSubsystem::Finish()
 	Metrics->SetNumberField(TEXT("final_kinetic_energy_j"), FinalKineticEnergyJ);
 	Metrics->SetNumberField(TEXT("dt_violations"), DtViolations);
 	Metrics->SetNumberField(TEXT("events_applied"), EventsApplied);
+	Metrics->SetNumberField(TEXT("spawn_limit_violation_deg"), SpawnLimitViolationDeg);
+	Metrics->SetStringField(TEXT("spawn_worst_limit_joint"), SpawnWorstLimitJoint.IsNone() ? FString() : SpawnWorstLimitJoint.ToString());
+	Metrics->SetNumberField(TEXT("settle_s"), Spec.SettleS);
+	Metrics->SetNumberField(TEXT("max_pelvis_drift_cm"), MaxPelvisDriftCm);
+	Metrics->SetNumberField(TEXT("final_pelvis_drift_cm"), FinalPelvisDriftCm);
+	Metrics->SetNumberField(TEXT("max_com_drift_cm"), MaxComDriftCm);
+	Metrics->SetField(TEXT("min_head_height_cm"), bHaveHead ? Number(MinHeadHeightCm) : Null());
+	Metrics->SetNumberField(TEXT("max_settled_speed_mps"), MaxSettledSpeedCmS * 0.01);
+	Metrics->SetNumberField(TEXT("max_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS);
+	Metrics->SetNumberField(TEXT("max_joint_speed_rads"), MaxJointSpeedRadS);
+	Metrics->SetStringField(TEXT("fastest_joint"), FastestJoint.IsNone() ? FString() : FastestJoint.ToString());
 	Root->SetObjectField(TEXT("metrics"), Metrics);
+
+	const TSharedRef<FJsonObject> ControlJson = MakeShared<FJsonObject>();
+	ControlJson->SetStringField(TEXT("mode"), Controller ? TEXT("active") : TEXT("passive"));
+	if (Controller)
+	{
+		ControlJson->SetNumberField(TEXT("muscles"), Controller->GetMuscleCount());
+		ControlJson->SetNumberField(TEXT("assist_controls"), Controller->GetAssistCount());
+		// Estimated load of the balance assist after the settle time: commanded force over body weight,
+		// and commanded torque over weight times centre-of-mass height.
+		const TSharedRef<FJsonObject> Assist = MakeShared<FJsonObject>();
+		Assist->SetNumberField(TEXT("force_share_mean"), AssistSamples > 0 ? AssistForceShareSum / AssistSamples : 0.0);
+		Assist->SetNumberField(TEXT("force_share_max"), AssistForceShareMax);
+		Assist->SetNumberField(TEXT("torque_share_mean"), AssistSamples > 0 ? AssistTorqueShareSum / AssistSamples : 0.0);
+		Assist->SetNumberField(TEXT("torque_share_max"), AssistTorqueShareMax);
+		ControlJson->SetObjectField(TEXT("assist_load"), Assist);
+
+		// The tuning the run actually used, so a result can always be traced back to its parameters.
+		const TSharedRef<FJsonObject> TuningJson = MakeShared<FJsonObject>();
+		TArray<TPair<FString, double>> TuningValues;
+		Controller->GetTuning().ListValues(TuningValues);
+		for (const TPair<FString, double>& Value : TuningValues)
+		{
+			TuningJson->SetNumberField(Value.Key, Value.Value);
+		}
+		ControlJson->SetObjectField(TEXT("tuning"), TuningJson);
+	}
+	Root->SetObjectField(TEXT("control"), ControlJson);
+
+	if (SortedStepMs.Num() > 0)
+	{
+		// Wall-clock time of the solver per frame (all substeps together), headless or rendered.
+		const TSharedRef<FJsonObject> Physics = Summarise(MoveTemp(SortedStepMs));
+		Physics->SetNumberField(TEXT("frames"), PhysicsStepMs.Num());
+		Physics->SetNumberField(TEXT("solver_steps_per_frame"), static_cast<double>(SolverStepsTotal) / PhysicsStepMs.Num());
+		Root->SetObjectField(TEXT("physics_step_ms"), Physics);
+	}
 
 	const TSharedRef<FJsonObject> Hashes = MakeShared<FJsonObject>();
 	Hashes->SetStringField(TEXT("bodies"), FString::Printf(TEXT("%08x"), BodyHash));
@@ -735,6 +1022,7 @@ void UScenarioRunnerSubsystem::FailAndExit(const FString& Message)
 
 void UScenarioRunnerSubsystem::RequestExit(uint8 Code)
 {
+	StopPhysicsTimer();
 	for (FPin& Pin : Pins)
 	{
 		Pin.Constraint->TermConstraint();

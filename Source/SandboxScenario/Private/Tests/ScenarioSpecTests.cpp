@@ -52,6 +52,39 @@ bool FScenarioSpecValidTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("rest expectation set"), Spec.Expect.RestWithinS.IsSet());
 	TestEqual(TEXT("stretch expectation"), Spec.Expect.MaxJointStretchCm.Get(0.0), 2.5);
+	TestFalse(TEXT("expectations that are not listed stay unset"), Spec.Expect.MaxPelvisDriftCm.IsSet());
+	TestTrue(TEXT("control defaults to passive"), Spec.Control == EScenarioBodyControl::Passive);
+	TestEqual(TEXT("settle time default"), Spec.SettleS, 2.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecActiveTest, "DictatorSandbox.Scenario.Spec.ParsesActiveControl", SandboxTestFlags)
+bool FScenarioSpecActiveTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* Text = TEXT(R"({
+		"name": "stand",
+		"duration_s": 10.0,
+		"settle_s": 1.5,
+		"body": { "mesh": "/Game/Some.Mesh", "control": "active" },
+		"expect": { "max_pelvis_drift_cm": 5, "min_head_height_cm": 150, "max_settled_speed_mps": 0.05,
+			"max_settled_angular_speed_rads": 0.3, "max_joint_speed_rads": 30, "max_physics_step_mean_ms": 1.5 }
+	})");
+
+	FScenarioSpec Spec;
+	FString Error;
+	if (!TestTrue(TEXT("active spec parses"), FScenarioSpec::FromString(Text, Spec, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	TestTrue(TEXT("control is active"), Spec.Control == EScenarioBodyControl::Active);
+	TestEqual(TEXT("settle time"), Spec.SettleS, 1.5);
+	TestEqual(TEXT("pelvis drift"), Spec.Expect.MaxPelvisDriftCm.Get(0.0), 5.0);
+	TestEqual(TEXT("head height"), Spec.Expect.MinHeadHeightCm.Get(0.0), 150.0);
+	TestEqual(TEXT("settled speed"), Spec.Expect.MaxSettledSpeedMps.Get(0.0), 0.05);
+	TestEqual(TEXT("settled angular speed"), Spec.Expect.MaxSettledAngularSpeedRadS.Get(0.0), 0.3);
+	TestEqual(TEXT("joint speed"), Spec.Expect.MaxJointSpeedRadS.Get(0.0), 30.0);
+	TestEqual(TEXT("physics step"), Spec.Expect.MaxPhysicsStepMeanMs.Get(0.0), 1.5);
 	return true;
 }
 
@@ -66,6 +99,12 @@ bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": {} })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "teleport" } ] })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "impulse", "body": "head", "impulse_ns": 10, "direction": [0, 0, 0] } ] })"),
+		// A misspelt expectation would never be checked, so it must not parse.
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "max_pelvis_drift": 5 } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "max_pelvis_drift_cm": "small" } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M", "control": "puppet" } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M", "control": "active", "simulate": false } })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "settle_s": -1, "body": { "mesh": "/Game/M.M" } })"),
 	};
 
 	for (const TCHAR* Text : Invalid)

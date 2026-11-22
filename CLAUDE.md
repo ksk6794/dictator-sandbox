@@ -3,8 +3,10 @@
 Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
 Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
-launch in the headset, 7.1 ms of GPU time per stereo frame). Next: **M2, active ragdoll core** (muscles through
-Physics Control, balance assist, flinch and fall states, parameter file, desktop effectors).
+launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core, is in progress.**
+Step 1 of 5 is done: the NPC stands under full simulation for 10 minutes (muscles and balance assist through
+Physics Control). Still to do: parameter file with hot reload, Standing/Flinch/Falling/Lying states and the
+push matrix, desktop pawn with effectors, overlays and strike scenarios.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -22,6 +24,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | One scenario, headless | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive` |
 | One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics) |
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
+| One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"` |
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
@@ -29,8 +32,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Bake a map's lighting | `powershell -ExecutionPolicy Bypass -File Tools\bake-lighting.ps1 [-Quality Preview] [-Force]` |
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
-Typical times on the reference machine: incremental build 4 to 10 s, full build 80 s, one scenario 8 s,
-unit tests 15 s.
+Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 3 minutes.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
 scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
@@ -40,7 +43,7 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers. Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `FSandboxBodyProbe` (measurements). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles and balance assist), `FSandboxBodyTuning` (every tunable number, by name), `FSandboxBodyProbe` (measurements). |
 | `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs. |
@@ -87,8 +90,25 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **Do not make one ragdoll body kinematic to hold it in place.** Kinematic bones follow the component, and
   the component follows the simulated root, so the body is dragged along. Constrain it to the world instead
   (see the `pin` event in `UScenarioRunnerSubsystem`).
-- **The stock MetaHuman physics asset has a 3.6 cm anchor offset at `spine_02` in the reference pose.** It
-  shows up as `initial_joint_offset_cm`, not as stretch. The generated asset inherits it from the template.
+- **The stock MetaHuman physics asset cannot be simulated as it is.** Three defects, all fixed by the
+  generator for `PA_SandboxNPC` and all still present in `PHYS_SandboxNPC` (scenario `drop_metahuman`):
+  joint anchors sit 1.5 to 3.6 cm apart on all 15 joints, because they were placed for another body's
+  proportions (M1 reported only the worst one, `spine_02`); every joint has an orientation motor that pulls
+  it away from the reference pose; and the foot shapes do not lie flat on the floor. See `Specs/README.md`.
+  A body that jumps or changes shape in its first frames has one of these; `metrics.json` shows the anchor
+  gap and the spawn-pose angles per joint.
+- **Physics Control takes its muscle targets from the mesh's pose after the mesh has ticked.** With no
+  animation that is the reference pose, constant, as wanted. World-space controls must not use that pose
+  (`bUseSkeletalAnimation` off): it is relative to the component, and the component follows the simulated
+  pelvis. `USandboxBodyController` ticks the Physics Control component by hand, after the mesh.
+- **Leave Physics Control's acceleration mode off for muscles.** It is the plugin's default and scales each
+  drive by the inertia of the two jointed bodies only: an ankle got about 18 N*m/rad and the pose crept
+  under the body's weight. The controller uses force mode with stiffness in N*m/rad. Chaos multiplies
+  angular drive stiffness and damping by 1.5; the controller divides that out.
+- **Eight solver position iterations are not enough for a standing body.** A heavy body on light feet
+  through stiff joints does not converge: the feet rock at 0.5 rad/s and walk across the floor. The
+  controller asks for 64 on the NPC's own bodies (`solver.position_iterations`); it costs 0.4 ms per frame
+  instead of 0.26. Shock-propagation and mass-ratio console variables made no difference.
 - **Regenerating a map discards its baked lighting,** and the bake re-saves the map. So map generation is
   skipped while the map is newer than its spec, and the bake keeps a `.bake.json` stamp beside the map to
   know whether it is current. File times alone cannot tell.

@@ -116,6 +116,94 @@ Two findings to carry forward:
 - **An earlier reading of 3.6 cm stretch for the MetaHuman was wrong.** It was the authored anchor offset
   at `spine_02` being closed in the first frames, now reported separately as `initial_joint_offset_cm`.
 
+Correction made in M2: the stretch figures for the generated asset in the table above were measured while
+the asset still carried the template's joint motors and anchor gaps on every joint, not only at `spine_02`.
+Both are fixed now and the figures are superseded by the M2 step 1 section below.
+
+### M2 step 1 (the character stands), 2026-11-22
+
+Same machine and settings. The NPC (`SKM_SandboxNPC_BodyMesh` with the regenerated `PA_SandboxNPC`) is spawned
+with its feet on the floor and held by `USandboxBodyController`: 15 muscles (one per joint, force-mode
+springs toward the reference pose) and 5 balance-assist controls (pelvis, chest, head, both feet), with 64
+solver position iterations on its bodies. Default tuning, bare floor, headless.
+
+| Measure | `stand_npc` (10 s) | `stand_npc_10min` (600 s) | Limit |
+| --- | --- | --- | --- |
+| Pelvis drift from the spawn pose, maximum | 0.76 cm | 0.76 cm | 5 cm (M2 gate) |
+| Pelvis drift at the end | 0.53 cm | 0.50 cm | |
+| Lowest head height | 158.3 cm | 158.3 cm | 150 cm |
+| Largest joint stretch | under 0.01 cm | under 0.01 cm | 2 cm (M2 gate) |
+| Fastest body after 2 s, linear | 0.7 cm/s | 0.7 cm/s | 5 cm/s |
+| Fastest body after 2 s, angular (a foot) | 0.07 rad/s | 0.13 rad/s | 0.3 rad/s |
+| Assist load, force over body weight | 0.044 | 0.046 | |
+| Assist load, torque over weight x centre-of-mass height | 0.0019 | 0.0020 | |
+| Solver time per frame, mean | 0.40 ms | 0.39 ms | 1.5 ms (M2 gate) |
+| Wall-clock time of the run | 1.1 s | 51 s | |
+
+Both scenarios gave identical hashes in repeated headless runs and in a GPU-rendered run (see the table at
+the end of this section). The 10-minute scenario simulates about 12 times faster than real time.
+
+The assist-load figures are the baseline for the M3 criterion "standing assist share is at most half its M2
+value". They are estimates: the solver does not report drive forces, so the load is computed from the assist
+springs' settings and each body's distance from its target.
+
+How much each part contributes, from 10-second runs with tuning overrides:
+
+| Variant | Pelvis drift | Foot slide (left foot, sideways / forward) | Jitter (fastest foot) | Assist force share |
+| --- | --- | --- | --- | --- |
+| Default | 0.76 cm | 1.0 / 0.4 cm | 0.07 rad/s | 0.044 |
+| 8 position iterations (engine default) | 0.98 cm | 4.0 / 5.2 cm and still sliding | 0.54 rad/s | 0.153 |
+| 32 position iterations | 0.68 cm | 1.7 / 1.3 cm | 0.21 rad/s | 0.074 |
+| No assist on the feet | 0.85 cm | 1.9 / 0.4 cm | 0.08 rad/s | 0.011 |
+| No assist on pelvis, chest and head | 3.06 cm | 1.1 / 0.6 cm | 0.14 rad/s | 0.037 |
+| No assist at all | 3.40 cm | 1.8 / 1.2 cm | 0.15 rad/s | 0 |
+| No leg muscles | falls | | | |
+
+With no assist at all the character still stands for the full 10 minutes (head at 158 cm) but walks 52 cm
+across the floor on its vibrating feet. So at level 0 the legs carry the body and the assist mostly anchors it.
+
+Solver cost against iterations (mean solver time per frame, one character on a bare floor): 0.26 ms at 8,
+0.31 ms at 32, 0.40 ms at 64.
+
+What it took to get here, in the order found. Each of the first three is a defect of the M1 physics asset
+that the M1 scenarios could not show, because a body in free fall hides them:
+
+1. **Joint anchors apart on every joint.** M1 recorded "a 3.6 cm offset at `spine_02`". That was the largest
+   of 15: every joint had a gap of 1.5 to 3.6 cm, because the stock MetaHuman asset places its joints for
+   another body's proportions. Closing the gaps shortened the skeleton by 12 cm in the first step. The
+   generator now puts each parent-side anchor on the child-side one; the gap reads 0.000003 cm.
+2. **Motors in the template.** Every stock joint has an orientation drive (stiffness 1000 to 5000) toward
+   the zero of its axes, which is not the reference pose. They flexed elbows and knees: the hands moved
+   30 cm in the first tenth of a second. The generator now clears them.
+3. **Feet not flat.** The template's toe capsule sits 1.5 cm below the floor in the reference pose, so the
+   foot pitched and the body leaned 6 degrees back through the stiff ankle. The feet are now boxes written
+   out in the spec, with the sole on the floor. Pelvis drift went from 4.1 to 1.0 cm.
+4. **Acceleration-mode drives.** Physics Control's default scales a drive by the inertia of the two jointed
+   bodies, which made the load-bearing joints far too weak; the pose crept for as long as the run lasted.
+   Muscles now use force mode, in N*m/rad.
+5. **Solver convergence.** See the iteration rows above.
+
+Effect of the corrected asset on the M1 scenarios (passive body, 8 iterations). The M1 figures were taken
+with the template's motors still in the asset, which stiffened the body; these replace them:
+
+| Scenario | Largest joint stretch, M1 | Now | Notes |
+| --- | --- | --- | --- |
+| `drop_npc` | 0.13 cm | 0.82 cm (right knee) | Rests after 2.4 s instead of 4.4 s |
+| `room_drop_npc` | not recorded | 0.61 cm | Rests after 3.8 s |
+| `hang_npc_hand` | 0.49 cm | 1.52 cm (right wrist) | M1 limit of 3 cm still met. The world pin gives by 9.7 cm (3.7 cm before) |
+
+Not yet checked: the conversion from N*m/rad to the engine's units is taken from the engine source (unit
+scale and Chaos's factor of 1.5 on angular drives), not from a calibration measurement. The arms' sag under
+gravity is of the expected size (about 2 cm at the hand for 150 N*m/rad), which rules out an error of an
+order of magnitude but not one of tens of percent.
+
+Repeatability:
+
+| Scenario | Runs compared | Result |
+| --- | --- | --- |
+| `stand_npc` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `stand_npc_10min` | 2 headless + 1 rendered | Identical hashes in all 3 runs (54,000 frames each) |
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

@@ -153,6 +153,15 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 				Body->PhysMaterial = Source->PhysMaterial;
 			}
 		}
+		// Shapes written out in the spec. They are given in the mesh's reference-pose space, where the
+		// floor is z = 0, so that a sole can be laid flat on it whatever the bone's own orientation is.
+		for (const FPhysicsShapeSpec& Shape : BodySpec.Shapes)
+		{
+			const FTransform ShapeInMesh(FRotator(0.0, Shape.YawDeg, 0.0), Shape.CenterCm);
+			FKBoxElem Box(static_cast<float>(Shape.SizeCm.X), static_cast<float>(Shape.SizeCm.Y), static_cast<float>(Shape.SizeCm.Z));
+			Box.SetTransform(ShapeInMesh.GetRelativeTransform(BodyBone));
+			Body->AggGeom.BoxElems.Add(Box);
+		}
 		if (Body->AggGeom.GetElementCount() == 0)
 		{
 			OutError = FString::Printf(TEXT("Body '%s' ended up with no collision shapes"), *BodySpec.Bone.ToString());
@@ -205,6 +214,31 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 			const FTransform Frame2 = TemplateJoint->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2);
 			Instance.SetRefFrame(EConstraintFrame::Frame2, (Frame2 * OldParent).GetRelativeTransform(NewParent));
 		}
+
+		// The template's anchor positions were authored for another body's proportions: on this mesh the
+		// two anchors of a joint end up centimetres apart, and the solver would close every gap in the
+		// first step, squashing the skeleton. Keep the child-side anchor and the orientation of both
+		// frames (they define the limit axes), and put the parent-side anchor exactly where the child's
+		// is in this mesh's reference pose.
+		{
+			FTransform ChildBone, NewParentBone;
+			if (!BoneTransform(BodySpec.Bone, ChildBone) || !BoneTransform(ParentBone, NewParentBone))
+			{
+				OutError = FString::Printf(TEXT("Joint '%s': cannot resolve its bones"), *BodySpec.Bone.ToString());
+				return nullptr;
+			}
+			const FVector Anchor = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ChildBone).GetLocation();
+			FTransform Frame2 = Instance.GetRefFrame(EConstraintFrame::Frame2);
+			Frame2.SetLocation(NewParentBone.InverseTransformPosition(Anchor));
+			Instance.SetRefFrame(EConstraintFrame::Frame2, Frame2);
+		}
+
+		// The stock MetaHuman joints carry orientation motors (SLERP drives, stiffness 1000 to 5000) that pull
+		// each joint toward the zero of its frames, which is not the reference pose: left in, they flex the
+		// elbows and knees of a simulated body. The generated asset has no motors of its own; muscles are
+		// added at run time by USandboxBodyController.
+		Instance.ProfileInstance.AngularDrive = FAngularDriveConstraint();
+		Instance.ProfileInstance.LinearDrive = FLinearDriveConstraint();
 
 		Instance.SetLinearLimits(LCM_Locked, LCM_Locked, LCM_Locked, 0.0f);
 		Instance.SetAngularSwing1Limit(JointSpec->Swing1.Motion, static_cast<float>(JointSpec->Swing1.LimitDeg));
@@ -269,6 +303,32 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 	for (const FRigidBodyIndexPair& Pair : Disabled)
 	{
 		Asset->DisableCollision(Pair.Indices[0], Pair.Indices[1]);
+	}
+
+	// Report colliding pairs whose bounds already overlap in the reference pose. Bounding boxes overstate
+	// capsules, so a small overlap here may be a false alarm; a deep one means the two bodies push each
+	// other apart from the first step on.
+	{
+		TArray<FBox> Bounds;
+		for (const USkeletalBodySetup* Body : Asset->SkeletalBodySetups)
+		{
+			FTransform Bone;
+			BoneTransform(Body->BoneName, Bone);
+			Bounds.Add(Body->AggGeom.CalcAABB(Bone));
+		}
+		for (int32 A = 0; A < Bounds.Num(); ++A)
+		{
+			for (int32 B = A + 1; B < Bounds.Num(); ++B)
+			{
+				if (Disabled.Contains(FRigidBodyIndexPair(A, B)) || !Bounds[A].Intersect(Bounds[B]))
+				{
+					continue;
+				}
+				const FVector Depth = Bounds[A].Overlap(Bounds[B]).GetSize();
+				UE_LOG(LogTemp, Display, TEXT("Physics asset '%s': colliding bodies '%s' and '%s' have bounds that overlap by %.1f cm in the reference pose"),
+					*Spec.Name, *Asset->SkeletalBodySetups[A]->BoneName.ToString(), *Asset->SkeletalBodySetups[B]->BoneName.ToString(), Depth.GetMin());
+			}
+		}
 	}
 
 	Asset->UpdateBodySetupIndexMap();

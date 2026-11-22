@@ -222,6 +222,8 @@ Balance is built in three levels so each milestone has a working character. Leve
 
 Sixteen bodies and fifteen joints: pelvis, two spine segments, head, and per side upper arm, forearm, hand, thigh, shank and foot. Capsules everywhere, boxes for feet and chest, no fingers, no convex hulls. Collision is off between adjacent bodies and on between arms and torso and between the legs.
 
+As built in M2: shapes come from the stock MetaHuman asset except the feet, which are boxes written out in the spec with a flat sole on the floor (the chest is still capsules). The generator places every joint on this mesh's own reference pose and removes the stock asset's joint motors; both stock values break a fully simulated body.
+
 Masses follow de Leva's 1996 segment fractions, here for an 80 kg male. Every parent-to-child mass ratio stays under 10, which the joint solver needs.
 
 | Body | Share of body mass (%) | Mass (kg) |
@@ -256,7 +258,7 @@ Joint limits start about 10% inside clinical range of motion ([WikEM table](<htt
 
 - **Synchronous physics, fixed 90 Hz step, two substeps.** The simulation runs at 180 Hz with no interpolation latency between hands and render. Async physics adds about two fixed steps of delay and leaves game-thread control targets stale.
 - **Fixed engine timestep in tests.** Headless runs force a constant frame delta so results do not depend on wall-clock time.
-- **Joint solver.** Start with the default linear solver and 8 position iterations. Switch the NPC's joints to the non-linear solver (`p.Chaos.Solver.Joint.UseLinearSolver 0`) if limbs stretch under load; Epic documents it as more stable and more expensive.
+- **Joint solver.** The default linear solver, with 64 position iterations on the NPC's own bodies (decided in M2: at the engine default of 8 a standing body does not converge and its feet creep; the cost is 0.40 ms per frame against 0.26). Switch the NPC's joints to the non-linear solver (a per-joint setting of the physics asset) if limbs stretch under load; Epic documents it as more stable and more expensive.
 - **Stability rules.** Soft limits, capped drive forces, projection off for bodies in contact, inertia conditioning on, continuous collision only on hands, feet and head.
 - **Fallback.** If frame drops destabilise the body, move to async physics at 180 Hz and run control logic in simulation callbacks.
 
@@ -266,8 +268,8 @@ Every number above is a parameter in one text file, grouped as follows.
 
 | Group | Parameters |
 | --- | --- |
-| Muscles | Strength, damping and force cap per joint group (spine, neck, arms, legs), per state |
-| Balance assist | Linear and angular strength for pelvis, chest, head and feet, per state |
+| Muscles | Stiffness in N·m/rad, damping time and torque cap per joint group (spine, neck, arms, legs), per state |
+| Balance assist | Horizontal and vertical stiffness in N/m, angular stiffness in N·m/rad and damping time for pelvis, chest, head and feet, per state |
 | Thresholds | Flinch impulse, stagger and fall conditions, rest speed and time |
 | Reactions | Weakening factor, spread to neighbouring chains, recovery time |
 | Get-up | Delay, ramp duration, pose-match tolerance |
@@ -549,18 +551,32 @@ Assemble and import the MetaHuman. Generate the physics asset from its JSON spec
 - [x] Joint stretch under an 80 kg hanging load stays under 3 cm
 - [x] Renderer path, character source and solver settings are confirmed or switched to their fallbacks
 
-**M1 completed on 22 November 2026.** The MetaHuman is created by script; the physics asset (16 bodies, 80 kg) and the test room are generated from JSON specs; lighting bakes from the command line; hanging the body from one hand stretches no joint by more than 0.49 cm. In the PlayStation VR2 the test scene takes 7.1 ms of GPU time (7.8 ms at the 99th percentile) at 90 FPS with TAA and an 85% render scale; at SteamVR's full target it takes 10.6 ms. The owner confirmed the choices: deferred renderer with baked lighting and TAA, MetaHuman, synchronous physics at 90 Hz with two substeps. DLSS evaluation is deferred to M5. Deviations: collision shapes and joint frames come from the stock MetaHuman asset as a template, joint limits are still the stock values, and flat launches switch the OpenXR plugin off because `-nohmd` alone costs 26 s at start-up. Measurements are in `docs/testing.md`.
+**M1 completed on 22 November 2026.** The MetaHuman is created by script; the physics asset (16 bodies, 80 kg) and the test room are generated from JSON specs; lighting bakes from the command line; hanging the body from one hand stretches no joint by more than 0.49 cm. In the PlayStation VR2 the test scene takes 7.1 ms of GPU time (7.8 ms at the 99th percentile) at 90 FPS with TAA and an 85% render scale; at SteamVR's full target it takes 10.6 ms. The owner confirmed the choices: deferred renderer with baked lighting and TAA, MetaHuman, synchronous physics at 90 Hz with two substeps. DLSS evaluation is deferred to M5. Deviations: collision shapes and joint frames come from the stock MetaHuman asset as a template, joint limits are still the stock values, and flat launches switch the OpenXR plugin off because `-nohmd` alone costs 26 s at start-up. Measurements are in `docs/testing.md`. Two defects of that template were found and fixed in M2, and the hanging-load figure changed with them; see the M2 section.
 
 ### M2: Active ragdoll core (about 3 weeks)
 
 Muscles, balance assist at level 0, and the Standing, Flinch, Falling and Lying states. Parameter file with hot reload. Desktop pawn with effectors, impulse tool, drag handle and overlays.
 
-- [ ] Stand scenario passes: 10 minutes, drift under 5 cm
+- [x] Stand scenario passes: 10 minutes, drift under 5 cm
 - [ ] Push matrix: 10 N·s never causes a fall, 200 N·s always does, left and right agree
 - [ ] Strike scenarios show no tunnelling and no joint above 30 rad/s
 - [ ] No scenario shows joint stretch above 2 cm
 - [ ] A parameter edit takes effect in a running session
 - [ ] Physics step averages 1.5 ms or less
+
+**M2 is in progress. Step 1 of 5, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
+
+Decisions taken in step 1:
+
+- **Muscles are force-mode springs in physical units** (N·m/rad), not Physics Control's default acceleration mode. That mode scales each drive by the inertia of the two jointed bodies alone, which leaves the load-bearing joints far too weak. Starting values: legs 800, spine 600, arms 150, neck 80 N·m/rad.
+- **Balance level 0 turned out lighter than planned.** With muscles of that strength the legs carry the body; the assist's commanded force is 4.6% of body weight and its main job is to stop the feet creeping across the floor. These figures are the baseline for the M3 assist-share criterion.
+- **64 solver position iterations on the NPC's bodies** (see Solver and timing).
+- **Feet are flat boxes** written out in the physics asset spec.
+- **Tuning values have names** (`muscles.legs.stiffness_nm_per_rad`, `assist.pelvis.horizontal_n_per_m`, `solver.position_iterations`) and can be overridden per run from the command line. The parameter file and hot reload are step 2.
+
+Corrections to M1 found in step 1. The stock MetaHuman physics asset, used as the template, has joint anchors 1.5 to 3.6 cm apart on all 15 joints (M1 recorded only the largest) and an orientation motor on every joint. A falling body hid both; a standing one could not start without its skeleton shortening by 12 cm and its elbows and knees flexing. The generator now fixes both. Without the motors the passive body is looser: joint stretch under the hanging load is 1.52 cm, not the 0.49 cm recorded at M1 (the limit of 3 cm is still met).
+
+Not done yet in step 1, against the plan: muscle torque caps exist as parameters but are left at "no cap" until the fall states need them; joint limits are still the stock symmetric values, and the stock joint axes differ between the left and right side, which the push matrix's left-right criterion will need fixed first.
 
 ### M3: Balance and recovery (3 to 4 weeks)
 

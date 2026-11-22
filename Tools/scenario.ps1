@@ -5,6 +5,9 @@
 #   ... -VR              run in the headset through OpenXR (headset on, runtime running); frames are paced by
 #                        the headset, so the run takes its simulated duration in real time
 #   ... -CVars "a=1,b=2" console variables for this run only (applied at start-up as device-profile overrides)
+#   ... -Tune "muscles.legs.strength_hz=6,assist.pelvis.angular_hz=2"
+#                        body tuning values for this run only (active control); the values used are written to
+#                        metrics.json under control.tuning
 #   ... -Out <dir>       output directory (default Saved\Scenarios\<name>)
 # Prints a one-line verdict plus the checks and writes <Out>\metrics.json and <Out>\trace.json.
 # Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
@@ -13,6 +16,7 @@ param(
     [switch]$Rendered,
     [switch]$VR,
     [string]$CVars,
+    [string]$Tune,
     [switch]$Shot,
     [string]$Out,
     [int]$TimeoutSec = 900,
@@ -52,6 +56,7 @@ if ($VR) {
     $arguments += ' -nullrhi'
 }
 if ($CVars) { $arguments += " -dpcvars=`"$CVars`"" }
+if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($Shot) { $arguments += " -Shot=`"$(Join-Path $Out 'final.png')`"" }
 
 $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -VR:$VR

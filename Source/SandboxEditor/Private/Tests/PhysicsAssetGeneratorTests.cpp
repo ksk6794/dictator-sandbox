@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "AnimationRuntime.h"
 #include "Engine/SkeletalMesh.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/PackageName.h"
@@ -44,6 +45,10 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
+		const FReferenceSkeleton& Skeleton = Mesh->GetRefSkeleton();
+		TArray<FTransform> ComponentSpace;
+		FAnimationRuntime::FillUpComponentSpaceTransforms(Skeleton, Skeleton.GetRefBonePose(), ComponentSpace);
+
 		TestEqual(Label + TEXT(": body count"), Asset->SkeletalBodySetups.Num(), Spec.Bodies.Num());
 		TestEqual(Label + TEXT(": joint count"), Asset->ConstraintSetup.Num(), Spec.Bodies.Num() - 1);
 
@@ -60,6 +65,11 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			TestTrue(BodyLabel + TEXT(" overrides its mass"), Body->DefaultInstance.bOverrideMass);
 			TestEqual(BodyLabel + TEXT(" mass"), static_cast<double>(Body->DefaultInstance.GetMassOverride()), BodySpec.MassFraction * Spec.TotalMassKg, 1.0e-3);
 			TestTrue(BodyLabel + TEXT(" has collision shapes"), Body->AggGeom.GetElementCount() > 0);
+			TestTrue(BodyLabel + TEXT(" has every box written out in the spec"), Body->AggGeom.BoxElems.Num() >= BodySpec.Shapes.Num());
+			if (BodySpec.ShapesFrom.Num() == 0)
+			{
+				TestEqual(BodyLabel + TEXT(" has only the shapes written out in the spec"), Body->AggGeom.GetElementCount(), BodySpec.Shapes.Num());
+			}
 			TotalMass += Body->DefaultInstance.GetMassOverride();
 		}
 		TestEqual(Label + TEXT(": total mass"), TotalMass, Spec.TotalMassKg, 1.0e-2);
@@ -84,6 +94,25 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			if (JointSpec.Swing1.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing1 limit"), static_cast<double>(Instance.GetAngularSwing1Limit()), JointSpec.Swing1.LimitDeg, 1.0e-3); }
 			if (JointSpec.Swing2.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing2 limit"), static_cast<double>(Instance.GetAngularSwing2Limit()), JointSpec.Swing2.LimitDeg, 1.0e-3); }
 			if (JointSpec.Twist.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" twist limit"), static_cast<double>(Instance.GetAngularTwistLimit()), JointSpec.Twist.LimitDeg, 1.0e-3); }
+
+			// No motors in the asset: a drive copied from the template would pull the joint away from the
+			// reference pose. Muscles are created at run time.
+			const FAngularDriveConstraint& Drive = Instance.ProfileInstance.AngularDrive;
+			TestFalse(JointLabel + TEXT(" has no angular motor"),
+				Drive.SlerpDrive.bEnablePositionDrive || Drive.SlerpDrive.bEnableVelocityDrive ||
+				Drive.TwistDrive.bEnablePositionDrive || Drive.TwistDrive.bEnableVelocityDrive ||
+				Drive.SwingDrive.bEnablePositionDrive || Drive.SwingDrive.bEnableVelocityDrive);
+
+			// The two anchors of a joint must coincide in the mesh's reference pose. A gap would be closed
+			// by the solver in the first step and deform the skeleton.
+			const int32 ChildBone = Skeleton.FindBoneIndex(Instance.ConstraintBone1);
+			const int32 ParentBone = Skeleton.FindBoneIndex(Instance.ConstraintBone2);
+			if (TestTrue(JointLabel + TEXT(" bones exist"), ChildBone != INDEX_NONE && ParentBone != INDEX_NONE))
+			{
+				const FVector ChildAnchor = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ComponentSpace[ChildBone]).GetLocation();
+				const FVector ParentAnchor = (Instance.GetRefFrame(EConstraintFrame::Frame2) * ComponentSpace[ParentBone]).GetLocation();
+				TestEqual(JointLabel + TEXT(" anchor gap in the reference pose, cm"), FVector::Dist(ChildAnchor, ParentAnchor), 0.0, 1.0e-2);
+			}
 
 			// Jointed bodies must not collide with each other.
 			const int32 Child = Asset->FindBodyIndex(Instance.ConstraintBone1);

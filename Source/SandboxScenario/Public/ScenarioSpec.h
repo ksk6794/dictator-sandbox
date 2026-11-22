@@ -19,11 +19,31 @@ struct FScenarioEvent
 	FVector Direction = FVector::ForwardVector;
 };
 
-/** Optional pass criteria. Unset values are not checked. */
+/** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
 struct FScenarioExpect
 {
 	TOptional<double> RestWithinS;
 	TOptional<double> MaxJointStretchCm;
+	/** Furthest the pelvis may get from where it was spawned, over the whole run. */
+	TOptional<double> MaxPelvisDriftCm;
+	/** Lowest the head body's centre of mass may get above the spawn height: the character stayed upright. */
+	TOptional<double> MinHeadHeightCm;
+	/** Fastest any body may move or turn once the settle time has passed: no jitter at rest. */
+	TOptional<double> MaxSettledSpeedMps;
+	TOptional<double> MaxSettledAngularSpeedRadS;
+	/** Fastest relative rotation allowed in any joint, over the whole run. */
+	TOptional<double> MaxJointSpeedRadS;
+	/** Largest allowed mean time of one frame's physics (all substeps), in milliseconds of wall-clock time. */
+	TOptional<double> MaxPhysicsStepMeanMs;
+};
+
+/** How the body is driven. */
+enum class EScenarioBodyControl : uint8
+{
+	/** No drives: a plain ragdoll. */
+	Passive,
+	/** Muscles and balance assist (USandboxBodyController): the character holds its spawn pose. */
+	Active
 };
 
 /**
@@ -49,6 +69,10 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	TArray<FString> AttachedMeshPaths;
 	/** False keeps the body kinematic in its reference pose: for portraits and rendering-cost scenes. */
 	bool bSimulate = true;
+	EScenarioBodyControl Control = EScenarioBodyControl::Passive;
+
+	/** Start-up transient: "settled" metrics and expectations only look at the run after this time. */
+	double SettleS = 2.0;
 
 	/** Optional fixed camera for rendered runs. When unset the runner frames the body itself. */
 	bool bHasCamera = false;
