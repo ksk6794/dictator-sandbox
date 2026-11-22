@@ -6,7 +6,7 @@ public class SandboxScenario : ModuleRules
 	public SandboxScenario(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "Json", "PhysicsCore", "SandboxCore", "SandboxBody" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "Json", "PhysicsCore", "SandboxCore", "SandboxBody", "SandboxInteraction" });
 		PrivateDependencyModuleNames.AddRange(new string[] { "RHI", "RenderCore", "HeadMountedDisplay", "Chaos" });
 	}
 }

@@ -1,0 +1,36 @@
+{
+  "name": "tune_live_effector",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 1.0,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {"t": 0.0, "location_cm": [150, 0, 30]},
+        {"t": 0.5, "location_cm": [150, 0, -30]}
+      ]
+    },
+    {
+      "t": 4.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.max_force_n=100"
+    }
+  ],
+  "expect": {
+    "state_sequence": "standing",
+    "tuning_changes": 0,
+    "min_effector_final_force_n": 99,
+    "max_effector_final_force_n": 101,
+    "max_effector_force_n": 303
+  }
+}

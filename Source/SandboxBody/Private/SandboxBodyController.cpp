@@ -38,6 +38,10 @@ USandboxBodyController::USandboxBodyController()
 
 void USandboxBodyController::OnUnregister()
 {
+	if (Mesh)
+	{
+		Mesh->OnComponentHit.RemoveDynamic(this, &USandboxBodyController::OnBodyHit);
+	}
 	ReleaseIslandRefresh();
 	Super::OnUnregister();
 }
@@ -162,6 +166,11 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 
 	PushTuningToControls();
 
+	// The body learns that it was hit from its own contacts: the physics scene reports every contact of
+	// these bodies after the step, with its impulse. Nothing here knows what the other body is.
+	Mesh->SetNotifyRigidBodyCollision(true);
+	Mesh->OnComponentHit.AddUniqueDynamic(this, &USandboxBodyController::OnBodyHit);
+
 	// Run after the mesh has evaluated its animation pose for this frame: that pose is the muscles' target.
 	AddTickPrerequisiteComponent(Mesh);
 	Params = &InParams;
@@ -274,7 +283,29 @@ void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
 	}
 	// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
 	Body->AddImpulse(ImpulseNs * 100.0, /*bVelChange*/ false);
+	FeelImpulse(Bone, ImpulseNs);
+}
 
+void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
+{
+	// A hit is a contact with another body that moves under physics: a hand, a thrown prop. The floor
+	// under the feet pushes back with the character's whole weight in every step and is no hit, and
+	// neither is an arm resting against the character's own side.
+	if (!bStarted || !OtherComponent || OtherComponent == Mesh || !OtherComponent->IsSimulatingPhysics(Hit.BoneName))
+	{
+		return;
+	}
+	// One report per pair of bodies and substep, in kg*cm/s. The impulse vector's sign follows the order
+	// the solver holds the pair in; the normal is always given from this body's side, so the two together
+	// give impulses that add up properly when one hand touches several of the character's bodies.
+	const FVector ImpulseNs = Hit.ImpactNormal * (NormalImpulse.Size() * 0.01);
+	ContactImpulseNs += ImpulseNs.Size();
+	++ContactReports;
+	FeelImpulse(Hit.MyBoneName, ImpulseNs);
+}
+
+void USandboxBodyController::FeelImpulse(FName Bone, const FVector& ImpulseNs)
+{
 	// What is felt is the hit as a whole: impulses that follow each other closely are added up.
 	if (ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS)
 	{

@@ -157,6 +157,53 @@ bool FScenarioSpecStatesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecEffectorTest, "DictatorSandbox.Scenario.Spec.ParsesEffectorPaths", SandboxTestFlags)
+bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* Text = TEXT(R"({
+		"name": "hand",
+		"duration_s": 8.0,
+		"body": { "mesh": "/Game/Some.Mesh", "control": "active" },
+		"events": [
+			{ "t": 3.0, "type": "effector", "effector": "hand_right", "path": [
+				{ "t": 0.0, "location_cm": [-70, 0, 135], "rotation_deg": [0, 90, 0] },
+				{ "t": 0.2, "location_cm": [-10, 0, 135] },
+				{ "t": 0.8, "location_cm": [-70, 0, 135], "rotation_deg": [0, 0, 0] } ] },
+			{ "t": 1.0, "type": "effector", "effector": "hand_left", "path": [ { "t": 0, "location_cm": [50, 50, 100] } ] }
+		],
+		"expect": { "min_effector_impulse_ns": 5, "max_effector_impulse_ns": 60, "max_effector_force_n": 900,
+			"min_effector_final_force_n": 290, "max_effector_final_force_n": 310 }
+	})");
+
+	FScenarioSpec Spec;
+	FString Error;
+	if (!TestTrue(TEXT("spec with effector paths parses"), FScenarioSpec::FromString(Text, Spec, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	if (TestEqual(TEXT("event count"), Spec.Events.Num(), 2))
+	{
+		const FScenarioEvent& Right = Spec.Events[1];
+		TestEqual(TEXT("events are sorted by time"), Right.Effector, FName(TEXT("hand_right")));
+		if (TestEqual(TEXT("key count"), Right.Path.Num(), 3))
+		{
+			TestEqual(TEXT("key time"), Right.Path[1].TimeS, 0.2);
+			TestEqual(TEXT("key location"), Right.Path[1].Location, FVector(-10.0, 0.0, 135.0));
+			TestTrue(TEXT("a key without a rotation keeps the one before it"), Right.Path[1].Rotation.Equals(FRotator(0.0, 90.0, 0.0).Quaternion()));
+			TestTrue(TEXT("a key with a rotation has its own"), Right.Path[2].Rotation.Equals(FQuat::Identity));
+		}
+		TestEqual(TEXT("a path of one key is a place to stay"), Spec.Events[0].Path.Num(), 1);
+	}
+	TestTrue(TEXT("the spec knows it has effectors"), Spec.HasEvent(TEXT("effector")));
+	TestEqual(TEXT("least impulse"), Spec.Expect.MinEffectorImpulseNs.Get(0.0), 5.0);
+	TestEqual(TEXT("most impulse"), Spec.Expect.MaxEffectorImpulseNs.Get(0.0), 60.0);
+	TestEqual(TEXT("peak force"), Spec.Expect.MaxEffectorForceN.Get(0.0), 900.0);
+	TestEqual(TEXT("least final force"), Spec.Expect.MinEffectorFinalForceN.Get(0.0), 290.0);
+	TestEqual(TEXT("most final force"), Spec.Expect.MaxEffectorFinalForceN.Get(0.0), 310.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecInvalidTest, "DictatorSandbox.Scenario.Spec.RejectsInvalidSpecs", SandboxTestFlags)
 bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 {
@@ -184,6 +231,14 @@ bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "state_sequence": "standing>>lying" } })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "state_sequence": 3 } })"),
 		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "impulse", "body": "head", "impulse_ns": 10, "direction": [0, 1, 0], "duration_s": -1 } ] })"),
+		// An effector that does not exist, and paths that cannot be played.
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "effector", "effector": "tail", "path": [ { "t": 0, "location_cm": [0, 0, 0] } ] } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "effector", "effector": "hand_left" } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "effector", "effector": "hand_left", "path": [] } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "effector", "effector": "hand_left", "path": [ { "t": 0, "location_cm": [0, 0] } ] } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "effector", "effector": "hand_left", "path": [ { "t": 0.1, "location_cm": [0, 0, 0] } ] } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "effector", "effector": "hand_left", "path": [ { "t": 0, "location_cm": [0, 0, 0] }, { "t": 0, "location_cm": [1, 0, 0] } ] } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "expect": { "min_effector_force_n": 5 } })"),
 	};
 
 	for (const TCHAR* Text : Invalid)

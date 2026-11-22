@@ -1,0 +1,15 @@
+{
+  "effectors": {
+    "hand": {
+      "mass_kg": 1.5,
+      "radius_cm": 4.5,
+      "stiffness_n_per_m": 3000,
+      "damping_s": 0.045,
+      "max_force_n": 300,
+      "angular_stiffness_nm_per_rad": 20,
+      "angular_damping_s": 0.05,
+      "max_torque_nm": 20,
+      "snap_distance_cm": 150
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "effector_miss",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 2.0,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {"t": 0.0, "location_cm": [70, 45, 128]},
+        {"t": 0.4, "location_cm": [-70, 45, 128]},
+        {"t": 0.8, "location_cm": [70, 45, 128]}
+      ]
+    }
+  ],
+  "expect": {
+    "state_sequence": "standing",
+    "max_effector_impulse_ns": 0,
+    "max_pelvis_drift_cm": 5.0,
+    "max_joint_stretch_cm": 2.0
+  }
+}

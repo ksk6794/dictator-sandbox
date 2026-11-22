@@ -1,5 +1,5 @@
 # Takes a clean clone to a verified build: stock content, compile, asset generation, lighting bake, unit tests,
-# scenario suite, push matrix.
+# scenario suite, push matrix, self-test of the interactive session.
 #   powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1
 # Needs: Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
 # Windows SDK 10.0.22621. Stops at the first failing step. Writes Saved\Tools\bootstrap.json.
@@ -12,7 +12,8 @@ $steps = @(
     @{ name = 'bake-lighting';       script = 'bake-lighting.ps1' },
     @{ name = 'test';                script = 'test.ps1' },
     @{ name = 'suite';               script = 'suite.ps1' },
-    @{ name = 'push-matrix';         script = 'push-matrix.ps1' }
+    @{ name = 'push-matrix';         script = 'push-matrix.ps1' },
+    @{ name = 'play-smoke';          script = 'play.ps1'; arguments = @('-Smoke') }
 )
 
 $results = @()
@@ -20,7 +21,9 @@ $ok = $true
 foreach ($step in $steps) {
     Write-Output "=== $($step.name) ==="
     $started = Get-Date
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot $step.script) | ForEach-Object { Write-Output $_ }
+    $stepArguments = @()
+    if ($step.arguments) { $stepArguments = $step.arguments }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot $step.script) @stepArguments | ForEach-Object { Write-Output $_ }
     $code = $LASTEXITCODE
     $results += [ordered]@{ step = $step.name; ok = ($code -eq 0); exit_code = $code; seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1) }
     if ($code -ne 0) { $ok = $false; break }

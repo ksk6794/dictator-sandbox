@@ -58,6 +58,13 @@ public:
 	void DeclareState(const FString& State);
 	void AddValidator(FValidator Validator);
 
+	/**
+	 * A new, empty store that knows the same names, states and validators as this one: no directory, no
+	 * values, no overrides. Tests use it on the process-wide store to read Config/Tuning, which holds the
+	 * values of every module, without touching the store the running game follows.
+	 */
+	FSandboxParamStore CloneSchema() const;
+
 	// Files.
 
 	/** Points the store at another directory and forgets the values read so far. Overrides are kept. */

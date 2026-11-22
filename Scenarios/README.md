@@ -53,7 +53,8 @@ Event types. Unknown types are a parse error.
 - `impulse` applies `impulse_ns` newton-seconds along `direction` (normalised for you) to the body on bone
   `body`. Without `duration_s` it is a single blow; with it, a push: the same impulse delivered as a steady
   force over that time. An actively controlled body feels the hit (`USandboxBodyController::ApplyImpulse`)
-  and may flinch; a passive one just receives it.
+  and may flinch; a passive one just receives it. This is the calibrated stimulus: it acts at the body's
+  centre of mass and touches nothing. The impulse tool of an interactive session uses the same entry.
 - `pin` fixes the body on bone `body` at its current world position with a ball joint; the rest of the
   character hangs from it. `metrics.max_pin_error_cm` reports how far the body strayed from the pin point.
 - `console` runs `command` as if it were typed into the console of the running session, for example
@@ -63,6 +64,54 @@ Event types. Unknown types are a parse error.
   nothing else: the running session has to notice the edit by itself, as it would after a save in an
   editor. A scenario with such an event runs on its own copy of the tuning files in `<Out>\tuning`, so
   `Config/Tuning` is never written to. Active control only.
+- `effector` moves one of the player's hands (`"effector": "hand_left"` or `"hand_right"`) along a `path`.
+  See below.
+
+## Hands
+
+```json
+{ "t": 3.0, "type": "effector", "effector": "hand_right", "path": [
+    { "t": 0.0,  "location_cm": [0, 70, 128] },
+    { "t": 0.25, "location_cm": [0, 8, 128] },
+    { "t": 0.5,  "location_cm": [0, 70, 128], "rotation_deg": [0, 0, 0] } ] }
+```
+
+A scenario with `effector` events has the hands a player has: the same bodies on the same springs
+(`ASandboxEffectorRig`, tuned by `effectors.hand.*` in `Config/Tuning`), with their targets read from the
+file instead of from a camera. Nothing tells the character about them. It learns that it was hit from its
+own contact events, by the same rules as for an `impulse` event, and may flinch.
+
+- A path is the **target's** way, not the hand's. Key times count from the event's `t`, the first is 0 and
+  they increase. Between two keys the target moves in a straight line at constant speed, and that speed is
+  handed to the spring, so a free hand follows without lagging. After the last key the target stays there.
+- The hand itself is a 1.5 kg sphere pulled by a spring that can apply 300 N at most. It arrives where the
+  target is only if nothing is in the way, and a target that jumps is followed as fast as that force allows.
+- A hand named by any event exists from the start of the run, resting on the first key of its first path.
+  A later path of the same hand takes over when it begins.
+- `rotation_deg` is `[pitch, yaw, roll]`; a key without one keeps the rotation of the key before it.
+- In the scenario's own space the character faces +y and its left is +x, when it is spawned unrotated.
+
+`effectors` in `metrics.json` has, for each hand: `contact_impulse_ns` (the sum of all contact impulses),
+`touched_impulse_ns` (the same by what was touched: a bone of the character, or an actor's name),
+`first_contact_t`, `contact_frames`, `max_contact_force_n` (the largest net contact force over one frame),
+`final_contact_force_n` (the same in the run's last frame), `max_gap_cm` and `final_gap_cm` (distance from
+the hand to its target), `max_speed_mps`, `max_demand_n` (the largest force the spring law asked for before
+its cap) and `snaps`. What the character felt is in `control`: `contact_impulse_ns` and `contact_reports`.
+
+Two things to know when reading the forces:
+
+- **The peak contact force is not held by the force cap.** The cap limits the spring. A moving hand that is
+  stopped also gives up its momentum: at 8 m/s a 1.5 kg hand delivers 12 N*s in one frame, which reads as
+  more than 1000 N. To check the cap, hold the hand against something and read `final_contact_force_n`
+  (`effector_force_cap` does: 300.0 N against the floor).
+- **Contact with the floor counts for the hand, not for the character.** The character's own count leaves
+  out the static world and its own bodies; a hand counts everything it touches.
+
+A hand further than `effectors.hand.snap_distance_cm` from its target is put on the target. That is not
+physics, so a run in which it happened fails the check `effectors_not_snapped`.
+
+The hands' transforms go into the `bodies` hash of a run that has hands. A run without them hashes exactly
+what it did before hands existed.
 
 Expectations. A name that is not in this table is a parse error, so a misspelt one cannot pass unnoticed.
 
@@ -82,6 +131,10 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `state_sequence` | Every state the body went through, in order, joined by `>`: `"standing>flinch>standing"`. Active control only |
 | `max_joint_speed_rads` | No joint's two bodies rotate faster relative to each other, over the whole run |
 | `max_physics_step_mean_ms` | The solver's mean wall-clock time per frame (all substeps) stays below it |
+| `min_effector_impulse_ns` | The hands together delivered at least this much contact impulse: they touched something |
+| `max_effector_impulse_ns` | ...and at most this much. 0 for a hand that must miss |
+| `max_effector_force_n` | No hand's net contact force over one frame was larger. Impacts count, not only pushing |
+| `min_effector_final_force_n`, `max_effector_final_force_n` | Bounds on the contact force of the hardest-pressing hand in the run's last frame: the force cap, for a hand held against something |
 
 A physics asset can be authored with joint anchors that do not coincide in the reference pose; the solver
 closes that gap in the first frames. It is reported as `metrics.initial_joint_offset_cm` and is not part of
@@ -89,7 +142,27 @@ the stretch metric.
 
 Four checks always run: no NaN, the body stays within 50 m of the origin, every frame used the fixed
 timestep, and every event found its body. With active control a fifth one checks that every joint of the
-physics asset got a muscle.
+physics asset got a muscle, and with hands a sixth that none of them was snapped to its target.
+
+The player of a scenario run is a spectator without a body: the project's own pawn, with its two physical
+hands, exists only in an interactive session.
+
+## Playing a scenario
+
+`Tools\play.ps1 -Name <scenario>` opens a scenario's scene as an interactive session: its map, its body and
+its camera (where the player starts), with the desktop pawn, its hands and its tools. The scenario's events
+and expectations are not used. Without `-Name` it opens `room_stand_npc`, the standing character in the
+test room. The keys are on the screen and in `Source/SandboxInteraction/Public/SandboxPawn.h`.
+
+The session runs on the scenario's fixed timestep and holds the frame rate to it, so a second of the
+session is a second on the clock. Pause, single step and slow motion never change the physics step: the
+world either makes its full step or stands still.
+
+`Tools\play.ps1 -Smoke` runs the session without a window or a person: it uses every tool through the
+functions the keys call, checks what happened (the impulse tool makes the character flinch, a paused world
+does not move, a step is one frame, the drag handle lifts an arm, a reaching hand is felt, a reset puts the
+character back) and writes `Saved\Play\<name>\play.json`. `-Smoke -Shot` renders it and saves the last
+frame. `Tools\bootstrap.ps1` runs the self-test.
 
 ## Tuning overrides
 

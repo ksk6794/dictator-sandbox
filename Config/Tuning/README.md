@@ -11,7 +11,9 @@ A value's name is its path in the file. In `body.json`
 ```
 
 is `muscles.legs.stiffness_nm_per_rad`. That name is used everywhere: here, in `-Tune`, in the console and
-in `metrics.json`. Several files are merged into one set of names; a name may be defined only once.
+in `metrics.json`. Several files are merged into one set of names; a name may be defined only once. There
+are three: `body.json` (the character), `effectors.json` (the player's hands) and `tools.json` (the
+desktop pawn's tools).
 
 ## Values of the body (`body.json`)
 
@@ -39,6 +41,43 @@ Groups are `spine`, `neck`, `arms`, `legs`; assist bodies are `pelvis`, `chest`,
 that are accepted are in `FSandboxBodyTuning::Validate`; they catch a slipped decimal point, not physics.
 The conversion from N·m/rad to engine units is taken from the engine source and has not been calibrated by
 measurement (see `docs/testing.md`).
+
+## Values of the player's hands (`effectors.json`)
+
+A hand is a rigid sphere with real mass, pulled toward its target pose by a spring. It is never moved
+directly. The same values apply to the desktop pawn's hands and to the hands of a scenario.
+
+| Name | Unit | Meaning |
+| --- | --- | --- |
+| `effectors.hand.mass_kg` | kg | Mass of the body: the hand and the part of the arm that moves with it. What a strike carries is this times its speed |
+| `effectors.hand.radius_cm` | cm | Radius of the collision sphere. Read when the hand is created; cannot change in a running hand |
+| `effectors.hand.stiffness_n_per_m` | N/m | Pull toward the target position. With the force cap it sets how far behind its target a blocked hand can be before it pulls with all it has: cap / stiffness, 10 cm at the present values |
+| `effectors.hand.damping_s` | s | Damping as a time: damping force = stiffness × this × (velocity of the target − velocity of the hand). 0.045 s is about critical for 1.5 kg on 3000 N/m |
+| `effectors.hand.max_force_n` | N | The player's strength: the largest force the spring applies, in any direction. Must be above 0; a hand without a cap would be the kinematic hand the design rules out |
+| `effectors.hand.angular_stiffness_nm_per_rad`, `angular_damping_s`, `max_torque_nm` | N·m/rad, s, N·m | The same for the hand's orientation. The torque cap is per axis |
+| `effectors.hand.snap_distance_cm` | cm | A hand further than this from its target is put on the target, at rest: the way back for a hand left behind a wall. Not physics; a scenario in which it happens fails |
+
+No gravity acts on a hand: the arm that would carry it is not simulated, and the force cap is not spent on
+the hand's own weight. The force of a **contact** can exceed the cap for a moment, because a moving hand
+that is stopped gives up its momentum as well; the cap limits what the spring adds.
+
+## Values of the desktop tools (`tools.json`)
+
+| Name | Unit | Meaning |
+| --- | --- | --- |
+| `tools.hands.rest_forward_cm`, `rest_side_cm`, `rest_down_cm` | cm | Where a resting hand is held, relative to the camera |
+| `tools.hands.reach_cm` | cm | How far straight ahead of the camera a reaching hand's target goes. The wheel changes it in a session |
+| `tools.hands.reach_speed_mps` | m/s | How fast that target travels out and back |
+| `tools.impulse.impulse_ns` | N·s | What one click of the impulse tool applies. The wheel changes it in a session |
+| `tools.impulse.wheel_factor` | factor | One notch of the wheel multiplies or divides the impulse by this |
+| `tools.drag.stiffness_n_per_m`, `damping_s`, `max_force_n` | N/m, s, N | The drag handle's spring between the point that was clicked and the point the player moves |
+| `tools.wheel_distance_factor` | factor | One notch of the wheel multiplies or divides a distance by this: a hand's reach, the length of the drag handle |
+| `tools.camera.speed_mps`, `fast_factor` | m/s, factor | Speed of the free camera, and how much faster it is with the fast key |
+| `tools.camera.look_deg_per_count` | degrees | Turn of the camera per count of mouse movement |
+| `tools.time.slow_motion_divisor` | count | In slow motion the world steps on one frame in this many. A whole number from 2 |
+
+The ranges that are accepted are in `FSandboxInteractionTuning::Validate`. These values have no states: a
+value under `states.<state>.effectors...` is accepted by the store and read by nobody.
 
 ## Values per state
 
@@ -95,8 +134,14 @@ is rejected the same way and read again when the save completes.
 ## How it works
 
 `FSandboxParamStore` (module `SandboxCore`) reads the files, keeps the overrides and counts revisions.
-`FSandboxBodyTuning::DeclareParams` tells it the body's names, states and range checks.
-`USandboxBodyController` compares the revision once per tick and re-reads its values when it moved.
+`FSandboxBodyTuning::DeclareParams` tells it the body's names, states and range checks, and
+`FSandboxInteractionTuning::DeclareParams` those of the hands and tools; each module does so when it is
+loaded. `USandboxBodyController`, `ASandboxEffectorRig` and `ASandboxPawn` compare the revision once per
+frame and re-read their values when it moved.
+
+The files of this directory together must hold every declared name, whichever module declared it. A test
+that reads the directory therefore takes its schema from the process-wide store
+(`FSandboxParamStore::Get().CloneSchema()`), not from one module.
 
 Hot reload compares the files' size and modification time every 30 frames. It counts frames and never reads
 the clock, and with unchanged files it does nothing, so it cannot disturb a scenario's repeatability. In a

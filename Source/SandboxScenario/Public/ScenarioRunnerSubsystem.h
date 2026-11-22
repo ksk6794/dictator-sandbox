@@ -8,8 +8,11 @@
 #include <atomic>
 #include "ScenarioRunnerSubsystem.generated.h"
 
+class ASandboxEffectorRig;
 class ASandboxRagdollActor;
 class ACameraActor;
+class AGameModeBase;
+class FSandboxScriptedTargetSource;
 
 /**
  * Runs one scenario and exits. Exists only when the process was started with -Scenario=.
@@ -35,6 +38,7 @@ class SANDBOXSCENARIO_API UScenarioRunnerSubsystem : public UTickableWorldSubsys
 
 public:
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 	virtual void Deinitialize() override;
 	virtual void Tick(float DeltaTime) override;
@@ -65,8 +69,8 @@ private:
 	};
 	TArray<FPush> Pushes;
 
-	void SpawnEnvironment(UWorld& World);
 	bool SpawnBody(UWorld& World, FString& OutError);
+	bool SpawnEffectors(UWorld& World, FString& OutError);
 	void SampleFrame(float DeltaTime);
 	void ApplyDueEvents(double SimTimeS);
 	void ApplyImpulse(FName Bone, const FVector& ImpulseNs);
@@ -97,6 +101,15 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ACameraActor> Camera;
+
+	// The player's hands, when the scenario has "effector" events: the same bodies and springs a pawn has,
+	// with their targets read from the scenario's trajectories.
+	UPROPERTY()
+	TObjectPtr<ASandboxEffectorRig> EffectorRig;
+	TSharedPtr<FSandboxScriptedTargetSource> EffectorSource;
+	/** Per effector, in the rig's order: the frame of its first contact, -1 while it has touched nothing. */
+	TArray<int32> EffectorFirstContactFrame;
+	FDelegateHandle GameModeInitializedHandle;
 
 	// Accumulated over the run.
 	double MaxJointStretchCm = 0.0;
@@ -179,7 +192,6 @@ private:
 	TArray<TSharedPtr<FJsonValue>> Checkpoints;
 
 	// Rendered runs only: per-frame timings in milliseconds, collected after a warm-up.
-	bool IsStereo() const;
 	double LastFrameWallS = 0.0;
 	TArray<float> FrameWallMs;
 	TArray<float> FrameGpuMs;

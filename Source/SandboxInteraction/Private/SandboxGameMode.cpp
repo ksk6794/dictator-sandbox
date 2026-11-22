@@ -1,8 +1,11 @@
 #include "SandboxGameMode.h"
 
-#include "GameFramework/SpectatorPawn.h"
+#include "SandboxPawn.h"
+#include "SandboxPlayerController.h"
 
 ASandboxGameMode::ASandboxGameMode()
 {
-	DefaultPawnClass = ASpectatorPawn::StaticClass();
+	DefaultPawnClass = ASandboxPawn::StaticClass();
+	PlayerControllerClass = ASandboxPlayerController::StaticClass();
+	HUDClass = ASandboxHUD::StaticClass();
 }

@@ -72,9 +72,18 @@ public:
 	/**
 	 * A blow to one body: applies the impulse (world space, N*s) and lets the character feel it. A standing
 	 * character flinches if the impulse reaches thresholds.flinch_impulse_ns. This is how a scripted hit
-	 * enters; hits by other bodies will arrive through contact events.
+	 * enters. A hit by another body is not applied here, the solver has done that already; the character
+	 * feels it through its own contact events (OnBodyHit), by the same rules.
 	 */
 	void ApplyImpulse(FName Bone, const FVector& ImpulseNs);
+
+	/**
+	 * What the body has taken from contacts with other simulated bodies since it was started: the sum of
+	 * the contact impulses' sizes in N*s and the number of contact reports. Contacts with the static world
+	 * (the floor under the feet) and between the character's own bodies are not hits and are not counted.
+	 */
+	double GetContactImpulseNs() const { return ContactImpulseNs; }
+	int32 GetContactReportCount() const { return ContactReports; }
 
 	bool IsStarted() const { return bStarted; }
 	/** The values of the current state, as the tuning files and overrides give them. */
@@ -111,6 +120,13 @@ private:
 		/** Where the body's bone should be, in world space. */
 		FTransform Target = FTransform::Identity;
 	};
+
+	/** A contact of one of the character's bodies, reported by the physics scene after the step. */
+	UFUNCTION()
+	void OnBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
+
+	/** The character notices an impulse on one of its bodies, however it got there. May start a flinch. */
+	void FeelImpulse(FName Bone, const FVector& ImpulseNs);
 
 	const FSandboxAssistTuning& AssistTuning(EAssistSlot Slot) const;
 	bool ReadStateTuning(FSandboxBodyTuning& OutTuning, FString& OutError) const;
@@ -153,6 +169,8 @@ private:
 	/** Impulses received since HitStartedS, added up: a push delivered over several frames is one hit. */
 	FVector HitImpulseNs = FVector::ZeroVector;
 	double HitStartedS = 0.0;
+	double ContactImpulseNs = 0.0;
+	int32 ContactReports = 0;
 	/** Falling: how long every body has been below the rest speeds. */
 	double RestS = 0.0;
 

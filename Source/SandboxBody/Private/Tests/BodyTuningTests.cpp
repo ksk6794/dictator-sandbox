@@ -11,10 +11,14 @@ namespace
 {
 	const EAutomationTestFlags BodyTestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
 
-	/** A store of its own on the repo's tuning files, so a test never touches the process-wide one. */
+	/**
+	 * A store of its own on the repo's tuning files, so a test never touches the process-wide one. The
+	 * directory holds the values of every module (effectors, tools), so the store takes the process-wide
+	 * store's schema, which every module has declared its names to.
+	 */
 	bool LoadRepoTuning(FSandboxParamStore& Store, FString& OutError)
 	{
-		FSandboxBodyTuning::DeclareParams(Store);
+		Store = FSandboxParamStore::Get().CloneSchema();
 		Store.SetDirectory(FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("Tuning")));
 		return Store.Load(OutError);
 	}

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "SandboxScriptedTargetSource.h"
 
 /**
  * A scripted stimulus applied at a fixed simulation time.
@@ -9,6 +10,7 @@
  *   "pin"               fixes one body where it is with a ball joint to the world; the rest hangs from it
  *   "console"           runs a console command, as typed in a running session
  *   "edit_tuning_file"  writes new values into the run's own copy of the tuning files, as an editor would
+ *   "effector"          starts a trajectory of one of the player's hands: its target moves along the keys
  */
 struct FScenarioEvent
 {
@@ -25,6 +27,9 @@ struct FScenarioEvent
 	FString Command;
 	/** "edit_tuning_file": tuning names and their new values. */
 	TArray<TPair<FString, double>> Values;
+	/** "effector": which hand ("hand_left", "hand_right"), and where its target is at times after the event. */
+	FName Effector;
+	TArray<FSandboxPathKey> Path;
 };
 
 /** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
@@ -60,6 +65,15 @@ struct FScenarioExpect
 	TOptional<FString> EndState;
 	/** Every state the body must go through, in order: "standing>flinch>standing". Active control only. */
 	TOptional<FString> StateSequence;
+	/** The effectors together must have delivered at least this much contact impulse, N*s: they touched. */
+	TOptional<double> MinEffectorImpulseNs;
+	/** ...and at most this much: for a hand that must miss. */
+	TOptional<double> MaxEffectorImpulseNs;
+	/** Largest contact force any effector may have applied over one frame, N. Impacts count, not only pushing. */
+	TOptional<double> MaxEffectorForceN;
+	/** Bounds on the contact force of the hardest-pressing effector in the run's last frame, N: the force cap. */
+	TOptional<double> MinEffectorFinalForceN;
+	TOptional<double> MaxEffectorFinalForceN;
 };
 
 /** How the body is driven. */

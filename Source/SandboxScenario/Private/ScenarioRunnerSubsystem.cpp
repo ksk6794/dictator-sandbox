@@ -1,15 +1,12 @@
 #include "ScenarioRunnerSubsystem.h"
 
 #include "Camera/CameraActor.h"
-#include "Components/LightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Components/StaticMeshComponent.h"
-#include "Engine/DirectionalLight.h"
-#include "Engine/SkeletalMesh.h"
-#include "Engine/StaticMesh.h"
-#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/SpectatorPawn.h"
 #include "HAL/PlatformMisc.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
@@ -36,9 +33,13 @@
 #include "SandboxBodyController.h"
 #include "SandboxBodyProbe.h"
 #include "SandboxCore.h"
+#include "SandboxEffectorComponent.h"
+#include "SandboxEffectorRig.h"
 #include "SandboxJson.h"
 #include "SandboxParamStore.h"
 #include "SandboxRagdollActor.h"
+#include "SandboxScriptedTargetSource.h"
+#include "ScenarioStage.h"
 #include "UnrealClient.h"
 
 namespace
@@ -182,9 +183,22 @@ TStatId UScenarioRunnerSubsystem::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UScenarioRunnerSubsystem, STATGROUP_Tickables);
 }
 
-bool UScenarioRunnerSubsystem::IsStereo() const
+void UScenarioRunnerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	return GEngine && GEngine->XRSystem.IsValid() && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	Super::Initialize(Collection);
+
+	// A scenario's world holds the body and whatever its file puts there, nothing else. The project's own
+	// pawn has physical hands, so the player of a scenario run is a spectator without a body instead. The
+	// game mode does not exist yet at this point; it is caught when it initialises.
+	GameModeInitializedHandle = FGameModeEvents::OnGameModeInitializedEvent().AddWeakLambda(this, [this](AGameModeBase* GameMode)
+	{
+		if (GameMode && GameMode->GetWorld() == GetWorld())
+		{
+			GameMode->DefaultPawnClass = ASpectatorPawn::StaticClass();
+			GameMode->PlayerControllerClass = APlayerController::StaticClass();
+			GameMode->HUDClass = AHUD::StaticClass();
+		}
+	});
 }
 
 void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
@@ -233,8 +247,8 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	FApp::SetFixedDeltaTime(FixedDt);
 	FApp::SetUseFixedTimeStep(true);
 
-	SpawnEnvironment(InWorld);
-	if (!SpawnBody(InWorld, Error))
+	Camera = FScenarioStage::SpawnEnvironment(InWorld, Spec, /*bSpawnCamera*/ true);
+	if (!SpawnBody(InWorld, Error) || !SpawnEffectors(InWorld, Error))
 	{
 		FailAndExit(Error);
 		return;
@@ -248,6 +262,7 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void UScenarioRunnerSubsystem::Deinitialize()
 {
+	FGameModeEvents::OnGameModeInitializedEvent().Remove(GameModeInitializedHandle);
 	StopPhysicsTimer();
 	Super::Deinitialize();
 }
@@ -290,125 +305,68 @@ void UScenarioRunnerSubsystem::StopPhysicsTimer()
 	PostSolveHandle.Reset();
 }
 
-void UScenarioRunnerSubsystem::SpawnEnvironment(UWorld& World)
+bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 {
-	// A scenario map brings its own floor and lighting; only the camera is added.
-	const bool bOwnMap = !Spec.MapPath.IsEmpty();
-	if (bOwnMap && !World.GetOutermost()->GetName().EndsWith(FPackageName::GetShortName(Spec.MapPath)))
+	// Every "effector" event is a trajectory of one hand. The hands named by the events exist from the
+	// start of the run, each resting on the first key of its first trajectory.
+	const TSharedRef<FSandboxScriptedTargetSource> Source = MakeShared<FSandboxScriptedTargetSource>();
+	for (const FScenarioEvent& Event : Spec.Events)
 	{
-		UE_LOG(LogSandbox, Warning, TEXT("Scenario asks for map '%s' but the loaded world is '%s'"), *Spec.MapPath, *World.GetOutermost()->GetName());
-	}
-
-	if (!bOwnMap)
-	{
-		// Floor: a 20 m x 20 m slab whose top face is at z = 0.
-		if (UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")))
+		if (Event.Type == TEXT("effector") && !Source->AddPath(Event.Effector, Event.TimeS, Event.Path, OutError))
 		{
-			AStaticMeshActor* Floor = World.SpawnActor<AStaticMeshActor>(FVector(0.0, 0.0, -50.0), FRotator::ZeroRotator);
-			Floor->SetMobility(EComponentMobility::Movable);
-			Floor->GetStaticMeshComponent()->SetStaticMesh(Cube);
-			Floor->SetActorScale3D(FVector(20.0, 20.0, 1.0));
-		}
-		else
-		{
-			UE_LOG(LogSandbox, Warning, TEXT("Scenario: floor mesh /Engine/BasicShapes/Cube not found; the body will fall forever"));
+			return false;
 		}
 	}
-
-	if (!FApp::CanEverRender())
+	TArray<FName> Names;
+	Source->GetEffectors(Names);
+	if (Names.Num() == 0)
 	{
-		return;
+		return true;
 	}
 
-	FVector CameraLocation = Spec.bHasCamera ? Spec.CameraLocationCm : FVector(-420.0, 260.0, 170.0);
-	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : FVector(0.0, 0.0, 50.0);
-	FRotator CameraRotation = (LookAt - CameraLocation).Rotation();
-	if (IsStereo())
+	FSandboxParamStore& Params = FSandboxParamStore::Get();
+	if (!Params.EnsureLoaded(OutError))
 	{
-		// In the headset the camera actor is the tracking origin: on the floor, level, facing the target.
-		// A pitched or raised origin would tilt or lift the whole world for the wearer.
-		GEngine->XRSystem->SetTrackingOrigin(EHMDTrackingOrigin::LocalFloor);
-		CameraLocation.Z = 0.0;
-		CameraRotation = FRotator(0.0, CameraRotation.Yaw, 0.0);
+		return false;
 	}
-	Camera = World.SpawnActor<ACameraActor>(CameraLocation, CameraRotation);
-	if (bOwnMap)
+	EffectorRig = World.SpawnActor<ASandboxEffectorRig>();
+	if (!EffectorRig || !EffectorRig->Start(Params, OutError))
 	{
-		return;
+		return false;
 	}
-
-	// Rendered runs without a map: two lights, so screenshots show the result.
-	ADirectionalLight* Key = World.SpawnActor<ADirectionalLight>(FVector(0.0, 0.0, 500.0), FRotator(-50.0, -30.0, 0.0));
-	Key->GetLightComponent()->SetMobility(EComponentMobility::Movable);
-	Key->GetLightComponent()->SetIntensity(6.0f);
-
-	ADirectionalLight* Fill = World.SpawnActor<ADirectionalLight>(FVector(0.0, 0.0, 500.0), FRotator(-30.0, 150.0, 0.0));
-	Fill->GetLightComponent()->SetMobility(EComponentMobility::Movable);
-	Fill->GetLightComponent()->SetIntensity(2.0f);
-	Fill->GetLightComponent()->SetCastShadows(false);
-
+	for (const FName Name : Names)
+	{
+		FSandboxEffectorTarget Start;
+		Source->Evaluate(Name, 0.0, Start);
+		if (!EffectorRig->AddEffector(Name, FTransform(Start.Rotation, Start.Location), OutError))
+		{
+			return false;
+		}
+		EffectorFirstContactFrame.Add(-1);
+	}
+	EffectorSource = Source;
+	EffectorRig->SetSource(EffectorSource);
+	return true;
 }
 
 bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 {
-	USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, *Spec.MeshPath);
-	if (!Mesh)
-	{
-		OutError = FString::Printf(TEXT("Cannot load skeletal mesh '%s'"), *Spec.MeshPath);
-		return false;
-	}
-
-	UPhysicsAsset* PhysicsAssetOverride = nullptr;
-	if (!Spec.PhysicsAssetPath.IsEmpty())
-	{
-		PhysicsAssetOverride = LoadObject<UPhysicsAsset>(nullptr, *Spec.PhysicsAssetPath);
-		if (!PhysicsAssetOverride)
-		{
-			OutError = FString::Printf(TEXT("Cannot load physics asset '%s'"), *Spec.PhysicsAssetPath);
-			return false;
-		}
-	}
-
-	Ragdoll = World.SpawnActor<ASandboxRagdollActor>(Spec.SpawnLocationCm, Spec.SpawnRotation);
-	if (!Ragdoll)
-	{
-		OutError = TEXT("Failed to spawn the ragdoll actor");
-		return false;
-	}
-	if (!Ragdoll->InitBody(Mesh, PhysicsAssetOverride, Spec.bSimulate, OutError))
-	{
-		return false;
-	}
-
-	for (const FString& Path : Spec.AttachedMeshPaths)
-	{
-		USkeletalMesh* Attached = LoadObject<USkeletalMesh>(nullptr, *Path);
-		if (!Attached)
-		{
-			OutError = FString::Printf(TEXT("Cannot load attached mesh '%s'"), *Path);
-			return false;
-		}
-		Ragdoll->AddAttachedMesh(Attached);
-	}
-
 	// The tuning files are looked at from Tick, on fixed frames, instead of by the store's own poll: an
 	// edit made during a run then takes effect on the same frame every time.
 	FSandboxParamStore& Params = FSandboxParamStore::Get();
 	Params.SetAutoPoll(false);
-
-	if (Spec.Control == EScenarioBodyControl::Active)
+	if (Spec.Control == EScenarioBodyControl::Active && Spec.HasEvent(TEXT("edit_tuning_file")) && !CopyTuningFiles(OutError))
 	{
-		// The body's tuning: the files of Config/Tuning (or -TuningDir=), with -Tune="name=value,..." on
-		// top for this run only. Both are read by the store.
-		if (Spec.HasEvent(TEXT("edit_tuning_file")) && !CopyTuningFiles(OutError))
-		{
-			return false;
-		}
-		if (!Params.EnsureLoaded(OutError) || !Ragdoll->StartActiveControl(Params, OutError))
-		{
-			return false;
-		}
-		const USandboxBodyController* Controller = Ragdoll->GetController();
+		return false;
+	}
+
+	Ragdoll = FScenarioStage::SpawnBody(World, Spec, OutError);
+	if (!Ragdoll)
+	{
+		return false;
+	}
+	if (const USandboxBodyController* Controller = Ragdoll->GetController())
+	{
 		Controller->GetTuning().ListValues(LastTuningValues);
 		HeadBone = Controller->GetTuning().Rig.Head;
 	}
@@ -520,6 +478,13 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 	ContinuePushes();
 	ApplyDueEvents(SimTimeS);
 
+	// Where the hands should be at the start of the coming step, which begins at SimTimeS.
+	if (EffectorRig)
+	{
+		EffectorSource->SetTime(SimTimeS);
+		EffectorRig->UpdateTargets(static_cast<float>(FixedDt));
+	}
+
 	// Hot reload: a look at the tuning files' size and time every few frames. It reads no clock and does
 	// nothing while the files stay as they are (and nothing at all in a passive run, which never loads them).
 	if (FrameIndex % FSandboxParamStore::AutoPollIntervalFrames == 0)
@@ -604,6 +569,32 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 	if (!bAtRest)
 	{
 		LastActiveFrame = FrameIndex;
+	}
+
+	// The hands are part of the run: they are held to the same checks and go into the same hash. (A run
+	// without hands hashes exactly what it did before there were any.)
+	if (EffectorRig)
+	{
+		const TArray<TObjectPtr<USandboxEffectorComponent>>& Effectors = EffectorRig->GetEffectors();
+		for (int32 Index = 0; Index < Effectors.Num(); ++Index)
+		{
+			const FBodyInstance* Body = Effectors[Index]->GetBodyInstance();
+			const FTransform Transform = Body ? Body->GetUnrealWorldTransform() : FTransform::Identity;
+			if (Transform.ContainsNaN())
+			{
+				bSawNaN = true;
+				continue;
+			}
+			if (Transform.GetLocation().SizeSquared() > BoundsRadiusCm * BoundsRadiusCm)
+			{
+				bLeftBounds = true;
+			}
+			BodyHash = HashTransform(Transform, BodyHash);
+			if (EffectorFirstContactFrame[Index] < 0 && Effectors[Index]->GetStats().ContactFrames > 0)
+			{
+				EffectorFirstContactFrame[Index] = FrameIndex;
+			}
+		}
 	}
 
 	if (!bSawNaN)
@@ -761,6 +752,20 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			else
 			{
 				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: console command '%s' was not recognised"), Event.TimeS, *Event.Command);
+			}
+			continue;
+		}
+		if (Event.Type == TEXT("effector"))
+		{
+			// Nothing to do at this moment: the trajectory is in the hands' target source, which follows
+			// the run's time. The event counts as applied when its hand exists.
+			if (EffectorRig && EffectorRig->FindEffector(Event.Effector))
+			{
+				++EventsApplied;
+			}
+			else
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f names effector '%s', which does not exist"), Event.TimeS, *Event.Effector.ToString());
 			}
 			continue;
 		}
@@ -1040,6 +1045,48 @@ void UScenarioRunnerSubsystem::Finish()
 		AddCheck(TEXT("max_joint_limit_violation_deg"), MaxJointLimitViolationDeg <= Limit, Number(MaxJointLimitViolationDeg), Number(Limit));
 	}
 
+	// The hands. A hand that was put back on its target did not get there by physics.
+	double EffectorImpulseNs = 0.0;
+	double EffectorForceN = 0.0;
+	double EffectorFinalForceN = 0.0;
+	int32 EffectorSnaps = 0;
+	if (EffectorRig)
+	{
+		for (const USandboxEffectorComponent* Effector : EffectorRig->GetEffectors())
+		{
+			EffectorImpulseNs += Effector->GetStats().ContactImpulseNs;
+			EffectorForceN = FMath::Max(EffectorForceN, Effector->GetMaxContactForceN());
+			EffectorFinalForceN = FMath::Max(EffectorFinalForceN, Effector->GetContactForceN());
+			EffectorSnaps += Effector->GetStats().Snaps;
+		}
+		AddCheck(TEXT("effectors_not_snapped"), EffectorSnaps == 0, Number(EffectorSnaps), Number(0));
+	}
+	if (Spec.Expect.MinEffectorImpulseNs.IsSet())
+	{
+		const double Limit = Spec.Expect.MinEffectorImpulseNs.GetValue();
+		AddCheck(TEXT("min_effector_impulse_ns"), EffectorRig && EffectorImpulseNs >= Limit, EffectorRig ? Number(EffectorImpulseNs) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxEffectorImpulseNs.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxEffectorImpulseNs.GetValue();
+		AddCheck(TEXT("max_effector_impulse_ns"), EffectorRig && EffectorImpulseNs <= Limit, EffectorRig ? Number(EffectorImpulseNs) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxEffectorForceN.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxEffectorForceN.GetValue();
+		AddCheck(TEXT("max_effector_force_n"), EffectorRig && EffectorForceN <= Limit, EffectorRig ? Number(EffectorForceN) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinEffectorFinalForceN.IsSet())
+	{
+		const double Limit = Spec.Expect.MinEffectorFinalForceN.GetValue();
+		AddCheck(TEXT("min_effector_final_force_n"), EffectorRig && EffectorFinalForceN >= Limit, EffectorRig ? Number(EffectorFinalForceN) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxEffectorFinalForceN.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxEffectorFinalForceN.GetValue();
+		AddCheck(TEXT("max_effector_final_force_n"), EffectorRig && EffectorFinalForceN <= Limit, EffectorRig ? Number(EffectorFinalForceN) : Null(), Number(Limit));
+	}
+
 	// The states the body went through, as names joined by '>'.
 	FString StateSequence;
 	FString EndState;
@@ -1234,8 +1281,65 @@ void UScenarioRunnerSubsystem::Finish()
 		ControlJson->SetStringField(TEXT("end_state"), EndState);
 		ControlJson->SetStringField(TEXT("state_sequence"), StateSequence);
 		ControlJson->SetArrayField(TEXT("tuning_changes"), TuningChanges);
+
+		// What the body took from contacts with other simulated bodies: the hits it could feel.
+		ControlJson->SetNumberField(TEXT("contact_impulse_ns"), Controller->GetContactImpulseNs());
+		ControlJson->SetNumberField(TEXT("contact_reports"), Controller->GetContactReportCount());
 	}
 	Root->SetObjectField(TEXT("control"), ControlJson);
+
+	if (EffectorRig)
+	{
+		// The player's hands: what each one touched and how hard, from its own contact events.
+		const TSharedRef<FJsonObject> EffectorsJson = MakeShared<FJsonObject>();
+		EffectorsJson->SetNumberField(TEXT("contact_impulse_ns"), EffectorImpulseNs);
+		EffectorsJson->SetNumberField(TEXT("max_contact_force_n"), EffectorForceN);
+		EffectorsJson->SetNumberField(TEXT("tuning_changes"), EffectorRig->GetTuningChangeCount());
+
+		const TSharedRef<FJsonObject> EffectorTuningJson = MakeShared<FJsonObject>();
+		TArray<TPair<FString, double>> EffectorValues;
+		EffectorRig->GetTuning().ListValues(EffectorValues);
+		for (const TPair<FString, double>& Value : EffectorValues)
+		{
+			if (Value.Key.StartsWith(TEXT("effectors.")))
+			{
+				EffectorTuningJson->SetNumberField(Value.Key, Value.Value);
+			}
+		}
+		EffectorsJson->SetObjectField(TEXT("tuning"), EffectorTuningJson);
+
+		const TSharedRef<FJsonObject> List = MakeShared<FJsonObject>();
+		const TArray<TObjectPtr<USandboxEffectorComponent>>& Effectors = EffectorRig->GetEffectors();
+		for (int32 Index = 0; Index < Effectors.Num(); ++Index)
+		{
+			const USandboxEffectorComponent* Effector = Effectors[Index];
+			const FSandboxEffectorStats& Stats = Effector->GetStats();
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetNumberField(TEXT("mass_kg"), Effector->GetMass());
+			Entry->SetNumberField(TEXT("contact_impulse_ns"), Stats.ContactImpulseNs);
+			Entry->SetNumberField(TEXT("max_contact_force_n"), Effector->GetMaxContactForceN());
+			Entry->SetNumberField(TEXT("final_contact_force_n"), Effector->GetContactForceN());
+			Entry->SetNumberField(TEXT("contact_frames"), Stats.ContactFrames);
+			const int32 FirstFrame = EffectorFirstContactFrame[Index];
+			Entry->SetField(TEXT("first_contact_frame"), FirstFrame >= 0 ? Number(FirstFrame) : Null());
+			Entry->SetField(TEXT("first_contact_t"), FirstFrame >= 0 ? Number(FirstFrame * FixedDt) : Null());
+			const TSharedRef<FJsonObject> Touched = MakeShared<FJsonObject>();
+			for (const TPair<FName, double>& TouchedBody : Stats.ImpulseByBody)
+			{
+				Touched->SetNumberField(TouchedBody.Key.ToString(), TouchedBody.Value);
+			}
+			Entry->SetObjectField(TEXT("touched_impulse_ns"), Touched);
+			Entry->SetNumberField(TEXT("max_gap_cm"), Stats.MaxGapCm);
+			Entry->SetNumberField(TEXT("final_gap_cm"), Effector->GetGapCm());
+			Entry->SetNumberField(TEXT("max_speed_mps"), Stats.MaxSpeedCmS * 0.01);
+			Entry->SetNumberField(TEXT("max_demand_n"), Stats.MaxDemandN);
+			Entry->SetNumberField(TEXT("snaps"), Stats.Snaps);
+			Entry->SetArrayField(TEXT("final_location_cm"), SandboxJson::VectorToArray(Effector->GetComponentLocation()));
+			List->SetObjectField(Effector->GetId().ToString(), Entry);
+		}
+		EffectorsJson->SetObjectField(TEXT("list"), List);
+		Root->SetObjectField(TEXT("effectors"), EffectorsJson);
+	}
 
 	if (SortedStepMs.Num() > 0)
 	{
@@ -1277,7 +1381,7 @@ void UScenarioRunnerSubsystem::Finish()
 	Root->SetObjectField(TEXT("renderer"), Renderer);
 
 	const TSharedRef<FJsonObject> Xr = MakeShared<FJsonObject>();
-	Xr->SetBoolField(TEXT("stereo"), IsStereo());
+	Xr->SetBoolField(TEXT("stereo"), FScenarioStage::IsStereo());
 	if (GEngine && GEngine->XRSystem.IsValid())
 	{
 		Xr->SetStringField(TEXT("system"), GEngine->XRSystem->GetSystemName().ToString());
@@ -1314,7 +1418,7 @@ void UScenarioRunnerSubsystem::Finish()
 	if (!ShotPath.IsEmpty() && FApp::CanEverRender())
 	{
 		// Frame the body wherever it ended up, unless the scenario fixed the camera.
-		if (Camera && Mesh && Mesh->Bodies.Num() > 0 && !Spec.bHasCamera && !IsStereo())
+		if (Camera && Mesh && Mesh->Bodies.Num() > 0 && !Spec.bHasCamera && !FScenarioStage::IsStereo())
 		{
 			const FVector Center = Mesh->Bounds.Origin;
 			const FVector CameraLocation = Center + FVector(-260.0, 180.0, 140.0);

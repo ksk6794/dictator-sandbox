@@ -4,11 +4,13 @@ Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the 
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
 Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
 launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core, is in progress.**
-Steps 1 to 3 of 5 are done: the NPC stands under full simulation for 10 minutes (muscles and balance assist
+Steps 1 to 4 of 5 are done: the NPC stands under full simulation for 10 minutes (muscles and balance assist
 through Physics Control); every tuning value lives in `Config/Tuning`, is hot-reloaded and can be overridden
 from the console and the command line; the body has the states Standing, Flinch, Falling and Lying, joint
-limits from anatomy that mirror left to right, and passes the push matrix. Still to do: desktop pawn with
-effectors, overlays and strike scenarios.
+limits from anatomy that mirror left to right, and passes the push matrix; the player has physical hands
+(effectors: bodies with mass on force-capped springs) that the body feels through its own contact events,
+a desktop pawn with test tools, and scenarios can script the hands. Still to do: overlays and strike
+scenarios.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -30,6 +32,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
 | Push matrix (128 pushes, the M2 fall rules) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
+| Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
+| Self-test of the session, no window | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Smoke` (`-Smoke -Shot` renders it and saves `final.png`) |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
 | Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` (`-Force` also rebuilds up-to-date maps) |
@@ -37,7 +41,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 4 minutes, the push matrix 3 minutes.
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 5 minutes, the push matrix 3 minutes,
+the session's self-test 10 s, the whole bootstrap 8.5 minutes.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
 scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
@@ -48,14 +53,14 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
 | `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements). |
-| `Source/SandboxInteraction` | The player side: `ASandboxGameMode` now; effectors and pawn from M2. |
-| `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, automation tests. |
+| `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
+| `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
-| `Config/Tuning/` | Every tunable number of the body, as JSON; names, units and ways to change them in its `README.md`. |
+| `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
 | `docs/` | `PRD.md` (plan), `testing.md` (repeatability policy and measurements). |
 
 ## Rules
@@ -67,8 +72,17 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **Text is the source of truth.** Never hand-edit `.uasset` or `.umap` files. Generated assets come from
   `Specs/` through the `GenerateAssets` commandlet; imported art is imported by script.
 - **Tuning values live in `Config/Tuning`, not in code.** A new tunable number gets a name in its module's
-  list (`VisitValues` in `SandboxBodyTuning.cpp` for the body) and a value in the JSON file; no default in
-  C++. A value missing from the files, or a name the code does not know, is an error by design.
+  list (`VisitValues` in `SandboxBodyTuning.cpp` for the body, in `SandboxInteractionTuning.cpp` for hands
+  and tools) and a value in the JSON file; no default in C++. A value missing from the files, or a name the
+  code does not know, is an error by design.
+- **The pawn does not know the character and the character does not know the pawn.** The character feels a
+  hand through its own contact events (`USandboxBodyController::OnBodyHit`); the drag handle pulls whatever
+  body was clicked. What needs the character itself (the calibrated impulse, the reset) the pawn only
+  requests through a delegate, and `USandboxPlaySubsystem` in `SandboxScenario` carries it out.
+- **A scenario run has no pawn.** The runner replaces it with a bodiless spectator, so a scenario's world
+  holds only what its file puts there. Hands in a scenario come from `effector` events.
+- **Time control never changes the physics step.** Pause, single step and slow motion decide on which
+  frames the world steps; a step is always 1/90 s in 2 substeps. No time dilation.
 - **Physics timing is fixed.** Synchronous physics, 90 Hz frame, 2 substeps (180 Hz). Scenarios force a
   fixed engine timestep. Do not read wall-clock time in simulation code.
 - **Units.** Unreal units in code (cm, kg, cm/s). Scenario files and metrics use the unit in the field
@@ -155,6 +169,39 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **Do not switch anti-aliasing back to TSR for VR.** At the headset's render target it cost 8.5 ms by
   itself and halved the frame rate. Renderer experiments go through `Tools\scenario.ps1 -VR -CVars "a=1,b=2"`,
   and every rendered run records the deciding console variables in `metrics.json` (`renderer`).
+- **A simulated body at rest falls asleep, and a new target for a joint drive does not wake it.** A hand
+  that had rested for 2 s stayed where it was while its spring asked for 1900 N. `FSandboxWorldSpring` wakes
+  the body it pulls on every update.
+- **The engine caps a joint drive's force axis by axis, not by size.** Along a diagonal a drive with one
+  cap for all three axes is up to 1.7 times stronger than that cap. `FSandboxWorldSpring::AxisCapsN` sets
+  the three caps every frame in proportion to the direction of the force asked for.
+- **A drive's target is measured in the frame of the joint's second body.** With `InitConstraint(Body,
+  nullptr)` that is the world, so with an identity `Frame2` the targets are world poses. (Chaos solves with
+  the second body first: its index 0 is the engine's `Body2`.)
+- **A contact's peak force is not limited by a spring's force cap.** A moving hand that is stopped gives up
+  its momentum too: 14 N*s in one frame reads as 1270 N. Check a cap with a hand held against something
+  (`final_contact_force_n`), as `effector_force_cap` does.
+- **Contact events arrive once per pair of bodies and substep, and the impulse vector's sign follows the
+  solver's order of the pair.** Use `Hit.ImpactNormal` times the impulse's size to add them up. The floor
+  under the feet reports the character's weight in every frame (8.7 N*s at 90 Hz, above the flinch
+  threshold), which is why the character counts only contacts with other simulated bodies.
+- **The character's bodies do not answer the visibility channel** (the engine's `Ragdoll` profile ignores
+  it). Aim traces go by object type (`ASandboxPawn::TraceAim`).
+- **With a fixed timestep the engine does not limit the frame rate.** An interactive session would run as
+  fast as the machine allows. `USandboxPlaySubsystem::HoldFrameRate` waits each frame out; it is the one
+  place that reads the clock, and it must stay outside simulation code.
+- **A pause set during a frame takes effect on the next one.** The pawn decides at the end of its tick
+  whether the next frame steps. The engine also stops updating the camera of a paused game unless the
+  player controller has `bShouldPerformFullTickWhenPaused`, and input actions need `bTriggerWhenPaused`.
+- **A static mesh component with the engine's basic sphere did not become a simulating body here** (valid
+  body, `IsInstanceSimulatingPhysics` false; the cause was not chased). Hands are `USphereComponent`s with a
+  mesh attached for looks.
+- **A sustained push by a hand makes the character flinch again every time a flinch ends** (0.35 s), until
+  it falls: each contact frame adds to the felt impulse, as a long `impulse` push would. Known; M3 decides
+  what a push should do.
+- **Add a tuning name and its value in the same build.** A build that does not know a name refuses the
+  file, so a new tuning file dropped in while an older build is running a suite fails every active scenario
+  after it ("is not a tuning value").
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

@@ -5,9 +5,12 @@
 #include "SandboxGameMode.generated.h"
 
 /**
- * Project game mode, set in Config/DefaultEngine.ini.
- * M0: a free-flying spectator with no collision and no mesh, so the player cannot disturb a scenario.
- * The player pawn with physical effectors replaces it in M2.
+ * Project game mode, set in Config/DefaultEngine.ini. The player is ASandboxPawn: a free camera with two
+ * physical hands and the desktop test tools, with a controller that keeps working while paused and a HUD
+ * drawn in code.
+ *
+ * A scenario run replaces the pawn with a spectator that has no body (see UScenarioRunnerSubsystem), so
+ * that nothing but the scenario's own contents is in its world.
  */
 UCLASS()
 class SANDBOXINTERACTION_API ASandboxGameMode : public AGameModeBase

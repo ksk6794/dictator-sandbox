@@ -147,12 +147,12 @@ Read top down: three interchangeable sources produce target poses, effectors tur
 | `SandboxCore` | Runtime | Parameter store with JSON loading, hot reload, console and command-line overrides; metric types; logging |
 | `SandboxBody` | Runtime | NPC actor, Physics Control setup, muscles, balance assist, balance controller, state machine, reactions, native animation instance |
 | `SandboxInteraction` | Runtime | Effector component, grab constraints, strike verbs, target-source interface; player pawn with desktop and OpenXR sources, cameras, locomotion |
-| `SandboxScenario` | Runtime | Scenario loader and runner, metrics recorder, session recorder, debug overlays and console commands |
+| `SandboxScenario` | Runtime | Scenario loader and runner, metrics recorder, the interactive session that puts character and player into one world, session recorder, debug overlays and console commands |
 | `SandboxEditor` | Editor only | `GenerateAssets` commandlet: physics asset, room map, art import |
 
 ### Rules that keep it simple
 
-- `SandboxBody` and `SandboxInteraction` do not depend on each other. The body learns about hits from its own contact events; a grab is a constraint on whatever body the hand touched.
+- `SandboxBody` and `SandboxInteraction` do not depend on each other. The body learns about hits from its own contact events; a grab is a constraint on whatever body the hand touched. The two test tools that need the character itself, the calibrated impulse and the reset, are requests the pawn raises and `SandboxScenario` carries out.
 - Both depend only on `SandboxCore`. `SandboxScenario` depends on all three and nothing depends on it.
 - One interface carries the desktop and VR split: a target source returns a pose and a grip value per effector each tick.
 - No Blueprint classes. Actors, components, input and the game mode are C++; the map contains only static geometry and lighting.
@@ -279,7 +279,7 @@ Every number above is a parameter in one text file, grouped as follows.
 | Solver | Substeps, iteration counts, joint solver type |
 | Effectors | Mass, spring, damper, force cap, strike speeds, grab break force |
 
-As built in M2: the files are the JSON files of `Config/Tuning` (today one, `body.json`, with the muscles, the balance assist, the solver counts and the names of the bones the assist holds). A value's name is its path in the file, `muscles.legs.stiffness_nm_per_rad`, and the same name is used in overrides and in result files. Per-state values go under a `states` section (`states.falling.muscles.legs.stiffness_nm_per_rad`) and replace the base value while the body is in that state. The code holds no defaults: a missing value or an unknown name is an error. `Config/Tuning/README.md` is the reference.
+As built in M2: the files are the JSON files of `Config/Tuning`: `body.json` (the muscles, the balance assist, the solver counts, thresholds, reactions and the names of the bones the assist holds), `effectors.json` (the player's hands) and `tools.json` (the desktop tools). A value's name is its path in the file, `muscles.legs.stiffness_nm_per_rad`, and the same name is used in overrides and in result files. Per-state values go under a `states` section (`states.falling.muscles.legs.stiffness_nm_per_rad`) and replace the base value while the body is in that state. The code holds no defaults: a missing value or an unknown name is an error. `Config/Tuning/README.md` is the reference.
 
 ## Interaction: one effector model for desktop and VR
 
@@ -303,6 +303,8 @@ The player touches the NPC only through effectors: dynamic rigid bodies pulled t
 
 VR has no foot tracking, so the kick is a scripted leg effector in both modes, aimed by gaze or controller direction. Strike speeds are parameters; starting values are 6 m/s for a slap, 8 m/s for a punch and 10 m/s for a kick, to be tuned.
 
+As built in M2: two hand effectors, each a 1.5 kg sphere on a spring with a 300 N cap, and two of the three sources. The desktop source holds the hands below the line of sight and sends one straight ahead while its mouse button is held; the scripted source plays the keys of a scenario's `effector` events. Strike verbs, the kick, grabbing and the OpenXR source are M4. The values are in `Config/Tuning/effectors.json`.
+
 ### Desktop test conveniences
 
 - **Impulse tool.** Click a body to apply a chosen impulse in N·s along the aim ray. It bypasses the hands, so results are calibrated and repeatable.
@@ -311,6 +313,8 @@ VR has no foot tracking, so the kick is a scripted leg effector in both modes, a
 - **Reset.** Return the NPC to standing at the spawn point, or to any saved pose.
 - **Record and replay.** A live session's effector targets can be saved as a scenario file. A bug found by hand becomes a regression test.
 - **Cameras.** First-person, free-fly and orbit around the NPC.
+
+As built in M2: the impulse tool, the drag handle, pause, single step, slow motion, reset to the spawn pose and a free-fly camera that can leave the hands behind, in `Tools\play.ps1`. Slow motion and single step leave frames out and never shorten the physics step. Record and replay, saved poses and the orbit camera are not built yet.
 
 ### VR specifics
 
@@ -462,7 +466,7 @@ Every physical behaviour has a scenario: a JSON file that places the NPC, applie
 
 Event types are a direct impulse on a named body, an effector trajectory (strike or push), a grab with a hand path, and a parameter override. Recorded live sessions replay through the same format.
 
-As built so far: `impulse` (a single blow, or a push when it has a duration), `pin`, `console` (any console command at a simulated time; a parameter override is `Sandbox.Tune ...`) and `edit_tuning_file` (an edit of the run's own copy of the tuning files, to test hot reload). Expectations include the end state and the whole state sequence. The format in force is in `Scenarios/README.md`.
+As built so far: `impulse` (a single blow, or a push when it has a duration), `effector` (a trajectory of one of the player's hands: keys with a time and a place, straight lines between them), `pin`, `console` (any console command at a simulated time; a parameter override is `Sandbox.Tune ...`) and `edit_tuning_file` (an edit of the run's own copy of the tuning files, to test hot reload). Expectations include the end state and the whole state sequence. The format in force is in `Scenarios/README.md`.
 
 ### Standard suite
 
@@ -570,7 +574,7 @@ Muscles, balance assist at level 0, and the Standing, Flinch, Falling and Lying 
 - [x] A parameter edit takes effect in a running session
 - [ ] Physics step averages 1.5 ms or less
 
-**M2 is in progress; steps 1 to 3 of 5 are done. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
+**M2 is in progress; steps 1 to 4 of 5 are done. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
 
 Decisions taken in step 1:
 
@@ -614,6 +618,25 @@ Decisions taken in step 3:
 Found in step 3: a passive body runs on the engine's 8 solver iterations, the NPC on its own 64, and the difference decides the stretch under load: hanging from one hand, the wrist stretches by 2.9 cm at 8 iterations and 0.1 cm as the NPC proper. The hanging scenario now runs the NPC under active control, as it would be when grabbed.
 
 Deviations and what is not done in step 3: the shoulder is an approximation, because the engine limits the two swings together as one cone (it reaches straight up and hangs at the side, but reaches back by about 20 degrees instead of 50), accepted for M2 and to be looked at again in M4; the knee's range is -2 to 150 degrees, not 0 to 150, because a standing knee that sits exactly on its limit makes the feet rock almost twice as fast; the flinch has no pose offset yet, only the weakening (the offset comes in M3, with the protective pose); the fall has no protective pose (M3); outcomes for 30 and 80 N·s are recorded but not judged, since the outcome table is an M3 criterion; the torque caps are still at "no cap" and the N·m/rad conversion is still uncalibrated.
+
+**Step 4 of 5, "desktop pawn with effectors and tools", was finished on 22 November 2026.** The player has two physical hands: 1.5 kg spheres, each pulled toward its target pose by a spring that can apply 300 N at most. The character feels them through its own contact events and flinches by the rules it already had: a hand pushed into the chest makes it flinch at 6.0 N·s and stand, a hand at 8 m/s on the head delivers 14 N·s, a push that is held makes it fall, and a hand that passes in front of it without touching leaves it as it was. A hand held against the floor presses with 300.0 N, which confirms the cap and the units of the contact events in one measurement. Scenarios script the hands with a new `effector` event; six such scenarios are in the suite and give identical hashes in repeated headless and rendered runs. The desktop pawn (free camera, the two hands, impulse tool, drag handle, pause, single step, slow motion, reset) runs in an interactive session, `Tools\play.ps1`, which holds 90 frames per second on the simulation's fixed step. Its tools are also exercised without a person by `Tools\play.ps1 -Smoke` (13 checks). Earlier scenarios give the same hashes as before the step, to the bit. Measurements are in `docs/testing.md`.
+
+Decisions taken in step 4:
+
+- **The character learns of a hit from its own contact events,** as planned. `USandboxBodyController` listens to its mesh's contacts and feeds the impulse of each into the same accounting an `impulse` event uses. It counts only contacts with other simulated bodies: the floor under the feet alone reports 8.7 N·s per frame, above the flinch threshold. It knows nothing of hands; a thrown prop will be felt the same way.
+- **The impulse tool is aimed by the pawn and carried out by the session.** `SandboxInteraction` may not call the character, and an impulse applied to the rigid body alone would not be felt, so it would not match the push matrix. The pawn announces "this impulse on what the crosshair hit"; `USandboxPlaySubsystem` in `SandboxScenario`, which depends on both sides, applies it through `USandboxBodyController::ApplyImpulse`, the entry the scenarios use. The reset of the character goes the same way. The drag handle needs none of this: it is a spring on whatever body was clicked, and lives in `SandboxInteraction`.
+- **An interactive session is a scenario opened by hand.** `Tools\play.ps1 -Name <scenario>` takes the map, the body and the camera from the scenario file, so any scenario can be opened and prodded. The code that builds the scene is shared with the runner (`FScenarioStage`).
+- **A scenario run has no pawn.** The runner swaps the project's pawn for a spectator without a body, so that hands exist in a scenario only when its file asks for them.
+- **One spring for hands and drag handle,** `FSandboxWorldSpring`: a joint to the world with a position drive, solved implicitly together with the contacts, in force mode and physical units. The engine caps such a drive axis by axis; the caps are set every frame along the direction of the force asked for, so the hand is as strong along a diagonal as along an axis (measured: the same peak speed, 11.80 m/s, in both).
+- **The target source answers "where should this hand be at the start of the coming step", with a velocity.** Three sources fit behind it: the desktop one (hands rest below the line of sight and reach straight ahead while a button is held), the scripted one (keys of a scenario file, straight lines at constant speed), and the tracked controllers in M4.
+- **Hands have no gravity and never sleep.** The arm that would carry a hand is not simulated, so its weight is not charged to the force cap. A hand at rest fell asleep and ignored its spring until it was woken; the spring now wakes what it pulls.
+- **Time control leaves the physics step alone.** Paused, the world stands; in slow motion it makes its full step on one frame in four; a single step is one frame. The engine's time dilation would shorten the substeps and show something full speed never computes.
+- **The session holds its own frame rate.** With a fixed timestep the engine runs as fast as it can, so the session waits each frame out against the clock. That is the one place that reads the clock; nothing in the simulation does.
+- **Tool numbers are tuning values too:** `Config/Tuning/effectors.json` (mass, radius, spring, damper, force cap, the same for orientation, snap distance) and `tools.json` (impulse and its wheel step, the drag spring, where the hands rest and reach, camera speed, slow-motion divisor). All are hot-reloaded; a live change of the force cap and of the mass was checked to reach the solver.
+
+Found in step 4: the peak force of a contact is not limited by the spring's cap, because a moving hand that is stopped gives up its momentum as well (14 N·s in one frame reads as 1270 N); the cap is checked with a hand held still. A push that is held makes the character flinch again each time a flinch ends, every 0.35 s, until it falls: the same accounting as for a long `impulse` push, left for M3 to decide.
+
+Deviations and what is not done in step 4: the hands are spheres, with no hand mesh and no fingers (the visible hand comes with VR in M4); the desktop hands only rest and reach, the strike verbs with wind-up are M4, as are grabbing with a hand, the kicking foot and recording a session; keys, mouse and the feel of the hands are checked by a person, the list is in `docs/testing.md`; the peak joint speed in the hand scenarios (7.6 rad/s at most) is recorded but strike speeds are step 5; the torque caps of the muscles are still at "no cap".
 
 ### M3: Balance and recovery (3 to 4 weeks)
 

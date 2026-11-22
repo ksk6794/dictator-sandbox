@@ -132,6 +132,16 @@ void FSandboxParamStore::DeclareString(const FString& Key) { DeclaredStrings.Add
 void FSandboxParamStore::DeclareState(const FString& State) { DeclaredStates.Add(State); }
 void FSandboxParamStore::AddValidator(FValidator Validator) { Validators.Add(MoveTemp(Validator)); }
 
+FSandboxParamStore FSandboxParamStore::CloneSchema() const
+{
+	FSandboxParamStore Clone;
+	Clone.DeclaredNumbers = DeclaredNumbers;
+	Clone.DeclaredStrings = DeclaredStrings;
+	Clone.DeclaredStates = DeclaredStates;
+	Clone.Validators = Validators;
+	return Clone;
+}
+
 void FSandboxParamStore::SetDirectory(const FString& InDirectory)
 {
 	// The revision moves with the next load, when there are values to read again.

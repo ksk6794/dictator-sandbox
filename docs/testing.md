@@ -406,6 +406,125 @@ suite and alone.
 Not measured: hits by another body (there are no effectors before step 4), the flinch's effect on anything
 but the neck, and falls against walls or furniture.
 
+### M2 step 4 (desktop pawn with effectors and tools), 2026-11-22
+
+Same machine and settings. New in this step: the player's hands (effectors), the character's sense of
+contact, the `effector` scenario event, the desktop pawn and the interactive session (`Tools\play.ps1`).
+
+**Nothing changed for a run without hands.** The whole suite was run before the step and after it. All 20
+earlier scenarios give the same two hashes, although the character now receives contact events from the
+physics scene in every frame, the game mode has a new pawn class, and the scene is built by shared code.
+`room_stand_npc`, new, gives the same hashes as `stand_npc`: the test room's floor is the bare floor to the
+solver. The solver's mean time per frame is unchanged (`stand_npc` 0.41 ms before and after).
+
+**The force cap, measured from the other side.** A hand's spring may apply 300 N. In `effector_force_cap`
+the hand's target is moved 30 cm below the floor and left there; the hand comes to rest on the floor and
+the floor's contact events report what it presses with:
+
+| Measure | Value |
+| --- | --- |
+| Contact force in the run's last frame | 300.000 N (cap 300 N) |
+| Largest contact force of any frame | 300.0 N |
+| Hand's distance from its target | 34.5 cm; the spring law asks for 1157 N at most |
+| Same, with the cap changed to 100 N at 4 s from the console (`tune_live_effector`) | 100.000 N |
+
+This is one measurement of three things: the cap holds, the conversion of newtons into the engine's units
+is right, and the impulses of the contact events (summed over the two substeps of a frame) are the real
+ones. The hand is alone in its simulation island here, so this is the engine's 8 position iterations.
+
+The engine caps a drive axis by axis. Without correction a spring with one cap would be 1.41 times stronger
+along a face diagonal and 1.73 times along a space diagonal. The caps are therefore set every frame along
+the direction of the force asked for. Checked once with a throw-away scenario: two free hands whose targets
+jump 100 cm in one frame, one along x and one along the space diagonal.
+
+| Hand | Peak speed |
+| --- | --- |
+| Target jumps 100 cm along x | 11.7968 m/s |
+| Target jumps 100 cm along (-1, 1, 1) | 11.7968 m/s |
+| Along x, mass 3 kg from the start (`-Tune`) | 9.6627 m/s |
+| Along x, mass changed from 1.5 to 3 kg at 1 s, a second before the jump | 9.6627 m/s, and the same hashes as the row above |
+
+The last two rows are the check that a value made tunable at run time reaches the solver: the run with the
+live change is identical to the run that had the value from the start.
+
+**Hands and the character.** Default tuning (hand 1.5 kg, 3000 N/m, 300 N), bare floor, headless. The hand's
+figures come from its own contact events, the character's from the character's.
+
+| Scenario | The hand's target | Hand delivers | Character feels | States | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `effector_push_chest` | Into the chest at 2.5 m/s and straight back | 17.75 N*s in 5 frames, peak 540 N | 17.75 N*s in 9 reports | flinch 3.20 s (hit of 6.0 N*s on `spine_04`), standing 3.57 s | Pelvis moves 2.2 cm |
+| `effector_hit_head` | Into the side of the head at 7.5 m/s | 14.10 N*s in 1 frame, peak 1269 N | 14.10 N*s in 1 report | flinch 3.08 s (hit of 14.1 N*s on `neck_01`), standing 3.44 s | Hand reaches 8.28 m/s; neck turns at 6.2 rad/s |
+| `effector_push_chest_falls` | Into the chest and on through it for 1 s | 114.07 N*s in 46 frames, peak 503 N | 114.07 N*s in 91 reports | flinch 3.24 s, standing 3.61 s, flinch 3.61 s, falling 3.64 s (pelvis 15.1 cm away), lying 5.06 s | Joint stretch 0.02 cm; fastest joint 7.6 rad/s |
+| `effector_miss` | Across in front of the chest, not touching | 0 | 0 | standing | Pelvis drift 0.95 cm, as in `stand_npc` |
+
+What the two sides count agrees to the last digit, as it should: it is the same contact seen from both
+bodies. The character knows nothing of the hand. It counts every contact with another simulated body and
+leaves out the static world, because the floor under its feet reports 8.7 N*s per frame, more than the
+flinch threshold of 5.
+
+Two things these runs show that the plan did not say:
+
+- **The peak contact force is not held by the force cap** (540, 1269 and 503 N against a cap of 300). A
+  hand that is stopped gives up its momentum within a frame, on top of what the spring adds: 1.5 kg at
+  8.3 m/s is 12.4 N*s. The cap is a limit on sustained force, and is checked that way above.
+- **A held push makes the character flinch again the moment a flinch ends** (3.61 s in the third row). Each
+  frame of contact adds to the felt impulse, and the threshold is reached again within two frames. The same
+  would happen with an `impulse` push longer than a flinch. Left as it is: what a sustained push should do
+  to the muscles is M3.
+
+Largest joint stretch in the six hand scenarios: 0.02 cm. Largest joint-limit violation: 0.1 degrees.
+
+**Cost.** One hand in the scene adds 0.03 ms to the solver's mean time per frame (`effector_miss` 0.44 ms
+against `stand_npc` 0.41 ms); the most expensive run of the suite is `effector_push_chest_falls` at
+0.46 ms. The M2 limit is 1.5 ms.
+
+**The interactive session.** `Tools\play.ps1 -Smoke` runs the session without a person: it uses each tool
+through the function its key calls and asks the world what happened. 480 frames, 13 checks, all pass,
+headless and rendered:
+
+| Check | Result |
+| --- | --- |
+| The pawn has two hands, resting on their targets | 0.00 cm from target |
+| Impulse tool, one click on the chest | flinch from a "hit of 30.0 N*s": the same entry as a scenario's `impulse` |
+| Pause | 0 frames simulated in 30 paused frames; the pelvis transform is bit-equal |
+| Single step | exactly 1 frame simulated |
+| Slow motion, divisor 4 | 20 frames simulated in 80 |
+| Drag handle on the left forearm, camera raised 30 cm | holds `lowerarm_l`; the held point rises 22.4 cm and stays 7.7 cm behind its target (the arm's muscles pull back, the handle's force is capped) |
+| Right hand reaches into the chest | the hand delivers 38.0 N*s, the character feels 38.0 N*s and flinches |
+| Reset | a fresh character, standing, pelvis 1.5 cm from where the first one started |
+
+A window opened by `Tools\play.ps1` and left alone for 30 s logged 900 frames in 10.00 s and 900 frames in
+10.01 s by the clock, with no error in the log: the session holds the simulation's 90 frames per second.
+`-Smoke -Shot` gives a picture of the session's view: the two hands below the crosshair, the HUD lines, the
+character in the room.
+
+Repeatability, final build of the step:
+
+| Scenario | Runs compared | Result |
+| --- | --- | --- |
+| `effector_force_cap` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `effector_push_chest` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `effector_hit_head` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `effector_push_chest_falls` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `effector_miss` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `tune_live_effector` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+
+The hands' transforms are part of the `bodies` hash of a run that has hands.
+
+`Tools\bootstrap.ps1` now takes about 8.5 minutes: the suite of 27 scenarios 5.1 minutes, the push matrix
+2.9 minutes, the session's self-test 10 seconds. The push matrix gives the same table and figures as in
+step 3.
+
+**For a person to check**, because no run without one can: that the keys and the mouse do what the HUD
+says; that the camera turns the right way up and down; that the hands feel weighted and do not launch the
+character; that the drag handle is usable; that slow motion is readable; and hot reload in a live session
+(save `Config/Tuning/effectors.json` with another `max_force_n` while the window is open and see the hands
+change, with "Effectors: new tuning values applied" in the log). The steps are in the report of the step.
+
+Not measured: strikes at full speed and tunnelling (step 5; continuous collision detection is on for the
+hands but nothing here tests it), a hand against a fallen character, two hands at once, anything in the
+headset.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

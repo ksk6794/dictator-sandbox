@@ -96,6 +96,59 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("effector"))
+		{
+			FString Effector;
+			if (!Json->TryGetStringField(TEXT("effector"), Effector) || !SandboxEffectors::IsKnown(FName(*Effector)))
+			{
+				OutError = FString::Printf(TEXT("events[%d].effector must be \"hand_left\" or \"hand_right\""), Index);
+				return false;
+			}
+			OutEvent.Effector = FName(*Effector);
+
+			const TArray<TSharedPtr<FJsonValue>>* Path = nullptr;
+			if (!Json->TryGetArrayField(TEXT("path"), Path) || Path->Num() == 0)
+			{
+				OutError = FString::Printf(TEXT("events[%d].path must be a list of keys"), Index);
+				return false;
+			}
+			for (int32 KeyIndex = 0; KeyIndex < Path->Num(); ++KeyIndex)
+			{
+				const TSharedPtr<FJsonObject>* Key = nullptr;
+				FSandboxPathKey& Out = OutEvent.Path.AddDefaulted_GetRef();
+				if (!(*Path)[KeyIndex].IsValid() || !(*Path)[KeyIndex]->TryGetObject(Key) ||
+					!(*Key)->TryGetNumberField(TEXT("t"), Out.TimeS) || !SandboxJson::TryGetVector(*Key, TEXT("location_cm"), Out.Location))
+				{
+					OutError = FString::Printf(TEXT("events[%d].path[%d] needs 't' and 'location_cm' [x, y, z]"), Index, KeyIndex);
+					return false;
+				}
+				// A key without a rotation keeps the one before it.
+				if ((*Key)->HasField(TEXT("rotation_deg")))
+				{
+					FVector PitchYawRoll;
+					if (!SandboxJson::TryGetVector(*Key, TEXT("rotation_deg"), PitchYawRoll))
+					{
+						OutError = FString::Printf(TEXT("events[%d].path[%d].rotation_deg must be [pitch, yaw, roll]"), Index, KeyIndex);
+						return false;
+					}
+					Out.Rotation = FRotator(PitchYawRoll.X, PitchYawRoll.Y, PitchYawRoll.Z).Quaternion();
+				}
+				else if (KeyIndex > 0)
+				{
+					Out.Rotation = OutEvent.Path[KeyIndex - 1].Rotation;
+				}
+			}
+			// The same checks the source makes when the path is played: first key at 0, times increasing.
+			FSandboxScriptedTargetSource Probe;
+			FString PathError;
+			if (!Probe.AddPath(OutEvent.Effector, OutEvent.TimeS, OutEvent.Path, PathError))
+			{
+				OutError = FString::Printf(TEXT("events[%d].path: %s"), Index, *PathError);
+				return false;
+			}
+			return true;
+		}
+
 		OutError = FString::Printf(TEXT("events[%d].type '%s' is not supported"), Index, *OutEvent.Type);
 		return false;
 	}
@@ -260,7 +313,12 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_physics_step_mean_ms"), &OutSpec.Expect.MaxPhysicsStepMeanMs },
 			{ TEXT("min_fall_time_s"), &OutSpec.Expect.MinFallTimeS },
 			{ TEXT("max_joint_limit_violation_deg"), &OutSpec.Expect.MaxJointLimitViolationDeg },
-			{ TEXT("tuning_changes"), &OutSpec.Expect.TuningChanges } };
+			{ TEXT("tuning_changes"), &OutSpec.Expect.TuningChanges },
+			{ TEXT("min_effector_impulse_ns"), &OutSpec.Expect.MinEffectorImpulseNs },
+			{ TEXT("max_effector_impulse_ns"), &OutSpec.Expect.MaxEffectorImpulseNs },
+			{ TEXT("max_effector_force_n"), &OutSpec.Expect.MaxEffectorForceN },
+			{ TEXT("min_effector_final_force_n"), &OutSpec.Expect.MinEffectorFinalForceN },
+			{ TEXT("max_effector_final_force_n"), &OutSpec.Expect.MaxEffectorFinalForceN } };
 
 		// Every key must be a known expectation with a numeric value: a misspelt one would otherwise
 		// never be checked and the scenario would pass for the wrong reason.
