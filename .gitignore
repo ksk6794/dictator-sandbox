@@ -25,3 +25,7 @@ Content/Generated/
 
 # Local agent settings
 .claude/settings.local.json
+
+# Per-user editor scratch folders
+Content/Developers/
+Content/Collections/

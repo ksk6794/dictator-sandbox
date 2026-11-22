@@ -22,6 +22,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
 | Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` |
+| Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 10 s, full build 80 s, one scenario 8 s,
 unit tests 15 s.
@@ -78,3 +79,10 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   10.0.22621. The MSVC 14.51 toolset breaks 5.8. `Tools\common.ps1` finds the engine from the launcher's
   install list, or from `UE_ROOT` if set.
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
+- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
+  is silently ignored and the editor just sits open.
+- **MetaHuman scripting.** `Tools\metahuman.ps1` runs `Tools\python\metahuman_build.py` in the full editor
+  (not a commandlet). The `rig` and `textures` steps call Epic's cloud; the first run opens a browser for an
+  Epic sign-in, which a person must complete, and later runs reuse the stored sign-in. Never pass account
+  credentials on the command line. The rig state is not exposed to Python; `can_build_meta_human()` is true
+  only when the character is both rigged and textured.
