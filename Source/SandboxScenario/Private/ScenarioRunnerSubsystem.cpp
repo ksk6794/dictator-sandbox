@@ -10,6 +10,7 @@
 #include "HAL/PlatformMisc.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
+#include "Engine/OverlapResult.h"
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
@@ -242,6 +243,22 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	TotalFrames = Spec.TotalFrames();
 	NextCheckpointTimeS = Spec.CheckpointIntervalS;
 
+	// Screenshots at moments of the run, next to the final one. A comma separates the times, so the value
+	// is read whole.
+	FString Moments;
+	if (!ShotPath.IsEmpty() && FParse::Value(FCommandLine::Get(), TEXT("ShotAt="), Moments, /*bShouldStopOnSeparator*/ false))
+	{
+		TArray<FString> Times;
+		Moments.ParseIntoArray(Times, TEXT(","), /*bCullEmpty*/ true);
+		for (const FString& Time : Times)
+		{
+			// The picture taken after frame N shows the state after N + 1 steps.
+			const double AtS = FCString::Atod(*Time);
+			const int32 Frame = FMath::Clamp(FMath::RoundToInt32(AtS / FixedDt) - 1, 0, TotalFrames - 1);
+			MomentShots.Emplace(Frame, FPaths::Combine(FPaths::GetPath(ShotPath), FString::Printf(TEXT("shot_%.3f.png"), AtS)));
+		}
+	}
+
 	// Decouple simulation time from wall-clock time. The tool scripts also pass -UseFixedTimeStep -FPS=
 	// so that even the first frame is fixed; DtViolations reports any frame that was not.
 	FApp::SetFixedDeltaTime(FixedDt);
@@ -343,6 +360,7 @@ bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 			return false;
 		}
 		EffectorFirstContactFrame.Add(-1);
+		EffectorTracks.AddDefaulted();
 	}
 	EffectorSource = Source;
 	EffectorRig->SetSource(EffectorSource);
@@ -492,6 +510,14 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 		FSandboxParamStore::Get().PollFiles();
 	}
 
+	for (const TPair<int32, FString>& Moment : MomentShots)
+	{
+		if (Moment.Key == FrameIndex && FApp::CanEverRender())
+		{
+			FScreenshotRequest::RequestScreenshot(Moment.Value, /*bInShowUI*/ false, /*bAddFilenameSuffix*/ false);
+		}
+	}
+
 	++FrameIndex;
 	if (FrameIndex >= TotalFrames)
 	{
@@ -594,7 +620,9 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			{
 				EffectorFirstContactFrame[Index] = FrameIndex;
 			}
+			TrackEffector(Index, *Effectors[Index], Transform.GetLocation(), Bodies);
 		}
+		PreviousBodies = Bodies;
 	}
 
 	if (!bSawNaN)
@@ -698,7 +726,9 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 	{
 		InitialJointOffsetCm = Stretch;
 	}
-	else if (FrameIndex >= JointSettleFrames && Stretch > MaxJointStretchCm)
+	// A body that is not simulated has no joints being solved: the gap between its anchors is the one the
+	// asset was authored with, reported above, and not a stretch.
+	else if (Spec.bSimulate && FrameIndex >= JointSettleFrames && Stretch > MaxJointStretchCm)
 	{
 		MaxJointStretchCm = Stretch;
 		WorstJoint = FrameWorstJoint;
@@ -733,6 +763,103 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		}
 
 		Checkpoints.Add(MakeCheckpoint(SimTimeS, FrameIndex, Bodies, Bones));
+	}
+}
+
+void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffectorComponent& Effector, const FVector& Center, const TArray<FSandboxBodySample>& Bodies)
+{
+	// Measured from outside, with scene queries on the state after this frame's step. Queries change
+	// nothing, and they do not depend on the solver's contacts: a hand the solver let through is seen here.
+	FEffectorTrack& Track = EffectorTracks[Index];
+	const FSandboxEffectorStats& Stats = Effector.GetStats();
+	const USkeletalMeshComponent* Mesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
+	const UWorld& World = GetWorldRef();
+	const double RadiusCm = Effector.GetScaledSphereRadius();
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(static_cast<float>(RadiusCm));
+
+	// Penetration: how far the sphere would have to move to be clear of each thing it overlaps.
+	double DepthCm = 0.0;
+	FName Into;
+	if (Mesh)
+	{
+		for (const FBodyInstance* Body : Mesh->Bodies)
+		{
+			FMTDResult Separation;
+			if (Body && Body->IsValidBodyInstance() && Body->OverlapTest(Center, FQuat::Identity, Sphere, &Separation) && Separation.Distance > DepthCm)
+			{
+				DepthCm = Separation.Distance;
+				Into = Mesh->GetBoneName(Body->InstanceBoneIndex);
+			}
+		}
+	}
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+	FCollisionQueryParams NotTheHands(SCENE_QUERY_STAT(SandboxEffectorProbe), /*bTraceComplex*/ false);
+	NotTheHands.AddIgnoredActor(EffectorRig);
+	FCollisionQueryParams TheWorld = NotTheHands;
+	if (Ragdoll)
+	{
+		// The character's bodies were asked one by one above.
+		TheWorld.AddIgnoredActor(Ragdoll);
+	}
+	TArray<FOverlapResult> Overlaps;
+	World.OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, Objects, Sphere, TheWorld);
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		UPrimitiveComponent* Component = Overlap.GetComponent();
+		FMTDResult Separation;
+		if (Component && Component->ComputePenetration(Separation, Sphere, Center, FQuat::Identity) && Separation.Distance > DepthCm)
+		{
+			DepthCm = Separation.Distance;
+			Into = Component->GetOwner() ? Component->GetOwner()->GetFName() : Component->GetFName();
+		}
+	}
+	if (DepthCm > Track.MaxPenetrationCm)
+	{
+		Track.MaxPenetrationCm = DepthCm;
+		Track.DeepestInto = Into;
+	}
+
+	// Tunnelling: the centre of a sphere cannot get closer to a surface than its radius. If the straight
+	// line from where the centre was a frame ago to where it is now crosses a surface, or the centre lies
+	// inside a shape, the hand went through something. A snap is not motion and is left out; it fails the
+	// run on its own.
+	const bool bMoved = Track.bHaveLast && Stats.Snaps == Track.LastSnaps;
+	FHitResult Crossed;
+	const bool bCrossed = bMoved && World.LineTraceSingleByObjectType(Crossed, Track.LastCenter, Center, Objects, NotTheHands);
+	if (bCrossed || DepthCm >= RadiusCm)
+	{
+		++Track.TunnelFrames;
+		if (FirstTunnelFrame < 0)
+		{
+			FirstTunnelFrame = FrameIndex;
+			FirstTunnelled = !bCrossed ? Into : !Crossed.BoneName.IsNone() ? Crossed.BoneName : Crossed.GetActor() ? Crossed.GetActor()->GetFName() : NAME_None;
+		}
+	}
+	Track.LastCenter = Center;
+	Track.LastSnaps = Stats.Snaps;
+	Track.bHaveLast = true;
+
+	// The struck body: the body of the character the effector touched first, and how far it moves from
+	// where it was just before (the sample of the frame before the one that brought the contact).
+	if (!Track.bFirstContactSeen && Stats.ContactFrames > 0)
+	{
+		Track.bFirstContactSeen = true;
+		const FSandboxBodySample* Before = PreviousBodies.FindByPredicate([&Stats](const FSandboxBodySample& Body) { return Body.Bone == Stats.FirstTouched; });
+		if (Before)
+		{
+			Track.StruckBone = Stats.FirstTouched;
+			Track.StruckStart = Before->CenterOfMass;
+		}
+	}
+	if (!Track.StruckBone.IsNone())
+	{
+		if (const FSandboxBodySample* Now = Bodies.FindByPredicate([&Track](const FSandboxBodySample& Body) { return Body.Bone == Track.StruckBone; }))
+		{
+			Track.StruckDisplacementCm = FMath::Max(Track.StruckDisplacementCm, FVector::Dist(Now->CenterOfMass, Track.StruckStart));
+		}
 	}
 }
 
@@ -960,7 +1087,7 @@ void UScenarioRunnerSubsystem::Finish()
 	if (Spec.Expect.MaxJointStretchCm.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxJointStretchCm.GetValue();
-		AddCheck(TEXT("max_joint_stretch_cm"), MaxJointStretchCm <= Limit, Number(MaxJointStretchCm), Number(Limit));
+		AddCheck(TEXT("max_joint_stretch_cm"), Spec.bSimulate && MaxJointStretchCm <= Limit, Spec.bSimulate ? Number(MaxJointStretchCm) : Null(), Number(Limit));
 	}
 
 	const USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
@@ -1060,6 +1187,49 @@ void UScenarioRunnerSubsystem::Finish()
 			EffectorSnaps += Effector->GetStats().Snaps;
 		}
 		AddCheck(TEXT("effectors_not_snapped"), EffectorSnaps == 0, Number(EffectorSnaps), Number(0));
+	}
+
+	// What the runner measured about the hands from outside. Tunnelling is never acceptable, so it is
+	// checked in every run that has hands.
+	double EffectorPenetrationCm = 0.0;
+	int32 EffectorTunnelFrames = 0;
+	double SlowestImpactMps = TNumericLimits<double>::Max();
+	double SmallestStruckCm = TNumericLimits<double>::Max();
+	if (EffectorRig)
+	{
+		const TArray<TObjectPtr<USandboxEffectorComponent>>& Effectors = EffectorRig->GetEffectors();
+		for (int32 Index = 0; Index < Effectors.Num(); ++Index)
+		{
+			const FEffectorTrack& Track = EffectorTracks[Index];
+			EffectorPenetrationCm = FMath::Max(EffectorPenetrationCm, Track.MaxPenetrationCm);
+			EffectorTunnelFrames += Track.TunnelFrames;
+			if (Effectors[Index]->GetStats().ContactFrames > 0)
+			{
+				SlowestImpactMps = FMath::Min(SlowestImpactMps, Effectors[Index]->GetStats().FirstContactSpeedCmS * 0.01);
+			}
+			if (!Track.StruckBone.IsNone())
+			{
+				SmallestStruckCm = FMath::Min(SmallestStruckCm, Track.StruckDisplacementCm);
+			}
+		}
+		AddCheck(TEXT("effectors_not_tunnelled"), EffectorTunnelFrames == 0, Number(EffectorTunnelFrames), Number(0));
+	}
+	const bool bAnyImpact = SlowestImpactMps != TNumericLimits<double>::Max();
+	const bool bAnyStruck = SmallestStruckCm != TNumericLimits<double>::Max();
+	if (Spec.Expect.MaxEffectorPenetrationCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxEffectorPenetrationCm.GetValue();
+		AddCheck(TEXT("max_effector_penetration_cm"), EffectorRig && EffectorPenetrationCm <= Limit, EffectorRig ? Number(EffectorPenetrationCm) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinEffectorImpactSpeedMps.IsSet())
+	{
+		const double Limit = Spec.Expect.MinEffectorImpactSpeedMps.GetValue();
+		AddCheck(TEXT("min_effector_impact_speed_mps"), bAnyImpact && SlowestImpactMps >= Limit, bAnyImpact ? Number(SlowestImpactMps) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinStruckDisplacementCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinStruckDisplacementCm.GetValue();
+		AddCheck(TEXT("min_struck_displacement_cm"), bAnyStruck && SmallestStruckCm >= Limit, bAnyStruck ? Number(SmallestStruckCm) : Null(), Number(Limit));
 	}
 	if (Spec.Expect.MinEffectorImpulseNs.IsSet())
 	{
@@ -1200,7 +1370,8 @@ void UScenarioRunnerSubsystem::Finish()
 	Root->SetObjectField(TEXT("body"), Body);
 
 	const TSharedRef<FJsonObject> Metrics = MakeShared<FJsonObject>();
-	Metrics->SetNumberField(TEXT("max_joint_stretch_cm"), MaxJointStretchCm);
+	// Null for a body that is not simulated: nothing solves its joints, so there is no stretch to measure.
+	Metrics->SetField(TEXT("max_joint_stretch_cm"), Spec.bSimulate ? Number(MaxJointStretchCm) : Null());
 	Metrics->SetStringField(TEXT("worst_joint"), WorstJoint.IsNone() ? FString() : WorstJoint.ToString());
 	Metrics->SetNumberField(TEXT("initial_joint_offset_cm"), InitialJointOffsetCm);
 	Metrics->SetNumberField(TEXT("max_pin_error_cm"), MaxPinErrorCm);
@@ -1295,6 +1466,12 @@ void UScenarioRunnerSubsystem::Finish()
 		EffectorsJson->SetNumberField(TEXT("contact_impulse_ns"), EffectorImpulseNs);
 		EffectorsJson->SetNumberField(TEXT("max_contact_force_n"), EffectorForceN);
 		EffectorsJson->SetNumberField(TEXT("tuning_changes"), EffectorRig->GetTuningChangeCount());
+		// Measured by the runner with scene queries after every frame, not taken from the solver's contacts.
+		EffectorsJson->SetNumberField(TEXT("max_penetration_cm"), EffectorPenetrationCm);
+		EffectorsJson->SetNumberField(TEXT("tunnel_frames"), EffectorTunnelFrames);
+		EffectorsJson->SetField(TEXT("first_tunnel_frame"), FirstTunnelFrame >= 0 ? Number(FirstTunnelFrame) : Null());
+		EffectorsJson->SetField(TEXT("first_tunnel_t"), FirstTunnelFrame >= 0 ? Number(FirstTunnelFrame * FixedDt) : Null());
+		EffectorsJson->SetStringField(TEXT("first_tunnelled"), FirstTunnelled.IsNone() ? FString() : FirstTunnelled.ToString());
 
 		const TSharedRef<FJsonObject> EffectorTuningJson = MakeShared<FJsonObject>();
 		TArray<TPair<FString, double>> EffectorValues;
@@ -1334,6 +1511,15 @@ void UScenarioRunnerSubsystem::Finish()
 			Entry->SetNumberField(TEXT("max_speed_mps"), Stats.MaxSpeedCmS * 0.01);
 			Entry->SetNumberField(TEXT("max_demand_n"), Stats.MaxDemandN);
 			Entry->SetNumberField(TEXT("snaps"), Stats.Snaps);
+			// The strike: what was touched first and how fast the hand arrived, then what the runner measured.
+			const FEffectorTrack& Track = EffectorTracks[Index];
+			Entry->SetStringField(TEXT("first_touched"), Stats.FirstTouched.IsNone() ? FString() : Stats.FirstTouched.ToString());
+			Entry->SetField(TEXT("first_contact_speed_mps"), Stats.ContactFrames > 0 ? Number(Stats.FirstContactSpeedCmS * 0.01) : Null());
+			Entry->SetStringField(TEXT("struck_bone"), Track.StruckBone.IsNone() ? FString() : Track.StruckBone.ToString());
+			Entry->SetField(TEXT("struck_displacement_cm"), Track.StruckBone.IsNone() ? Null() : Number(Track.StruckDisplacementCm));
+			Entry->SetNumberField(TEXT("max_penetration_cm"), Track.MaxPenetrationCm);
+			Entry->SetStringField(TEXT("deepest_into"), Track.DeepestInto.IsNone() ? FString() : Track.DeepestInto.ToString());
+			Entry->SetNumberField(TEXT("tunnel_frames"), Track.TunnelFrames);
 			Entry->SetArrayField(TEXT("final_location_cm"), SandboxJson::VectorToArray(Effector->GetComponentLocation()));
 			List->SetObjectField(Effector->GetId().ToString(), Entry);
 		}

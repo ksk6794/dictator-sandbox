@@ -32,6 +32,39 @@ struct FSandboxStateChange
 	FString Reason;
 };
 
+/** One muscle as an overlay shows it: what it turns its body toward, and how strong it is right now. */
+struct FSandboxMuscleView
+{
+	FName ParentBone;
+	FName ChildBone;
+	ESandboxMuscleGroup Group = ESandboxMuscleGroup::Spine;
+	/** Strength as a fraction of the tuning: below 1 only for the hit region during a flinch. */
+	double Strength = 1.0;
+	/** Whether the group's stiffness is above zero at all. */
+	bool bDriven = false;
+	/** World orientation the muscle turns the child bone toward, given where the parent body is now. */
+	FQuat TargetRotation = FQuat::Identity;
+	/** Angle between that and where the child bone is, radians. */
+	double ErrorRad = 0.0;
+};
+
+/** One balance-assist control as an overlay shows it. */
+struct FSandboxAssistView
+{
+	FName Bone;
+	/** Where the assist holds the bone, world space. */
+	FTransform Target = FTransform::Identity;
+	/** False when every stiffness of the control is zero in the current state: it pulls on nothing. */
+	bool bActive = false;
+};
+
+/** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */
+struct FSandboxBodyControlView
+{
+	TArray<FSandboxMuscleView> Muscles;
+	TArray<FSandboxAssistView> Assists;
+};
+
 /**
  * Turns a fully simulated skeletal mesh into an active ragdoll.
  *
@@ -100,6 +133,16 @@ public:
 	/** Assist load at the start of the current frame's physics step. */
 	const FSandboxAssistLoad& GetAssistLoad() const { return AssistLoad; }
 
+	/**
+	 * The targets of every muscle and assist control, as last handed to the solver. The muscles' targets
+	 * are the pose Physics Control has cached, which is the one the drives really use. Read-only and never
+	 * called by the simulation: this is for debug overlays. Empty before the first tick.
+	 */
+	void GetControlView(FSandboxBodyControlView& OutView) const;
+
+	/** Simulated time since Start, at the beginning of the coming physics step. */
+	double GetElapsedS() const { return ElapsedS; }
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void OnUnregister() override;
 
@@ -107,6 +150,8 @@ private:
 	struct FMuscle
 	{
 		FName Control;
+		FName ParentBone;
+		FName ChildBone;
 		ESandboxMuscleGroup Group = ESandboxMuscleGroup::Spine;
 	};
 

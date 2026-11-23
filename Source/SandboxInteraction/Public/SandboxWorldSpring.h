@@ -56,6 +56,8 @@ public:
 	FVector GetGripLocation() const;
 	/** Distance from the held point to the target given last, cm. */
 	double GetGapCm() const;
+	/** The target given last, world space. */
+	const FVector& GetTargetLocation() const { return TargetLocation; }
 	/** The force the spring law asked for at the last SetTarget, before the cap, N. */
 	double GetDemandN() const { return DemandN; }
 	double GetMaxForceN() const { return MaxForceN; }

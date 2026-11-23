@@ -20,6 +20,8 @@ class ASandboxRagdollActor;
  *   -Out=<dir>             output directory of the self-test (default Saved/Play/<name>)
  *   -Shot=<file.png>       screenshot at the end of the self-test (rendered runs only)
  *   -Tune=, -TuningDir=    as for scenarios
+ *   -Overlay=<layers>      debug overlays from the start (USandboxOverlaySubsystem); the V key and the
+ *                          console command Sandbox.Overlay switch them in a running session
  *
  * This is where the player's side and the character meet in code, which neither of their modules may do.
  * The session puts the character into the world, and carries out the two requests of the pawn that need
@@ -80,6 +82,7 @@ private:
 	int32 SmokeFrame = 0;
 	int32 ExitCountdown = -1;
 	TArray<TSharedPtr<FJsonValue>> SmokeChecks;
+	uint32 SmokeOverlayBefore = 0;
 	int64 SmokeFramesAtPause = 0;
 	int64 SmokeFramesAtSlow = 0;
 	FTransform SmokePelvisAtPause = FTransform::Identity;

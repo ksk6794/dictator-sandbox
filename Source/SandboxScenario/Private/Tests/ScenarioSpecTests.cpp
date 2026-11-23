@@ -172,7 +172,8 @@ bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
 			{ "t": 1.0, "type": "effector", "effector": "hand_left", "path": [ { "t": 0, "location_cm": [50, 50, 100] } ] }
 		],
 		"expect": { "min_effector_impulse_ns": 5, "max_effector_impulse_ns": 60, "max_effector_force_n": 900,
-			"min_effector_final_force_n": 290, "max_effector_final_force_n": 310 }
+			"min_effector_final_force_n": 290, "max_effector_final_force_n": 310,
+				"max_effector_penetration_cm": 1, "min_effector_impact_speed_mps": 8, "min_struck_displacement_cm": 3 }
 	})");
 
 	FScenarioSpec Spec;
@@ -201,6 +202,9 @@ bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("peak force"), Spec.Expect.MaxEffectorForceN.Get(0.0), 900.0);
 	TestEqual(TEXT("least final force"), Spec.Expect.MinEffectorFinalForceN.Get(0.0), 290.0);
 	TestEqual(TEXT("most final force"), Spec.Expect.MaxEffectorFinalForceN.Get(0.0), 310.0);
+	TestEqual(TEXT("deepest penetration"), Spec.Expect.MaxEffectorPenetrationCm.Get(0.0), 1.0);
+	TestEqual(TEXT("slowest impact"), Spec.Expect.MinEffectorImpactSpeedMps.Get(0.0), 8.0);
+	TestEqual(TEXT("least displacement of what was struck"), Spec.Expect.MinStruckDisplacementCm.Get(0.0), 3.0);
 	return true;
 }
 

@@ -11,6 +11,6 @@
     { "t": 5.0, "type": "impulse", "body": "pelvis", "impulse_ns": 80, "direction": [1, 0, 0.3] }
   ],
   "expect": {
-    "max_joint_stretch_cm": 3.0
+    "max_joint_stretch_cm": 2.0
   }
 }

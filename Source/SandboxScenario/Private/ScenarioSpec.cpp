@@ -318,7 +318,10 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_effector_impulse_ns"), &OutSpec.Expect.MaxEffectorImpulseNs },
 			{ TEXT("max_effector_force_n"), &OutSpec.Expect.MaxEffectorForceN },
 			{ TEXT("min_effector_final_force_n"), &OutSpec.Expect.MinEffectorFinalForceN },
-			{ TEXT("max_effector_final_force_n"), &OutSpec.Expect.MaxEffectorFinalForceN } };
+			{ TEXT("max_effector_final_force_n"), &OutSpec.Expect.MaxEffectorFinalForceN },
+			{ TEXT("max_effector_penetration_cm"), &OutSpec.Expect.MaxEffectorPenetrationCm },
+			{ TEXT("min_effector_impact_speed_mps"), &OutSpec.Expect.MinEffectorImpactSpeedMps },
+			{ TEXT("min_struck_displacement_cm"), &OutSpec.Expect.MinStruckDisplacementCm } };
 
 		// Every key must be a known expectation with a numeric value: a misspelt one would otherwise
 		// never be checked and the scenario would pass for the wrong reason.

@@ -335,6 +335,15 @@ void ASandboxPawn::ToggleCameraDetached()
 	LastAction = bCameraDetached ? TEXT("camera free: the hands stay where they are") : TEXT("hands back in front of the camera");
 }
 
+void ASandboxPawn::ToggleOverlays()
+{
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->ConsoleCommand(TEXT("Sandbox.Overlay toggle"));
+		LastAction = TEXT("overlays toggled (Sandbox.Overlay in the console chooses layers)");
+	}
+}
+
 void ASandboxPawn::SetView(const FVector& Location, const FRotator& Rotation)
 {
 	SetActorLocationAndRotation(Location, FRotator(FMath::Clamp(Rotation.Pitch, -MaxPitchDeg, MaxPitchDeg), Rotation.Yaw, 0.0));
@@ -400,7 +409,7 @@ void ASandboxPawn::GetHudLines(TArray<FString>& OutLines) const
 	{
 		ExtraHudLines(OutLines);
 	}
-	OutLines.Add(TEXT("1 2 3 tool | buttons use | wheel adjust | P pause | O step | T slow | R reset | C free camera | Esc quit"));
+	OutLines.Add(TEXT("1 2 3 tool | buttons use | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | Esc quit"));
 }
 
 void ASandboxPawn::OnMove(const FInputActionValue& Value)
@@ -514,6 +523,7 @@ void ASandboxPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	Input->BindAction(MakeKey(TEXT("Slow"), EKeys::T), ETriggerEvent::Started, this, &ASandboxPawn::ToggleSlowMotion);
 	Input->BindAction(MakeKey(TEXT("Reset"), EKeys::R), ETriggerEvent::Started, this, &ASandboxPawn::RequestReset);
 	Input->BindAction(MakeKey(TEXT("FreeCamera"), EKeys::C), ETriggerEvent::Started, this, &ASandboxPawn::ToggleCameraDetached);
+	Input->BindAction(MakeKey(TEXT("Overlays"), EKeys::V), ETriggerEvent::Started, this, &ASandboxPawn::ToggleOverlays);
 	Input->BindAction(MakeKey(TEXT("Quit"), EKeys::Escape), ETriggerEvent::Started, this, &ASandboxPawn::OnQuit);
 
 	Subsystem->AddMappingContext(MappingContext, 0);

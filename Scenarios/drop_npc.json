@@ -15,6 +15,6 @@
   },
   "expect": {
     "rest_within_s": 6.5,
-    "max_joint_stretch_cm": 3.0
+    "max_joint_stretch_cm": 2.0
   }
 }

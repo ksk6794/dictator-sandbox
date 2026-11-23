@@ -34,7 +34,7 @@ enum class ESandboxTool : uint8
  *   C                leave the hands where they are and fly the camera alone; again to take them back
  *   P                pause / resume            O           one step while paused
  *   T                slow motion on / off      R           put the character back on its feet
- *   Escape           quit
+ *   V                debug overlays on / off   Escape      quit
  *
  * Input is made in C++ when the pawn is possessed; there are no input assets. Every key calls one of the
  * public functions below, which a test can call just as well.
@@ -79,6 +79,11 @@ public:
 	void ToggleSlowMotion();
 	void RequestReset();
 	void ToggleCameraDetached();
+	/**
+	 * Switches the debug overlays on or off. The pawn does not know what draws them: it types the console
+	 * command "Sandbox.Overlay toggle", as a person could.
+	 */
+	void ToggleOverlays();
 
 	/** Puts the camera somewhere, looking along a rotation. The hands follow unless they are detached. */
 	void SetView(const FVector& Location, const FRotator& Rotation);

@@ -16,6 +16,7 @@
 #include "SandboxEffectorComponent.h"
 #include "SandboxEffectorRig.h"
 #include "SandboxJson.h"
+#include "SandboxOverlaySubsystem.h"
 #include "SandboxParamStore.h"
 #include "SandboxPawn.h"
 #include "SandboxRagdollActor.h"
@@ -314,8 +315,41 @@ void USandboxPlaySubsystem::TickSmoke()
 	const FVector Chest = Spec.SpawnLocationCm + FVector(0.0, 0.0, 128.0);
 	const FRotator TowardCharacter(0.0, -90.0, 0.0);
 
+	USandboxOverlaySubsystem* Overlay = GetWorldRef().GetSubsystem<USandboxOverlaySubsystem>();
+
 	switch (SmokeFrame)
 	{
+	// The overlays, through the key a person would press. With a renderer they draw; without one they must
+	// stay off and do nothing. Whatever the session was started with is put back afterwards.
+	case 18:
+		SmokeOverlayBefore = Overlay ? Overlay->GetLayers() : 0;
+		if (Overlay)
+		{
+			Overlay->SetLayers(SandboxOverlay::None);
+		}
+		Player->ToggleOverlays();
+		break;
+	case 26:
+	{
+		const uint32 Layers = Overlay ? Overlay->GetLayers() : 0;
+		const int32 Lines = Overlay ? Overlay->GetDrawnLineCount() : 0;
+		const int32 Labels = Overlay ? Overlay->GetDrawnLabelCount() : 0;
+		const FString Detail = FString::Printf(TEXT("layers '%s': %d line segments, %d lines of text"), *SandboxOverlay::LayerNames(Layers), Lines, Labels);
+		if (FApp::CanEverRender())
+		{
+			Check(TEXT("overlays_draw"), Layers == SandboxOverlay::All && Lines > 50 && Labels > 3, Detail);
+		}
+		else
+		{
+			Check(TEXT("overlays_do_nothing_without_a_renderer"), Overlay && Layers == SandboxOverlay::None && Lines == 0 && Labels == 0, Detail);
+		}
+		if (Overlay)
+		{
+			Overlay->SetLayers(SmokeOverlayBefore);
+		}
+		break;
+	}
+
 	case 30:
 	{
 		Check(TEXT("hands_exist"), Rig && Rig->GetEffectors().Num() == 2, FString::Printf(TEXT("%d effectors"), Rig ? Rig->GetEffectors().Num() : 0));

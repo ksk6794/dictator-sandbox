@@ -3,12 +3,14 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonValue.h"
 #include "PhysicsEngine/ConstraintInstance.h"
+#include "SandboxBodyProbe.h"
 #include "ScenarioSpec.h"
 #include "Subsystems/WorldSubsystem.h"
 #include <atomic>
 #include "ScenarioRunnerSubsystem.generated.h"
 
 class ASandboxEffectorRig;
+class USandboxEffectorComponent;
 class ASandboxRagdollActor;
 class ACameraActor;
 class AGameModeBase;
@@ -20,6 +22,9 @@ class FSandboxScriptedTargetSource;
  *   -Scenario=<file or name>   Scenarios/<name>.json, or a path (relative paths resolve against the project dir)
  *   -Out=<dir>                 output directory (default Saved/Scenarios/<name>)
  *   -Shot=<file.png>           optional screenshot of the final frame (rendered runs only)
+ *   -ShotAt=<s>[,<s>...]       with -Shot: also a screenshot at each of these simulated times, saved next to
+ *                              the final one as shot_<time>.png (a strike is over long before the last frame)
+ *   -Overlay=<layers>          debug overlays for the run (read by USandboxOverlaySubsystem; rendered runs only)
  *   -Tune="name=value,..."     tuning overrides for this run (read by FSandboxParamStore, active control only)
  *   -TuningDir=<dir>           tuning files to use instead of Config/Tuning (also read by the store)
  *   -vr                        engine flag: run in the headset. The camera becomes the tracking origin on
@@ -110,6 +115,37 @@ private:
 	/** Per effector, in the rig's order: the frame of its first contact, -1 while it has touched nothing. */
 	TArray<int32> EffectorFirstContactFrame;
 	FDelegateHandle GameModeInitializedHandle;
+
+	/**
+	 * What the runner measures about one effector from outside, by asking the scene where things are after
+	 * every frame. None of it comes from the solver's contacts, so it also sees what the solver missed.
+	 */
+	struct FEffectorTrack
+	{
+		/** Where the effector's centre was after the frame before, and how often it had been snapped by then. */
+		FVector LastCenter = FVector::ZeroVector;
+		bool bHaveLast = false;
+		int32 LastSnaps = 0;
+		/** Deepest the sphere was found inside a body of the character or the static world, cm, and what that was. */
+		double MaxPenetrationCm = 0.0;
+		FName DeepestInto;
+		/** Frames in which the centre itself crossed a surface or lay inside a shape. */
+		int32 TunnelFrames = 0;
+		/** The body of the character it touched first, where that body was just before, and how far it has moved since. */
+		bool bFirstContactSeen = false;
+		FName StruckBone;
+		FVector StruckStart = FVector::ZeroVector;
+		double StruckDisplacementCm = 0.0;
+	};
+	TArray<FEffectorTrack> EffectorTracks;
+	void TrackEffector(int32 Index, const USandboxEffectorComponent& Effector, const FVector& Center, const TArray<FSandboxBodySample>& Bodies);
+	int32 FirstTunnelFrame = -1;
+	FName FirstTunnelled;
+	/** The body samples of the frame before: where a struck body was before it was struck. */
+	TArray<FSandboxBodySample> PreviousBodies;
+
+	/** Extra screenshots at moments of the run (-ShotAt=): the frame after which each is taken, and its file. */
+	TArray<TPair<int32, FString>> MomentShots;
 
 	// Accumulated over the run.
 	double MaxJointStretchCm = 0.0;

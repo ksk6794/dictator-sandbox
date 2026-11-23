@@ -32,6 +32,12 @@ struct FSandboxEffectorStats
 	double MaxDemandN = 0.0;
 	/** Times the body was put back on its target because it was further away than the snap distance. */
 	int32 Snaps = 0;
+	/**
+	 * The first thing the effector ever touched (named as in ImpulseByBody), and how fast the effector was
+	 * moving at the start of the physics step in which that happened, cm/s: the speed a strike arrived with.
+	 */
+	FName FirstTouched;
+	double FirstContactSpeedCmS = 0.0;
 };
 
 /**
@@ -81,8 +87,11 @@ public:
 	double GetContactForceN() const { return FrameDt > 0.0 ? Stats.LastFrameImpulseNs / FrameDt : 0.0; }
 	/** Distance from the body to its target now, cm. */
 	double GetGapCm() const { return Spring.GetGapCm(); }
+	/** The force the spring law asked for at the last Update, before its cap, N. */
+	double GetDemandN() const { return Spring.GetDemandN(); }
 
-	virtual void OnUnregister() override;
+	/** The spring lets go here, while the body it holds still exists. */
+	virtual void OnDestroyPhysicsState() override;
 
 private:
 	UFUNCTION()
@@ -104,4 +113,6 @@ private:
 	int64 ImpulseFrame = -1;
 	FVector FrameImpulseNs = FVector::ZeroVector;
 	double FrameDt = 0.0;
+	/** Speed of the body at the last Update: at the start of the step whose contacts are reported next. */
+	double StepStartSpeedCmS = 0.0;
 };

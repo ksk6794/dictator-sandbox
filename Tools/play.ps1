@@ -4,6 +4,9 @@
 #   ... -File <path>                a scenario file from anywhere
 #   ... -Tune "effectors.hand.max_force_n=600"   tuning values for this session only
 #   ... -TuningDir <dir>            read the tuning files from this directory instead of Config\Tuning
+#   ... -Overlay all                start with the debug overlays on (all, or layers by name: "com,support,
+#                                   joints,assist,contacts,state,hands"). In the session the V key switches
+#                                   them, and the console command Sandbox.Overlay chooses layers
 #   ... -ResX 1600 -ResY 900        window size
 #   ... -Smoke                      no window and no person: the session uses every tool itself, checks the
 #                                   result and exits (about 15 s). Writes <Out>\play.json
@@ -16,6 +19,7 @@ param(
     [string]$File,
     [string]$Tune,
     [string]$TuningDir,
+    [string]$Overlay,
     [int]$ResX = 1600,
     [int]$ResY = 900,
     [switch]$Smoke,
@@ -53,6 +57,7 @@ $arguments = "-game -Play=`"$scenarioFile`" -Out=`"$Out`" -UseFixedTimeStep -FPS
 if ($spec.map) { $arguments = "$($spec.map) $arguments" }
 if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }
+if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 
 if ($Smoke) {
     $arguments += ' -PlaySmoke'
@@ -78,8 +83,15 @@ if ($Smoke) {
         exit 2
     }
     $failed = @($result.checks | Where-Object { -not $_.pass })
-    # A run can pass its own checks and still have logged errors (a hand that was not created, say).
+    # A run can pass its own checks and still have logged errors (a hand that was not created, say), or
+    # warnings of Physics Control: muscles that found no target to pull to say so there and nowhere else.
     $errors = @(Get-LogErrors $logFile | Where-Object { $_ -match 'LogSandbox' })
+    if (Test-Path $logFile) {
+        $controlWarnings = @(Select-String -Path $logFile -Pattern 'LogPhysicsControl: Warning')
+        if ($controlWarnings.Count -gt 0) {
+            $errors += "$($controlWarnings.Count) warning(s) of Physics Control, the first: $($controlWarnings[0].Line.Trim())"
+        }
+    }
     $verdict = 'OK'
     if ($failed.Count -gt 0 -or $errors.Count -gt 0) { $verdict = 'FAILED' }
     Write-Output ("PLAY SMOKE {0}: {1} of {2} checks passed on '{3}' ({4} frames)" -f $verdict, ($result.checks.Count - $failed.Count), $result.checks.Count, $Name, $result.frames)

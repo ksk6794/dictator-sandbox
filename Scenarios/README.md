@@ -24,7 +24,7 @@ The file name must equal the `name` field (a unit test checks this).
   ],
   "expect": {
     "rest_within_s": 9.5,
-    "max_joint_stretch_cm": 3.0
+    "max_joint_stretch_cm": 2.0
   }
 }
 ```
@@ -98,6 +98,46 @@ own contact events, by the same rules as for an `impulse` event, and may flinch.
 the hand to its target), `max_speed_mps`, `max_demand_n` (the largest force the spring law asked for before
 its cap) and `snaps`. What the character felt is in `control`: `contact_impulse_ns` and `contact_reports`.
 
+A strike adds, per hand: `first_touched` and `first_contact_speed_mps` (what it touched first and how fast it
+was moving at the start of the physics step in which it did), `struck_bone` and `struck_displacement_cm`
+(the body of the character it touched first, and the furthest that body's centre of mass got from where it
+was just before the contact), and what the next section measures.
+
+## Tunnelling and penetration
+
+The solver's contacts cannot say whether a hand went through something: where the solver missed a contact
+there is none to read. So the runner looks for itself, after every frame, with scene queries that change
+nothing:
+
+- **`max_penetration_cm`**: the deepest the hand's sphere was found inside a body of the character or the
+  static world, as the distance it would have to move to be clear (with `deepest_into`).
+- **`tunnel_frames`**: frames in which the straight line from where the hand's centre was a frame ago to
+  where it is now crosses a surface, or the centre lies inside a shape. The centre of a sphere cannot get
+  closer to a surface than its radius, so either means the hand went through. `first_tunnel_t` and
+  `first_tunnelled` say when and what.
+
+Both are sampled once per frame, 90 times a second: what happens between two substeps is not seen. The line
+is traced against where the bodies are after the step, which is exact for the world and close enough for
+the character (a body would have to move a hand's radius toward the hand's path within one frame to give a
+false count).
+
+A run with hands always checks `effectors_not_tunnelled` (no such frame). The metric was shown to fail when
+it should: with continuous collision detection switched off (`-CVars "p.Chaos.Solver.UseCCD=0"`) a hand at
+25 m/s ends 6.5 cm inside the chest and the check fails; with it on, the same hand stops at the surface.
+See `docs/testing.md`.
+
+## Strikes
+
+The `strike_*` scenarios are a hand's target sent in a straight line through a place on the standing
+character and back: a slap at 6 m/s and a punch at 8 m/s on the head, the chest and a thigh, and a punch on
+a forearm, the thinnest body there is. The speed is in the keys (distance over time); the hand arrives a
+little faster than its target, because it has to catch up with it (6.25 and 8.87 m/s). Each one expects no
+tunnelling, penetration under 1 cm, no joint faster than 30 rad/s, the arrival speed, a flinch that ends
+standing, and that the struck body moved: 5 cm for the head, 3 cm for the chest, 1 cm for a thigh.
+
+To see one, take pictures at the moment of the hit, with the overlays:
+`Tools\scenario.ps1 -Name strike_punch_torso -Shot -ShotAt "3.07,3.09,3.25" -Overlay all`.
+
 Two things to know when reading the forces:
 
 - **The peak contact force is not held by the force cap.** The cap limits the spring. A moving hand that is
@@ -118,7 +158,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | Expectation | Passes when |
 | --- | --- |
 | `rest_within_s` | The body is at rest by that time and stays at rest |
-| `max_joint_stretch_cm` | No rigid joint's anchors separate by more, measured from the sixth frame on |
+| `max_joint_stretch_cm` | No rigid joint's anchors separate by more, measured from the sixth frame on. A body with `"simulate": false` has no stretch (`metrics.max_joint_stretch_cm` is null) and fails this expectation |
 | `max_pelvis_drift_cm` | The pelvis (the root body) never gets further from where it was spawned, over the whole run |
 | `min_head_height_cm` | The head body's centre of mass never drops below this height above the spawn point. Active control only |
 | `max_settled_speed_mps`, `max_settled_angular_speed_rads` | No body moves or turns faster after `settle_s`: the measure of jitter at rest |
@@ -135,14 +175,24 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_effector_impulse_ns` | ...and at most this much. 0 for a hand that must miss |
 | `max_effector_force_n` | No hand's net contact force over one frame was larger. Impacts count, not only pushing |
 | `min_effector_final_force_n`, `max_effector_final_force_n` | Bounds on the contact force of the hardest-pressing hand in the run's last frame: the force cap, for a hand held against something |
+| `max_effector_penetration_cm` | No hand's sphere was found deeper inside a body of the character or the static world, after any frame |
+| `min_effector_impact_speed_mps` | Every hand that touched something was moving at least this fast when it first did: a strike arrived as a strike. Fails if no hand touched anything |
+| `min_struck_displacement_cm` | The body of the character each hand touched first moved at least this far from where it was just before. Fails if no hand touched the character |
 
 A physics asset can be authored with joint anchors that do not coincide in the reference pose; the solver
 closes that gap in the first frames. It is reported as `metrics.initial_joint_offset_cm` and is not part of
-the stretch metric.
+the stretch metric. In a body that is not simulated nothing closes it and nothing can stretch, so such a
+body has that offset and no stretch figure at all (the stock MetaHuman asset: 3.6 cm, in the portrait
+scenarios).
 
 Four checks always run: no NaN, the body stays within 50 m of the origin, every frame used the fixed
 timestep, and every event found its body. With active control a fifth one checks that every joint of the
-physics asset got a muscle, and with hands a sixth that none of them was snapped to its target.
+physics asset got a muscle, and with hands two more: that none of them was snapped to its target, and that
+none went through anything (`effectors_not_tunnelled`).
+
+`Tools\suite.ps1` holds the whole set to two limits on top of each scenario's own expectations, and prints
+the worst scenario of each: no simulated body's joints stretch by more than 2 cm, and no scenario's physics
+step takes more than 1.5 ms on average.
 
 The player of a scenario run is a spectator without a body: the project's own pawn, with its two physical
 hands, exists only in an interactive session.
@@ -159,10 +209,37 @@ session is a second on the clock. Pause, single step and slow motion never chang
 world either makes its full step or stands still.
 
 `Tools\play.ps1 -Smoke` runs the session without a window or a person: it uses every tool through the
-functions the keys call, checks what happened (the impulse tool makes the character flinch, a paused world
-does not move, a step is one frame, the drag handle lifts an arm, a reaching hand is felt, a reset puts the
-character back) and writes `Saved\Play\<name>\play.json`. `-Smoke -Shot` renders it and saves the last
-frame. `Tools\bootstrap.ps1` runs the self-test.
+functions the keys call, checks what happened (the overlays draw, or without a renderer do nothing; the
+impulse tool makes the character flinch, a paused world does not move, a step is one frame, the drag handle
+lifts an arm, a reaching hand is felt, a reset puts the character back) and writes
+`Saved\Play\<name>\play.json`. `-Smoke -Shot` renders it and saves the last frame. `Tools\bootstrap.ps1`
+runs the self-test.
+
+## Overlays
+
+Debug overlays draw what the character's controller and the hands are doing on top of the picture:
+
+| Layer | Shows |
+| --- | --- |
+| `com` | The centre of mass, a line down to the floor and a ring where it lands: green inside the support polygon, red outside, grey when no foot stands |
+| `support` | The support polygon, yellow: the hull of the soles of the feet the floor pushed on in the last step |
+| `joints` | Each bone from its joint (white; orange while a flinch has weakened its muscle, grey without a drive), and where its muscle turns it to: green within 2 degrees, yellow at 8, red from 20 |
+| `assist` | Each balance-assist target as a cyan cross, with a line to the body it holds |
+| `contacts` | The contacts of the last physics step as arrows along the force on the character or the hand, 1 cm per 20 N: blue against the floor and walls, orange with the force in newtons against a body that moves |
+| `state` | The controller's state, its cause and its age above the head, and a block of figures at the bottom left: assist load, centre of mass against the support polygon, fastest joint, the hands |
+| `hands` | Each hand's target as a ring and the spring between target and hand: green, yellow from half the force cap, red at the cap. The drag handle in magenta |
+
+They are switched by the console command `Sandbox.Overlay`: `all`, `off`, `toggle`, layers by name
+(`Sandbox.Overlay com,support,joints`), or a layer taken away (`Sandbox.Overlay -joints`). A session has
+the V key for `toggle`; `Tools\play.ps1 -Overlay all` and `Tools\scenario.ps1 -Shot -Overlay all` start
+with them on, and a scenario can switch them itself with a `console` event. With `-ShotAt "3.07,3.25"` a
+rendered scenario run also saves a picture at those simulated times (`shot_3.070.png`), since what a strike
+does is over long before the last frame.
+
+The overlay only looks: it reads the bodies and listens to their contact events, and writes nothing back. A
+run gives the same hashes with it and without it. Without a renderer there is nothing to look at, so it
+stays off whatever is asked: it does not tick and listens to nothing. In a headset it draws its lines and no
+text.
 
 ## Tuning overrides
 

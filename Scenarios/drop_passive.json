@@ -10,6 +10,6 @@
   "events": [],
   "expect": {
     "rest_within_s": 5.0,
-    "max_joint_stretch_cm": 3.0
+    "max_joint_stretch_cm": 2.0
   }
 }

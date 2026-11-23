@@ -303,7 +303,7 @@ The player touches the NPC only through effectors: dynamic rigid bodies pulled t
 
 VR has no foot tracking, so the kick is a scripted leg effector in both modes, aimed by gaze or controller direction. Strike speeds are parameters; starting values are 6 m/s for a slap, 8 m/s for a punch and 10 m/s for a kick, to be tuned.
 
-As built in M2: two hand effectors, each a 1.5 kg sphere on a spring with a 300 N cap, and two of the three sources. The desktop source holds the hands below the line of sight and sends one straight ahead while its mouse button is held; the scripted source plays the keys of a scenario's `effector` events. Strike verbs, the kick, grabbing and the OpenXR source are M4. The values are in `Config/Tuning/effectors.json`.
+As built in M2: two hand effectors, each a 1.5 kg sphere on a spring with a 300 N cap, and two of the three sources. The desktop source holds the hands below the line of sight and sends one straight ahead while its mouse button is held; the scripted source plays the keys of a scenario's `effector` events, which is how the strike scenarios deliver a slap at 6 m/s and a punch at 8 m/s. Continuous collision detection is on for the hands and they do not tunnel up to 28 m/s; the swept query is the test's own measurement of that, not part of the hand. Strike verbs, the kick, grabbing and the OpenXR source are M4. The values are in `Config/Tuning/effectors.json`.
 
 ### Desktop test conveniences
 
@@ -497,6 +497,8 @@ For scale, an 80 kg person walking at 1.25 m/s carries 100 N·s of momentum, and
 - Physics step time, average and worst.
 - A hash of all body transforms at fixed checkpoints.
 
+As built in M2: the state timeline, the fall, centre-of-mass drift, the assist load, peak joint angular velocity, joint stretch, joint-limit violation, physics step time and the hashes are recorded on every run; penetration depth and the tunnelling count are measured for the player's hands (by the runner, with scene queries after every frame); the capture-point margin, the kinetic-energy trace and penetration between the character and the world come with M3.
+
 ### Diagnostic tools
 
 | Tool | Triggered by | Used for |
@@ -507,6 +509,8 @@ For scale, an 80 kg person walking at 1.25 m/s carries 100 N·s of momentum, and
 | Offscreen screenshots | `shot` script | Images an agent can inspect at marked moments of a scenario |
 | CSV profiler and Unreal Insights | `-csvprofile`, `-trace=cpu,gpu,frame` | Frame-time breakdown per thread |
 | Meta XR Simulator | [`metavr` CLI](https://developers.meta.com/horizon/documentation/unreal/xrsim-getting-started/) | Smoke test of the OpenXR path with no headset |
+
+As built in M2: the project overlay is `Sandbox.Overlay all|off|toggle|<layers>` with the layers `com`, `support`, `joints`, `assist`, `contacts`, `state` and `hands` (the capture point joins them in M3); screenshots are `Tools\scenario.ps1 -Shot`, with `-ShotAt` for moments of the run and `-Overlay` to draw the overlay into them. The layers are described in `Scenarios/README.md`.
 
 ### Parameter sweeps
 
@@ -569,12 +573,12 @@ Muscles, balance assist at level 0, and the Standing, Flinch, Falling and Lying 
 
 - [x] Stand scenario passes: 10 minutes, drift under 5 cm
 - [x] Push matrix: 10 N·s never causes a fall, 200 N·s always does, left and right agree
-- [ ] Strike scenarios show no tunnelling and no joint above 30 rad/s
-- [ ] No scenario shows joint stretch above 2 cm
+- [x] Strike scenarios show no tunnelling and no joint above 30 rad/s
+- [x] No scenario shows joint stretch above 2 cm
 - [x] A parameter edit takes effect in a running session
-- [ ] Physics step averages 1.5 ms or less
+- [x] Physics step averages 1.5 ms or less
 
-**M2 is in progress; steps 1 to 4 of 5 are done. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
+**All five steps of M2 are built and all six criteria are met. The owner's own review (the desktop session by hand and three smaller items) was deferred by the owner on 23 November 2026 and does not hold up M3; the list is at the end of this section. Step 1, "the character stands", was finished on 22 November 2026.** The NPC stands under full simulation for 10 simulated minutes: pelvis drift 0.76 cm, joint stretch under 0.01 cm, solver time 0.39 ms per frame, identical results in repeated headless and rendered runs. The target pose is the reference pose (an A-pose); there is no idle animation yet. Measurements are in `docs/testing.md`.
 
 Decisions taken in step 1:
 
@@ -637,6 +641,45 @@ Decisions taken in step 4:
 Found in step 4: the peak force of a contact is not limited by the spring's cap, because a moving hand that is stopped gives up its momentum as well (14 N·s in one frame reads as 1270 N); the cap is checked with a hand held still. A push that is held makes the character flinch again each time a flinch ends, every 0.35 s, until it falls: the same accounting as for a long `impulse` push, left for M3 to decide.
 
 Deviations and what is not done in step 4: the hands are spheres, with no hand mesh and no fingers (the visible hand comes with VR in M4); the desktop hands only rest and reach, the strike verbs with wind-up are M4, as are grabbing with a hand, the kicking foot and recording a session; keys, mouse and the feel of the hands are checked by a person, the list is in `docs/testing.md`; the peak joint speed in the hand scenarios (7.6 rad/s at most) is recorded but strike speeds are step 5; the torque caps of the muscles are still at "no cap".
+
+**Step 5 of 5, "overlays and strike scenarios", was finished on 22 November 2026.** Debug overlays show the centre of mass, the support polygon, every joint's drive target against the actual pose, the balance-assist targets, contacts, the controller's state and the hands; they are switched by the console command `Sandbox.Overlay`, work in an interactive session (the V key) and appear on scenario screenshots, which can now be taken at chosen moments of a run. Seven strike scenarios send a hand through the head, the chest, a thigh and a forearm of the standing character at the slap's 6 m/s and the punch's 8 m/s: the hand arrives at 6.25 and 8.87 m/s, nothing tunnels, the deepest penetration found is 0.01 cm, the fastest joint turns at 10.1 rad/s, and the struck body moves 1.4 cm (a thigh) to 22 cm (the forearm) while the character flinches and stays on its feet. The whole suite of 34 scenarios stays within 0.86 cm of joint stretch and a 0.45 ms mean physics step. All 27 earlier scenarios give the same hashes as before the step, and a run gives the same hashes with overlays on, headless and rendered. Measurements are in `docs/testing.md`.
+
+Decisions taken in step 5:
+
+- **Overlays live in `SandboxScenario` and only look.** They need the character and the hands, and that is the one module allowed to see both. `USandboxOverlaySubsystem` finds them in the world each frame, reads them through the accessors result files use plus one new read-only view of the controller's targets, and listens to their contact events. It writes nothing to a body. Without a renderer it stays off, does not tick and listens to nothing.
+- **Joint drive targets come from Physics Control's own cached target pose,** not from a second guess at it: what is drawn is where the drives really pull.
+- **The support polygon is the hull of the soles of the feet the floor pushed on in the last step.** The geometry is in `FSandboxBodyProbe`, with the centre of mass's margin to it, ready for the balance controller of M3; which feet stand is still worked out by the overlay from contact events, and by nobody in a run without one.
+- **Tunnelling and penetration are measured by the runner from outside, not read from the solver.** After every frame it asks the scene how deep each hand's sphere is inside the character's bodies and the static world, and whether the hand's centre crossed a surface since the frame before. A sphere's centre cannot get closer to a surface than its radius, so a crossing is a hand that went through. Every run with hands fails on one such frame. The metric was shown to fail: without continuous collision detection a hand at 25 m/s ends 6.5 cm inside the chest.
+- **Continuous collision detection stays on the hands and nowhere else.** At strike speeds a hand does not tunnel even without it; with it nothing tunnels up to 28 m/s. The plan's swept query exists as the measurement above; an impulse clamp was not needed, since no strike makes a joint turn faster than a third of the limit.
+- **A strike scenario states its speed and has to arrive with it,** checked by a new expectation on the hand's speed at first contact, and has to move what it hits: 5 cm for the head, 3 cm for the chest, 1 cm for a thigh. These thresholds for "visibly displaced" were chosen here from what was measured.
+- **The limits that hold for "any scenario" are checked by the suite itself:** `Tools\suite.ps1` fails if any simulated body's joints stretch by more than 2 cm or any scenario's physics step averages more than 1.5 ms, and names the worst scenario of each.
+
+Found in step 5: since step 4 the character had been told of a contact only when the other body asked for contact events itself. The engine wants two flags set on a skeletal mesh before its bodies ask, and its own setter sets one. The hands ask, so every hand scenario was right; the floor does not, and a prop would not have. The controller sets both flags now, each foot reports half the character's weight against the floor, and nothing else changed (same hashes, same solver time). Continuous collision detection engages only above 6.5 m/s for a hand of this size, so the slaps run without it. A reset in the interactive session logged 30 warnings of Physics Control that no script read: the new character's controller was ticked before its mesh had a pose; it now waits for the first pose, and the session's self-test (14 checks) fails on such warnings.
+
+Deviations and what is not done in step 5: overlay text is not drawn in a headset, only the lines; the support polygon and the foot contacts are shown but not yet used by the controller (M3); penetration is measured for the hands only, not between the character's own bodies or against the floor (the fall-and-rest family of M3); the kick, the strike verbs with a wind-up and strikes against a lying or falling character are M4; the suite takes 6.3 minutes one scenario after another, over the 5 minutes NFR-6 allows for build and suite together (the scenarios are independent and run in 91 s eight at a time, but the suite script was not made parallel in this step); the torque caps of the muscles are still at "no cap", the softness of the joint limits is untuned and the N·m/rad conversion is uncalibrated, as before.
+
+**The M2 gate, 23 November 2026.** The six criteria, as measured on the final build:
+
+| Criterion | Measured | Where |
+| --- | --- | --- |
+| Stand: 10 minutes, drift under 5 cm | 0.95 cm | `stand_npc_10min` |
+| Push matrix: 10 N·s never a fall, 200 N·s always, left and right agree | 0 of 32 fall, 32 of 32 fall, 56 mirror pairs agree | `Tools\push-matrix.ps1` |
+| Strikes: no tunnelling, no joint above 30 rad/s | 0 tunnelled frames, penetration 0.01 cm, fastest joint 10.1 rad/s | the seven `strike_*` scenarios |
+| No scenario with joint stretch above 2 cm | 0.86 cm at most | `Tools\suite.ps1`, 29 scenarios with a simulated body |
+| A parameter edit takes effect in a running session | on the next tick (console) or within 30 frames (file) | `tune_live_*` |
+| Physics step averages 1.5 ms or less | 0.45 ms at most | `Tools\suite.ps1`, 34 scenarios |
+
+Decided by the owner at the gate:
+
+- **The 30 rad/s limit applies to strikes by a hand,** as the criterion words it. Calibrated impulses and falls record the fastest joint and are not judged by it: 80 N·s delivered within one frame is 7200 N, more than a hand can give, and the joints it whips to 31 rad/s (40 at 200 N·s, up to 52 in a passive body dropped on the floor) are answering a stimulus the product does not have.
+- **A body that is not simulated has no joint stretch.** The portrait scenarios keep the stock MetaHuman asset, whose anchors are authored 3.6 cm apart; nothing solves those joints, so the figure is reported as the asset's offset and is not part of the criterion.
+
+Deferred by the owner on 23 November 2026, to be gone through later; M3 starts without them:
+
+- [ ] Try the desktop session by hand (`Tools\play.ps1 -Overlay all`): the keys and the mouse do what the screen says; the camera turns the right way up and down, which no run has checked; the hands feel weighted and do not launch the character; the drag handle is usable; slow motion is readable; a tuning file saved while the window is open changes the hands (`Config/Tuning/effectors.json`, another `max_force_n`); the V key switches the overlays, and they can be read.
+- [ ] Look at a strike with the overlays: `Tools\scenario.ps1 -Name strike_punch_torso -Shot -ShotAt "3.07,3.09,3.25" -Overlay all`, then the pictures in `Saved\Scenarios\strike_punch_torso`.
+- [ ] Accept or change the thresholds for "the struck region is visibly displaced": 5 cm for the head, 3 cm for the chest, 1 cm for a thigh (measured 7.9 to 13.2, 4.9 to 6.9, 1.4 to 2.0).
+- [ ] Say whether the suite should be made parallel before M3: it takes 6.3 minutes one scenario after another, over NFR-6's 5 minutes, and 91 s eight at a time.
 
 ### M3: Balance and recovery (3 to 4 weeks)
 

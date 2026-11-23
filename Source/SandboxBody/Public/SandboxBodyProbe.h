@@ -42,6 +42,28 @@ struct SANDBOXBODY_API FSandboxBodyProbe
 	/** Mass-weighted centre of all bodies, world space, cm. */
 	static FVector CenterOfMass(const TArray<FSandboxBodySample>& Samples);
 
+	/**
+	 * The support polygon: the convex hull, seen from above, of the soles of the given bodies (the feet that
+	 * stand on something). A body's sole is the part of its collision shapes within SoleToleranceCm of its
+	 * lowest point, so a foot on its edge supports with that edge only. Which bodies stand is the caller's
+	 * knowledge (their contacts); the probe only does the geometry. Returns the height of the lowest sole
+	 * point, cm; the polygon is empty if no body was given or found.
+	 */
+	static double SupportPolygon(const USkeletalMeshComponent* Mesh, TConstArrayView<FName> StandingBones, double SoleToleranceCm, TArray<FVector2D>& OutPolygon);
+
+	/**
+	 * Convex hull of points in a plane, counter-clockwise, without repeated or collinear points. Fewer than
+	 * three distinct points come back as they are: a point or a segment.
+	 */
+	static void ConvexHull2D(TConstArrayView<FVector2D> Points, TArray<FVector2D>& OutHull);
+
+	/**
+	 * How far a point is inside a counter-clockwise convex polygon: the distance to the nearest edge, positive
+	 * inside and negative outside. This is the margin of a centre of mass (or, later, a capture point) to
+	 * the support polygon. A polygon of one or two points has no inside. An empty one gives -infinity.
+	 */
+	static double MarginInsidePolygon(TConstArrayView<FVector2D> Polygon, const FVector2D& Point);
+
 	/** Translational kinetic energy in joules (rotational energy is not included). */
 	static double TranslationalKineticEnergyJ(const TArray<FSandboxBodySample>& Samples);
 

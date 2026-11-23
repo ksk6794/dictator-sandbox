@@ -33,7 +33,9 @@ public:
 	FName GetBone() const { return Bone; }
 	/** Where the held point of the body is now, and how far that is from where it is pulled to. */
 	FVector GetGripLocation() const { return Spring.GetGripLocation(); }
+	const FVector& GetTargetLocation() const { return Spring.GetTargetLocation(); }
 	double GetGapCm() const { return Spring.GetGapCm(); }
+	double GetMaxForceN() const { return Spring.GetMaxForceN(); }
 	/** The force the spring asked for at the last SetTarget, before the cap, N. */
 	double GetDemandN() const { return Spring.GetDemandN(); }
 

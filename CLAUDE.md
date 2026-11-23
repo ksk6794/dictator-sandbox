@@ -3,14 +3,17 @@
 Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
 and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
 Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
-launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core, is in progress.**
-Steps 1 to 4 of 5 are done: the NPC stands under full simulation for 10 minutes (muscles and balance assist
-through Physics Control); every tuning value lives in `Config/Tuning`, is hot-reloaded and can be overridden
-from the console and the command line; the body has the states Standing, Flinch, Falling and Lying, joint
-limits from anatomy that mirror left to right, and passes the push matrix; the player has physical hands
-(effectors: bodies with mass on force-capped springs) that the body feels through its own contact events,
-a desktop pawn with test tools, and scenarios can script the hands. Still to do: overlays and strike
-scenarios.
+launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core: all five steps
+are built and its six criteria are met; the owner's hand check of the desktop session is deferred and does
+not hold up M3** (the deferred list is at the end of the M2 section of `docs/PRD.md`).
+The NPC stands under full simulation for 10 minutes (muscles and balance assist through Physics Control);
+every tuning value lives in `Config/Tuning`, is hot-reloaded and can be overridden from the console and
+the command line; the body has the states Standing, Flinch, Falling and Lying, joint limits from anatomy
+that mirror left to right, and passes the push matrix; the player has physical hands (effectors: bodies
+with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
+test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
+on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
+tunnelling. Next is M3, balance and recovery.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -26,10 +29,11 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Compile | `powershell -ExecutionPolicy Bypass -File Tools\build.ps1` |
 | Unit tests | `powershell -ExecutionPolicy Bypass -File Tools\test.ps1` |
 | One scenario, headless | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive` |
-| One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics) |
+| One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics); `-ShotAt "3.07,3.25"` adds pictures at those simulated times (`shot_3.070.png`) |
+| Debug overlays in the pictures | add `-Overlay all` to a `-Shot` run or to `play.ps1` (or layers: `com,support,joints,assist,contacts,state,hands`); in a session the V key, in any console `Sandbox.Overlay all\|off\|toggle\|<layers>` |
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
-| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` |
+| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each) |
 | Push matrix (128 pushes, the M2 fall rules) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
@@ -41,8 +45,9 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 5 minutes, the push matrix 3 minutes,
-the session's self-test 10 s, the whole bootstrap 8.5 minutes.
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 6.3 minutes (34 scenarios, one after
+another; NFR-6 asks for 5 with the build), the push matrix 3 minutes, the session's self-test 10 s, the
+whole bootstrap about 10 minutes.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
 scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
@@ -52,9 +57,9 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements, the support polygon). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
-| `Source/SandboxScenario` | `UScenarioRunnerSubsystem`, `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), automation tests. |
+| `Source/SandboxScenario` | `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
@@ -81,6 +86,9 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   requests through a delegate, and `USandboxPlaySubsystem` in `SandboxScenario` carries it out.
 - **A scenario run has no pawn.** The runner replaces it with a bodiless spectator, so a scenario's world
   holds only what its file puts there. Hands in a scenario come from `effector` events.
+- **Overlays only look.** `USandboxOverlaySubsystem` reads bodies through const accessors and listens to
+  their contact events; it writes nothing to a body and changes no setting of one. Without a renderer it
+  stays off, does not tick and listens to nothing. A run must give the same hashes with overlays and without.
 - **Time control never changes the physics step.** Pause, single step and slow motion decide on which
   frames the world steps; a step is always 1/90 s in 2 substeps. No time dilation.
 - **Physics timing is fixed.** Synchronous physics, 90 Hz frame, 2 substeps (180 Hz). Scenarios force a
@@ -185,6 +193,33 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   solver's order of the pair.** Use `Hit.ImpactNormal` times the impulse's size to add them up. The floor
   under the feet reports the character's weight in every frame (8.7 N*s at 90 Hz, above the flinch
   threshold), which is why the character counts only contacts with other simulated bodies.
+- **A skeletal mesh's bodies ask for contact events only when the component's own flag is set too.**
+  `USkeletalMeshComponent::SetNotifyRigidBodyCollision` sets the flag of every body and not the component's
+  `BodyInstance.bNotifyRigidBodyCollision`, and `FBodyInstance::BuildBodyFilterData` wants both. With the
+  bodies' flags alone the character heard of a contact only when the other body asked for events itself, as
+  the hands do: every hand scenario passed while the floor, and any prop to come, went unreported. Found
+  in step 5 because the overlay had no foot contacts to draw. `USandboxBodyController::Start` sets both.
+- **A body spawned in the middle of a frame is ticked in that frame, before its mesh has a pose.** The
+  session's reset does that: the new character's controller ran with no bone transforms to take the muscles'
+  targets from, and Physics Control logged 30 warnings ("Failed to find bone data", two per muscle) that no
+  script looked for. The controller now waits for the mesh's first pose. A body spawned before the world's
+  first tick never had this, so no scenario changed.
+- **A component's physics state is destroyed before its `OnUnregister` runs.** A constraint on the
+  component's own body is released in `OnDestroyPhysicsState` (`USandboxEffectorComponent` does so for its
+  spring), not in `OnUnregister`.
+- **Chaos sweeps a body with CCD only when it moves more than 0.4 of its smallest extent in one substep**
+  (`p.Chaos.CCD.EnableThresholdBoundsScale`). The 9 cm hand at 6 m/s stays under that: the run is identical
+  with CCD switched off. From 6.5 m/s it is swept. With CCD nothing tunnels up to 28 m/s; without it a
+  hand at 25 m/s ends 6.5 cm inside the chest (`-CVars "p.Chaos.Solver.UseCCD=0"` to compare). Far above
+  strike speeds CCD has a price: from 22 m/s some hits deliver about half the impulse they do without it.
+- **What a strike does is over long before a run's last frame.** `-Shot` alone shows a standing character.
+  Use `-ShotAt` with the times of the hit, and `-Overlay all` to see the contact and the flinch.
+- **Overlay text reaches screenshots through the HUD's actor overlays.** With `AHUD::bShowOverlays` set and
+  the actor added by `AddPostRenderedActor`, `DrawHUD` calls the actor's `PostRenderFor` with the scene
+  canvas, whatever class the HUD is (the engine's plain `AHUD` in a scenario run, `ASandboxHUD` in a
+  session). `AHUD::OnHUDPostRender` hands out the debug canvas instead. The lines are a `ULineBatchComponent`
+  the overlay owns, emptied and filled again every frame, in the foreground depth group so that they show
+  through the character.
 - **The character's bodies do not answer the visibility channel** (the engine's `Ragdoll` profile ignores
   it). Aim traces go by object type (`ASandboxPawn::TraceAim`).
 - **With a fixed timestep the engine does not limit the frame rate.** An interactive session would run as

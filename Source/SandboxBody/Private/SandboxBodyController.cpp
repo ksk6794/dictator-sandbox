@@ -118,6 +118,8 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 
 		FMuscle Muscle;
 		Muscle.Control = FName(*FString::Printf(TEXT("Muscle_%s"), *Child.ToString()));
+		Muscle.ParentBone = Parent;
+		Muscle.ChildBone = Child;
 		Muscle.Group = FSandboxBodyTuning::GroupOfBone(Child);
 		if (!Control->CreateNamedControl(Muscle.Control, Mesh, Parent, Mesh, Child, FPhysicsControlData(), FPhysicsControlTarget(), MuscleSet))
 		{
@@ -168,6 +170,11 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 
 	// The body learns that it was hit from its own contacts: the physics scene reports every contact of
 	// these bodies after the step, with its impulse. Nothing here knows what the other body is.
+	// A body of a skeletal mesh asks for contact events only when its own flag and the component's are both
+	// set (FBodyInstance::BuildBodyFilterData), and the call below sets the bodies' flags alone. Without
+	// the component's flag the character would hear only of bodies that ask for events themselves, as the
+	// hands do, and nothing of the floor or of a prop thrown at it.
+	Mesh->BodyInstance.bNotifyRigidBodyCollision = true;
 	Mesh->SetNotifyRigidBodyCollision(true);
 	Mesh->OnComponentHit.AddUniqueDynamic(this, &USandboxBodyController::OnBodyHit);
 
@@ -491,6 +498,14 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		return;
 	}
+	// A body spawned in the middle of a frame (the session's reset) is ticked in that same frame, before
+	// its mesh has a pose: there are no bone transforms yet for the muscles' targets to be taken from, and
+	// Physics Control would warn about every one of them. The controller starts with the mesh's first pose,
+	// which is also when it starts for a body spawned before the world's first tick.
+	if (Mesh->GetEditableComponentSpaceTransforms().Num() == 0)
+	{
+		return;
+	}
 
 	ReleaseIslandRefresh();
 
@@ -507,6 +522,50 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// Advanced last: during a tick this is the time at which the coming physics step begins.
 	ElapsedS += DeltaTime;
+}
+
+void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) const
+{
+	OutView.Muscles.Reset();
+	OutView.Assists.Reset();
+	// Physics Control has cached a target pose only once it has been updated.
+	if (!bStarted || !Control || !Mesh || ElapsedS <= 0.0)
+	{
+		return;
+	}
+
+	for (const FMuscle& Muscle : Muscles)
+	{
+		const FBodyInstance* Parent = Mesh->GetBodyInstance(Muscle.ParentBone);
+		const FBodyInstance* Child = Mesh->GetBodyInstance(Muscle.ChildBone);
+		if (!Parent || !Child || !Parent->IsValidBodyInstance() || !Child->IsValidBodyInstance())
+		{
+			continue;
+		}
+		// The muscle holds the child's orientation relative to the parent as it is in the cached target
+		// pose. Carried over to where the parent body really is, that is where the child should point.
+		const FQuat CachedParent = Control->GetCachedBoneTransform(Mesh, Muscle.ParentBone).GetRotation();
+		const FQuat CachedChild = Control->GetCachedBoneTransform(Mesh, Muscle.ChildBone).GetRotation();
+		const FQuat Relative = CachedParent.Inverse() * CachedChild;
+
+		FSandboxMuscleView& View = OutView.Muscles.AddDefaulted_GetRef();
+		View.ParentBone = Muscle.ParentBone;
+		View.ChildBone = Muscle.ChildBone;
+		View.Group = Muscle.Group;
+		View.Strength = MuscleScale(Muscle.Group);
+		View.bDriven = Tuning.Muscle(Muscle.Group).StiffnessNmPerRad > 0.0;
+		View.TargetRotation = (Parent->GetUnrealWorldTransform().GetRotation() * Relative).GetNormalized();
+		View.ErrorRad = View.TargetRotation.AngularDistance(Child->GetUnrealWorldTransform().GetRotation());
+	}
+
+	for (const FAssist& Assist : Assists)
+	{
+		const FSandboxAssistTuning& Slot = AssistTuning(Assist.Slot);
+		FSandboxAssistView& View = OutView.Assists.AddDefaulted_GetRef();
+		View.Bone = Assist.Bone;
+		View.Target = Assist.Target;
+		View.bActive = Slot.HorizontalNPerM > 0.0 || Slot.VerticalNPerM > 0.0 || Slot.AngularNmPerRad > 0.0;
+	}
 }
 
 void USandboxBodyController::UpdateAssistLoad()

@@ -74,6 +74,12 @@ struct FScenarioExpect
 	/** Bounds on the contact force of the hardest-pressing effector in the run's last frame, N: the force cap. */
 	TOptional<double> MinEffectorFinalForceN;
 	TOptional<double> MaxEffectorFinalForceN;
+	/** Deepest any effector's sphere may be found inside a body of the character or the static world, cm. */
+	TOptional<double> MaxEffectorPenetrationCm;
+	/** Every effector that touched something must have arrived at least this fast, m/s: a strike was a strike. */
+	TOptional<double> MinEffectorImpactSpeedMps;
+	/** The body of the character each effector touched first must have moved at least this far from where it was, cm. */
+	TOptional<double> MinStruckDisplacementCm;
 };
 
 /** How the body is driven. */

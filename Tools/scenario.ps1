@@ -3,6 +3,9 @@
 #   ... -File <path>     run a scenario file from anywhere instead of Scenarios\<Name>.json (generated scenarios)
 #   ... -Rendered        render offscreen with the GPU instead of running without a renderer
 #   ... -Shot            also save <Out>\final.png (implies -Rendered)
+#   ... -ShotAt "3.05,3.2"  with -Shot: also a picture at these simulated times, <Out>\shot_3.050.png and so on
+#   ... -Overlay all     debug overlays in the pictures: all, or layers by name, "com,support,joints,assist,
+#                        contacts,state,hands". Rendered runs only; a run without a renderer ignores it
 #   ... -VR              run in the headset through OpenXR (headset on, runtime running); frames are paced by
 #                        the headset, so the run takes its simulated duration in real time
 #   ... -CVars "a=1,b=2" console variables for this run only (applied at start-up as device-profile overrides)
@@ -22,6 +25,8 @@ param(
     [string]$Tune,
     [string]$TuningDir,
     [switch]$Shot,
+    [string]$ShotAt,
+    [string]$Overlay,
     [string]$Out,
     [int]$TimeoutSec = 900,
     [switch]$Quiet
@@ -55,6 +60,7 @@ foreach ($stale in @('metrics.json', 'trace.json', 'final.png')) {
     $path = Join-Path $Out $stale
     if (Test-Path $path) { Remove-Item $path -Force }
 }
+Get-ChildItem $Out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
 
 $arguments = "-game -Scenario=`"$scenarioFile`" -Out=`"$Out`" -UseFixedTimeStep -FPS=$fps"
 # A scenario may name a map; it goes first, as the URL the engine opens.
@@ -71,6 +77,8 @@ if ($CVars) { $arguments += " -dpcvars=`"$CVars`"" }
 if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }
 if ($Shot) { $arguments += " -Shot=`"$(Join-Path $Out 'final.png')`"" }
+if ($Shot -and $ShotAt) { $arguments += " -ShotAt=`"$ShotAt`"" }
+if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 
 $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -VR:$VR
 $metrics = Read-JsonFile $metricsFile

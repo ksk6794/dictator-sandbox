@@ -37,10 +37,12 @@ USandboxEffectorComponent::USandboxEffectorComponent()
 	BodyInstance.AngularDamping = 0.0f;
 }
 
-void USandboxEffectorComponent::OnUnregister()
+void USandboxEffectorComponent::OnDestroyPhysicsState()
 {
+	// Before the body goes: the spring is a constraint on it. (Unregistering destroys the physics state
+	// first and calls OnUnregister afterwards, which would be too late.)
 	Spring.Detach();
-	Super::OnUnregister();
+	Super::OnDestroyPhysicsState();
 }
 
 bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& InTuning, const FTransform& Pose, FString& OutError)
@@ -129,7 +131,8 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 	Spring.SetTarget(Target.Location, Target.Rotation, Target.Velocity);
 	Stats.MaxGapCm = FMath::Max(Stats.MaxGapCm, Spring.GetGapCm());
 	Stats.MaxDemandN = FMath::Max(Stats.MaxDemandN, Spring.GetDemandN());
-	Stats.MaxSpeedCmS = FMath::Max(Stats.MaxSpeedCmS, Body->GetUnrealWorldVelocity().Size());
+	StepStartSpeedCmS = Body->GetUnrealWorldVelocity().Size();
+	Stats.MaxSpeedCmS = FMath::Max(Stats.MaxSpeedCmS, StepStartSpeedCmS);
 }
 
 void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
@@ -148,5 +151,10 @@ void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent,
 	Stats.ContactImpulseNs += SizeNs;
 
 	const FName Touched = !Hit.BoneName.IsNone() ? Hit.BoneName : OtherActor ? OtherActor->GetFName() : NAME_None;
+	if (Stats.ImpulseByBody.Num() == 0)
+	{
+		Stats.FirstTouched = Touched;
+		Stats.FirstContactSpeedCmS = StepStartSpeedCmS;
+	}
 	Stats.ImpulseByBody.FindOrAdd(Touched) += SizeNs;
 }

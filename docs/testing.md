@@ -525,6 +525,173 @@ Not measured: strikes at full speed and tunnelling (step 5; continuous collision
 hands but nothing here tests it), a hand against a fallen character, two hands at once, anything in the
 headset.
 
+### M2 step 5 (overlays, strikes and the M2 gate figures), 2026-11-22
+
+Same machine and settings. New in this step: debug overlays (`Sandbox.Overlay`), seven strike scenarios, the
+runner's own measurement of penetration and tunnelling, and two limits that `Tools\suite.ps1` holds the
+whole set to.
+
+**Nothing changed for the runs that existed.** The suite was run on the build of step 4 before any change
+and on the final build: all 27 earlier scenarios give the same two hashes. That includes one change to the
+body itself (the character's bodies now ask for contact events, see below).
+
+**Strikes.** A hand's target is sent in a straight line through a place on the standing character at 6 m/s
+(slap) or 8 m/s (punch) and back. Default tuning (hand 1.5 kg, 300 N), bare floor, headless. The hand
+arrives faster than its target moves, because it starts behind and has to catch up.
+
+| Scenario | Hand arrives at | Touches first | Hand delivers | Peak force | Struck body moves | Fastest joint | Deepest penetration |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `strike_slap_head` (from the side) | 6.25 m/s | `neck_01` | 11.3 N*s in 1 frame | 1017 N | 7.9 cm | 6.0 rad/s (neck) | 0.000 cm |
+| `strike_punch_head` (from the front) | 8.87 m/s | `neck_01` | 15.7 N*s in 1 frame | 1415 N | 13.2 cm | 5.8 rad/s (neck) | 0.000 cm |
+| `strike_slap_torso` | 6.25 m/s | `spine_04` | 15.2 N*s in 5 frames | 956 N | 4.9 cm | 1.6 rad/s (neck) | 0.000 cm |
+| `strike_punch_torso` | 8.95 m/s | `spine_04` | 29.3 N*s in 8 frames | 1394 N | 6.9 cm | 3.6 rad/s (chest) | 0.003 cm |
+| `strike_slap_leg` (outside of the left thigh) | 6.25 m/s | `thigh_l` | 21.9 N*s in 6 frames | 1325 N | 1.4 cm | 2.8 rad/s (ankle) | 0.004 cm |
+| `strike_punch_leg` (front of the right thigh) | 8.87 m/s | `thigh_r` | 28.2 N*s in 6 frames | 1859 N | 2.0 cm | 2.6 rad/s (knee) | 0.010 cm |
+| `strike_punch_forearm` | 8.87 m/s | `lowerarm_l` | 13.7 N*s in 2 frames | 962 N | 22.0 cm | 10.1 rad/s (shoulder) | 0.002 cm |
+
+In all seven: no tunnelling; the character flinches (3.07 to 3.09 s) and is standing again 0.36 to 0.37 s
+later;
+the pelvis moves 1.4 to 3.3 cm; joint stretch is 0.03 cm at most and no joint is more than 0.1 degrees
+outside its limits. What the hand delivered and what the character felt agree to the last digit, as in
+step 4. The M2 limits are no tunnelling and 30 rad/s; the fastest joint in any strike turns at a third of
+that.
+
+The thresholds of the scenarios for "the struck region is visibly displaced" are a choice made here, not a
+given: 5 cm for the head, 3 cm for the chest, 1 cm for a thigh (measured: 7.9 and 13.2, 4.9 and 6.9, 1.4
+and 2.0). A thigh is 11.3 kg on a leg that stands on the floor; a slap does not move it far.
+
+**Tunnelling and penetration: how they are measured.** After every frame the runner asks the scene, with
+queries that change nothing: how deep is the hand's sphere inside each body of the character and inside
+the static world (the distance it would have to move to be clear), and does the straight line from where
+the hand's centre was a frame ago to where it is now cross a surface. The centre of a sphere cannot get
+closer to a surface than its radius, so a crossing, or a depth of the radius or more, means the hand went
+through; such frames are counted (`tunnel_frames`) and any of them fails the run
+(`effectors_not_tunnelled`, checked in every run that has hands). The solver's own contacts are not used:
+what it missed it cannot report. The measurement is taken once per frame, so what happens between two
+substeps is not seen.
+
+In the six hand scenarios of step 4 the same measurement reads 0 tunnelled frames and 0.004 cm at most.
+
+**The metric fails when it should, and continuous collision detection is what keeps it from failing.**
+A check made once: the strike scenarios with the target's speed multiplied, the hand's force cap raised to
+6000 N so that it can follow, and CCD on or off (`-CVars "p.Chaos.Solver.UseCCD=0"`). The hand's speed is
+what it reached, not what was asked for.
+
+| Hand's speed | CCD | Deepest penetration, worst of the seven | Tunnelled |
+| --- | --- | --- | --- |
+| 6.25 and 8.87 m/s (the scenarios as they are) | on | 0.01 cm | no |
+| the same | off | 0.01 cm | no |
+| 11.8 to 15.8 m/s | on | 0.03 cm | no |
+| the same | off | 1.88 cm (chest) | no |
+| 16.6 to 22.1 m/s | on | 0.01 cm | no |
+| the same | off | 2.26 cm (chest) | no |
+| 18.8 to 25.1 m/s | on | 0.02 cm | no |
+| the same | off | 1.68 cm (head) | no |
+| 24.6 to 28.1 m/s | on | 0.01 cm | no |
+| the same | off | 6.54 cm (chest), deeper than the hand's 4.5 cm radius | yes: `effectors_not_tunnelled` fails |
+
+So at strike speeds the hand does not tunnel with or without CCD. With CCD nothing tunnels up to 28 m/s,
+three times the punch's speed; without it the hand sinks 1.9 cm into the chest from 15 m/s and goes through
+at 25 m/s. CCD on the hands stays on. Two more things these runs show:
+
+- **Below 6.5 m/s CCD is not in play at all.** Chaos sweeps a body only when it moves more than 0.4 of its
+  smallest extent in a substep, 3.6 cm for the 9 cm hand. The two slaps give the same hashes with CCD off;
+  the punches do not.
+- **Far above strike speeds CCD costs momentum.** From 22 m/s some hits with CCD deliver about half the
+  impulse of the same hit without it (11.4 against 23.7 N*s on the head at 25 m/s), and the hand's speed at
+  the first contact reads half its peak. Nothing a hand or a 10 m/s kick comes near, but a thrown prop
+  could.
+
+At three times the punch's speed joints do pass 30 rad/s: 34 rad/s in the shoulder after a forearm hit at
+25 m/s, and 179 rad/s in the wrist in one run. The limit is met with a factor of three at 8.9 m/s, not at
+any speed.
+
+**The character did not hear its own contacts.** The overlay had no contacts between the feet and the floor
+to draw, and a character knocked down onto the floor reported none either. The cause is in how the engine
+builds a body's collision filter: a body of a skeletal mesh asks for contact events only if its own flag
+and the flag of the component's body instance are both set, and `USkeletalMeshComponent::
+SetNotifyRigidBodyCollision` sets only the first. So since step 4 the character had been told of a contact
+only when the other body asked for events itself. The hands do, which is why every hand scenario agreed to
+the last digit; the floor does not, and a thrown prop would not have. The controller now sets both flags.
+After the change each foot reports 4.4 N*s per frame against the floor (two reports, one per substep):
+392 N per foot, half the character's weight. The character still counts only contacts with bodies that
+move under physics as hits, so nothing it does changed: all hashes are equal, and the solver's mean time is
+the same (0.40 ms in `stand_npc`).
+
+**Overlays.** Seven layers: centre of mass, support polygon, joint drive targets against the pose, balance
+assist, contacts, controller state, hands. They are drawn by a subsystem that only reads. Checked on the
+whole suite:
+
+| Run | Scenarios | Hashes equal to the plain headless run |
+| --- | --- | --- |
+| Headless, `-Overlay all` (the overlay says it has no renderer and stays off) | 34 | 34 |
+| Rendered, `-Overlay all` (the overlay draws every frame) | 34 | 34 |
+
+Pictures looked at: `strike_punch_torso` at the frame of the hit (the arrow of the contact on the chest
+with its force, the flinch named above the head, the support polygon under both feet with the two arrows
+of the floor's reaction, the centre of mass 9.4 cm inside the polygon) and the session's view from
+`Tools\play.ps1 -Smoke -Shot -Overlay all`. The session's self-test has a check for them in each mode: with
+a renderer the V key's command gives 147 line segments and 8 lines of text; without one it gives nothing.
+
+**A reset logged warnings nobody read.** The session's self-test passed while its log held 30 warnings of
+Physics Control ("Failed to find bone data", two per muscle) in the frame of the reset. The new character is
+spawned in the middle of a frame and its controller was ticked in that same frame, before the mesh had any
+bone transforms. The controller now waits for the mesh's first pose: 0 warnings, and the reset check reads
+as before (pelvis 1.52 cm from where the first character started). Scenarios spawn their body before the
+world's first tick and never had the warnings.
+
+**Repeatability.** The runs below were made one change before the final build (the controller's wait for
+the mesh's first pose, above); the final build gives the same hashes for all 34 scenarios.
+
+| Scenario | Runs compared | Result |
+| --- | --- | --- |
+| `strike_slap_head` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `strike_punch_head` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `strike_slap_torso` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `strike_punch_torso` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `strike_slap_leg` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `strike_punch_leg` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+| `strike_punch_forearm` | 3 headless + 1 rendered | Identical hashes in all 4 runs |
+
+**The limits for the whole set** (`Tools\suite.ps1`, 34 scenarios, 375 s):
+
+| Limit (M2 gate) | Worst scenario | Value |
+| --- | --- | --- |
+| Joint stretch of a simulated body at most 2 cm | `impulse_passive` (stock mannequin, 8 solver iterations) | 0.86 cm |
+| | worst with the NPC under control: `push_thigh_200_falls` | 0.16 cm |
+| Mean physics step at most 1.5 ms | a hand scenario (`strike_punch_head` in one run, `effector_hit_head` in the next) | 0.45 ms |
+
+Five scenarios have a body that is not simulated (portraits and the headset scenes) and no stretch figure:
+nothing solves their joints. Two of them, `face_metahuman` and `portrait_metahuman`, used to report
+3.6 cm, which is the gap between the anchors the stock MetaHuman asset is authored with; it is still
+reported, as `initial_joint_offset_cm`.
+
+Fastest joint by kind of stimulus, for the question of what the 30 rad/s limit applies to: strikes by a
+hand 10.1 rad/s; calibrated blows on the NPC 13 rad/s at 30 N*s, 31 at 80 and 40 at 200 (push matrix, step
+3); a passive body dropped on the floor 34 to 52 rad/s (`drop_npc`, `room_drop_npc`, `drop_passive`).
+
+Decided by the owner on 23 November 2026: the 30 rad/s limit applies to strikes by a hand, and the other
+stimuli record the figure without being judged by it; a body that is not simulated has no stretch figure,
+and the portrait scenarios stay on the stock asset.
+
+**Still for a person to check.** The list of step 4 has not been gone through yet; the owner deferred it on
+23 November 2026 and M3 starts without it: keys and mouse, the direction the camera turns up and down, the feel of the hands, the drag handle, slow
+motion, hot reload in a live window. New with this step: the V key and the overlays in a live session
+(`Tools\play.ps1 -Overlay all`).
+
+The suite now takes 6.3 minutes one scenario after another, against the 5 minutes NFR-6 allows for build
+and suite together. The scenarios do not depend on each other: all 34 run in 91 s eight at a time, with the
+same hashes. `Tools\suite.ps1` has not been made parallel, because its physics-step limit is a wall-clock
+measurement.
+
+`Tools\bootstrap.ps1` takes 9.6 minutes: the suite 6.2 minutes, the push matrix 2.8 minutes, the unit tests
+(25) 15 s, the session's self-test (14 checks) 10 s. The push matrix gives the same table and figures as in
+step 3 (worst joint stretch 0.31 cm, fastest joint 39.6 rad/s).
+
+Not measured: strikes on a character that is lying or falling, two hands at once, a strike against a
+character near a wall, penetration between the character's own bodies and between the character and the
+floor (the fall-and-rest family, M3), anything in the headset (overlay text is not drawn there).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly
