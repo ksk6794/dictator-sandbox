@@ -14,7 +14,8 @@
 #                        the values used are written to metrics.json under control.tuning
 #   ... -TuningDir <dir> read the tuning files from this directory instead of Config\Tuning
 #   ... -Out <dir>       output directory (default Saved\Scenarios\<name>)
-# Prints a one-line verdict plus the checks and writes <Out>\metrics.json and <Out>\trace.json.
+# Prints a one-line verdict plus the checks and writes <Out>\metrics.json, <Out>\trace.json and, for a
+# simulated body, <Out>\series.csv (energy, balance and penetration of every frame).
 # Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
 param(
     [string]$Name,
@@ -56,7 +57,7 @@ New-Item -ItemType Directory -Force $Out | Out-Null
 $metricsFile = Join-Path $Out 'metrics.json'
 $logFile = Join-Path $Out 'run.log'
 # Remove stale results so an old pass can never be mistaken for this run.
-foreach ($stale in @('metrics.json', 'trace.json', 'final.png')) {
+foreach ($stale in @('metrics.json', 'trace.json', 'series.csv', 'final.png')) {
     $path = Join-Path $Out $stale
     if (Test-Path $path) { Remove-Item $path -Force }
 }
@@ -95,6 +96,17 @@ if (-not $metrics) {
 if (-not $metrics.ok) {
     Write-Output "SCENARIO ERROR: $Name could not run: $($metrics.error)"
     exit 2
+}
+
+# A console variable the engine does not know is accepted without a word and changes nothing: the run then
+# looks like proof that the variable makes no difference. The engine's log says so; pass it on.
+if ($CVars) {
+    foreach ($assignment in $CVars.Split(',')) {
+        $variable = $assignment.Split('=')[0].Trim()
+        if ($variable -and (Select-String -Path $logFile -SimpleMatch "CVar [[${variable}:" | Where-Object { $_.Line -match 'dummy variable created' })) {
+            Write-Output "SCENARIO WARNING: the engine knows no console variable '$variable'; -CVars set nothing by that name"
+        }
+    }
 }
 
 $verdict = 'FAIL'

@@ -58,6 +58,37 @@ struct FSandboxAssistView
 	bool bActive = false;
 };
 
+/**
+ * What the body senses of its own balance at one instant: which feet stand, the support they give, where
+ * the centre of mass is against it and where the capture point is. Lengths in cm, world space.
+ */
+struct FSandboxBalanceView
+{
+	/** False before the body has made a physics step under the controller: nothing has been sensed yet. */
+	bool bValid = false;
+	/** Force of the floor on the left and on the right foot, upward, averaged over the last frame. N. */
+	double FootForceN[2] = { 0.0, 0.0 };
+	/** The feet that stand: those the floor pushes on with at least balance.foot_contact_min_n. */
+	TArray<FName, TInlineAllocator<2>> StandingFeet;
+	/** Hull of the soles of the standing feet, seen from above, counter-clockwise. Empty when no foot stands. */
+	TArray<FVector2D> SupportPolygon;
+	/** Height of the support: the lowest sole point, or where the support last was while no foot stands. */
+	double SupportHeightCm = 0.0;
+	FVector CenterOfMass = FVector::ZeroVector;
+	/** Velocity of the centre of mass, cm/s. */
+	FVector Velocity = FVector::ZeroVector;
+	/** Where the body would have to be supported to come to rest: ahead of the centre of mass by its velocity. */
+	FVector2D CapturePoint = FVector2D::ZeroVector;
+	/**
+	 * How far the centre of mass and the capture point are inside the support polygon, positive inside.
+	 * Meaningless while no foot stands (IsSupported).
+	 */
+	double CenterOfMassMarginCm = 0.0;
+	double CaptureMarginCm = 0.0;
+
+	bool IsSupported() const { return SupportPolygon.Num() > 0; }
+};
+
 /** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */
 struct FSandboxBodyControlView
 {
@@ -74,12 +105,16 @@ struct FSandboxBodyControlView
  *                   the pose the body was started in. Balance level 0: the assist alone keeps it upright.
  *   States          Standing, Flinch, Falling, Lying. Each state reads its own tuning ("states.falling...");
  *                   the thresholds that move the body between them are tuning values too.
+ *   Balance sense   Which feet stand (the floor's push on them, from the body's own contact events), the
+ *                   support polygon under them, the centre of mass and the capture point. Sensed every tick
+ *                   (GetBalance, MeasureBalance); the states do not act on it yet.
  *
  *                     Standing --hit--> Flinch --recovered--> Standing
  *                     Standing or Flinch --pelvis too far, too low or too tilted--> Falling
  *                     Falling --at rest for a while--> Lying
  *
- * All bodies stay dynamic. The controller owns a UPhysicsControlComponent and drives it by hand each tick,
+ * All bodies stay dynamic, and awake: a body under control never sleeps (see Start). The controller owns a
+ * UPhysicsControlComponent and drives it by hand each tick,
  * after the mesh has evaluated its pose and before physics, so the order of work is the same in every run.
  */
 UCLASS()
@@ -132,6 +167,16 @@ public:
 
 	/** Assist load at the start of the current frame's physics step. */
 	const FSandboxAssistLoad& GetAssistLoad() const { return AssistLoad; }
+
+	/** The body's balance as the controller saw it at the start of the current frame's physics step. */
+	const FSandboxBalanceView& GetBalance() const { return Balance; }
+
+	/**
+	 * The body's balance as it is now: the bodies where they are, and the floor's push on the feet in the
+	 * physics step made since the controller last ticked. Result files and overlays call this after a step
+	 * and get that step's state. Reads only; the controller's own view (GetBalance) is not touched.
+	 */
+	void MeasureBalance(FSandboxBalanceView& OutView) const;
 
 	/**
 	 * The targets of every muscle and assist control, as last handed to the solver. The muscles' targets
@@ -216,6 +261,17 @@ private:
 	double HitStartedS = 0.0;
 	double ContactImpulseNs = 0.0;
 	int32 ContactReports = 0;
+	/**
+	 * What the world that does not move (the floor, a wall) has pushed on each body with since the last tick,
+	 * N*s, by the body's index in the mesh. This is what the body stands on, not a hit.
+	 */
+	TArray<FVector> SupportImpulseNs;
+	/** Length of the physics step those impulses were delivered in; 0 before the first tick. */
+	double SupportStepS = 0.0;
+	/** Where the support was when a foot last stood, for the time no foot does. */
+	double LastSupportHeightCm = 0.0;
+	double GravityCmS2 = 980.0;
+	FSandboxBalanceView Balance;
 	/** Falling: how long every body has been below the rest speeds. */
 	double RestS = 0.0;
 

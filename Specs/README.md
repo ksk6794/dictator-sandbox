@@ -27,7 +27,7 @@ generated asset matches its spec.
     {"child": "lowerarm_l", "mirror": "lowerarm_r", "along": "hand_l", "swing1_axis": "bend",
      "swing1": [0, 140], "swing2": "locked", "twist": "locked"}
   ],
-  "collision": {"disable": [], "enable": []}
+  "collision": {"disable": [["thigh_l", "thigh_r"], ["pelvis", "spine_04"]]}
 }
 ```
 
@@ -44,7 +44,7 @@ generated asset matches its spec.
 | `joints[].along` | Bone the limb runs toward from the joint. The twist axis points from the child bone to this bone |
 | `joints[].swing1_axis` | The axis the joint's main bending turns about: a direction `[x, y, z]` in the mesh's reference-pose space, `{"from": bone, "to": bone}`, or `"bend"` (see below). It is made perpendicular to the twist axis |
 | `joints[].swing1`, `swing2`, `twist` | `[min, max]` in degrees, `"locked"` or `"free"`. A range need not be symmetric |
-| `collision.disable`, `enable` | Extra `[boneA, boneB]` pairs. Jointed bodies never collide. Other pairs start "off" if any pair of the template bodies they were built from was off |
+| `collision.disable` | `[boneA, boneB]` pairs that do not collide with each other. Jointed bodies never collide; every other pair of bodies does, unless it is listed here. See "Self-collision" |
 
 ### Joints
 
@@ -75,6 +75,29 @@ A mirrored joint is the reflection of the written one in the body's midplane. Re
 reverses it, so the three axes of the frame together make half a turn about x, and the same ranges then mean
 mirror-image motion. The test `DictatorSandbox.Generated.PhysicsAsset.JointsFollowAnatomy` checks that, and
 that the NPC's knee bends backward, its elbow folds, its hip flexes forward.
+
+### Self-collision
+
+Every pair of bodies collides, except the jointed pairs and the pairs under `collision.disable`. That list
+is for bodies whose shapes overlap in the reference pose: left on, they push each other apart from the
+first step and the character cannot hold the pose it is spawned in. `npc_body.json` lists four: the two
+thighs (1.4 cm into each other), the pelvis and the chest across the lower spine (5.5 cm), and the lower
+spine with each thigh (0.9 cm). So the legs can cross at the thighs; shanks and feet do collide with the
+other leg.
+
+Which pairs overlap is measured, not guessed: a scenario run reports the deepest overlap of colliding
+bodies in the spawn pose (`penetration.spawn_self_cm` in `metrics.json`), and a run with active control
+fails the check `spawn_pose_clear_of_itself` above 0.1 cm. The generator's log also lists colliding pairs
+whose bounding boxes overlap, which overstates capsules: the lower spine and the upper arms are reported
+there (2.3 cm) and do not touch.
+
+The template's own collision table is not carried over. It is not the same on the left and on the right
+(an upper arm collides with its hand on one side only), and left and right must behave alike.
+
+Until M3 the generated asset had no self-collision at all: the engine call that creates a body
+(`FPhysicsAssetUtils::CreateNewBody`) switches collision off between the new body and every earlier one
+unless told otherwise, and the generator only ever took pairs away. An arm went through the chest. The test
+`DictatorSandbox.Generated.PhysicsAsset.MatchesSpec` now counts the pairs that can collide.
 
 What comes from the template and what from the spec: shapes (unless written out) and the joints' softness
 and projection settings are the template's; the set of bodies, masses, joint axes, joint limits and

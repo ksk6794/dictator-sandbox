@@ -1,9 +1,15 @@
 #include "SandboxBodyProbe.h"
 
+#include "CollisionQueryParams.h"
+#include "CollisionShape.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/OverlapResult.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/ConstraintInstance.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 
 void FSandboxBodyProbe::SampleBodies(const USkeletalMeshComponent* Mesh, TArray<FSandboxBodySample>& OutSamples)
 {
@@ -27,6 +33,8 @@ void FSandboxBodyProbe::SampleBodies(const USkeletalMeshComponent* Mesh, TArray<
 		Sample.LinearVelocity = Body->GetUnrealWorldVelocity();
 		Sample.AngularVelocityRad = Body->GetUnrealWorldAngularVelocityInRadians();
 		Sample.MassKg = Body->GetBodyMass();
+		Sample.InertiaKgCm2 = Body->GetBodyInertiaTensor();
+		Sample.InertiaRotation = Body->GetMassSpaceToWorldSpace().GetRotation();
 	}
 }
 
@@ -266,6 +274,219 @@ double FSandboxBodyProbe::TranslationalKineticEnergyJ(const TArray<FSandboxBodyS
 		Energy += 0.5 * Sample.MassKg * SpeedMps * SpeedMps;
 	}
 	return Energy;
+}
+
+FVector FSandboxBodyProbe::CenterOfMassVelocity(const TArray<FSandboxBodySample>& Samples)
+{
+	FVector Momentum = FVector::ZeroVector;
+	double Mass = 0.0;
+	for (const FSandboxBodySample& Sample : Samples)
+	{
+		Momentum += Sample.LinearVelocity * Sample.MassKg;
+		Mass += Sample.MassKg;
+	}
+	return Mass > 0.0 ? Momentum / Mass : FVector::ZeroVector;
+}
+
+FVector2D FSandboxBodyProbe::CapturePoint(const FVector& CenterOfMassCm, const FVector& VelocityCmS, double HeightCm, double GravityCmS2)
+{
+	// The time constant of the pendulum; a body at or below its support has none.
+	const double TimeS = GravityCmS2 > 0.0 ? FMath::Sqrt(FMath::Max(HeightCm, 0.0) / GravityCmS2) : 0.0;
+	return FVector2D(CenterOfMassCm.X + VelocityCmS.X * TimeS, CenterOfMassCm.Y + VelocityCmS.Y * TimeS);
+}
+
+void FSandboxBodyProbe::MassWeightedSpeeds(const TArray<FSandboxBodySample>& Samples, double& OutLinearMps, double& OutAngularRadS)
+{
+	double MassKg = 0.0;
+	double LinearSquared = 0.0;
+	double AngularSquared = 0.0;
+	for (const FSandboxBodySample& Sample : Samples)
+	{
+		MassKg += Sample.MassKg;
+		LinearSquared += Sample.MassKg * (Sample.LinearVelocity * 0.01).SizeSquared();
+		AngularSquared += Sample.MassKg * Sample.AngularVelocityRad.SizeSquared();
+	}
+	OutLinearMps = MassKg > 0.0 ? FMath::Sqrt(LinearSquared / MassKg) : 0.0;
+	OutAngularRadS = MassKg > 0.0 ? FMath::Sqrt(AngularSquared / MassKg) : 0.0;
+}
+
+double FSandboxBodyProbe::KineticEnergyJ(const TArray<FSandboxBodySample>& Samples)
+{
+	double Energy = 0.0;
+	for (const FSandboxBodySample& Sample : Samples)
+	{
+		const double SpeedMps = Sample.LinearVelocity.Size() * 0.01;
+		Energy += 0.5 * Sample.MassKg * SpeedMps * SpeedMps;
+		// Rotation, about the principal axes of the body. 1 kg*cm^2 = 1e-4 kg*m^2.
+		const FVector Spin = Sample.InertiaRotation.UnrotateVector(Sample.AngularVelocityRad);
+		Energy += 0.5 * 1.0e-4 * (Sample.InertiaKgCm2.X * Spin.X * Spin.X + Sample.InertiaKgCm2.Y * Spin.Y * Spin.Y + Sample.InertiaKgCm2.Z * Spin.Z * Spin.Z);
+	}
+	return Energy;
+}
+
+double FSandboxBodyProbe::PotentialEnergyJ(const TArray<FSandboxBodySample>& Samples, double GravityCmS2, double FloorZCm)
+{
+	double Energy = 0.0;
+	for (const FSandboxBodySample& Sample : Samples)
+	{
+		// kg * (cm/s^2 to m/s^2) * (cm to m).
+		Energy += Sample.MassKg * (GravityCmS2 * 0.01) * ((Sample.CenterOfMass.Z - FloorZCm) * 0.01);
+	}
+	return Energy;
+}
+
+namespace
+{
+	/** One collision shape of a body as a scene query takes it: a simple shape and where it is in the world. */
+	struct FProbeShape
+	{
+		FCollisionShape Shape;
+		FVector Location = FVector::ZeroVector;
+		FQuat Rotation = FQuat::Identity;
+	};
+
+	/** The boxes, capsules and spheres of a body in world space. Returns how many shapes of other kinds it has. */
+	int32 CollectShapes(const FBodyInstance& Body, TArray<FProbeShape, TInlineAllocator<4>>& OutShapes)
+	{
+		OutShapes.Reset();
+		const UBodySetup* Setup = Body.GetBodySetup();
+		if (!Setup)
+		{
+			return 0;
+		}
+		const FTransform BodyTransform = Body.GetUnrealWorldTransform();
+		const FVector Scale = Body.Scale3D;
+		const double Uniform = Scale.GetAbsMax();
+		const auto Place = [&BodyTransform, &Scale](const FTransform& Element, FProbeShape& Out)
+		{
+			Out.Location = BodyTransform.TransformPositionNoScale(Element.GetLocation() * Scale);
+			Out.Rotation = (BodyTransform.GetRotation() * Element.GetRotation()).GetNormalized();
+		};
+		for (const FKBoxElem& Box : Setup->AggGeom.BoxElems)
+		{
+			FProbeShape& Out = OutShapes.AddDefaulted_GetRef();
+			Out.Shape = FCollisionShape::MakeBox(FVector(Box.X, Box.Y, Box.Z) * 0.5 * Scale.GetAbs());
+			Place(Box.GetTransform(), Out);
+		}
+		for (const FKSphylElem& Capsule : Setup->AggGeom.SphylElems)
+		{
+			// The engine's capsule shape is given by its radius and its half height including the end caps.
+			FProbeShape& Out = OutShapes.AddDefaulted_GetRef();
+			Out.Shape = FCollisionShape::MakeCapsule(static_cast<float>(Capsule.Radius * Uniform), static_cast<float>((0.5 * Capsule.Length + Capsule.Radius) * Uniform));
+			Place(Capsule.GetTransform(), Out);
+		}
+		for (const FKSphereElem& Sphere : Setup->AggGeom.SphereElems)
+		{
+			FProbeShape& Out = OutShapes.AddDefaulted_GetRef();
+			Out.Shape = FCollisionShape::MakeSphere(static_cast<float>(Sphere.Radius * Uniform));
+			Place(Sphere.GetTransform(), Out);
+		}
+		return Setup->AggGeom.GetElementCount() - OutShapes.Num();
+	}
+}
+
+void FSandboxBodyProbe::MeasurePenetration(const USkeletalMeshComponent* Mesh, TConstArrayView<const AActor*> Ignored, FSandboxPenetration& OutPenetration)
+{
+	OutPenetration = FSandboxPenetration();
+	const UWorld* World = Mesh ? Mesh->GetWorld() : nullptr;
+	if (!World)
+	{
+		return;
+	}
+
+	struct FProbeBody
+	{
+		const FBodyInstance* Body = nullptr;
+		FName Bone;
+		FBox Bounds;
+		TArray<FProbeShape, TInlineAllocator<4>> Shapes;
+	};
+	TArray<FProbeBody, TInlineAllocator<24>> Bodies;
+	for (const FBodyInstance* Body : Mesh->Bodies)
+	{
+		if (Body && Body->IsValidBodyInstance())
+		{
+			FProbeBody& Entry = Bodies.AddDefaulted_GetRef();
+			Entry.Body = Body;
+			Entry.Bone = Mesh->GetBoneName(Body->InstanceBoneIndex);
+			Entry.Bounds = Body->GetBodyBounds();
+			OutPenetration.UnmeasuredShapes += CollectShapes(*Body, Entry.Shapes);
+		}
+	}
+
+	// Against the world: everything that blocks, except the character itself and what the caller leaves out.
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SandboxBodyPenetration), /*bTraceComplex*/ false);
+	Params.AddIgnoredActor(Mesh->GetOwner());
+	for (const AActor* Actor : Ignored)
+	{
+		if (Actor)
+		{
+			Params.AddIgnoredActor(Actor);
+		}
+	}
+	TArray<FOverlapResult> Overlaps;
+	for (const FProbeBody& Entry : Bodies)
+	{
+		for (const FProbeShape& Shape : Entry.Shapes)
+		{
+			Overlaps.Reset();
+			World->OverlapMultiByObjectType(Overlaps, Shape.Location, Shape.Rotation, Objects, Shape.Shape, Params);
+			for (const FOverlapResult& Overlap : Overlaps)
+			{
+				UPrimitiveComponent* Component = Overlap.GetComponent();
+				FMTDResult Separation;
+				if (Component && Component->ComputePenetration(Separation, Shape.Shape, Shape.Location, Shape.Rotation) && Separation.Distance > OutPenetration.WorldCm)
+				{
+					OutPenetration.WorldCm = Separation.Distance;
+					OutPenetration.WorldBone = Entry.Bone;
+					OutPenetration.WorldInto = Component->GetOwner() ? Component->GetOwner()->GetFName() : Component->GetFName();
+				}
+			}
+		}
+	}
+
+	// Against itself: pairs of bodies the physics asset lets collide. Jointed bodies never do.
+	const UPhysicsAsset* Asset = Mesh->GetPhysicsAsset();
+	TSet<TPair<FName, FName>> Jointed;
+	for (const FConstraintInstance* Constraint : Mesh->Constraints)
+	{
+		if (Constraint)
+		{
+			Jointed.Add(TPair<FName, FName>(Constraint->GetChildBoneName(), Constraint->GetParentBoneName()));
+			Jointed.Add(TPair<FName, FName>(Constraint->GetParentBoneName(), Constraint->GetChildBoneName()));
+		}
+	}
+	for (int32 IndexA = 0; IndexA < Bodies.Num(); ++IndexA)
+	{
+		for (int32 IndexB = IndexA + 1; IndexB < Bodies.Num(); ++IndexB)
+		{
+			const FProbeBody& A = Bodies[IndexA];
+			const FProbeBody& B = Bodies[IndexB];
+			if (Jointed.Contains(TPair<FName, FName>(A.Bone, B.Bone)) || (Asset && !Asset->IsCollisionEnabled(A.Body->InstanceBodyIndex, B.Body->InstanceBodyIndex)))
+			{
+				continue;
+			}
+			++OutPenetration.SelfPairs;
+			if (!A.Bounds.Intersect(B.Bounds))
+			{
+				continue;
+			}
+			for (const FProbeShape& Shape : A.Shapes)
+			{
+				FMTDResult Separation;
+				if (B.Body->OverlapTest(Shape.Location, Shape.Rotation, Shape.Shape, &Separation) && Separation.Distance > OutPenetration.SelfCm)
+				{
+					OutPenetration.SelfCm = Separation.Distance;
+					OutPenetration.SelfBoneA = A.Bone;
+					OutPenetration.SelfBoneB = B.Bone;
+				}
+			}
+		}
+	}
 }
 
 double FSandboxBodyProbe::TotalMassKg(const TArray<FSandboxBodySample>& Samples)

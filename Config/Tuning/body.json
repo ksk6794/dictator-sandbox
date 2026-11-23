@@ -33,6 +33,10 @@
     "rest_angular_speed_rads": 0.2,
     "rest_time_s": 0.5
   },
+  "balance": {
+    "foot_contact_min_n": 20,
+    "sole_tolerance_cm": 1.5
+  },
   "reactions": {
     "flinch_weakening": 0.3,
     "flinch_recovery_s": 0.35

@@ -1,29 +1,43 @@
-# Runs every scenario in Scenarios\ headless and prints one line per scenario.
+# Runs every scenario in Scenarios\ headless, several at a time, and prints one line per scenario.
 #   powershell -ExecutionPolicy Bypass -File Tools\suite.ps1 [-Filter drop*]
+#   ... -Parallel 8            scenario processes at a time. 1 runs them one after another, which is the way
+#                              to get physics step times that nothing else disturbed
+#   ... -SaveBaseline <name>   afterwards keep the results as Saved\Baselines\<name> (Tools\baseline.ps1 -Save)
+#   ... -Baseline <name>       afterwards say which scenarios differ from that baseline (Tools\baseline.ps1 -Compare)
 # Besides each scenario's own expectations it holds the whole set to the limits that are stated for "any
 # scenario": no simulated body's joints stretch by more than -MaxJointStretchCm, and no scenario's physics
 # step takes more than -MaxPhysicsStepMeanMs on average. The worst scenario of each is printed.
+#
+# The physics step is timed by the clock, and runs that share the processor read longer than they are. So a
+# scenario that is over a step limit after the parallel pass (its own max_physics_step_mean_ms or the limit
+# for the set) is run once more by itself, and that run is the one that counts. Sharing the processor never
+# makes a step read shorter, so nothing over the limit can slip through.
 # Writes Saved\Tools\suite.json. Exit code: 0 all pass, 1 at least one failed, broke a limit or could not run.
 param(
     [string]$Filter = '*',
+    [int]$Parallel = 8,
     [double]$MaxJointStretchCm = 2.0,
-    [double]$MaxPhysicsStepMeanMs = 1.5
+    [double]$MaxPhysicsStepMeanMs = 1.5,
+    [string]$SaveBaseline,
+    [string]$Baseline
 )
 . "$PSScriptRoot\common.ps1"
 
-$scenarioScript = Join-Path $PSScriptRoot 'scenario.ps1'
 $files = @(Get-ChildItem (Join-Path $RepoRoot 'Scenarios') -Filter '*.json' | Where-Object { $_.BaseName -like $Filter } | Sort-Object Name)
 if ($files.Count -eq 0) {
     Write-Output "SUITE FAILED: no scenario matches '$Filter'"
     exit 1
 }
 
-$results = @()
+$started = Get-Date
+$jobs = @()
 foreach ($file in $files) {
-    $name = $file.BaseName
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $scenarioScript -Name $name -Quiet | ForEach-Object { Write-Output $_ }
-    $code = $LASTEXITCODE
-    $metrics = Read-JsonFile (Join-Path $RepoRoot "Saved\Scenarios\$name\metrics.json")
+    $jobs += @{ Name = $file.BaseName; Out = (Join-Path $RepoRoot "Saved\Scenarios\$($file.BaseName)") }
+}
+Invoke-ScenarioBatch -Jobs $jobs -Parallel $Parallel
+
+function Read-SuiteResult($job) {
+    $metrics = Read-JsonFile (Join-Path $job.Out 'metrics.json')
     $failedChecks = @()
     if ($metrics -and $metrics.checks) { $failedChecks = @($metrics.checks | Where-Object { -not $_.pass } | ForEach-Object { $_.name }) }
     # What the limits for the whole set are judged by. Stretch is null for a body that is not simulated.
@@ -31,11 +45,34 @@ foreach ($file in $files) {
     $stepMs = $null
     if ($metrics -and $metrics.metrics -and $null -ne $metrics.metrics.max_joint_stretch_cm) { $stretch = [double]$metrics.metrics.max_joint_stretch_cm }
     if ($metrics -and $metrics.physics_step_ms) { $stepMs = [double]$metrics.physics_step_ms.mean }
-    $results += [ordered]@{
-        scenario = $name; pass = ($code -eq 0); exit_code = $code; failed_checks = $failedChecks
-        max_joint_stretch_cm = $stretch; physics_step_mean_ms = $stepMs
+    $bodies = $null
+    $bones = $null
+    if ($metrics -and $metrics.hashes) { $bodies = $metrics.hashes.bodies; $bones = $metrics.hashes.bones }
+    return [ordered]@{
+        scenario = $job.Name; pass = [bool]($metrics -and $metrics.ok -and $metrics.pass); failed_checks = $failedChecks
+        max_joint_stretch_cm = $stretch; physics_step_mean_ms = $stepMs; timed_alone = ($Parallel -le 1)
+        hash_bodies = $bodies; hash_bones = $bones
+        verdict = (Format-ScenarioVerdict $job.Name $metrics $job.Out)
     }
 }
+
+$results = @()
+foreach ($job in $jobs) {
+    $result = Read-SuiteResult $job
+    # Over a step limit while sharing the processor, and nothing else wrong: measured again, alone.
+    $overOwnLimit = ($result.failed_checks.Count -gt 0) -and (@($result.failed_checks | Where-Object { $_ -ne 'max_physics_step_mean_ms' }).Count -eq 0)
+    $overSetLimit = ($null -ne $result.physics_step_mean_ms) -and ($result.physics_step_mean_ms -gt $MaxPhysicsStepMeanMs)
+    if ($Parallel -gt 1 -and ($overOwnLimit -or $overSetLimit)) {
+        $shared = $result.physics_step_mean_ms
+        Invoke-ScenarioBatch -Jobs @($job) -Parallel 1
+        $result = Read-SuiteResult $job
+        $result.timed_alone = $true
+        $result.verdict += (" [physics step {0:N3} ms alone, {1:N3} ms while sharing the processor]" -f $result.physics_step_mean_ms, $shared)
+    }
+    Write-Output $result.verdict
+    $results += $result
+}
+$seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
 
 # The limits that hold for every scenario, whatever its own expectations say.
 $limits = @()
@@ -56,15 +93,17 @@ $failed = @($results | Where-Object { -not $_.pass })
 $brokenLimits = @($limits | Where-Object { -not $_.pass })
 $ok = ($failed.Count -eq 0) -and ($brokenLimits.Count -eq 0)
 Write-JsonFile (Join-Path $ToolsOut 'suite.json') ([ordered]@{
-    ok      = $ok
-    total   = $results.Count
-    passed  = $results.Count - $failed.Count
-    limits  = $limits
-    results = $results
+    ok       = $ok
+    total    = $results.Count
+    passed   = $results.Count - $failed.Count
+    parallel = $Parallel
+    seconds  = $seconds
+    limits   = $limits
+    results  = $results
 })
 
 if ($ok) {
-    Write-Output "SUITE OK: $($results.Count) scenario(s) passed"
+    Write-Output "SUITE OK: $($results.Count) scenario(s) passed in $seconds s, $Parallel at a time"
 } else {
     Write-Output "SUITE FAILED: $($failed.Count) of $($results.Count) scenario(s) did not pass, $($brokenLimits.Count) limit(s) of the whole set broken"
     foreach ($entry in $failed) {
@@ -74,8 +113,18 @@ if ($ok) {
 foreach ($limit in $limits) {
     $mark = 'ok  '
     if (-not $limit.pass) { $mark = 'FAIL' }
-    Write-Output ("  [{0}] {1}: {2} {3} in {4} (limit {5} {3}, {6} scenario(s) measured)" -f $mark, $limit.what, $limit.worst, $limit.unit, $limit.worst_scenario, $limit.limit, $limit.measured_in)
+    $note = ''
+    if ($limit.name -eq 'max_physics_step_mean_ms' -and $Parallel -gt 1) { $note = '; timed while sharing the processor, -Parallel 1 for undisturbed figures' }
+    Write-Output ("  [{0}] {1}: {2} {3} in {4} (limit {5} {3}, {6} scenario(s) measured{7})" -f $mark, $limit.what, $limit.worst, $limit.unit, $limit.worst_scenario, $limit.limit, $limit.measured_in, $note)
     if (-not $limit.pass) { Write-Output "         over the limit: $($limit.over -join ', ')" }
+}
+
+$baselineScript = Join-Path $PSScriptRoot 'baseline.ps1'
+if ($SaveBaseline) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $baselineScript -Save $SaveBaseline | ForEach-Object { Write-Output $_ }
+}
+if ($Baseline) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $baselineScript -Compare $Baseline | ForEach-Object { Write-Output $_ }
 }
 if ($ok) { exit 0 }
 exit 1

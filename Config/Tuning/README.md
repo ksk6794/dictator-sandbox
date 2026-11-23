@@ -34,8 +34,14 @@ desktop pawn's tools).
 | `thresholds.fall_tilt_deg` | degrees | ...or tilted this far from its standing orientation |
 | `thresholds.rest_speed_mps`, `rest_angular_speed_rads` | m/s, rad/s | A fallen body is at rest when it moves and turns no faster than this as a whole (root mean square over its bodies, weighted by mass) |
 | `thresholds.rest_time_s` | s | ...for this long |
+| `balance.foot_contact_min_n` | N | A foot stands when the floor pushes up on it with at least this force, averaged over a frame. In quiet standing each foot carries about 390 N |
+| `balance.sole_tolerance_cm` | cm | The sole of a standing foot is the part of its shapes within this of its lowest point: what the support polygon is the hull of |
 | `reactions.flinch_weakening` | fraction | Stiffness of the hit region's muscles at the moment of a hit, as a fraction of normal |
 | `reactions.flinch_recovery_s` | s | Time over which they return to full strength, in a straight line; also how long a flinch lasts |
+
+The `balance` values decide what the body senses of its own balance (which feet stand, the support polygon,
+the capture point; `Scenarios/README.md`, "Balance, energy and penetration"). So far the body only senses:
+it still decides that it falls by the pelvis thresholds. The capture point takes that over in M3.
 
 Groups are `spine`, `neck`, `arms`, `legs`; assist bodies are `pelvis`, `chest`, `head`, `feet`. The ranges
 that are accepted are in `FSandboxBodyTuning::Validate`; they catch a slipped decimal point, not physics.

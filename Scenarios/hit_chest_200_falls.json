@@ -14,6 +14,10 @@
     {"t": 3.0, "type": "impulse", "body": "spine_04", "impulse_ns": 200, "direction": [0, -1, 0]}
   ],
   "expect": {
+    "max_rest_after_fall_s": 3.0,
+    "max_energy_gain_j": 1.0,
+    "max_body_penetration_cm": 2.0,
+    "max_self_penetration_cm": 2.0,
     "state_sequence": "standing>flinch>falling>lying",
     "fell": true,
     "min_fall_time_s": 3.0,

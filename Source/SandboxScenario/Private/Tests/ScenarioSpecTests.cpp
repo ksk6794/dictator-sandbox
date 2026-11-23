@@ -136,7 +136,9 @@ bool FScenarioSpecStatesTest::RunTest(const FString& Parameters)
 			{ "t": 2.0, "type": "impulse", "body": "thigh_l", "impulse_ns": 200, "direction": [-1, 0, 0], "duration_s": 0.1 },
 			{ "t": 1.0, "type": "impulse", "body": "head", "impulse_ns": 10, "direction": [0, 1, 0] }
 		],
-		"expect": { "end_state": "lying", "state_sequence": "standing>flinch>falling>lying", "max_joint_limit_violation_deg": 5 }
+		"expect": { "end_state": "lying", "state_sequence": "standing>flinch>falling>lying", "max_joint_limit_violation_deg": 5,
+			"min_com_margin_cm": 2, "min_capture_margin_cm": 1, "max_energy_gain_j": 20, "max_rest_after_fall_s": 3,
+			"max_body_penetration_cm": 2, "max_self_penetration_cm": 1.5 }
 	})");
 
 	FScenarioSpec Spec;
@@ -154,6 +156,12 @@ bool FScenarioSpecStatesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("end state"), Spec.Expect.EndState.Get(FString()), FString(TEXT("lying")));
 	TestEqual(TEXT("state sequence"), Spec.Expect.StateSequence.Get(FString()), FString(TEXT("standing>flinch>falling>lying")));
 	TestEqual(TEXT("limit violation"), Spec.Expect.MaxJointLimitViolationDeg.Get(0.0), 5.0);
+	TestEqual(TEXT("margin of the centre of mass"), Spec.Expect.MinComMarginCm.Get(0.0), 2.0);
+	TestEqual(TEXT("margin of the capture point"), Spec.Expect.MinCaptureMarginCm.Get(0.0), 1.0);
+	TestEqual(TEXT("energy gain"), Spec.Expect.MaxEnergyGainJ.Get(0.0), 20.0);
+	TestEqual(TEXT("rest after the fall"), Spec.Expect.MaxRestAfterFallS.Get(0.0), 3.0);
+	TestEqual(TEXT("penetration into the world"), Spec.Expect.MaxBodyPenetrationCm.Get(0.0), 2.0);
+	TestEqual(TEXT("penetration into itself"), Spec.Expect.MaxSelfPenetrationCm.Get(0.0), 1.5);
 	return true;
 }
 

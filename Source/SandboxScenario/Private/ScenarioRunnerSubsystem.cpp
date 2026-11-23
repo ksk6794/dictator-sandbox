@@ -20,6 +20,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Crc.h"
 #include "Misc/EngineVersion.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -67,6 +68,14 @@ namespace
 	constexpr int32 ScreenshotFrames = 30;
 	// The body has fallen once its pelvis is below this fraction of the height it started at.
 	constexpr double FallenPelvisHeightFraction = 0.5;
+	// A body that went down is at rest when it moves and turns no faster than this as a whole (root mean
+	// square over its bodies, weighted by mass). The runner's own figures, whatever the tuning says.
+	constexpr double RestRmsSpeedMps = 0.05;
+	constexpr double RestRmsAngularSpeedRadS = 0.2;
+	// Deepest two bodies of a character under control may overlap in its spawn pose, cm.
+	constexpr double SpawnSelfPenetrationLimitCm = 0.1;
+	// The floor's top face, which gravitational energy is counted from.
+	constexpr double FloorZCm = 0.0;
 
 	/**
 	 * How far a joint is outside its limits, in degrees, axis by axis. The engine limits the two swings
@@ -401,6 +410,7 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 	TArray<FSandboxBodySample> Bodies;
 	FSandboxBodyProbe::SampleBodies(BodyMesh, Bodies);
 	ComStartCm = FSandboxBodyProbe::CenterOfMass(Bodies);
+	GravityCmS2 = FMath::Abs(World.GetGravityZ());
 
 	// Joint angles of the spawn pose against the joint limits.
 	for (const FConstraintInstance* Constraint : BodyMesh->Constraints)
@@ -677,6 +687,12 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 				Entry->SetStringField(TEXT("state"), FSandboxBodyTuning::StateName(Change.State));
 				Entry->SetStringField(TEXT("reason"), Change.Reason);
 				StateTimeline.Add(MakeShared<FJsonValueObject>(Entry));
+				if (Change.State == ESandboxBodyState::Falling && FallingStartFrame < 0)
+				{
+					FallingStartFrame = FrameIndex;
+					LastUnrestFrame = FrameIndex;
+					ComAtFallStartCm = FSandboxBodyProbe::CenterOfMass(Bodies);
+				}
 			}
 
 			// A new state brings its own tuning. That is not a tuning change: only an edited file or an
@@ -693,6 +709,7 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			// The controller took new values before this frame's physics step: an edited tuning file or an
 			// override. Recorded with what changed, so the metrics can be read against it.
 			SeenTuningChanges = Controller->GetTuningChangeCount();
+			bInputPending = true;
 			TArray<TPair<FString, double>> Values;
 			Controller->GetTuning().ListValues(Values);
 			const TSharedRef<FJsonObject> Changed = MakeShared<FJsonObject>();
@@ -715,6 +732,134 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			Change->SetObjectField(TEXT("values"), Changed);
 			TuningChanges.Add(MakeShared<FJsonValueObject>(Change));
 		}
+	}
+
+	// Energy, rest, balance and penetration of this frame, for any simulated body: summed up for the result
+	// and written to series.csv. All of it is read from the bodies and asked of the scene; nothing is changed.
+	if (Spec.bSimulate && !bSawNaN)
+	{
+		const USandboxBodyController* Controller = Ragdoll->GetController();
+		const ESandboxBodyState State = Controller ? Controller->GetState() : ESandboxBodyState::Standing;
+		const double KineticJ = FSandboxBodyProbe::KineticEnergyJ(Bodies);
+		const double PotentialJ = FSandboxBodyProbe::PotentialEnergyJ(Bodies, GravityCmS2, FloorZCm);
+		double RmsSpeedMps = 0.0;
+		double RmsAngularSpeedRadS = 0.0;
+		FSandboxBodyProbe::MassWeightedSpeeds(Bodies, RmsSpeedMps, RmsAngularSpeedRadS);
+		PeakKineticJ = FMath::Max(PeakKineticJ, KineticJ);
+		FinalKineticJ = KineticJ;
+		FinalPotentialJ = PotentialJ;
+		ComFinalCm = FSandboxBodyProbe::CenterOfMass(Bodies);
+
+		// A hand that touched something in this step fed or drained the body, as a scripted impulse does.
+		if (EffectorRig)
+		{
+			int32 ContactFrames = 0;
+			for (const USandboxEffectorComponent* Effector : EffectorRig->GetEffectors())
+			{
+				ContactFrames += Effector->GetStats().ContactFrames;
+			}
+			bInputPending |= ContactFrames != SeenEffectorContactFrames;
+			SeenEffectorContactFrames = ContactFrames;
+		}
+
+		// The energy of a body nothing acts on can only fall. A body under control is watched while it is
+		// falling or lying, when its muscles are weak and its assist is off; upright it holds itself up.
+		const bool bDown = Controller && (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying);
+		const bool bEnergyWatched = FrameIndex >= JointSettleFrames && (!Controller || bDown);
+		if (!bEnergyWatched || bInputPending)
+		{
+			EnergyFloorJ = TNumericLimits<double>::Max();
+		}
+		if (bEnergyWatched)
+		{
+			const double TotalJ = KineticJ + PotentialJ;
+			if (EnergyFloorJ != TNumericLimits<double>::Max() && TotalJ - EnergyFloorJ > MaxEnergyGainJ)
+			{
+				MaxEnergyGainJ = TotalJ - EnergyFloorJ;
+				MaxEnergyGainFrame = FrameIndex;
+			}
+			EnergyFloorJ = FMath::Min(EnergyFloorJ, TotalJ);
+		}
+		bInputPending = false;
+
+		if (FallingStartFrame >= 0 && (RmsSpeedMps > RestRmsSpeedMps || RmsAngularSpeedRadS > RestRmsAngularSpeedRadS))
+		{
+			LastUnrestFrame = FrameIndex;
+		}
+
+		// Balance, as the body senses it itself, while it is upright.
+		FSandboxBalanceView Balance;
+		if (Controller)
+		{
+			Controller->MeasureBalance(Balance);
+		}
+		const bool bUpright = Controller && (State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch);
+		if (Balance.bValid && bUpright && bSettled)
+		{
+			++BalanceFrames;
+			++FeetFrames[FMath::Clamp(Balance.StandingFeet.Num(), 0, 2)];
+			if (Balance.IsSupported())
+			{
+				++SupportedFrames;
+				MinComMarginCm = FMath::Min(MinComMarginCm, Balance.CenterOfMassMarginCm);
+				ComMarginSum += Balance.CenterOfMassMarginCm;
+				MinCaptureMarginCm = FMath::Min(MinCaptureMarginCm, Balance.CaptureMarginCm);
+				CaptureMarginSum += Balance.CaptureMarginCm;
+				CaptureOutsideFrames += Balance.CaptureMarginCm < 0.0 ? 1 : 0;
+				const double WeightN = FSandboxBodyProbe::TotalMassKg(Bodies) * GravityCmS2 * 0.01;
+				SupportShareSum += WeightN > 0.0 ? (Balance.FootForceN[0] + Balance.FootForceN[1]) / WeightN : 0.0;
+			}
+			else
+			{
+				++UnsupportedFrames;
+			}
+		}
+
+		// Penetration. The first frames may still be closing what the spawn pose overlapped.
+		FSandboxPenetration Penetration;
+		const AActor* const NotTheWorld[] = { EffectorRig.Get() };
+		FSandboxBodyProbe::MeasurePenetration(Mesh, NotTheWorld, Penetration);
+		UnmeasuredShapes = Penetration.UnmeasuredShapes;
+		SelfCollisionPairs = Penetration.SelfPairs;
+		if (FrameIndex < JointSettleFrames)
+		{
+			SpawnWorldPenetrationCm = FMath::Max(SpawnWorldPenetrationCm, Penetration.WorldCm);
+			SpawnSelfPenetrationCm = FMath::Max(SpawnSelfPenetrationCm, Penetration.SelfCm);
+		}
+		else
+		{
+			if (Penetration.WorldCm > MaxWorldPenetrationCm)
+			{
+				MaxWorldPenetrationCm = Penetration.WorldCm;
+				WorldPenetrationBone = Penetration.WorldBone;
+				WorldPenetrationInto = Penetration.WorldInto;
+				WorldPenetrationFrame = FrameIndex;
+			}
+			if (Penetration.SelfCm > MaxSelfPenetrationCm)
+			{
+				MaxSelfPenetrationCm = Penetration.SelfCm;
+				SelfPenetrationBoneA = Penetration.SelfBoneA;
+				SelfPenetrationBoneB = Penetration.SelfBoneB;
+				SelfPenetrationFrame = FrameIndex;
+			}
+		}
+
+		if (Series.IsEmpty())
+		{
+			Series = TEXT("t,state,feet,foot_left_n,foot_right_n,kinetic_j,potential_j,rms_speed_mps,rms_angular_speed_rads,com_margin_cm,capture_margin_cm,penetration_world_cm,penetration_self_cm,assist_force_share\n");
+		}
+		const auto Optional = [](bool bHave, double Value, int32 Digits) { return bHave ? FString::Printf(TEXT("%.*f"), Digits, Value) : FString(); };
+		Series += FString::Printf(TEXT("%.4f,%s,%s,%s,%s,%.3f,%.3f,%.4f,%.4f,%s,%s,%.3f,%.3f,%s\n"),
+			(FrameIndex + 1) * FixedDt,
+			Controller ? FSandboxBodyTuning::StateName(State) : TEXT("passive"),
+			*Optional(Balance.bValid, Balance.StandingFeet.Num(), 0),
+			*Optional(Balance.bValid, Balance.FootForceN[0], 1),
+			*Optional(Balance.bValid, Balance.FootForceN[1], 1),
+			KineticJ, PotentialJ, RmsSpeedMps, RmsAngularSpeedRadS,
+			*Optional(Balance.bValid && Balance.IsSupported(), Balance.CenterOfMassMarginCm, 2),
+			*Optional(Balance.bValid && Balance.IsSupported(), Balance.CaptureMarginCm, 2),
+			Penetration.WorldCm, Penetration.SelfCm,
+			*Optional(Controller != nullptr, Controller ? Controller->GetAssistLoad().ForceShare : 0.0, 4));
 	}
 
 	// A physics asset can be authored with joint anchors that do not coincide in the reference pose.
@@ -875,6 +1020,7 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			if (GEngine && GEngine->Exec(&GetWorldRef(), *Event.Command))
 			{
 				++EventsApplied;
+				bInputPending = true;
 			}
 			else
 			{
@@ -933,6 +1079,7 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame1, FTransform::Identity);
 			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame2, BodyTransform);
 			Pin.Constraint->InitConstraint(Body, nullptr, 1.0f, Ragdoll);
+			bInputPending = true;
 		}
 		else
 		{
@@ -952,6 +1099,7 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 
 void UScenarioRunnerSubsystem::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
 {
+	bInputPending = true;
 	// An actively controlled body takes the impulse itself, so that it can react to being hit.
 	if (USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr)
 	{
@@ -1078,6 +1226,11 @@ void UScenarioRunnerSubsystem::Finish()
 	AddCheck(TEXT("no_nan"), !bSawNaN, Boolean(bSawNaN), Boolean(false));
 	AddCheck(TEXT("stays_in_bounds"), !bLeftBounds, Boolean(bLeftBounds), Boolean(false));
 	AddCheck(TEXT("fixed_timestep"), DtViolations == 0, Number(DtViolations), Number(0));
+	// The solver must keep its contacts in a fixed order (p.Chaos.Solver.Deterministic, set in
+	// Config/DefaultEngine.ini): without it a run on a busy machine can differ from the one before it.
+	const IConsoleVariable* SolverDeterministic = IConsoleManager::Get().FindConsoleVariable(TEXT("p.Chaos.Solver.Deterministic"));
+	const int32 SolverDeterministicValue = SolverDeterministic ? SolverDeterministic->GetInt() : -1;
+	AddCheck(TEXT("deterministic_solver"), SolverDeterministicValue == 1, Number(SolverDeterministicValue), Number(1));
 	AddCheck(TEXT("all_events_applied"), EventsApplied == Spec.Events.Num(), Number(EventsApplied), Number(Spec.Events.Num()));
 	if (Spec.Expect.RestWithinS.IsSet())
 	{
@@ -1111,6 +1264,9 @@ void UScenarioRunnerSubsystem::Finish()
 				Constraint->GetLinearZMotion() == LCM_Locked ? 1 : 0;
 		}
 		AddCheck(TEXT("every_joint_has_a_muscle"), Controller && Muscles == Joints, Number(Muscles), Number(Joints));
+		// Bodies that may collide must not overlap in the pose the character is spawned in: they would push
+		// each other apart from the first step on, and the pose could not be held.
+		AddCheck(TEXT("spawn_pose_clear_of_itself"), SpawnSelfPenetrationCm <= SpawnSelfPenetrationLimitCm, Number(SpawnSelfPenetrationCm), Number(SpawnSelfPenetrationLimitCm));
 	}
 	if (Spec.Expect.MaxPelvisDriftCm.IsSet())
 	{
@@ -1255,6 +1411,42 @@ void UScenarioRunnerSubsystem::Finish()
 	{
 		const double Limit = Spec.Expect.MaxEffectorFinalForceN.GetValue();
 		AddCheck(TEXT("max_effector_final_force_n"), EffectorRig && EffectorFinalForceN <= Limit, EffectorRig ? Number(EffectorFinalForceN) : Null(), Number(Limit));
+	}
+
+	// Balance, energy, the end of the fall and penetration.
+	const bool bHaveMargins = Controller && SupportedFrames > 0;
+	if (Spec.Expect.MinComMarginCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinComMarginCm.GetValue();
+		AddCheck(TEXT("min_com_margin_cm"), bHaveMargins && UnsupportedFrames == 0 && MinComMarginCm >= Limit, bHaveMargins ? Number(MinComMarginCm) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinCaptureMarginCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinCaptureMarginCm.GetValue();
+		AddCheck(TEXT("min_capture_margin_cm"), bHaveMargins && UnsupportedFrames == 0 && MinCaptureMarginCm >= Limit, bHaveMargins ? Number(MinCaptureMarginCm) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxEnergyGainJ.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxEnergyGainJ.GetValue();
+		AddCheck(TEXT("max_energy_gain_j"), Spec.bSimulate && MaxEnergyGainJ <= Limit, Spec.bSimulate ? Number(MaxEnergyGainJ) : Null(), Number(Limit));
+	}
+	const bool bWentDown = FallingStartFrame >= 0;
+	const bool bRestAfterFall = bWentDown && LastUnrestFrame < TotalFrames - 1;
+	const double RestAfterFallS = (LastUnrestFrame + 1 - FallingStartFrame) * FixedDt;
+	if (Spec.Expect.MaxRestAfterFallS.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxRestAfterFallS.GetValue();
+		AddCheck(TEXT("max_rest_after_fall_s"), bRestAfterFall && RestAfterFallS <= Limit + DtToleranceS, bRestAfterFall ? Number(RestAfterFallS) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxBodyPenetrationCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxBodyPenetrationCm.GetValue();
+		AddCheck(TEXT("max_body_penetration_cm"), Spec.bSimulate && MaxWorldPenetrationCm <= Limit, Spec.bSimulate ? Number(MaxWorldPenetrationCm) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxSelfPenetrationCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxSelfPenetrationCm.GetValue();
+		AddCheck(TEXT("max_self_penetration_cm"), Spec.bSimulate && MaxSelfPenetrationCm <= Limit, Spec.bSimulate ? Number(MaxSelfPenetrationCm) : Null(), Number(Limit));
 	}
 
 	// The states the body went through, as names joined by '>'.
@@ -1453,6 +1645,31 @@ void UScenarioRunnerSubsystem::Finish()
 		ControlJson->SetStringField(TEXT("state_sequence"), StateSequence);
 		ControlJson->SetArrayField(TEXT("tuning_changes"), TuningChanges);
 
+		// Balance as the body senses it, over the settled frames in which it was upright.
+		const TSharedRef<FJsonObject> BalanceJson = MakeShared<FJsonObject>();
+		BalanceJson->SetNumberField(TEXT("frames"), BalanceFrames);
+		BalanceJson->SetNumberField(TEXT("frames_no_foot"), FeetFrames[0]);
+		BalanceJson->SetNumberField(TEXT("frames_one_foot"), FeetFrames[1]);
+		BalanceJson->SetNumberField(TEXT("frames_both_feet"), FeetFrames[2]);
+		BalanceJson->SetField(TEXT("com_margin_min_cm"), bHaveMargins ? Number(MinComMarginCm) : Null());
+		BalanceJson->SetField(TEXT("com_margin_mean_cm"), bHaveMargins ? Number(ComMarginSum / SupportedFrames) : Null());
+		BalanceJson->SetField(TEXT("capture_margin_min_cm"), bHaveMargins ? Number(MinCaptureMarginCm) : Null());
+		BalanceJson->SetField(TEXT("capture_margin_mean_cm"), bHaveMargins ? Number(CaptureMarginSum / SupportedFrames) : Null());
+		BalanceJson->SetNumberField(TEXT("capture_outside_frames"), CaptureOutsideFrames);
+		// The floor's push on the two feet over the body's weight: 1 when the feet carry all of it.
+		BalanceJson->SetField(TEXT("support_share_mean"), bHaveMargins ? Number(SupportShareSum / SupportedFrames) : Null());
+		ControlJson->SetObjectField(TEXT("balance"), BalanceJson);
+
+		// The fall: when the controller let the body go, how long until it lay still, and which way it went
+		// (the angle of the centre of mass's way over the floor: 0 is +x, 90 is +y).
+		const TSharedRef<FJsonObject> FallJson = MakeShared<FJsonObject>();
+		const FVector FallWay = ComFinalCm - ComAtFallStartCm;
+		FallJson->SetField(TEXT("started_t"), bWentDown ? Number(FallingStartFrame * FixedDt) : Null());
+		FallJson->SetField(TEXT("rest_after_s"), bRestAfterFall ? Number(RestAfterFallS) : Null());
+		FallJson->SetField(TEXT("distance_cm"), bWentDown ? Number(FallWay.Size2D()) : Null());
+		FallJson->SetField(TEXT("direction_deg"), bWentDown ? Number(FMath::Fmod(FMath::RadiansToDegrees(FMath::Atan2(FallWay.Y, FallWay.X)) + 360.0, 360.0)) : Null());
+		ControlJson->SetObjectField(TEXT("fall"), FallJson);
+
 		// What the body took from contacts with other simulated bodies: the hits it could feel.
 		ControlJson->SetNumberField(TEXT("contact_impulse_ns"), Controller->GetContactImpulseNs());
 		ControlJson->SetNumberField(TEXT("contact_reports"), Controller->GetContactReportCount());
@@ -1527,6 +1744,36 @@ void UScenarioRunnerSubsystem::Finish()
 		Root->SetObjectField(TEXT("effectors"), EffectorsJson);
 	}
 
+	if (Spec.bSimulate)
+	{
+		// Energy of the bodies: kinetic (translation and rotation) and gravitational, above the floor.
+		const TSharedRef<FJsonObject> EnergyJson = MakeShared<FJsonObject>();
+		EnergyJson->SetNumberField(TEXT("peak_kinetic_j"), PeakKineticJ);
+		EnergyJson->SetNumberField(TEXT("final_kinetic_j"), FinalKineticJ);
+		EnergyJson->SetNumberField(TEXT("final_potential_j"), FinalPotentialJ);
+		EnergyJson->SetNumberField(TEXT("max_gain_j"), MaxEnergyGainJ);
+		EnergyJson->SetField(TEXT("max_gain_t"), MaxEnergyGainFrame >= 0 ? Number((MaxEnergyGainFrame + 1) * FixedDt) : Null());
+		Root->SetObjectField(TEXT("energy"), EnergyJson);
+
+		// Penetration of the body into the world and into itself, by scene queries after every frame.
+		const auto NameOrEmpty = [](FName Name) { return Name.IsNone() ? FString() : Name.ToString(); };
+		const TSharedRef<FJsonObject> PenetrationJson = MakeShared<FJsonObject>();
+		PenetrationJson->SetNumberField(TEXT("max_world_cm"), MaxWorldPenetrationCm);
+		PenetrationJson->SetStringField(TEXT("world_bone"), NameOrEmpty(WorldPenetrationBone));
+		PenetrationJson->SetStringField(TEXT("world_into"), NameOrEmpty(WorldPenetrationInto));
+		PenetrationJson->SetField(TEXT("world_t"), WorldPenetrationFrame >= 0 ? Number((WorldPenetrationFrame + 1) * FixedDt) : Null());
+		PenetrationJson->SetNumberField(TEXT("max_self_cm"), MaxSelfPenetrationCm);
+		PenetrationJson->SetStringField(TEXT("self_bone_a"), NameOrEmpty(SelfPenetrationBoneA));
+		PenetrationJson->SetStringField(TEXT("self_bone_b"), NameOrEmpty(SelfPenetrationBoneB));
+		PenetrationJson->SetField(TEXT("self_t"), SelfPenetrationFrame >= 0 ? Number((SelfPenetrationFrame + 1) * FixedDt) : Null());
+		PenetrationJson->SetNumberField(TEXT("spawn_world_cm"), SpawnWorldPenetrationCm);
+		PenetrationJson->SetNumberField(TEXT("spawn_self_cm"), SpawnSelfPenetrationCm);
+		PenetrationJson->SetNumberField(TEXT("unmeasured_shapes"), UnmeasuredShapes);
+		// Pairs of bodies the physics asset lets collide. With 0 the body passes through itself, and max_self_cm reads 0 whatever happens.
+		PenetrationJson->SetNumberField(TEXT("self_collision_pairs"), SelfCollisionPairs);
+		Root->SetObjectField(TEXT("penetration"), PenetrationJson);
+	}
+
 	if (SortedStepMs.Num() > 0)
 	{
 		// Wall-clock time of the solver per frame (all substeps together), headless or rendered.
@@ -1587,9 +1834,15 @@ void UScenarioRunnerSubsystem::Finish()
 	Trace->SetArrayField(TEXT("checkpoints"), Checkpoints);
 
 	FString Error;
-	const bool bSaved =
+	bool bSaved =
 		SandboxJson::SaveObject(FPaths::Combine(OutDir, TEXT("trace.json")), Trace, Error, /*bPretty*/ false) &&
 		SandboxJson::SaveObject(FPaths::Combine(OutDir, TEXT("metrics.json")), Root, Error);
+	const FString SeriesFile = FPaths::Combine(OutDir, TEXT("series.csv"));
+	if (bSaved && !Series.IsEmpty() && !FFileHelper::SaveStringToFile(Series, *SeriesFile, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		Error = FString::Printf(TEXT("Cannot write '%s'"), *SeriesFile);
+		bSaved = false;
+	}
 	if (!bSaved)
 	{
 		UE_LOG(LogSandbox, Error, TEXT("Scenario: %s"), *Error);

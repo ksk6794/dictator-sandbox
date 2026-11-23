@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+class AActor;
 class USkeletalMeshComponent;
 struct FConstraintInstance;
 
@@ -15,6 +16,31 @@ struct FSandboxBodySample
 	FVector LinearVelocity = FVector::ZeroVector;
 	FVector AngularVelocityRad = FVector::ZeroVector;
 	double MassKg = 0.0;
+	/** Principal moments of inertia, kg*cm^2, about the axes of InertiaRotation (world space). */
+	FVector InertiaKgCm2 = FVector::ZeroVector;
+	FQuat InertiaRotation = FQuat::Identity;
+};
+
+/**
+ * How deep the body's collision shapes were found inside other things at one instant: the distance a shape
+ * would have to move to be clear. Measured with scene queries, not read from the solver's contacts, so it
+ * also shows what the solver let through.
+ */
+struct FSandboxPenetration
+{
+	/** Deepest any shape of the body is inside something that is not the body itself, cm. */
+	double WorldCm = 0.0;
+	/** The body that is, and the actor it is inside. */
+	FName WorldBone;
+	FName WorldInto;
+	/** Deepest two bodies of the character that may collide are inside each other, cm, and which. */
+	double SelfCm = 0.0;
+	FName SelfBoneA;
+	FName SelfBoneB;
+	/** How many pairs of bodies the physics asset lets collide. With 0 the figure above cannot be anything but 0. */
+	int32 SelfPairs = 0;
+	/** Shapes that could not be measured (convex hulls, tapered capsules): the figures do not cover them. */
+	int32 UnmeasuredShapes = 0;
 };
 
 /** Read-only measurements of a simulated skeletal mesh. Used by scenarios and debug overlays. */
@@ -63,6 +89,38 @@ struct SANDBOXBODY_API FSandboxBodyProbe
 	 * the support polygon. A polygon of one or two points has no inside. An empty one gives -infinity.
 	 */
 	static double MarginInsidePolygon(TConstArrayView<FVector2D> Polygon, const FVector2D& Point);
+
+	/** Velocity of the centre of mass, cm/s. */
+	static FVector CenterOfMassVelocity(const TArray<FSandboxBodySample>& Samples);
+
+	/**
+	 * The capture point of a linear inverted pendulum: where on the floor the body would have to be supported
+	 * to come to rest, given where its centre of mass is and how fast it moves. It lies ahead of the centre of
+	 * mass by the horizontal velocity times sqrt(height / gravity). While it is inside the support polygon
+	 * the body can stop without a step. HeightCm is the centre of mass above the support, GravityCmS2 positive.
+	 */
+	static FVector2D CapturePoint(const FVector& CenterOfMassCm, const FVector& VelocityCmS, double HeightCm, double GravityCmS2);
+
+	/**
+	 * Speed of the body as a whole: the root mean square over its bodies, weighted by mass, of their linear
+	 * speed (m/s) and of their angular speed (rad/s). A trembling hand barely moves these; a moving trunk does.
+	 */
+	static void MassWeightedSpeeds(const TArray<FSandboxBodySample>& Samples, double& OutLinearMps, double& OutAngularRadS);
+
+	/** Kinetic energy in joules, translation and rotation of every body. */
+	static double KineticEnergyJ(const TArray<FSandboxBodySample>& Samples);
+
+	/** Gravitational energy in joules of the bodies' centres of mass above FloorZCm. GravityCmS2 positive. */
+	static double PotentialEnergyJ(const TArray<FSandboxBodySample>& Samples, double GravityCmS2, double FloorZCm);
+
+	/**
+	 * Penetration of the body's shapes into the world around it and into each other, at this instant. The
+	 * world is everything that blocks except the body's own actor and the actors in Ignored (the player's
+	 * hands are measured on their own). Bodies of the character count against each other only where the
+	 * physics asset lets them collide. Boxes, capsules and spheres are measured; other shapes are counted in
+	 * UnmeasuredShapes.
+	 */
+	static void MeasurePenetration(const USkeletalMeshComponent* Mesh, TConstArrayView<const AActor*> Ignored, FSandboxPenetration& OutPenetration);
 
 	/** Translational kinetic energy in joules (rotational energy is not included). */
 	static double TranslationalKineticEnergyJ(const TArray<FSandboxBodySample>& Samples);

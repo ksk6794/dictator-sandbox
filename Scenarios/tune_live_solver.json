@@ -12,13 +12,13 @@
     "control": "active"
   },
   "events": [
-    { "t": 3.0, "type": "console", "command": "Sandbox.Tune solver.position_iterations=8" }
+    { "t": 3.0, "type": "console", "command": "Sandbox.Tune solver.position_iterations=2" }
   ],
   "expect": {
     "tuning_changes": 1,
     "fell": false,
     "end_state": "standing",
-    "min_settled_angular_speed_rads": 0.25,
+    "min_settled_angular_speed_rads": 0.3,
     "max_joint_stretch_cm": 2.0
   }
 }

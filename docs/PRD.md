@@ -226,6 +226,8 @@ Sixteen bodies and fifteen joints: pelvis, two spine segments, head, and per sid
 
 As built in M2: shapes come from the stock MetaHuman asset except the feet, which are boxes written out in the spec with a flat sole on the floor (the chest is still capsules). Joints are the generator's own, built from an anatomical description in the spec (limb direction, bending axis, a range per axis), with the right side as the mirror image of the left; the stock asset's joint positions, axes and motors all break a fully simulated body. The format is in `Specs/README.md`.
 
+Corrected in M3: until then the generated asset had no collision between any two of its bodies (see the M3 section). Now every pair collides except the jointed ones and four pairs whose shapes overlap in the reference pose, which the spec names: the two thighs, the pelvis and the chest, the lower spine and each thigh.
+
 Masses follow de Leva's 1996 segment fractions, here for an 80 kg male. Every parent-to-child mass ratio stays under 10, which the joint solver needs.
 
 | Body | Share of body mass (%) | Mass (kg) |
@@ -499,6 +501,8 @@ For scale, an 80 kg person walking at 1.25 m/s carries 100 N·s of momentum, and
 
 As built in M2: the state timeline, the fall, centre-of-mass drift, the assist load, peak joint angular velocity, joint stretch, joint-limit violation, physics step time and the hashes are recorded on every run; penetration depth and the tunnelling count are measured for the player's hands (by the runner, with scene queries after every frame); the capture-point margin, the kinetic-energy trace and penetration between the character and the world come with M3.
 
+As built in M3 part 1: the capture-point margin and the centre of mass's margin, the floor's push on the feet, kinetic and gravitational energy with the largest gain no input explains, the time from the start of a fall to rest and the fall's direction, and penetration of the body into the world and into itself are recorded on every run with a simulated body, per frame in `series.csv`. The assist share is still the M2 estimate (commanded force over body weight).
+
 ### Diagnostic tools
 
 | Tool | Triggered by | Used for |
@@ -510,11 +514,13 @@ As built in M2: the state timeline, the fall, centre-of-mass drift, the assist l
 | CSV profiler and Unreal Insights | `-csvprofile`, `-trace=cpu,gpu,frame` | Frame-time breakdown per thread |
 | Meta XR Simulator | [`metavr` CLI](https://developers.meta.com/horizon/documentation/unreal/xrsim-getting-started/) | Smoke test of the OpenXR path with no headset |
 
-As built in M2: the project overlay is `Sandbox.Overlay all|off|toggle|<layers>` with the layers `com`, `support`, `joints`, `assist`, `contacts`, `state` and `hands` (the capture point joins them in M3); screenshots are `Tools\scenario.ps1 -Shot`, with `-ShotAt` for moments of the run and `-Overlay` to draw the overlay into them. The layers are described in `Scenarios/README.md`.
+As built in M2: the project overlay is `Sandbox.Overlay all|off|toggle|<layers>` with the layers `com`, `support`, `joints`, `assist`, `contacts`, `state` and `hands`, and since M3 part 1 `capture` (the capture point against the support polygon); screenshots are `Tools\scenario.ps1 -Shot`, with `-ShotAt` for moments of the run and `-Overlay` to draw the overlay into them. The layers are described in `Scenarios/README.md`.
 
 ### Parameter sweeps
 
 `sweep` launches several headless runs in parallel, each with a parameter override file, and gathers their metrics into one table. An agent uses it for coordinate searches over muscle strength, damping and assist, and keeps the best set as the new baseline.
+
+As built in M3 part 1: `Tools\sweep.ps1` runs chosen scenarios over every combination of the values given for some tuning names, or over one value at a time, eight runs side by side, and writes one table of chosen metrics (`Saved\Sweeps\<name>\sweep.csv`). The values go to each run as command-line overrides, not as files. `Tools\baseline.ps1` keeps the results of a suite run and names the scenarios that differ from it later.
 
 ### Limits of automation
 
@@ -679,7 +685,7 @@ Deferred by the owner on 23 November 2026, to be gone through later; M3 starts w
 - [ ] Try the desktop session by hand (`Tools\play.ps1 -Overlay all`): the keys and the mouse do what the screen says; the camera turns the right way up and down, which no run has checked; the hands feel weighted and do not launch the character; the drag handle is usable; slow motion is readable; a tuning file saved while the window is open changes the hands (`Config/Tuning/effectors.json`, another `max_force_n`); the V key switches the overlays, and they can be read.
 - [ ] Look at a strike with the overlays: `Tools\scenario.ps1 -Name strike_punch_torso -Shot -ShotAt "3.07,3.09,3.25" -Overlay all`, then the pictures in `Saved\Scenarios\strike_punch_torso`.
 - [ ] Accept or change the thresholds for "the struck region is visibly displaced": 5 cm for the head, 3 cm for the chest, 1 cm for a thigh (measured 7.9 to 13.2, 4.9 to 6.9, 1.4 to 2.0).
-- [ ] Say whether the suite should be made parallel before M3: it takes 6.3 minutes one scenario after another, over NFR-6's 5 minutes, and 91 s eight at a time.
+- [x] Say whether the suite should be made parallel before M3: it takes 6.3 minutes one scenario after another, over NFR-6's 5 minutes, and 91 s eight at a time. Settled by the owner's brief for M3: it was made parallel in M3 part 1.
 
 ### M3: Balance and recovery (3 to 4 weeks)
 
@@ -687,9 +693,61 @@ Capture-point controller, Stagger with stumble steps, protective fall pose, Get-
 
 - [ ] 30 N·s pushes are absorbed without a fall; 80 N·s pushes produce a recovery step or a fall as the outcome table states
 - [ ] Get-up succeeds in 90% of 50 randomised falls
-- [ ] Standing assist share is at most half its M2 value
+- [ ] Standing assist share is at most half its M2 value (judged against the corrected M2 figure 0.0185: at most 0.0093 of body weight)
 - [ ] Every fall comes to rest within 3 s with no energy gain
 - [ ] Human review of rendered clips: it reads as a person losing balance, not a puppet
+
+**M3 was started on 23 November 2026. It is built in seven parts; part 1 is done.**
+
+| Part | What it builds | Criterion it serves |
+| --- | --- | --- |
+| 1. Senses, metrics, tools | The body's own sense of balance (standing feet, support polygon, capture point); energy, rest after a fall and penetration measured in every run; the capture-point overlay; the suite run in parallel, baselines, sweeps | The measuring ground for all five |
+| 2. Target pose source | A native animation instance: a base pose, additive offsets (the flinch's pose offset, a lean), two-bone leg placement; poses written as text | Needed by 3 to 6 |
+| 3. Standing balance | The capture point decides a fall instead of the pelvis thresholds; ankle and hip strategy as offsets of the muscles' targets; the assist's anchors follow the support; a held push is leant into | 30 N·s absorbed; assist share |
+| 4. Stagger and the recovery step | The Stagger state, a step placed at the capture point within reach, the foot's anchor moved with it | 80 N·s: a step or a fall, by the outcome table |
+| 5. The fall | A protective pose aimed along the fall; muscle torque caps and joint-limit softness tuned; continuous collision detection on feet and head decided by measurement; knockdowns from 8 directions | Rest within 3 s, no energy gain |
+| 6. Get-up | Lying to Get-up to Standing, chosen by how the pelvis lies; a stand of 50 seeded falls, some against a wall | 90% of 50 falls |
+| 7. Gate | Sweeps over muscle strength, damping and assist; clips for review; the criteria table | Human review; final figures |
+
+Decided by the owner at the start of M3:
+
+- **Target poses are procedural and written as text.** Key poses for the step, the protective pose and the get-up are described by joint angles in JSON and blended by the native animation instance; the idle comes from the stock `MM_Idle` of the engine's mannequin, carried over to the MetaHuman by script. No animation set has to be bought, claimed or downloaded by a person, and every pose can be swept. A step and a protective pose have to be aimed by code in any case: a recorded clip cannot be pointed at the capture point or along the fall. If the get-up reads as mechanical at the gate, a recorded clip goes in behind the same interface. Looked at and not chosen: Mixamo (the most human get-up, but a manual download under an Adobe account and files that may not be published), Epic's Game Animation Sample (locomotion and traversal; no get-up or stumble could be confirmed in it), free motion-capture packs (contents for get-up unconfirmed).
+- **The order of parts.** The owner's order was kept with two changes: standing balance and the recovery step are two parts, and the assist share is a constraint from part 3 on, not a job for the last part. The assist's targets are taken once when the body starts and never move, so the feet and the pelvis are tied to the place of spawn by 1500 N/m springs: a recovery step is impossible with that, and a Stagger tuned on the full assist would have to be tuned again after it is cut.
+
+Decided by the owner after part 1 (23 November 2026), on the open questions of M3:
+
+- **Assist share** is judged against the corrected M2 figure: at most 0.0093 of body weight in quiet standing.
+- **Thresholds of part 1** accepted, with the energy gain of a fall lowered from 5 J to 1 J.
+- **Outcome table, by the physics of the capture point** (an 80 kg body: 30 N·s at the centre of mass moves the capture point about 12 cm, 80 N·s about 32 cm; the sole reaches about 13 cm ahead of the ankle and 5 cm behind it). 30 N·s: never a fall; forward and sideways without a step, backward and to the head one step allowed. 80 N·s to the trunk (chest, pelvis): one or more steps and the body stays up, in every direction but backward, where a step or a fall are both right. 80 N·s to the head or a thigh: a step or a fall. Standing at 80 N·s without a step is a failure: it is the assist holding the body, not balance.
+- **A held push** makes the body flinch only at its onset (a sharp impulse), not for the sum of the pressure. Under a steady force the body leans into it (ankle and hip); when the capture point leaves the support it steps, and backs away step by step; it falls only when a step does not save it.
+- **Poses.** A flinch moves the pose a little, in proportion to the impulse: the struck part gives way, the shoulders rise, the head draws in. A falling body reaches for the floor with its arms along the fall, chin tucked; falling backward, arms back and out and knees bending. After the impact the muscles let go.
+- **Muscle torque caps and joint-limit softness** start from published strength figures of an adult man (ankle, knee, hip, lower back, shoulder, elbow, neck) as tuning values; soft limits where human ligaments give (spine, neck, shoulder); then sweeps over rest time, energy gain and bounce (part 5).
+- **Continuous collision detection on feet and head** is decided by measurement in part 5: if any of the knockdowns in 8 directions sinks more than 2 cm into the floor or gains more than 1 J, it is switched on for the bodies that sink, and its cost in step time is recorded.
+- **Clavicles are added to the physics asset** (owner's choice; the recommendation was to keep the single shoulder cone and check it against the poses). Two bodies and two joints, so the shoulder is two links and the arm can rise in front and to the side. This changes every scenario with the NPC's body and the standing tuning, so it is done first, as a step of its own at the start of part 2, with its own baseline.
+- **The get-up stand has furniture** (owner's choice; the recommendation was floor and wall, furniture in M5): a table and a chair from the room spec, so a body can end up under a table or against a chair. What the furniture is (static or movable) is asked at part 6.
+- **Overlay text in the headset** waits for M4; M3's clips are rendered flat.
+- **Solver iterations** stay at 64 until part 7, where a sweep over 8, 16, 32 and 64 against all M3 criteria and the push matrix picks the smallest count that passes.
+
+**Part 1 of 7, "senses, metrics, tools", was finished on 23 November 2026,** in two steps. The first changed nothing that a run does: all 34 scenarios and all 128 runs of the push matrix gave the same hashes and outcomes as before it. The second corrected three things of earlier milestones that the new figures and tools brought out, with every changed scenario named: the asset's missing self-collision and the standing body's sleep on the owner's decision, and the solver's determinism mode, which changes no result, without asking. Measurements are in `docs/testing.md`.
+
+Built in part 1:
+
+- **The body senses its balance.** `USandboxBodyController` keeps what the floor pushes on each of its bodies with, from its own contact events, and works out every tick which feet stand, the support polygon under them, the velocity of the centre of mass, the capture point and the margin of both to the polygon's edge. It does not act on any of it yet: the fall is still decided by the pelvis, until part 3. The same reading is in every result file and in a new overlay layer, `capture`; the overlay no longer works out the standing feet for itself.
+- **Every run measures energy, the end of a fall and penetration.** Energy is kinetic (with rotation) plus gravitational; a rise of the sum that no input explains is a gain. The fall has its start, the time until the body is at rest for good, and its direction. Penetration is asked of the scene after every frame, for the body against the world and for the body against itself. All of it goes to `metrics.json`, per frame to `series.csv`, and six new expectations can hold a scenario to it.
+- **The suite runs eight scenarios at a time,** in 100 s instead of 6.5 minutes, so build and suite are inside NFR-6's 5 minutes again. The physics step is timed by the clock and reads about twice as long when eight runs share the processor; a scenario over a step limit after the parallel pass is run again alone, and that run counts.
+- **Baselines and sweeps.** `Tools\baseline.ps1` keeps a suite run and names the scenarios whose hashes differ from it later, with what else moved. `Tools\sweep.ps1` is the `sweep` of the command set: scenarios over a grid of tuning values, or one value at a time, with chosen metrics in one table.
+
+Corrections to earlier milestones, found and made in part 1:
+
+- **The generated physics asset had no self-collision** (M1). The engine call that creates a body switches collision off between it and every earlier body unless told otherwise, and the generator only ever took pairs away: all 120 pairs were off, and after a fall a forearm lay 17 cm inside the chest. The generator's log named "colliding bodies" from its own plan, which is why it went unnoticed. Now every pair collides except the jointed ones and four that overlap in the reference pose and are named in the spec (the two thighs, the pelvis and the chest, the lower spine and each thigh): 101 pairs. The template's own table is not carried over, because it differs between left and right. A standing character is not affected (same hashes); the six scenarios in which limbs meet the body changed.
+- **The standing character slept one substep in six** (M2). Chaos put its island to sleep and the controller's next tick woke it, every three frames. In such a substep there is no gravity, no contact and no contact event. It was found because the floor's push on the two feet came to 83% of the body's weight. A body under control now never sleeps. This moved every scenario with a controlled body, by little (pelvis drift of a standing body 0.95 to 0.97 cm), and two M2 figures by a lot, below.
+- **The M2 assist baseline was inflated by that sleep.** The balance assist's commanded force in quiet standing is 0.0185 of body weight, not 0.047 (10 s) and 0.051 (10 minutes); its torque is 0.0020, as before. The criterion "at most half its M2 value" was written against the inflated figure and would have been met without any work. The owner decided it is judged against the corrected figure: at most 0.0093.
+- **A run could differ from the one before it on a busy machine** (M0). One run of the passive stock mannequin in about 25 gave other hashes: Chaos collects its contact constraints from worker threads in the order they finish, unless its determinism mode is on. The mode is now set in `Config/DefaultEngine.ini` and checked in every run; with it the usual results and the step time are unchanged. It was found by the first baseline comparison that named a scenario no change could have touched.
+- **The case for 64 solver iterations is weaker than M2 recorded.** Awake, the feet of a standing body turn at 0.23 rad/s with 8 position iterations, 0.12 with 16 and 0.15 with 64 (M2: 0.54 against 0.07). The count stays at 64 for now; it is a candidate for the sweeps of part 7.
+
+What the new figures show about the body as it is, for the parts to come: a 30 N·s blow to the head lifts one foot off the floor for 34 frames and puts the capture point 13 cm outside the support, and the body still "stands" only because its anchors pull it back; a punch to the chest puts the capture point 0.7 cm outside for 4 frames. The three falls of the suite come to rest 0.6 to 2.6 s after the body is let go, gain at most 0.25 J and sink at most 0.7 cm into the floor. A passive body dropped from 1.5 m lands with a foot 8.4 cm inside the floor and is thrown back with 171 J, which is the measurement the decision about continuous collision detection on the feet (part 5) will rest on.
+
+Deviations and what is not done in part 1: the part was planned to change no behaviour and ended by changing it, in a second step, to fix the defects it found; the thresholds for the new expectations were chosen here from what was measured and accepted by the owner with one change (1 J of energy gain instead of 5; 0.1 cm of overlap in the spawn pose, 20 N for a standing foot and 5 cm of capture margin as proposed); self-penetration is measured for boxes, capsules and spheres only (the NPC has no other shapes); balance is sensed for the two feet only, so a body on its hands and knees has no support polygon yet (part 6); the push matrix still reports who fell, not the outcome class the M3 table needs (parts 3 and 4).
 
 ### M4: Full interaction and VR (2 to 3 weeks)
 
@@ -739,10 +797,21 @@ The technical risks sit in the Hardest problems table. What remains are assumpti
 
   Decided 22 November 2026: PlayStation VR2 through the official PC adapter. It runs on SteamVR, which is installed and is the active OpenXR runtime on the development machine. The link is DisplayPort, so there is no video-encoding load. The panels are 2000×2040 per eye at 90 or 120 Hz; SteamVR's actual render target is larger than the panel and is read from SteamVR at the M1 gate.
 
-- [ ] **Private prototype or public release?** Release brings content-rating and licence checks that a private build can skip.
-- [ ] **Budget for paid content.** Character Creator 5 is about $299; animation and interior packs vary. The plan works with free sources but paid packs save time.
-- [ ] **Agent permissions.** May agents install software, run multi-hour sweeps unattended and commit directly, or should each be approved?
-- [ ] **NPC build.** The spec defaults to an 80 kg adult male; mass and proportions change every tuning value.
+- [x] **Private prototype or public release?** Release brings content-rating and licence checks that a private build can skip.
+
+  Decided 23 November 2026: a private prototype for now; the question is decided again before M5. Third-party content is taken only under licences that allow publishing, so that a release stays possible.
+
+- [x] **Budget for paid content.** Character Creator 5 is about $299; animation and interior packs vary. The plan works with free sources but paid packs save time.
+
+  Decided 23 November 2026: free sources by default. When a paid pack would really save time (a recorded get-up clip at the M3 gate, for example), the agent brings the pack, its price and its licence, and the owner decides.
+
+- [x] **Agent permissions.** May agents install software, run multi-hour sweeps unattended and commit directly, or should each be approved?
+
+  Decided 23 November 2026: long runs (sweeps, the 50-fall stand) start without asking, in the background, with a report. Installing software needs the owner's consent. Commits only on the owner's command, to `main`; no push unless asked.
+
+- [x] **NPC build.** The spec defaults to an 80 kg adult male; mass and proportions change every tuning value.
+
+  Decided 23 November 2026: the 80 kg adult male, as built.
 
 ## Sources
 

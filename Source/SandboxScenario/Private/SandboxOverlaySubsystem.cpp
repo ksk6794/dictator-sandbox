@@ -39,13 +39,12 @@ namespace
 	const FLinearColor ColorStaticContact(0.35f, 0.6f, 1.0f);
 	const FLinearColor ColorHit(1.0f, 0.3f, 0.0f);
 	const FLinearColor ColorHandle(1.0f, 0.2f, 1.0f);
+	const FLinearColor ColorCaptureInside(0.2f, 1.0f, 0.9f);
 
 	// Line widths are in the world, not on the screen: a line is as wide from the session's camera at arm's
 	// length as it is from a scenario's camera three metres away.
 	constexpr float ThinCm = 0.3f;
 	constexpr float ThickCm = 0.6f;
-	// A foot's sole is what lies within this of its lowest point.
-	constexpr double SoleToleranceCm = 1.5;
 	// A muscle's error is green up to the first angle, yellow at the second and red from the third.
 	constexpr double ErrorGoodDeg = 2.0;
 	constexpr double ErrorWarnDeg = 8.0;
@@ -65,6 +64,7 @@ namespace
 	const FLayerName LayerTable[] = {
 		{ TEXT("com"), SandboxOverlay::Com },
 		{ TEXT("support"), SandboxOverlay::Support },
+		{ TEXT("capture"), SandboxOverlay::Capture },
 		{ TEXT("joints"), SandboxOverlay::Joints },
 		{ TEXT("assist"), SandboxOverlay::Assist },
 		{ TEXT("contacts"), SandboxOverlay::Contacts },
@@ -86,7 +86,7 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs OverlayCommand(
 		TEXT("Sandbox.Overlay"),
-		TEXT("Debug overlays: Sandbox.Overlay all | off | toggle | com,support,joints,assist,contacts,state,hands | -joints. Without an argument it prints what is on."),
+		TEXT("Debug overlays: Sandbox.Overlay all | off | toggle | com,support,capture,joints,assist,contacts,state,hands | -joints. Without an argument it prints what is on."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			USandboxOverlaySubsystem* Overlay = World ? World->GetSubsystem<USandboxOverlaySubsystem>() : nullptr;
@@ -97,7 +97,7 @@ namespace
 			}
 			if (Args.Num() == 0)
 			{
-				UE_LOG(LogSandbox, Display, TEXT("Sandbox.Overlay: %s. Layers: com support joints assist contacts state hands; also all, off, toggle"), *SandboxOverlay::LayerNames(Overlay->GetLayers()));
+				UE_LOG(LogSandbox, Display, TEXT("Sandbox.Overlay: %s. Layers: com support capture joints assist contacts state hands; also all, off, toggle"), *SandboxOverlay::LayerNames(Overlay->GetLayers()));
 				return;
 			}
 			uint32 Layers = 0;
@@ -125,7 +125,7 @@ bool SandboxOverlay::ParseLayers(const FString& Text, uint32 Current, uint32& Ou
 	}
 	if (Words.Num() == 0)
 	{
-		OutError = TEXT("no layer given (all, off, toggle, com, support, joints, assist, contacts, state, hands)");
+		OutError = TEXT("no layer given (all, off, toggle, com, support, capture, joints, assist, contacts, state, hands)");
 		return false;
 	}
 
@@ -164,7 +164,7 @@ bool SandboxOverlay::ParseLayers(const FString& Text, uint32 Current, uint32& Ou
 		const FLayerName* Layer = Algo::FindByPredicate(LayerTable, [&Name](const FLayerName& Candidate) { return Name == Candidate.Name; });
 		if (!Layer)
 		{
-			OutError = FString::Printf(TEXT("'%s' is not a layer (all, off, toggle, com, support, joints, assist, contacts, state, hands)"), *Word);
+			OutError = FString::Printf(TEXT("'%s' is not a layer (all, off, toggle, com, support, capture, joints, assist, contacts, state, hands)"), *Word);
 			return false;
 		}
 		(bMinus ? Removed : Added) |= Layer->Bit;
@@ -531,22 +531,17 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 		LowestCm = FMath::Min(LowestCm, Body.WorldTransform.GetLocation().Z);
 	}
 
-	// The feet that stand: those the floor (anything that does not move under physics) pushed on in the
-	// last step. The body's own balance controller will work this out for itself in M3.
-	TArray<FName, TInlineAllocator<2>> Standing;
+	// The body's own sense of balance, as of the physics step that was last made: the feet the floor pushed
+	// on, the support polygon under them and the capture point. What is drawn is what the controller goes by.
+	// A passive body senses nothing.
+	FSandboxBalanceView Balance;
 	if (Controller)
 	{
-		for (const FName Foot : { Controller->GetTuning().Rig.FootLeft, Controller->GetTuning().Rig.FootRight })
-		{
-			if (ShownContacts.ContainsByPredicate([Foot](const ASandboxOverlayActor::FContact& Contact) { return Contact.bStatic && Contact.Bone == Foot; }))
-			{
-				Standing.Add(Foot);
-			}
-		}
+		Controller->MeasureBalance(Balance);
 	}
-	TArray<FVector2D> Polygon;
-	const double SoleCm = FSandboxBodyProbe::SupportPolygon(Mesh, Standing, SoleToleranceCm, Polygon);
-	const double FloorCm = Polygon.Num() > 0 ? SoleCm : LowestCm;
+	const TArray<FVector2D>& Polygon = Balance.SupportPolygon;
+	const int32 StandingFeet = Balance.StandingFeet.Num();
+	const double FloorCm = Polygon.Num() > 0 ? Balance.SupportHeightCm : LowestCm;
 	const double MarginCm = FSandboxBodyProbe::MarginInsidePolygon(Polygon, FVector2D(Com.X, Com.Y));
 
 	if ((Layers & SandboxOverlay::Support) && Polygon.Num() > 0)
@@ -568,6 +563,18 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 		Cross(Com, 6.0, Color, ThickCm);
 		Line(Com, Ground, Color, ThinCm);
 		Ring(Ground, 3.0, Color, ThickCm);
+	}
+
+	if ((Layers & SandboxOverlay::Capture) && Balance.bValid)
+	{
+		// Where the body would have to be supported to come to rest: ahead of the centre of mass by its
+		// velocity. Inside the support polygon the body can stop where it stands; outside it needs a step.
+		const FLinearColor Color = Polygon.Num() >= 3 ? (Balance.CaptureMarginCm > 0.0 ? ColorCaptureInside : ColorBad) : ColorSlack;
+		const FVector Ground(Com.X, Com.Y, FloorCm + 0.3);
+		const FVector Capture(Balance.CapturePoint.X, Balance.CapturePoint.Y, FloorCm + 0.3);
+		Line(Ground, Capture, Color, ThickCm);
+		Ring(Capture, 5.0, Color, ThickCm);
+		Cross(Capture, 5.0, Color, ThinCm);
 	}
 
 	FSandboxBodyControlView View;
@@ -669,8 +676,11 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 
 		if (Polygon.Num() >= 3)
 		{
-			CornerLabel(FString::Printf(TEXT("Centre of mass: %.0f cm above the soles, %.1f cm %s the support polygon (%d feet)"),
-				Com.Z - FloorCm, FMath::Abs(MarginCm), MarginCm > 0.0 ? TEXT("inside") : TEXT("OUTSIDE"), Standing.Num()), MarginCm > 0.0 ? ColorGood : ColorBad);
+			CornerLabel(FString::Printf(TEXT("Centre of mass: %.0f cm above the soles, %.1f cm %s the support polygon (%d feet, %.0f and %.0f N)"),
+				Com.Z - FloorCm, FMath::Abs(MarginCm), MarginCm > 0.0 ? TEXT("inside") : TEXT("OUTSIDE"), StandingFeet, Balance.FootForceN[0], Balance.FootForceN[1]), MarginCm > 0.0 ? ColorGood : ColorBad);
+			CornerLabel(FString::Printf(TEXT("Capture point: %.1f cm %s the support polygon, %.1f cm ahead of the centre of mass (%.2f m/s)"),
+				FMath::Abs(Balance.CaptureMarginCm), Balance.CaptureMarginCm > 0.0 ? TEXT("inside") : TEXT("OUTSIDE"),
+				FVector2D::Distance(Balance.CapturePoint, FVector2D(Com.X, Com.Y)), Balance.Velocity.Size2D() * 0.01), Balance.CaptureMarginCm > 0.0 ? ColorGood : ColorBad);
 		}
 		else
 		{

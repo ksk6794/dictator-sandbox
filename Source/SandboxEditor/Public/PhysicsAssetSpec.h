@@ -104,9 +104,11 @@ struct SANDBOXEDITOR_API FPhysicsAssetSpec
 	TArray<FPhysicsBodySpec> Bodies;
 	/** One entry per written joint; a mirrored joint has no entry of its own. */
 	TArray<FPhysicsJointSpec> Joints;
-	/** Extra bone pairs whose collision is switched off or on. Jointed pairs are always off. */
+	/**
+	 * Bone pairs that do not collide with each other, besides the jointed ones, which never do. Every other
+	 * pair of bodies collides.
+	 */
 	TArray<TPair<FName, FName>> DisableCollision;
-	TArray<TPair<FName, FName>> EnableCollision;
 
 	const FPhysicsBodySpec* FindBody(FName Bone) const;
 	/** The joint whose child, or mirrored child, is the bone. bOutMirrored tells which. */

@@ -13,7 +13,14 @@ that mirror left to right, and passes the push matrix; the player has physical h
 with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
 test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
 on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
-tunnelling. Next is M3, balance and recovery.
+tunnelling. **M3, balance and recovery, is in progress: part 1 of 7 is done** (the plan and the parts are in
+the M3 section of `docs/PRD.md`). The body senses its own balance (standing feet, support polygon, capture
+point) but does not act on it yet; every run measures energy, rest after a fall and penetration of the body
+into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
+and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
+physics asset had no self-collision, the standing character slept one substep in six, and a run on a busy
+machine could differ from the one before it (the solver's determinism mode is now on). Next is part 2,
+the source of the target pose (a native animation instance, poses from text).
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -30,10 +37,12 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Unit tests | `powershell -ExecutionPolicy Bypass -File Tools\test.ps1` |
 | One scenario, headless | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -Name drop_passive` |
 | One scenario with a screenshot | add `-Shot` (renders offscreen, saves `final.png` next to the metrics); `-ShotAt "3.07,3.25"` adds pictures at those simulated times (`shot_3.070.png`) |
-| Debug overlays in the pictures | add `-Overlay all` to a `-Shot` run or to `play.ps1` (or layers: `com,support,joints,assist,contacts,state,hands`); in a session the V key, in any console `Sandbox.Overlay all\|off\|toggle\|<layers>` |
+| Debug overlays in the pictures | add `-Overlay all` to a `-Shot` run or to `play.ps1` (or layers: `com,support,capture,joints,assist,contacts,state,hands`); in a session the V key, in any console `Sandbox.Overlay all\|off\|toggle\|<layers>` |
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
-| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each) |
+| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight at a time; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Parallel 1` for physics step times nothing disturbed) |
+| Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
+| Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (128 pushes, the M2 fall rules) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
@@ -45,25 +54,29 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 6.3 minutes (34 scenarios, one after
-another; NFR-6 asks for 5 with the build), the push matrix 3 minutes, the session's self-test 10 s, the
-whole bootstrap about 10 minutes.
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 100 s (34 scenarios, eight at a time;
+6 minutes one after another), the push matrix 3 minutes, a sweep of 7 runs 17 s, the session's self-test
+10 s, the whole bootstrap about 5 minutes.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
 scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
+
+Before a change to the body or its controller, take a baseline (`suite.ps1 -SaveBaseline <name>`); after
+it, `suite.ps1 -Baseline <name>` names every scenario whose hashes moved. Scenarios the change should not
+touch must not be in that list, and the ones that are get explained in the part's report.
 
 ## Layout
 
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements, the support polygon). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
-| `Source/SandboxScenario` | `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
+| `Source/SandboxScenario` | `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
-| `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers. |
+| `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` runs scenario processes side by side for the suite, the push matrix and sweeps). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
 | `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
 | `docs/` | `PRD.md` (plan), `testing.md` (repeatability policy and measurements). |
@@ -89,10 +102,15 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **Overlays only look.** `USandboxOverlaySubsystem` reads bodies through const accessors and listens to
   their contact events; it writes nothing to a body and changes no setting of one. Without a renderer it
   stays off, does not tick and listens to nothing. A run must give the same hashes with overlays and without.
+- **Measuring changes nothing.** What the runner and the body's balance sense read (bodies, scene queries,
+  contact events) must leave a run's hashes as they were. A new metric is checked that way before it is used.
+- **A body under control never sleeps** (`USandboxBodyController::Start` sets its bodies to never sleep). It
+  has to sense its balance and answer a touch at once; see the pitfall about the solver's sleep below.
 - **Time control never changes the physics step.** Pause, single step and slow motion decide on which
   frames the world steps; a step is always 1/90 s in 2 substeps. No time dilation.
 - **Physics timing is fixed.** Synchronous physics, 90 Hz frame, 2 substeps (180 Hz). Scenarios force a
-  fixed engine timestep. Do not read wall-clock time in simulation code.
+  fixed engine timestep. Do not read wall-clock time in simulation code. The solver's determinism mode is
+  on (`p.Chaos.Solver.Deterministic=1` in `Config/DefaultEngine.ini`); every scenario run checks it.
 - **Units.** Unreal units in code (cm, kg, cm/s). Scenario files and metrics use the unit in the field
   name (`_cm`, `_s`, `_ns` for newton-seconds, `_mps`).
 - **Tests are named `DictatorSandbox.*`.** The filter is a substring match, and engine plugins already use
@@ -139,6 +157,39 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   through stiff joints does not converge: the feet rock at 0.5 rad/s and walk across the floor. The
   controller asks for 64 on the NPC's own bodies (`solver.position_iterations`); it costs 0.4 ms per frame
   instead of 0.26. Shock-propagation and mass-ratio console variables made no difference.
+  Measured again in M3 on a body that does not sleep, the gap is smaller: feet at 0.23 rad/s with 8, 0.12
+  with 16, 0.15 with 64, pelvis drift 1.5, 1.2 and 1.0 cm. Part of the M2 figure was the sleep below.
+- **Chaos puts a standing character's island to sleep, and the controller's next tick wakes it.** A body
+  that holds still is still enough for the solver's sleep thresholds. Under control it then slept one
+  substep in every six: no gravity, no contacts and no contact events in that substep. Nothing looked
+  wrong; the feet reported five sixths of the body's weight, the balance assist's load read 0.047 of body
+  weight instead of 0.0185, and feet at 8 solver iterations rocked twice as fast as they do awake. Found
+  only because the floor's push on the feet did not add up to the weight. The controller's bodies are now
+  `ESleepType::NeverSleep`. When a sum of forces or impulses is short by a simple fraction, suspect sleep
+  (`-CVars "p.Chaos.Solver.Sleep.Enabled=0"` to compare).
+- **`FPhysicsAssetUtils::CreateNewBody` switches collision off between the new body and all earlier ones**
+  unless `FPhysAssetCreateParams::bDisableCollisionsByDefault` is cleared. The generated NPC asset had every
+  one of its 120 pairs off from M1 to M3: no self-collision, a forearm 17 cm inside the chest after a fall.
+  The generator's log listed "colliding bodies" from its own plan, not from the asset. Read such a fact
+  back from the asset: `penetration.self_collision_pairs` in `metrics.json` is what the run-time asset
+  allows (101 for the NPC), and a metric that reads exactly 0 in every run is a metric to distrust.
+- **Bodies that collide must not overlap in the reference pose.** They push each other apart from the first
+  step: with the two thighs colliding (1.4 cm into each other) the standing character's feet turned at
+  1.3 rad/s and the assist's load went from 0.05 to 0.22. Such pairs go under `collision.disable` in the
+  spec; `penetration.spawn_self_cm` and the check `spawn_pose_clear_of_itself` find them.
+- **Without its determinism mode, Chaos can give a run that differs from the one before it.** It gathers
+  contact constraints from worker threads in the order they finish. On a busy machine one run of
+  `drop_passive` in about 25 came out differently from the tenth digit on; 96 runs made on purpose did not
+  show it again. The mode (`p.Chaos.Solver.Deterministic=1`) changes neither the usual results nor the step
+  time. A baseline comparison that names a scenario the change cannot have touched is how this shows: run
+  that scenario again before believing it.
+- **A console variable the engine does not know is accepted in silence.** `-dpcvars` creates a dummy
+  variable and the run is unchanged, which reads like "this setting makes no difference"
+  (`p.Chaos.Solver.SleepEnabled` instead of `p.Chaos.Solver.Sleep.Enabled` cost a wrong conclusion for a
+  few minutes). `Tools\scenario.ps1` now prints `SCENARIO WARNING` for such a name.
+- **PowerShell variable names do not tell case apart, and a typed parameter converts what is assigned to
+  it.** In a script with a `[string]$Metrics` parameter, `$metrics = Read-JsonFile ...` stores the text of
+  the object, and every field of it reads as empty. Give locals names no parameter has.
 - **A passive body runs on the engine's 8 solver iterations; the NPC's 64 come from its controller.** A
   figure taken from a passive scenario is not the NPC's: hanging from one hand, the wrist stretches by
   2.9 cm at 8 iterations and 0.5 cm at 64 (`-CVars "p.Chaos.Solver.Iterations.Position=64"` to compare).
@@ -150,7 +201,8 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
   character "falling" for good. The controller uses the mass-weighted root mean square over all bodies.
 - **Scenario time and controller time differ by one frame:** the controller's first tick comes one frame
   after the body is spawned. Result files use the run's own frame count; do not mix the two.
-- **A bash heredoc breaks on an apostrophe in its body when run through the agent's shell tool.** Write the
+- **A bash heredoc breaks on an apostrophe in its body when run through the agent's shell tool,** and one
+  that survives has its backslashes halved (`\\n` arrives as `\n`, `\t` in a path as a tab). Write the
   script to a file with the file tool and run that.
 - **Chaos ignores new solver iteration counts on a body whose simulation island does not change.** The
   island's counts are worked out only when something joins or leaves it (`FPBDIslandManager`; the engine
@@ -189,6 +241,9 @@ scenarios pass, not when the code compiles. For anything visual, run a scenario 
 - **A contact's peak force is not limited by a spring's force cap.** A moving hand that is stopped gives up
   its momentum too: 14 N*s in one frame reads as 1270 N. Check a cap with a hand held against something
   (`final_contact_force_n`), as `effector_force_cap` does.
+- **A substep in which a body sleeps has no contact event.** Contact events exist only for contacts that
+  carried an impulse in that substep, so anything added up from them is short by the substeps slept
+  through. See the pitfall about the solver's sleep.
 - **Contact events arrive once per pair of bodies and substep, and the impulse vector's sign follows the
   solver's order of the pair.** Use `Hit.ImpactNormal` times the impulse's size to add them up. The floor
   under the feet reports the character's weight in every frame (8.7 N*s at 90 Hz, above the flinch

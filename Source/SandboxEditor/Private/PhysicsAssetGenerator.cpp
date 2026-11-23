@@ -227,9 +227,13 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 	Asset->UpdateBodySetupIndexMap();
 
 	// ---- Bodies: shapes from the template, mass from the spec.
-	// Which new body each template body ended up in, for carrying over the collision table.
+	// Which new body each template body ended up in: a template body may give its shapes to one body only.
 	TMap<int32, int32> TemplateToNewBody;
-	const FPhysAssetCreateParams CreateParams;
+	// The engine's default switches collision off between a new body and every body made before it, which
+	// left the whole asset without self-collision: the table below only ever takes pairs away. Bodies start
+	// out colliding with each other, and the table decides which pairs do not.
+	FPhysAssetCreateParams CreateParams;
+	CreateParams.bDisableCollisionsByDefault = false;
 	for (const FPhysicsBodySpec& BodySpec : Spec.Bodies)
 	{
 		FTransform BodyBone;
@@ -363,19 +367,10 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 	}
 
 	// ---- Collision pairs.
-	// Jointed bodies never collide. Other pairs inherit "off" if any pair of the template bodies they were
-	// built from was off (their shapes may overlap at rest). The spec can then switch pairs off or on.
+	// Jointed bodies never collide. Every other pair does, unless the spec switches it off: that is for
+	// bodies whose shapes overlap in the reference pose and would push each other apart from the first step.
+	// The template's own table is not carried over: it is not the same on the left and on the right.
 	TSet<FRigidBodyIndexPair> Disabled = JointedPairs;
-	for (const TPair<int32, int32>& A : TemplateToNewBody)
-	{
-		for (const TPair<int32, int32>& B : TemplateToNewBody)
-		{
-			if (A.Value < B.Value && !Template->IsCollisionEnabled(A.Key, B.Key))
-			{
-				Disabled.Add(FRigidBodyIndexPair(A.Value, B.Value));
-			}
-		}
-	}
 	const auto ResolvePair = [&](const TPair<FName, FName>& Pair, FRigidBodyIndexPair& OutPair)
 	{
 		const int32 A = Asset->FindBodyIndex(Pair.Key);
@@ -393,17 +388,6 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		FRigidBodyIndexPair IndexPair(0, 0);
 		if (!ResolvePair(Pair, IndexPair)) { return nullptr; }
 		Disabled.Add(IndexPair);
-	}
-	for (const TPair<FName, FName>& Pair : Spec.EnableCollision)
-	{
-		FRigidBodyIndexPair IndexPair(0, 0);
-		if (!ResolvePair(Pair, IndexPair)) { return nullptr; }
-		if (JointedPairs.Contains(IndexPair))
-		{
-			OutError = FString::Printf(TEXT("Collision cannot be enabled between jointed bodies [%s, %s]"), *Pair.Key.ToString(), *Pair.Value.ToString());
-			return nullptr;
-		}
-		Disabled.Remove(IndexPair);
 	}
 	for (const FRigidBodyIndexPair& Pair : Disabled)
 	{

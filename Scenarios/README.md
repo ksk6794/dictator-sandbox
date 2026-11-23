@@ -1,7 +1,8 @@
 # Scenarios
 
 Each `*.json` file here is one reproducible physics run. `Tools\scenario.ps1 -Name <file name without .json>`
-runs it at a fixed timestep with no renderer and writes `Saved\Scenarios\<name>\metrics.json` and `trace.json`.
+runs it at a fixed timestep with no renderer and writes `Saved\Scenarios\<name>\metrics.json`, `trace.json`
+and, for a simulated body, `series.csv`.
 
 The file name must equal the `name` field (a unit test checks this).
 
@@ -178,6 +179,11 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_effector_penetration_cm` | No hand's sphere was found deeper inside a body of the character or the static world, after any frame |
 | `min_effector_impact_speed_mps` | Every hand that touched something was moving at least this fast when it first did: a strike arrived as a strike. Fails if no hand touched anything |
 | `min_struck_displacement_cm` | The body of the character each hand touched first moved at least this far from where it was just before. Fails if no hand touched the character |
+| `min_com_margin_cm`, `min_capture_margin_cm` | The centre of mass, or the capture point, never got closer to the edge of the support polygon while the body was upright (after `settle_s`), and some foot stood in every such frame. Negative values allow it to be outside by that much. Active control only |
+| `max_energy_gain_j` | The body's energy (kinetic plus gravitational) never rose by more above its lowest value since the last input. See "Balance, energy and penetration" |
+| `max_rest_after_fall_s` | The body went into `falling` and was at rest, for good, within this time of it. Fails if it never fell. Active control only |
+| `max_body_penetration_cm` | No shape of the body was found deeper inside the world (floor, walls, props), from the sixth frame on |
+| `max_self_penetration_cm` | No two bodies of the character that may collide were found deeper inside each other, from the sixth frame on |
 
 A physics asset can be authored with joint anchors that do not coincide in the reference pose; the solver
 closes that gap in the first frames. It is reported as `metrics.initial_joint_offset_cm` and is not part of
@@ -185,14 +191,88 @@ the stretch metric. In a body that is not simulated nothing closes it and nothin
 body has that offset and no stretch figure at all (the stock MetaHuman asset: 3.6 cm, in the portrait
 scenarios).
 
-Four checks always run: no NaN, the body stays within 50 m of the origin, every frame used the fixed
-timestep, and every event found its body. With active control a fifth one checks that every joint of the
-physics asset got a muscle, and with hands two more: that none of them was snapped to its target, and that
-none went through anything (`effectors_not_tunnelled`).
+Five checks always run: no NaN, the body stays within 50 m of the origin, every frame used the fixed
+timestep, the solver's determinism mode is on (`deterministic_solver`: `p.Chaos.Solver.Deterministic`, set
+in `Config/DefaultEngine.ini`; without it a run on a busy machine can differ from the one before it), and
+every event found its body. With active control two more: that every joint of the physics
+asset got a muscle, and that no two bodies that may collide overlap in the spawn pose
+(`spawn_pose_clear_of_itself`: they would push each other apart from the first step, and the pose could not
+be held). With hands two more: that none of them was snapped to its target, and that none went through
+anything (`effectors_not_tunnelled`).
 
-`Tools\suite.ps1` holds the whole set to two limits on top of each scenario's own expectations, and prints
-the worst scenario of each: no simulated body's joints stretch by more than 2 cm, and no scenario's physics
-step takes more than 1.5 ms on average.
+## The whole set
+
+`Tools\suite.ps1` runs every scenario of this directory, eight at a time (`-Parallel`), in about 100 s. The
+runs do not depend on each other and each has its own fixed timestep, so their results are the same as
+when run one after another; only the wall-clock figures differ. It holds the whole set to two limits on top
+of each scenario's own expectations, and prints the worst scenario of each: no simulated body's joints
+stretch by more than 2 cm, and no scenario's physics step takes more than 1.5 ms on average.
+
+The physics step is timed by the clock, and a run that shares the processor with seven others reads about
+twice as long as it is. A scenario that is over a step limit after the parallel pass is therefore run again
+by itself, and that run counts. Sharing never makes a step read shorter, so nothing over the limit slips
+through; for figures to write down, use `-Parallel 1` (6.5 minutes).
+
+`Tools\baseline.ps1 -Save <name>` keeps the results of the latest suite run under `Saved\Baselines\<name>`,
+and `-Compare <name>` says which scenarios have other hashes now and what else moved in them (states,
+drift, stretch, assist load, margins, energy, penetration). `suite.ps1 -SaveBaseline <name>` and
+`-Baseline <name>` do both in one go. A baseline is taken before a change to the body or its controller;
+the scenarios the change should not touch must come out with the same two hashes.
+
+`Tools\sweep.ps1` runs chosen scenarios over a set of tuning values and puts chosen metrics in one table:
+
+```
+Tools\sweep.ps1 -Name iterations -Scenarios stand_npc -Vary "solver.position_iterations=4,8,16,32,64" `
+    -Metrics "metrics.max_pelvis_drift_cm,metrics.max_settled_angular_speed_rads,control.assist_load.force_share_mean"
+```
+
+`-Vary "a=1,2;b=3,4"` runs every combination, with `-OneAtATime` each value alone; `-Files <dir>` adds
+generated scenario files; the columns are paths into `metrics.json`. The values are passed to each run as
+`-Tune`, so `Config/Tuning` is not written to. The table is printed and saved as
+`Saved\Sweeps\<name>\sweep.csv` and `sweep.json`; every run keeps its own `metrics.json` and `series.csv`.
+
+## Balance, energy and penetration
+
+These are measured in every run with a simulated body, after every frame, by reading the bodies and asking
+the scene. Nothing is changed by it: a run gives the same hashes as before they were measured.
+
+**Balance** (`control.balance`, active control only) is what the body itself senses
+(`USandboxBodyController::MeasureBalance`): a foot stands when the floor pushes up on it with at least
+`balance.foot_contact_min_n`; the support polygon is the hull of the soles of the standing feet; the
+capture point lies ahead of the centre of mass by its horizontal velocity times sqrt(height / gravity), and
+is where the body would have to be supported to come to rest. While it is inside the support polygon the
+body can stop where it stands. The figures cover the frames after `settle_s` in which the body is upright
+(standing or flinching): the lowest and the mean margin of the centre of mass and of the capture point to
+the polygon's edge, how many frames the capture point was outside, how many feet stood, and
+`support_share_mean`, the floor's push on the two feet over the body's weight (1 when the feet carry it).
+
+**Energy** (`energy`) is kinetic (translation and rotation of every body) plus gravitational above the
+floor. Falling turns one into the other, so kinetic energy alone says nothing; their sum can only go down
+while nothing feeds the body. `max_gain_j` is the largest rise of the sum above its lowest value since the
+last input, where an input is a scripted impulse, a pin, a console command, a tuning change or a hand
+touching something. A body under control is watched only while it is `falling` or `lying`: upright, its
+muscles and the assist hold it up and that is no fault. What the figure catches is a body thrown back up by
+the solver or by its own muscles: a passive NPC dropped from 1.5 m lands with a foot 8.4 cm inside the
+floor, and being pushed out again gives it 171 J (`drop_npc`); an 80 kg body lifted by 1 cm is 7.8 J.
+
+**The fall** (`control.fall`): when the controller let the body go (`started_t`), how long after that it
+was at rest for good (`rest_after_s`), and how far and which way the centre of mass went over the floor
+(`distance_cm`, `direction_deg`: 0 is +x, 90 is +y). At rest means that the body as a whole moves no faster
+than 0.05 m/s and turns no faster than 0.2 rad/s (root mean square over its bodies, weighted by mass).
+These are the runner's own figures and do not follow the tuning's rest thresholds.
+
+**Penetration** (`penetration`): how deep a shape of the body is inside the world (`max_world_cm`, with the
+bone, what it is inside and when), and how deep two bodies of the character are inside each other
+(`max_self_cm`), each as the distance the shape would have to move to be clear. The player's hands are
+left out here: they are measured on their own. Bodies of the character count against each other only where
+the physics asset lets them collide; `self_collision_pairs` says how many such pairs there are, because
+with 0 the body passes through itself and the figure reads 0 whatever happens. The first five frames are
+reported apart (`spawn_world_cm`, `spawn_self_cm`). Boxes, capsules and spheres are measured;
+`unmeasured_shapes` counts the others.
+
+`series.csv` has all of this for every frame: time, state, feet standing, the floor's force on each foot,
+kinetic and gravitational energy, the body's speed as a whole, both margins, both penetrations and the
+assist's force share.
 
 The player of a scenario run is a spectator without a body: the project's own pawn, with its two physical
 hands, exists only in an interactive session.
@@ -222,15 +302,16 @@ Debug overlays draw what the character's controller and the hands are doing on t
 | Layer | Shows |
 | --- | --- |
 | `com` | The centre of mass, a line down to the floor and a ring where it lands: green inside the support polygon, red outside, grey when no foot stands |
-| `support` | The support polygon, yellow: the hull of the soles of the feet the floor pushed on in the last step |
+| `support` | The support polygon, yellow: the hull of the soles of the feet that stand, as the body itself senses them |
+| `capture` | The capture point as a ring on the floor with a line from under the centre of mass: turquoise inside the support polygon, red outside, grey when no foot stands |
 | `joints` | Each bone from its joint (white; orange while a flinch has weakened its muscle, grey without a drive), and where its muscle turns it to: green within 2 degrees, yellow at 8, red from 20 |
 | `assist` | Each balance-assist target as a cyan cross, with a line to the body it holds |
 | `contacts` | The contacts of the last physics step as arrows along the force on the character or the hand, 1 cm per 20 N: blue against the floor and walls, orange with the force in newtons against a body that moves |
-| `state` | The controller's state, its cause and its age above the head, and a block of figures at the bottom left: assist load, centre of mass against the support polygon, fastest joint, the hands |
+| `state` | The controller's state, its cause and its age above the head, and a block of figures at the bottom left: assist load, centre of mass and capture point against the support polygon with the floor's force on each foot, fastest joint, the hands |
 | `hands` | Each hand's target as a ring and the spring between target and hand: green, yellow from half the force cap, red at the cap. The drag handle in magenta |
 
 They are switched by the console command `Sandbox.Overlay`: `all`, `off`, `toggle`, layers by name
-(`Sandbox.Overlay com,support,joints`), or a layer taken away (`Sandbox.Overlay -joints`). A session has
+(`Sandbox.Overlay com,support,capture`), or a layer taken away (`Sandbox.Overlay -joints`). A session has
 the V key for `toggle`; `Tools\play.ps1 -Overlay all` and `Tools\scenario.ps1 -Shot -Overlay all` start
 with them on, and a scenario can switch them itself with a `console` event. With `-ShotAt "3.07,3.25"` a
 rendered scenario run also saves a picture at those simulated times (`shot_3.070.png`), since what a strike
@@ -291,14 +372,20 @@ for the compositor, so use `gpu_ms` against the frame budget.
   changes nothing has an empty list. `states` is the state timeline: each state with the simulated time and
   frame of the first physics step made in it and what caused it; `end_state` and `state_sequence` are the
   same in short. A new state brings its own tuning values, which is not counted as a tuning change.
+  `balance` and `fall` are described under "Balance, energy and penetration".
   The load is the balance assist's commanded force as a fraction of body
   weight (`force_share_*`) and its commanded torque as a fraction of weight times centre-of-mass height
   (`torque_share_*`), mean and maximum after `settle_s`. It is computed from the assist springs' settings
   and the bodies' distance from their targets, because the solver does not report drive forces.
+- `energy` and `penetration`: see "Balance, energy and penetration".
 - `physics_step_ms`: wall-clock time of the solver per frame, all substeps together (mean, median, 99th
   percentile, maximum), and `solver_steps_per_frame`, which must read 2.
 - `timing`, and two `hashes`: a CRC of all body transforms over every frame and one of all bone transforms.
   Equal hashes mean two runs were identical in every frame.
+
+A console variable given with `-CVars` that the engine does not know is accepted in silence and changes
+nothing, which reads like proof that it makes no difference. `Tools\scenario.ps1` prints
+`SCENARIO WARNING` for such a name.
 
 `trace.json` holds the transforms at each checkpoint for measuring how far two runs drifted apart
 (`Tools\compare-runs.ps1`). Its first checkpoint (`t` = 0, `frame` = -1) is the spawn pose before any physics

@@ -1,11 +1,15 @@
 #include "SandboxBodyController.h"
 
+#include "SandboxBodyProbe.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "PhysicsControlComponent.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/ConstraintInstance.h"
+#include "Chaos/RigidParticles.h"
+#include "Physics/Experimental/PhysInterface_Chaos.h"
+#include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "SandboxCore.h"
 #include "SandboxParamStore.h"
 
@@ -166,7 +170,30 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	WeightN = TotalMassKg * GravityMps2;
 	StandingComHeightM = FMath::Max((Mesh->GetSkeletalCenterOfMass().Z - Mesh->GetComponentLocation().Z) * 0.01, 0.01);
 
+	// The sense of balance: what the floor pushes on each body with is collected from the contact events.
+	GravityCmS2 = GravityMps2 * 100.0;
+	SupportImpulseNs.Init(FVector::ZeroVector, Mesh->Bodies.Num());
+	SupportStepS = 0.0;
+	LastSupportHeightCm = Mesh->GetComponentLocation().Z;
+	Balance = FSandboxBalanceView();
+
 	PushTuningToControls();
+
+	// A body under control never sleeps. A standing character is still enough for the solver to put its
+	// island to sleep, and the next tick woke it again: one substep in six it was frozen, with no gravity,
+	// no contacts and no contact events, so the feet seemed to carry five sixths of the weight. A body that
+	// has to sense its balance and answer a touch at once is awake for as long as it is controlled.
+	for (FBodyInstance* Body : Mesh->Bodies)
+	{
+		if (Body && Body->IsValidBodyInstance())
+		{
+			FPhysicsCommand::ExecuteWrite(Body->GetPhysicsActor(), [](const FPhysicsActorHandle& Actor)
+			{
+				Actor->GetGameThreadAPI().SetSleepType(Chaos::ESleepType::NeverSleep);
+			});
+		}
+	}
+	Mesh->WakeAllRigidBodies();
 
 	// The body learns that it was hit from its own contacts: the physics scene reports every contact of
 	// these bodies after the step, with its impulse. Nothing here knows what the other body is.
@@ -295,10 +322,8 @@ void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
 
 void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// A hit is a contact with another body that moves under physics: a hand, a thrown prop. The floor
-	// under the feet pushes back with the character's whole weight in every step and is no hit, and
-	// neither is an arm resting against the character's own side.
-	if (!bStarted || !OtherComponent || OtherComponent == Mesh || !OtherComponent->IsSimulatingPhysics(Hit.BoneName))
+	// An arm resting against the character's own side is neither a hit nor support.
+	if (!bStarted || !OtherComponent || OtherComponent == Mesh)
 	{
 		return;
 	}
@@ -306,6 +331,19 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	// the solver holds the pair in; the normal is always given from this body's side, so the two together
 	// give impulses that add up properly when one hand touches several of the character's bodies.
 	const FVector ImpulseNs = Hit.ImpactNormal * (NormalImpulse.Size() * 0.01);
+
+	// A hit is a contact with another body that moves under physics: a hand, a thrown prop. The floor
+	// under the feet pushes back with the character's whole weight in every step and is no hit: it is what
+	// the body stands on, and is kept for the sense of balance.
+	if (!OtherComponent->IsSimulatingPhysics(Hit.BoneName))
+	{
+		const FBodyInstance* Body = Mesh->GetBodyInstance(Hit.MyBoneName);
+		if (Body && SupportImpulseNs.IsValidIndex(Body->InstanceBodyIndex))
+		{
+			SupportImpulseNs[Body->InstanceBodyIndex] += ImpulseNs;
+		}
+		return;
+	}
 	ContactImpulseNs += ImpulseNs.Size();
 	++ContactReports;
 	FeelImpulse(Hit.MyBoneName, ImpulseNs);
@@ -515,6 +553,20 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 		FollowParams();
 	}
 
+	// What the body senses of its balance at the start of this step: the bodies as the last step left them,
+	// and the floor's push on the feet during it. The impulses collected since are then cleared, and the
+	// events of the coming step fill them again.
+	MeasureBalance(Balance);
+	if (Balance.IsSupported())
+	{
+		LastSupportHeightCm = Balance.SupportHeightCm;
+	}
+	for (FVector& Impulse : SupportImpulseNs)
+	{
+		Impulse = FVector::ZeroVector;
+	}
+	SupportStepS = DeltaTime;
+
 	Control->UpdateTargetCaches(DeltaTime);
 	UpdateState(DeltaTime);
 	UpdateAssistLoad();
@@ -522,6 +574,46 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	// Advanced last: during a tick this is the time at which the coming physics step begins.
 	ElapsedS += DeltaTime;
+}
+
+void USandboxBodyController::MeasureBalance(FSandboxBalanceView& OutView) const
+{
+	OutView = FSandboxBalanceView();
+	// Before the first step under the controller no contact has been reported: nothing is known yet.
+	if (!bStarted || !Mesh || SupportStepS <= 0.0)
+	{
+		return;
+	}
+
+	TArray<FSandboxBodySample> Bodies;
+	FSandboxBodyProbe::SampleBodies(Mesh, Bodies);
+	OutView.CenterOfMass = FSandboxBodyProbe::CenterOfMass(Bodies);
+	OutView.Velocity = FSandboxBodyProbe::CenterOfMassVelocity(Bodies);
+
+	// A foot stands when the floor pushed up on it hard enough over the last step.
+	const FName Feet[2] = { Tuning.Rig.FootLeft, Tuning.Rig.FootRight };
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const FBodyInstance* Foot = Mesh->GetBodyInstance(Feet[Side]);
+		if (Foot && SupportImpulseNs.IsValidIndex(Foot->InstanceBodyIndex))
+		{
+			OutView.FootForceN[Side] = SupportImpulseNs[Foot->InstanceBodyIndex].Z / SupportStepS;
+			if (OutView.FootForceN[Side] >= Tuning.Balance.FootContactMinN)
+			{
+				OutView.StandingFeet.Add(Feet[Side]);
+			}
+		}
+	}
+
+	const double SoleHeightCm = FSandboxBodyProbe::SupportPolygon(Mesh, OutView.StandingFeet, Tuning.Balance.SoleToleranceCm, OutView.SupportPolygon);
+	OutView.SupportHeightCm = OutView.IsSupported() ? SoleHeightCm : LastSupportHeightCm;
+	OutView.CapturePoint = FSandboxBodyProbe::CapturePoint(OutView.CenterOfMass, OutView.Velocity, OutView.CenterOfMass.Z - OutView.SupportHeightCm, GravityCmS2);
+	if (OutView.IsSupported())
+	{
+		OutView.CenterOfMassMarginCm = FSandboxBodyProbe::MarginInsidePolygon(OutView.SupportPolygon, FVector2D(OutView.CenterOfMass.X, OutView.CenterOfMass.Y));
+		OutView.CaptureMarginCm = FSandboxBodyProbe::MarginInsidePolygon(OutView.SupportPolygon, OutView.CapturePoint);
+	}
+	OutView.bValid = true;
 }
 
 void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) const

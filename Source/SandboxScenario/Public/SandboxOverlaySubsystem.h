@@ -30,14 +30,16 @@ namespace SandboxOverlay
 		State = 1 << 5,
 		/** The hands and the drag handle: target against body, and how hard the spring pulls. */
 		Hands = 1 << 6,
+		/** The capture point: where the body would have to be supported to come to rest, against the support polygon. */
+		Capture = 1 << 7,
 
 		None = 0,
-		All = Com | Support | Joints | Assist | Contacts | State | Hands
+		All = Com | Support | Capture | Joints | Assist | Contacts | State | Hands
 	};
 
 	/**
 	 * Turns the argument of the console command into a set of layers: "all", "off" (or "none"), "toggle"
-	 * (off if anything is on, else all), or names joined by commas or spaces, "com,support,joints". A name
+	 * (off if anything is on, else all), or names joined by commas or spaces, "com,support,capture". A name
 	 * with a minus in front takes that layer away from what is on: "-joints". False with a reason for a name
 	 * that is not a layer.
 	 */
@@ -101,10 +103,10 @@ public:
 };
 
 /**
- * Debug overlays (FR-13): centre of mass, support polygon, joint drive targets against the actual pose,
- * balance-assist targets, contacts, the controller's state, the hands.
+ * Debug overlays (FR-13): centre of mass, support polygon, capture point, joint drive targets against the
+ * actual pose, balance-assist targets, contacts, the controller's state, the hands.
  *
- *   Sandbox.Overlay all | off | toggle | com,support,joints,assist,contacts,state,hands | -joints
+ *   Sandbox.Overlay all | off | toggle | com,support,capture,joints,assist,contacts,state,hands | -joints
  *   -Overlay=<the same>     on the command line of a scenario run or a play session
  *
  * The overlay only looks. It finds the character and the hands in the world each frame, reads their state

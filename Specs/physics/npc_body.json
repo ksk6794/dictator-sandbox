@@ -33,5 +33,5 @@
     {"child": "calf_l", "mirror": "calf_r", "along": "foot_l", "swing1_axis": [-1, 0, 0], "swing1": [-2, 150], "swing2": "locked", "twist": "locked"},
     {"child": "foot_l", "mirror": "foot_r", "along": "ball_l", "swing1_axis": [1, 0, 0], "swing1": [-20, 30], "swing2": [-10, 10], "twist": [-15, 15]}
   ],
-  "collision": {"disable": [], "enable": []}
+  "collision": {"disable": [["pelvis", "spine_04"], ["spine_02", "thigh_l"], ["spine_02", "thigh_r"], ["thigh_l", "thigh_r"]]}
 }

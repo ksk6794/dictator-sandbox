@@ -30,8 +30,9 @@ class FSandboxScriptedTargetSource;
  *   -vr                        engine flag: run in the headset. The camera becomes the tracking origin on
  *                              the floor, and metrics.json gains the headset's render size
  *
- * Writes <Out>/metrics.json (summary, checks, pass) and <Out>/trace.json (body and bone transforms at
- * checkpoints). Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
+ * Writes <Out>/metrics.json (summary, checks, pass), <Out>/trace.json (body and bone transforms at
+ * checkpoints) and, for a simulated body, <Out>/series.csv (energy, balance and penetration of every frame).
+ * Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
  *
  * The run forces a fixed engine timestep, so it is independent of wall-clock time and runs as fast as
  * the machine allows.
@@ -211,6 +212,57 @@ private:
 	double AssistTorqueShareSum = 0.0;
 	double AssistTorqueShareMax = 0.0;
 	int32 AssistSamples = 0;
+
+	// Balance as the body itself senses it (active control only), over the frames after the settle time in
+	// which the body is upright (standing or flinching).
+	int32 BalanceFrames = 0;
+	int32 UnsupportedFrames = 0;
+	int32 FeetFrames[3] = { 0, 0, 0 };
+	double MinComMarginCm = TNumericLimits<double>::Max();
+	double ComMarginSum = 0.0;
+	double MinCaptureMarginCm = TNumericLimits<double>::Max();
+	double CaptureMarginSum = 0.0;
+	int32 CaptureOutsideFrames = 0;
+	int32 SupportedFrames = 0;
+	double SupportShareSum = 0.0;
+
+	// Energy. The total (kinetic plus gravitational) may only fall while nothing feeds the body: a rise
+	// above its lowest value since the last input is a gain. For a body under control the frames counted
+	// are those in which it is falling or lying; for a passive body all of them.
+	double GravityCmS2 = 980.0;
+	double PeakKineticJ = 0.0;
+	double FinalKineticJ = 0.0;
+	double FinalPotentialJ = 0.0;
+	double EnergyFloorJ = TNumericLimits<double>::Max();
+	double MaxEnergyGainJ = 0.0;
+	int32 MaxEnergyGainFrame = -1;
+	/** Something acted on the body since the last sample: a scripted impulse, a pin, a command. */
+	bool bInputPending = false;
+	int32 SeenEffectorContactFrames = 0;
+
+	// The fall, as the controller called it and as the runner measures its end: the body is at rest when
+	// its mass-weighted speeds are below the rest thresholds.
+	int32 FallingStartFrame = -1;
+	int32 LastUnrestFrame = -1;
+	FVector ComAtFallStartCm = FVector::ZeroVector;
+	FVector ComFinalCm = FVector::ZeroVector;
+
+	// Penetration of the body into the world and into itself, by scene queries after every frame.
+	double MaxWorldPenetrationCm = 0.0;
+	FName WorldPenetrationBone;
+	FName WorldPenetrationInto;
+	int32 WorldPenetrationFrame = -1;
+	double MaxSelfPenetrationCm = 0.0;
+	FName SelfPenetrationBoneA;
+	FName SelfPenetrationBoneB;
+	int32 SelfPenetrationFrame = -1;
+	double SpawnWorldPenetrationCm = 0.0;
+	double SpawnSelfPenetrationCm = 0.0;
+	int32 UnmeasuredShapes = 0;
+	int32 SelfCollisionPairs = 0;
+
+	/** series.csv: one line per frame. */
+	FString Series;
 
 	// Wall-clock time the solver spent on each frame, summed over its substeps. The two callbacks run on
 	// the physics task while the game thread waits for it, hence the atomics.

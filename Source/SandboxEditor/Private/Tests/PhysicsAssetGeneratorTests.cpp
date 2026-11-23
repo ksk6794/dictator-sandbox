@@ -52,6 +52,39 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 		TestEqual(Label + TEXT(": body count"), Asset->SkeletalBodySetups.Num(), Spec.Bodies.Num());
 		TestEqual(Label + TEXT(": joint count"), Asset->ConstraintSetup.Num(), Spec.Bodies.Num() - 1);
 
+		// The body must be able to collide with itself. An asset with every pair switched off passes through
+		// itself (an arm through the chest), and nothing else here would notice: that is how the asset was
+		// generated until M3. Left and right must agree, and the pairs the spec names must be as it says.
+		const auto Mirrored = [](FName Bone)
+		{
+			const FString Name = Bone.ToString();
+			return Name.EndsWith(TEXT("_l")) ? FName(*(Name.LeftChop(2) + TEXT("_r"))) : Name.EndsWith(TEXT("_r")) ? FName(*(Name.LeftChop(2) + TEXT("_l"))) : Bone;
+		};
+		int32 CollidingPairs = 0;
+		for (int32 A = 0; A < Asset->SkeletalBodySetups.Num(); ++A)
+		{
+			for (int32 B = A + 1; B < Asset->SkeletalBodySetups.Num(); ++B)
+			{
+				const bool bCollide = Asset->IsCollisionEnabled(A, B);
+				CollidingPairs += bCollide ? 1 : 0;
+				const int32 MirrorA = Asset->FindBodyIndex(Mirrored(Asset->SkeletalBodySetups[A]->BoneName));
+				const int32 MirrorB = Asset->FindBodyIndex(Mirrored(Asset->SkeletalBodySetups[B]->BoneName));
+				if (MirrorA != INDEX_NONE && MirrorB != INDEX_NONE && MirrorA != MirrorB)
+				{
+					TestEqual(FString::Printf(TEXT("%s: %s and %s collide as their mirror images do"), *Label,
+						*Asset->SkeletalBodySetups[A]->BoneName.ToString(), *Asset->SkeletalBodySetups[B]->BoneName.ToString()), Asset->IsCollisionEnabled(MirrorA, MirrorB), bCollide);
+				}
+			}
+		}
+		// Every pair collides except the jointed ones and those the spec switches off.
+		const int32 Bodies = Asset->SkeletalBodySetups.Num();
+		TestEqual(Label + TEXT(": pairs of bodies that can collide"), CollidingPairs, Bodies * (Bodies - 1) / 2 - Asset->ConstraintSetup.Num() - Spec.DisableCollision.Num());
+		for (const TPair<FName, FName>& Pair : Spec.DisableCollision)
+		{
+			TestFalse(FString::Printf(TEXT("%s: %s and %s do not collide, as the spec says"), *Label, *Pair.Key.ToString(), *Pair.Value.ToString()),
+				Asset->IsCollisionEnabled(Asset->FindBodyIndex(Pair.Key), Asset->FindBodyIndex(Pair.Value)));
+		}
+
 		double TotalMass = 0.0;
 		for (const FPhysicsBodySpec& BodySpec : Spec.Bodies)
 		{

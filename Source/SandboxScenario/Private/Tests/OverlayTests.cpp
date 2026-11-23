@@ -30,6 +30,7 @@ bool FOverlayLayersTest::RunTest(const FString& Parameters)
 		// Names switch on exactly those layers, whatever was on before.
 		{ TEXT("com"), All, Com },
 		{ TEXT("com,support,joints"), None, Com | Support | Joints },
+		{ TEXT("capture"), All, Capture },
 		{ TEXT("Contacts State  hands"), Com, Contacts | State | Hands },
 		{ TEXT("com, assist"), None, Com | Assist },
 		// A minus takes a layer away from what is on.
@@ -56,7 +57,7 @@ bool FOverlayLayersTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("a rejection carries a reason"), !bParsed && Error.IsEmpty());
 	}
 
-	TestEqual(TEXT("names of all layers"), LayerNames(All), FString(TEXT("com support joints assist contacts state hands")));
+	TestEqual(TEXT("names of all layers"), LayerNames(All), FString(TEXT("com support capture joints assist contacts state hands")));
 	TestEqual(TEXT("name of no layer"), LayerNames(None), FString(TEXT("off")));
 	return true;
 }

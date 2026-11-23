@@ -10,6 +10,6 @@ public class SandboxBody : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "PhysicsCore", "SandboxCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "PhysicsControl" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "PhysicsControl", "Chaos" });
 	}
 }

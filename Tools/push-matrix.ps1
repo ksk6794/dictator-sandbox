@@ -42,7 +42,6 @@ $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $impulseList = @($Impulses.Split(',') | ForEach-Object { [double]::Parse($_.Trim(), $culture) } | Sort-Object)
 $bodyList = @($Bodies.Split(',') | ForEach-Object { $_.Trim() })
 $base = Read-JsonFile (Join-Path $RepoRoot 'Scenarios\stand_npc.json')
-$scenarioScript = Join-Path $PSScriptRoot 'scenario.ps1'
 $pushTime = 2.0
 
 function Get-MirrorBody([string]$Body) {
@@ -84,19 +83,13 @@ foreach ($body in $bodyList) {
 # Run them, $Parallel at a time. Every scenario process is independent and uses a fixed timestep, so
 # running side by side does not change any result.
 $started = Get-Date
-$queue = New-Object System.Collections.Queue
-foreach ($trial in $trials) { $queue.Enqueue($trial) }
-$running = @()
-while ($queue.Count -gt 0 -or $running.Count -gt 0) {
-    while ($queue.Count -gt 0 -and $running.Count -lt $Parallel) {
-        $trial = $queue.Dequeue()
-        $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scenarioScript`" -File `"$($trial.file)`" -Out `"$($trial.dir)`" -Quiet"
-        if ($Tune) { $arguments += " -Tune `"$Tune`"" }
-        $running += Start-Process powershell -ArgumentList $arguments -PassThru -WindowStyle Hidden
-    }
-    Start-Sleep -Milliseconds 200
-    $running = @($running | Where-Object { -not $_.HasExited })
+$jobs = @()
+foreach ($trial in $trials) {
+    $job = @{ File = $trial.file; Out = $trial.dir }
+    if ($Tune) { $job.Tune = $Tune }
+    $jobs += $job
 }
+Invoke-ScenarioBatch -Jobs $jobs -Parallel $Parallel
 $seconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 1)
 
 # Collect.

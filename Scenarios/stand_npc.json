@@ -11,6 +11,9 @@
     "control": "active"
   },
   "expect": {
+    "min_capture_margin_cm": 5.0,
+    "max_body_penetration_cm": 0.5,
+    "max_self_penetration_cm": 0.5,
     "fell": false,
     "state_sequence": "standing",
     "max_joint_limit_violation_deg": 1.0,

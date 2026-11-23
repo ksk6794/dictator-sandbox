@@ -233,10 +233,17 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 	if (Json->TryGetObjectField(TEXT("collision"), Collision))
 	{
 		FString PairError;
-		if (!ParsePairs(*Collision, TEXT("disable"), OutSpec.DisableCollision, PairError) ||
-			!ParsePairs(*Collision, TEXT("enable"), OutSpec.EnableCollision, PairError))
+		if (!ParsePairs(*Collision, TEXT("disable"), OutSpec.DisableCollision, PairError))
 		{
 			return Fail(PairError);
+		}
+		// Every pair that is not jointed collides unless it is listed, so there is nothing to switch on.
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Collision)->Values)
+		{
+			if (Entry.Key != TEXT("disable"))
+			{
+				return Fail(FString::Printf(TEXT("'collision.%s' is not part of the format: bodies collide unless 'collision.disable' names the pair"), *Entry.Key));
+			}
 		}
 	}
 	return true;

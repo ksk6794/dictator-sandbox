@@ -80,6 +80,16 @@ struct FScenarioExpect
 	TOptional<double> MinEffectorImpactSpeedMps;
 	/** The body of the character each effector touched first must have moved at least this far from where it was, cm. */
 	TOptional<double> MinStruckDisplacementCm;
+	/** Lowest the centre of mass and the capture point may get inside the support polygon while upright, cm. Active control only. */
+	TOptional<double> MinComMarginCm;
+	TOptional<double> MinCaptureMarginCm;
+	/** Largest rise of the body's energy (kinetic plus gravitational) that no input explains, joules. */
+	TOptional<double> MaxEnergyGainJ;
+	/** The body must have gone into Falling and be at rest again within this time of it, seconds. Active control only. */
+	TOptional<double> MaxRestAfterFallS;
+	/** Deepest any shape of the body may be found inside the world, and two of its bodies inside each other, cm. */
+	TOptional<double> MaxBodyPenetrationCm;
+	TOptional<double> MaxSelfPenetrationCm;
 };
 
 /** How the body is driven. */

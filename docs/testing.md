@@ -16,6 +16,11 @@
    checkpoint over three runs (`Tools\compare-runs.ps1 -PositionToleranceCm 0.1 -RotationToleranceDeg 0.1`),
    and record the reason here.
 
+Since M3 part 1 the solver's determinism mode is on (`p.Chaos.Solver.Deterministic=1`), after one run in
+about 25 of a passive body had differed on a busy machine; see that section. Scenario processes may run
+side by side: each has its own fixed timestep, and the suite gives the same hashes eight at a time as one
+at a time.
+
 Re-measure at each milestone. M0 measured a passive ragdoll on a flat floor; muscles, effectors and props add
 contacts and simulation islands, which is where parallel solving could start to matter.
 
@@ -691,6 +696,232 @@ step 3 (worst joint stretch 0.31 cm, fastest joint 39.6 rad/s).
 Not measured: strikes on a character that is lying or falling, two hands at once, a strike against a
 character near a wall, penetration between the character's own bodies and between the character and the
 floor (the fall-and-rest family, M3), anything in the headset (overlay text is not drawn there).
+
+### M3 part 1 (senses, metrics and tools; three corrections), 2026-11-23
+
+Same machine and settings. The part was made in two steps. Step A added what the body senses of its balance,
+the measurements of energy, rest and penetration, the `capture` overlay layer, and the tools (the suite in
+parallel, baselines, sweeps), and was to change nothing a run does. Step B corrected three things step A
+brought out: the generated physics asset had no self-collision, the standing character slept one substep
+in six, and the solver's contact order depended on thread scheduling.
+
+**Step A changed nothing for the runs that existed.** The suite was run on the committed M2 state before
+any change (the baseline `m3_start`) and on the build of step A:
+
+| Compared | Result |
+| --- | --- |
+| 34 scenarios, headless | The same two hashes in all 34 |
+| Push matrix, 128 runs | The same outcome, state sequence and pelvis drift in all 128 |
+| `stand_npc`, `hit_chest_200_falls`: 2 headless runs and 1 rendered | Identical |
+| `hit_head_30_stands`, `hit_chest_200_falls` rendered with `-Overlay all` | The hashes of the headless runs |
+
+So the body's new sense (it now keeps the floor's contact impulses and works out its balance every tick),
+the scene queries after every frame and two new tuning values leave no trace in a run.
+
+**Running the set eight at a time.** One after another the 34 scenarios took 393 s; eight at a time they
+take 95 to 100 s, with the same hashes. The physics step, which is timed by the clock, reads longer when
+the runs share the processor:
+
+| Scenario | Mean physics step alone | Sharing the processor with seven runs |
+| --- | --- | --- |
+| `stand_npc` | 0.40 ms | 0.58 to 0.77 ms |
+| `hit_chest_200_falls` | 0.44 ms | 0.68 to 0.75 ms |
+| worst of the set | 0.45 ms | 0.75 to 0.95 ms |
+
+The limit of 1.5 ms is still far off, and a scenario that does read over a step limit in the parallel pass
+is run again alone before it is judged. Figures written down in this file are from runs one at a time.
+
+**What the new figures said about the body as it was** (before step B):
+
+| Figure | Value | Remark |
+| --- | --- | --- |
+| Centre of mass inside the support polygon, standing | 9.3 cm | The overlay of M2 step 5 read 9.4 cm |
+| The floor's push on both feet over body weight, standing | 0.83 | Should be 1: the first sign of the sleep below |
+| Bodies of the NPC that may collide with each other | 0 pairs of 120 | The asset had no self-collision |
+| Rest after the fall began, the three falls of the suite | 0.57, 2.36 and 0.91 s | Limit 3 s |
+| Energy gained by a falling or lying NPC | 0.02 to 0.10 J | An 80 kg body lifted by 1 cm is 7.8 J |
+| Energy gained by a passive body dropped from 1.5 m | 171 J (`drop_npc`), 74 J (`room_drop_npc`), 77 J (`drop_metahuman`) | It lands with a foot 8.4, 5.1 and 1.6 cm inside the floor and is pushed out again |
+
+The last row is the measurement the decision about continuous collision detection on the feet will rest
+on (part 5). The stock mannequin lands 4.1 cm deep and gains nothing (`drop_passive`).
+
+**The standing character slept one substep in six.** The feet's contact reports of three successive frames
+of `stand_npc`, with the solver's time for the frame:
+
+| Frame | Reports of the left foot against the floor | Force over the frame | Solver time |
+| --- | --- | --- | --- |
+| 297 | 1 (2.13 N*s) | 192 N | 0.27 ms |
+| 298 | 2 (2.11 and 2.12 N*s) | 381 N | 0.44 ms |
+| 299 | 2 (2.13 and 2.14 N*s) | 384 N | 0.44 ms |
+
+The pattern repeats every three frames. A body in free fall gains 0.1089 m/s per frame, which is 9.80 m/s^2,
+so no simulated time is lost in general; and each report that does arrive carries the full weight of one
+substep. What is missing is a whole substep: the solver has put the character's island to sleep, with no
+gravity, no contact and no contact event, and the controller's next tick wakes it. With
+`-CVars "p.Chaos.Solver.Sleep.Enabled=0"` there are two reports in every frame and the feet carry 0.999 of
+the weight. The controller now sets its bodies to never sleep, which gives the same hashes as that switch.
+
+**The NPC had no self-collision.** Read back from the asset at run time, all 120 pairs of its 16 bodies
+were switched off. Measured over all pairs that are not jointed, whatever the asset says: after the drop of
+`drop_npc` the left forearm was 16.8 cm inside the chest. In the spawn pose four such pairs overlap:
+
+| Pair | Overlap in the spawn pose |
+| --- | --- |
+| Pelvis and chest (`spine_04`) | 5.5 cm |
+| The two thighs | 1.4 cm |
+| Lower spine (`spine_02`) and each thigh | 0.9 cm |
+
+The template's own table was tried first (70 pairs on) and dropped: it is not the same left and right (an
+upper arm collides with its hand on one side only), and it leaves the thighs colliding, which made the
+standing character's feet turn at 1.26 rad/s and raised the assist's load to 0.216 of body weight. The rule
+now: every pair collides except the 15 jointed ones and the four above, 101 pairs.
+
+**Step B, first change: self-collision.** Against the results of step A, 28 scenarios kept their hashes,
+among them every standing one, every strike but one, and the falls in which no limb meets the body. Six
+changed:
+
+| Scenario | What changed |
+| --- | --- |
+| `drop_npc`, `room_drop_npc` | Limbs now rest on the body: self-penetration 0.38 and 0.65 cm; fastest joint 34 to 53 and 40 to 42 rad/s (a passive body, not judged) |
+| `push_thigh_200_falls` | Rest after the fall 2.36 to 2.74 s; a hip 4.7 to 1.5 degrees past its limit; self-penetration 0.11 cm |
+| `strike_punch_forearm` | The struck forearm now meets the body: fastest body 10.1 to 10.4 rad/s |
+| `tune_live_file`, `tune_live_override` | The character that sits down when its leg muscles are switched off: rest 1.30 to 1.34 s |
+
+**Step B, second change: a body under control never sleeps.** All 23 scenarios with a controlled body that
+stands at some time changed (`hang_npc_hand`, which swings from the first frames, did not); the 10 without
+one did not. A standing body, before and after:
+
+| Measure | Sleeping one substep in six | Awake | Limit |
+| --- | --- | --- | --- |
+| Pelvis drift, maximum | 0.95 cm | 0.97 cm | 5 cm |
+| Fastest body after 2 s (a foot), 10 s run | 0.079 rad/s | 0.150 rad/s | 0.3 rad/s |
+| The same, 10 minute run | 0.106 rad/s | 0.158 rad/s | 0.3 rad/s |
+| Assist load, force over body weight, 10 s and 10 minutes | 0.047 and 0.051 | 0.0185 and 0.0185 | |
+| Assist load, torque over weight x centre-of-mass height | 0.0017 | 0.0020 | |
+| The floor's push on both feet over body weight | 0.83 | 0.999 | |
+| Centre of mass and capture point inside the support polygon | 9.3 cm | 9.9 cm | |
+| Solver time per frame, mean | 0.40 ms | 0.45 ms | 1.5 ms |
+
+**The M2 assist baseline was inflated by the sleep.** The M3 criterion "standing assist share is at most half
+its M2 value" was written against 0.047 (and 0.051 over ten minutes). Awake, the same body with the same
+tuning reads 0.0185. Half of the M2 figure is 0.0235, which the body now meets with no work done; half of
+the corrected figure is 0.0093. Which one the criterion means is the owner's decision.
+
+**Solver iterations, measured again.** `Tools\sweep.ps1` on `stand_npc`, the body awake:
+
+| Position iterations | Pelvis drift | Fastest body after 2 s | Assist force share | Floor's push over weight |
+| --- | --- | --- | --- | --- |
+| 1 | 3.75 cm | 0.60 rad/s | 0.088 | 1.11 |
+| 2 | 3.59 cm | 0.47 rad/s | 0.100 | 1.08 |
+| 4 | 1.57 cm | 0.32 rad/s | 0.051 | 1.04 |
+| 8 (the engine's default) | 1.47 cm | 0.23 rad/s | 0.039 | 1.02 |
+| 16 | 1.24 cm | 0.12 rad/s | 0.026 | 1.01 |
+| 32 | 1.05 cm | 0.17 rad/s | 0.020 | 1.00 |
+| 64 (the NPC's) | 0.97 cm | 0.15 rad/s | 0.0185 | 1.00 |
+
+M2 step 1 recorded 0.54 rad/s and an assist share of 0.153 at 8 iterations against 0.07 and 0.044 at 64;
+much of that gap was the sleep. The count stays at 64; 16 looks as steady and is a candidate for part 7.
+`tune_live_solver` used to guard the live change of the count with a change from 64 to 8 and a lower bound
+of 0.25 rad/s on the feet, which the awake body no longer reaches (0.22). It now changes to 2 and expects
+0.3 (measured 0.47, the same as a run that has 2 from the start).
+
+**The push matrix after both changes** (128 runs, 169 s): the same table of falls as in M2, run for run.
+Pelvis movement of those that stood: 1.0 to 3.2 cm at 10 N*s, 1.8 to 7.9 cm at 30, 6.8 to 14.5 cm at 80.
+Worst joint stretch 0.28 cm, fastest joint 39.6 rad/s.
+
+**The three falls of the suite on the corrected body:**
+
+| Scenario | Rest after the fall began | Energy gained | Deepest in the floor | Deepest in itself | Fall went |
+| --- | --- | --- | --- | --- | --- |
+| `hit_chest_200_falls` | 0.60 s | 0.12 J | 0.09 cm (the chest) | 0 | 104 cm straight back (270 degrees) |
+| `push_thigh_200_falls` | 2.64 s | 0.25 J | 0.71 cm (the right hand) | 0.10 cm (right forearm and lower spine) | 125 cm to its right (177 degrees) |
+| `effector_push_chest_falls` | 0.86 s | 0.00 J | 0.48 cm (the chest) | 0 | 89 cm straight back (270 degrees) |
+
+The way a fall went is the path of the centre of mass over the floor from the moment the body was let go:
+0 degrees is the character's left (+x), 90 forward, 180 its right, 270 backward. All three are now held to
+3 s, 1 J and 2 cm by expectations. Two runs gain a lot and are not falls to be
+judged by it: the character whose leg muscles are switched off gains 95 J when the falling state gives its
+legs 100 N*m/rad back (`tune_live_override`), and the character hanging from one hand gains 18 J as it
+swings (`hang_npc_hand`).
+
+**What the balance sense shows of hits the body "stands" through** (corrected body; margins to the edge of
+the support polygon, lowest value while upright):
+
+| Scenario | Centre of mass | Capture point | Remark |
+| --- | --- | --- | --- |
+| `stand_npc` | 9.9 cm | 9.9 cm | |
+| `hit_chest_10_stands` | 8.0 cm | 5.8 cm | |
+| `strike_slap_torso`, `effector_push_chest` | 6.9 and 6.3 cm | 3.5 and 2.5 cm | |
+| `strike_punch_head`, `strike_punch_leg` | 5.4 and 7.6 cm | 1.4 and 2.9 cm | |
+| `strike_punch_torso` | 5.6 cm | 0.7 cm outside, for 4 frames | |
+| `hit_head_30_stands` | 8.7 cm outside | 13.1 cm outside, for 21 frames | One foot off the floor for 34 frames |
+
+The last two stand only because the assist's anchors pull the body back to where it was spawned. With the
+capture point deciding (part 3), a 30 N*s blow to the head needs an answer of its own.
+
+**One run in about 25 differed from the others.** In the suite run that was to become the end-of-part
+baseline, `drop_passive` (the stock mannequin, passive) gave other hashes than in every run before and
+after: its fastest body read 5.44309447322 m/s instead of 5.44309447335, and the trajectories then went
+apart (rest after 4.68 s instead of 4.42 s). Nothing had changed for that scenario. Chaos gathers its
+contact constraints from worker threads in the order they finish unless its determinism mode is on
+(`p.Chaos.Solver.Deterministic`, off by default). The mode is now set in `Config/DefaultEngine.ini`, and
+every scenario run has a check that it is on:
+
+| Run | Result |
+| --- | --- |
+| Six scenarios with the mode on against the same six without it | The same hashes, the same step time |
+| The whole suite with the mode on against the runs before | The same hashes in all 34 (`drop_passive` its usual ones) |
+| 96 runs (six scenarios, 16 times each, 16 processes on 8 cores), mode off | Identical per scenario |
+| The same 96 runs, mode on | Identical per scenario |
+
+The fault did not show again in 96 runs without the mode, so these runs do not prove that the mode cures
+it; they show that it costs nothing. The M0 statement "identical in every run" was true of the runs made
+then and is a little too strong in general. A baseline comparison that names a scenario the change cannot
+have touched is the signal to look for this again.
+
+**Repeatability, on the corrected body** (the runs were made before the determinism mode was switched on;
+the suite after it gave the same hashes for all 34):
+
+| Scenario | Runs compared | Result |
+| --- | --- | --- |
+| `stand_npc` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `stand_npc_10min` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `hit_chest_200_falls` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `push_thigh_200_falls` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `effector_push_chest_falls` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `strike_punch_forearm` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `drop_npc` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+| `tune_live_solver` | 2 headless + 1 rendered | Identical hashes in all 3 runs |
+
+The suite one scenario after another and the suite eight at a time gave the same hashes for all 34.
+
+**The limits for the whole set** (34 scenarios, one at a time, 357 s):
+
+| Limit | Worst scenario | Value |
+| --- | --- | --- |
+| Joint stretch of a simulated body at most 2 cm | `impulse_passive` | 0.86 cm |
+| Mean physics step at most 1.5 ms | `effector_push_chest_falls` | 0.49 ms |
+
+`Tools\bootstrap.ps1` takes 5.1 minutes (9.6 before the part): the suite 100 s, the push matrix 170 s, the
+unit tests (26) 16 s, asset generation 11 s, the session's self-test (14 checks) 10 s. Build and suite
+together are inside the 5 minutes of NFR-6 again.
+
+**Thresholds chosen in this part,** from what was measured, accepted by the owner on 23 November 2026 with
+one change (energy gain 1 J instead of the 5 J proposed; the suite passes with it and no hash moved): a
+falling or lying body may gain 1 J (measured 0.25 J at most); bodies that may collide may overlap by 0.1 cm in the
+spawn pose (measured 0); a foot stands from 20 N of the floor's push (it carries about 390 N standing, and
+192 N in the worst frame of the sleeping body); a standing scenario keeps its capture point 5 cm inside
+the support (measured 9.9 cm).
+
+Pictures looked at: `stand_npc` with all overlays (the support polygon under both feet, the capture point's
+ring inside it on the spot under the centre of mass, 387 and 397 N on the feet); `hit_chest_200_falls` at
+3.05 s (the capture point 71 cm behind the body, red); `hit_head_30_stands` at 3.12 s (one foot carrying
+842 N, the other none); the passive NPC after its drop, lying with its arms beside the body and not in it.
+
+Not measured: balance on anything but the two feet (a body on hands and knees has no support polygon
+yet); penetration of convex hulls (the NPC has none); falls against walls or furniture; the cost of the
+never-sleeping body while it lies still (it is solved like a standing one, 0.45 ms); whether the
+determinism mode holds for a scene with props.
 
 ## Known behaviour of the stock mannequin
 

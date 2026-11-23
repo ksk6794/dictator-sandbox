@@ -96,6 +96,18 @@ struct FSandboxThresholdTuning
 	double RestTimeS = 0.0;
 };
 
+/** How the body senses its own balance: what counts as a foot that stands, and what part of it is its sole. */
+struct FSandboxBalanceTuning
+{
+	/**
+	 * A foot stands when the floor pushes up on it with at least this force, averaged over a frame. N. In
+	 * quiet standing each foot carries half the body's weight, about 390 N.
+	 */
+	double FootContactMinN = 0.0;
+	/** The sole of a standing foot is the part of its shapes within this of its lowest point. cm. */
+	double SoleToleranceCm = 0.0;
+};
+
 /** How the body reacts to a hit. */
 struct FSandboxReactionTuning
 {
@@ -141,6 +153,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 
 	FSandboxSolverTuning Solver;
 	FSandboxThresholdTuning Thresholds;
+	FSandboxBalanceTuning Balance;
 	FSandboxReactionTuning Reactions;
 
 	/**

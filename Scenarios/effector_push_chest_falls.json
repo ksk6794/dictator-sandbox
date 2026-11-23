@@ -24,6 +24,10 @@
     }
   ],
   "expect": {
+    "max_rest_after_fall_s": 3.0,
+    "max_energy_gain_j": 1.0,
+    "max_body_penetration_cm": 2.0,
+    "max_self_penetration_cm": 2.0,
     "fell": true,
     "end_state": "lying",
     "min_effector_impulse_ns": 50,
