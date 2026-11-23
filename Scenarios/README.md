@@ -399,10 +399,10 @@ An outcome is `stood` (no step, never needed one), `held` (no step although one 
 the body), `stepped` (one or more steps, still up) or `fell`. They are judged by the owner's table of M3:
 10 N*s stood; 30 N*s never a fall, forward and sideways stood, backward (225, 270, 315 degrees) and any push
 on the head stood or one step; 80 N*s on the trunk (chest, pelvis) stepped, backward stepped or fell, on the
-head and the thighs stepped or fell; 200 N*s fell. `held` where the table allows a step is `pending` (the
-recovery step is M3 part 4), anywhere else a failure. Mirror-image pushes must end the same way. The table
-prints `s`, `h`, `S<n>`, `F`, with `!` for a failure and `?` for pending. `-Enforce` names the impulses whose
-rows are judged (10, 30 and 200 until part 4; the 80 row is printed and written but not judged), and
+head and the thighs stepped or fell, and at 80 N*s anywhere stood if no step was ever needed (owner's decision
+in part 4: standing is a failure only when the assist held a body that needed a step); 200 N*s fell. `held` is
+a failure everywhere. Mirror-image pushes must end the same way. The table prints `s`, `h`, `S<n>`, `F`, with
+`!` for a failure. `-Enforce` names the impulses whose rows are judged (all four by default), and
 `-Rules m2` checks only the M2 gate (the smallest impulse never fells, the largest always does). By default
 each impulse is a single blow; `-PushSeconds 0.1` delivers it as a push. `-Tune` passes tuning overrides
 to every run. `Tools\baseline.ps1 -CompareMatrix <baseline>` names the pushes that end otherwise than in a

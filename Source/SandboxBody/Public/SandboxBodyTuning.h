@@ -42,6 +42,11 @@ struct FSandboxAssistTuning
 	double AngularNmPerRad = 0.0;
 	/** Damping of all three springs as a time: damping = stiffness x this x velocity. Seconds. */
 	double DampingS = 0.0;
+	/**
+	 * Largest torque of the turn, N*m. 0 = no cap. (In a stagger the pelvis's upright hold is capped: uncapped, it held
+	 * a body whose centre of mass was far outside its feet, and a 200 N*s shove did not fell it.)
+	 */
+	double MaxTorqueNm = 0.0;
 };
 
 /**
@@ -191,6 +196,13 @@ struct FSandboxBalanceTuning
 	 * much further along the way it runs, so that the body comes to rest over the new support. cm.
 	 */
 	double StepMarginCm = 0.0;
+	/**
+	 * Where that point would leave the capture point less than this far inside the new support (the hull of both
+	 * soles), the foot goes to a point nearby that does (up to 15 cm along the capture point's way and across it),
+	 * the nearest of them; 0 aims at the point alone. A capture point on the edge of the support cannot be brought
+	 * back without another step. cm.
+	 */
+	double StepMarginGoalCm = 0.0;
 	/** How high the swinging foot is lifted at the top of its arc. cm. */
 	double StepLiftCm = 0.0;
 	/**
@@ -230,9 +242,14 @@ struct FSandboxBalanceTuning
 	 * down onto the floor and the leg does not push the body up. Seconds.
 	 */
 	double StepSettleS = 0.0;
-	/** The stepping foot's bone stays at least this far to its own side of the other foot's: no crossing over. cm. */
+	/** A step that keeps to its own side puts the foot's bone at least this far to that side of the other foot's. cm. */
 	double StepWidthMinCm = 0.0;
-	/** Time over which a step's placement of the legs eases in, and a swinging leg's frame changes. Seconds. */
+	/**
+	 * A step whose target lies past the other foot's line (owner's decision in part 4: the legs may cross) lands at
+	 * least this far ahead of the other foot's bone, or behind it for a step that goes back, and its swing passes the
+	 * other foot that far in front or behind: calves and feet collide. cm.
+	 */
+	double CrossOffsetCm = 0.0;	/** Time over which a step's placement of the legs eases in, and a swinging leg's frame changes. Seconds. */
 	double StepEaseS = 0.0;
 	/**
 	 * While a foot swings, the leg that carries the body is solved with the pelvis upright and at its standing
@@ -280,6 +297,16 @@ struct FSandboxBalanceTuning
 	 * lowered by 42 cm, never counted as fallen, and its legs went on swinging until the solver blew up.) cm.
 	 */
 	double LowerMaxCm = 0.0;
+	/**
+	 * A step across the other foot lands no further past it (bone to bone, sideways) than this: the first of two
+	 * steps, after which the other foot steps out. cm.
+	 */
+	double CrossPastCm = 0.0;
+	/**
+	 * In a stagger the planted legs are solved for a pelvis behind where it would be (balance.stance_follow of the way
+	 * from its anchor to where it is) by the body's speed times this: they brake it in proportion to its speed. s.
+	 */
+	double StaggerDampingS = 0.0;
 };
 
 /** How the body reacts to a hit. */

@@ -182,9 +182,19 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		// The knee bends toward the front of the mesh (+y, where the character faces), not the way the pose
 		// happens to bend it: a standing leg is almost straight, and its knee could sit a hair behind the line
 		// from hip to ankle and have the solver fold it backward.
+		// Forward across the line from the root to where the end is to go, not to where the pose has it: with a pole
+		// 50 cm ahead of the pose's knee, a foot sent 50 cm forward put that line almost through the pole, the plane of
+		// the bend was all but undefined, and the thigh's twist jumped by up to 150 degrees from one frame to the next
+		// (the body's thigh at 163 rad/s).
 		const FVector Along = (EndTransform.GetLocation() - RootTransform.GetLocation()).GetSafeNormal();
-		const FVector Bend = (FVector::YAxisVector - Along * Along.Y).GetSafeNormal();
-		const FVector Pole = MiddleTransform.GetLocation() + Bend * 50.0;
+		const FVector ToEffector = Effector - RootTransform.GetLocation();
+		const FVector Line = ToEffector.IsNearlyZero() ? Along : ToEffector.GetSafeNormal();
+		FVector Bend = (FVector::YAxisVector - Line * Line.Y).GetSafeNormal();
+		if (Bend.IsNearlyZero())
+		{
+			Bend = (FVector::YAxisVector - Along * Along.Y).GetSafeNormal();
+		}
+		const FVector Pole = RootTransform.GetLocation() + ToEffector * 0.5 + Bend * 50.0;
 
 		const FTransform RootBefore = RootTransform;
 		const FTransform MiddleBefore = MiddleTransform;

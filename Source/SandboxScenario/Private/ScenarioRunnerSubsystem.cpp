@@ -1955,6 +1955,8 @@ void UScenarioRunnerSubsystem::Finish()
 			Entry->SetNumberField(TEXT("margin_at_touch_cm"), Record.MarginAtTouchCm);
 				Entry->SetBoolField(TEXT("reach_limited"), Record.bReachLimited);
 				Entry->SetBoolField(TEXT("width_limited"), Record.bWidthLimited);
+				Entry->SetStringField(TEXT("cross"), Record.Cross > 0 ? TEXT("front") : Record.Cross < 0 ? TEXT("behind") : TEXT("none"));
+				Entry->SetStringField(TEXT("pass"), Record.Pass > 0 ? TEXT("front") : Record.Pass < 0 ? TEXT("behind") : TEXT("none"));
 				Entry->SetBoolField(TEXT("touched"), Record.bTouched);
 				RecoveryJson.Add(MakeShared<FJsonValueObject>(Entry));
 			}

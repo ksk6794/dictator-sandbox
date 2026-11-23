@@ -5,7 +5,7 @@
 #   ... -Bodies "neck_01,spine_04,pelvis,thigh_l,thigh_r"    bones of the bodies to push
 #   ... -Directions 8                                        evenly spaced horizontal directions
 #   ... -PushSeconds 0.1                                     time over which each impulse is delivered; 0 is a single blow
-#   ... -Enforce "10,30,200"                                 impulses whose rows are judged; the others are reported only
+#   ... -Enforce "10,30,80,200"                                impulses whose rows are judged; the others are reported only
 #   ... -Rules m2                                            the M2 gate instead: who fell, nothing else
 #   ... -Parallel 8                                          scenario processes at a time
 #   ... -Tune "name=value,..."                               tuning overrides for every run
@@ -25,11 +25,14 @@
 # The table (owner's decision after M3 part 1), with the M2 rules for the smallest and the largest impulse:
 #   10 N*s   stood
 #   30 N*s   never a fall; forward and sideways: stood; backward, and any push on the head: stood or one step
-#   80 N*s   trunk (spine_04, pelvis): stepped, and backward also fell; head and thighs: stepped or fell
+#   80 N*s   trunk (spine_04, pelvis): stepped, and backward also fell; head and thighs: stepped or fell; anywhere
+#            stood if a step was never needed (the capture point stayed within reach of the ankles)
 #   200 N*s  fell
-# "held" in a cell that allows a step is reported as pending (part 4), in any other cell as a failure.
-# Mirror-image pushes (left thigh from the left against right thigh from the right) must end in the same
-# outcome. Every run must pass its own checks (no NaN, joint stretch within the limit).
+# "held" is a failure in every cell: the assist held a body that needed a step.
+# Mirror-image pushes (left thigh from the left against right thigh from the right) that end differently are listed
+# and counted, not judged (owner's decision during part 4): where the table allows one outcome a difference breaks the
+# table anyway, and where it allows a step or a fall, or a capture point lands at the threshold of a step, the outcome
+# is chaotic and a mirror rule judged luck. Every run must pass its own checks (no NaN, joint stretch within the limit).
 #
 # Prints one row per body and direction, writes <Out>\matrix.json. Exit code: 0 no judged rule is broken,
 # 1 a rule is broken, 2 a run produced no result.
@@ -38,7 +41,7 @@ param(
     [string]$Bodies = 'neck_01,spine_04,pelvis,thigh_l,thigh_r',
     [int]$Directions = 8,
     [double]$PushSeconds = 0,
-    [string]$Enforce = '10,30,200',
+    [string]$Enforce = '10,30,80,200',
     [ValidateSet('m3', 'm2')][string]$Rules = 'm3',
     [int]$Parallel = 8,
     [string]$Tune,
@@ -79,8 +82,10 @@ function Get-Allowed([string]$Body, [double]$Angle, [double]$Impulse) {
         return @{ classes = @('stood'); max_steps = 0 }
     }
     if ($Impulse -le 80) {
-        if ($isTrunk -and -not $backward) { return @{ classes = @('stepped'); max_steps = 99 } }
-        return @{ classes = @('stepped', 'fell'); max_steps = 99 }
+        # Standing without a step is allowed only if a step was never needed ("stood"): a body that needed one and
+        # stood all the same ("held") was held by the assist (owner's decision during part 4).
+        if ($isTrunk -and -not $backward) { return @{ classes = @('stood', 'stepped'); max_steps = 99 } }
+        return @{ classes = @('stood', 'stepped', 'fell'); max_steps = 99 }
     }
     return @{ classes = @('fell'); max_steps = 0 }
 }
@@ -179,6 +184,7 @@ $smallest = $impulseList[0]
 $largest = $impulseList[$impulseList.Count - 1]
 $broken = @()
 $notes = @()
+$mirrors = @()
 foreach ($result in $results) {
     $judged = $enforced -contains $result.impulse_ns
     $verdict = 'pass'
@@ -188,7 +194,7 @@ foreach ($result in $results) {
     else {
         $allowed = Get-Allowed $result.body $result.angle $result.impulse_ns
         if ($result.outcome -eq 'held') {
-            if ($allowed.classes -contains 'stepped') { $verdict = 'pending' } else { $verdict = 'fail' }
+            $verdict = 'fail'
         }
         elseif ($allowed.classes -notcontains $result.outcome) { $verdict = 'fail' }
         elseif ($result.outcome -eq 'stepped' -and $result.steps -gt $allowed.max_steps) { $verdict = 'fail' }
@@ -206,8 +212,7 @@ foreach ($result in $results) {
     $mirrorAngle = (540.0 - $result.angle) % 360.0
     $mirror = $byKey["$(Get-MirrorBody $result.body)|$mirrorAngle|$($result.impulse_ns)"]
     if ($mirror -and $mirror.name -gt $result.name -and $mirror.outcome -ne $result.outcome) {
-        $line = "$($result.name) and $($mirror.name): mirror-image pushes end differently ($($result.outcome) and $($mirror.outcome))"
-        if ($judged) { $broken += $line } else { $notes += $line }
+        $mirrors += "$($result.name) and $($mirror.name): mirror-image pushes end differently ($($result.outcome) and $($mirror.outcome))"
     }
 }
 
@@ -240,6 +245,7 @@ Write-JsonFile (Join-Path $Out 'matrix.json') ([ordered]@{
     counts       = $counts
     broken_rules = $broken
     notes        = $notes
+    mirror_differences = $mirrors
     results      = $results
 })
 
@@ -271,6 +277,8 @@ foreach ($impulse in $impulseList) {
     Write-Output ("  {0,5} N*s ({1}): stood {2}, held {3}, stepped {4}, fell {5}; pass {6}, pending {7}, fail {8}" -f $impulse, $judgedText, $c.stood, $c.held, $c.stepped, $c.fell, $c.pass, $c.pending, $c.fail)
 }
 foreach ($line in $broken) { Write-Output "  BROKEN: $line" }
+Write-Output ("  mirror-image pairs that end differently: {0} (reported, not judged)" -f $mirrors.Count)
+foreach ($line in $mirrors) { Write-Output "  MIRROR: $line" }
 Write-Output "  result: $(Join-Path $Out 'matrix.json')"
 
 if ($broken.Count -eq 0) { exit 0 }

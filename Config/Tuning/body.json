@@ -13,10 +13,10 @@
     "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 0 }
   },
   "assist": {
-    "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2 },
-    "chest": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2 },
-    "head": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 10, "damping_s": 0.2 },
-    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2 }
+    "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0 },
+    "chest": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0 },
+    "head": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 10, "damping_s": 0.2, "max_torque_nm": 0 },
+    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2, "max_torque_nm": 0 }
   },
   "solver": {
     "position_iterations": 64,
@@ -36,7 +36,7 @@
     "foot_contact_min_n": 20,
     "sole_tolerance_cm": 1.5,
     "recoverable_cm": 4,
-    "step_reach_cm": 50,
+    "step_reach_cm": 60,
     "step_time_s": 0.25,
     "decision_s": 0.03,
     "anchor_follow_s": 0.5,
@@ -54,6 +54,7 @@
     "recover_s": 0.05,
     "recover_speed_mps": 0.2,
     "step_margin_cm": 5,
+    "step_margin_goal_cm": 8,
     "step_lift_cm": 8,
     "step_press_cm": 2,
     "step_settle_s": 0.15,
@@ -62,8 +63,9 @@
     "swing_damping_scale": 2,
     "swing_foot_n_per_m": 0,
     "step_width_min_cm": 18,
+    "cross_offset_cm": 22,
     "step_ease_s": 0.05,
-    "stance_follow": 0.5,
+    "stance_follow": 0.6,
     "leg_extension_max": 0.995,
     "step_shift_share": 0.8,
     "step_shift_ready_cm": 1,
@@ -72,7 +74,9 @@
     "step_asked_time_s": 0.5,
     "anchor_room_share": 0.5,
     "lower_s": 0.1,
-    "lower_max_cm": 15
+    "lower_max_cm": 15,
+    "cross_past_cm": 12,
+    "stagger_damping_s": 0.2
   },
   "reactions": {
     "flinch_weakening": 0.3,
@@ -91,7 +95,7 @@
     },
     "stagger": {
       "assist": {
-        "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 1000 },
+        "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 1000, "max_torque_nm": 150 },
         "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
       }
     },

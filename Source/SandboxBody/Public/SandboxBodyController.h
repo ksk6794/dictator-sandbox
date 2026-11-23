@@ -130,6 +130,15 @@ struct FSandboxStepRecord
 	/** Whether the plan had to be cut short: by the reach, or by keeping to its own side of the other foot. */
 	bool bReachLimited = false;
 	bool bWidthLimited = false;
+	/**
+	 * A step across the other foot (its target past the other foot's line, toward the other side): +1 passing in
+	 * front of the other foot and landing ahead of it, -1 behind; 0 a step that keeps to its own side.
+	 */
+	int32 Cross = 0;
+	/** Whether the swing goes round the other foot (it starts on one side of it and ends on the other): +1 in front, -1 behind, 0 not. */
+	int32 Pass = 0;
+	/** How far the target was put from the aimed point (the capture point at landing and the margin beyond it): along its way and across it, cm. */
+	FVector2D AimOffsetCm = FVector2D::ZeroVector;
 	/** False when the swing ran out of time without the foot finding the floor. */
 	bool bTouched = false;
 };
@@ -567,8 +576,19 @@ private:
 		{
 			return SettleS > 0.0 && SettleElapsedS < SettleS ? 1.0 - FMath::SmoothStep(0.0, 1.0, SettleElapsedS / SettleS) : 0.0;
 		}
-		/** The point the leg is solved for now: Point, raised by what is left of the settling. */
-		FVector SettledPoint() const { return Point + FVector(0.0, 0.0, SettleCm * SettleLeft()); }
+		/**
+		 * A point moved to where its foot has got to (GlidePoint): it goes over from the old one over GlideS, so that
+		 * the leg's target does not jump. cm, s.
+		 */
+		FVector GlideFrom = FVector::ZeroVector;
+		double GlideElapsedS = 0.0;
+		double GlideS = 0.0;
+		/** The point the leg is solved for now: Point (or on its way there), raised by what is left of the settling. */
+		FVector SettledPoint() const
+		{
+			const FVector At = GlideS > 0.0 && GlideElapsedS < GlideS ? FMath::Lerp(GlideFrom, Point, FMath::SmoothStep(0.0, 1.0, GlideElapsedS / GlideS)) : Point;
+			return At + FVector(0.0, 0.0, SettleCm * SettleLeft());
+		}
 	};
 	FFootPlacement Placement[2];
 	/** Each leg's hip (the thigh bone) in the reference pose, component space, and its length from hip to ankle, cm. */
@@ -587,6 +607,12 @@ private:
 	 * not to be held so (the pelvis's anchor and the next step's height are taken from the feet's anchors).
 	 */
 	FTransform FlatFootTransform(const FAssist& Assist) const;
+	/**
+	 * The point a leg holds a foot at that stands where it is: over the floor where its bone is, at the height its
+	 * bone has standing flat on the floor. (Taken from the bone as it was, with the heels up after a push forward the
+	 * stance leg held its foot 1.5 cm above the floor for most of a second.)
+	 */
+	FVector FlatFootPoint(int32 Side) const;
 	/** Height of each foot's bone over the lowest point of its sole at Start, standing flat, cm. */
 	double FootStandHeightCm[2] = { 0.0, 0.0 };
 	/** Lets a foot of the controller's go back to the pose, eased out. */
@@ -620,6 +646,13 @@ private:
 		 */
 		bool bReaim = false;
 		TArray<FVector2D> LiftSole;
+		/**
+		 * A step across the other foot (FSandboxStepRecord::Cross): its point goes over the floor along a curve that
+		 * passes PassPoint, in front of or behind the other foot, instead of the straight way through it.
+		 */
+		int32 Cross = 0;
+		int32 Pass = 0;
+		FVector2D PassPoint = FVector2D::ZeroVector;
 	};
 	/** Whether an assist control is the one on the foot of a step under way. */
 	bool IsSwingFoot(const FAssist& Assist) const { return Swing.bActive && Assist.Slot == EAssistSlot::Feet && Assist.Side == Swing.Side; }
@@ -638,10 +671,16 @@ private:
 	 * (it runs away from the other foot's sole), a margin beyond it, kept on this foot's own side of the other foot
 	 * and within reach. The bone's point, at the height a flat foot has on the floor. False if a foot has no sole.
 	 * For a foot in the air (a step aimed anew), LiftSole and LiftFrom give its sole and bone as they were when it
-	 * lifted, which the reach is counted from.
+	 * lifted, which the reach is counted from. KeepCross (-1, 0, 1) keeps a decision to cross made earlier; any
+	 * other value lets the plan decide. The foot is put where the capture point is left at least
+	 * balance.step_margin_goal_cm inside the new support, near the aimed point (FSandboxStepRecord::AimOffsetCm);
+	 * KeepAim keeps an offset chosen earlier.
 	 */
 	bool PlanStep(int32 Side, double TimeS, FSandboxStepRecord& OutPlan, TArray<FVector2D>& OutTargetSole,
-		const TArray<FVector2D>* LiftSole = nullptr, const FVector* LiftFrom = nullptr) const;
+		const TArray<FVector2D>* LiftSole = nullptr, const FVector* LiftFrom = nullptr, int32 KeepCross = 2,
+		const FVector2D* KeepAim = nullptr) const;
+	/** Forward of a foot standing on the floor (its turn about the vertical since Start), seen from above: a crossing step passes it ahead or behind along this. */
+	FVector2D CrossForward(int32 StanceSide) const;
 	/** The support a step under way will give: the hull of the stance sole and of the swinging sole put at its target. Empty without a step. */
 	void PlannedSupport(TArray<FVector2D>& OutPolygon) const;
 	/**
