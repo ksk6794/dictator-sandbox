@@ -76,6 +76,12 @@ namespace
 	constexpr double SpawnSelfPenetrationLimitCm = 0.1;
 	// The floor's top face, which gravitational energy is counted from.
 	constexpr double FloorZCm = 0.0;
+	// A foot that lands at least this far, horizontally, from where it left the floor has made a step. A foot
+	// lifted by a blow and pulled back to its place lands within a centimetre or two of it.
+	constexpr double StepMinLengthCm = 5.0;
+	// ...after at least this long off the floor. A foot knocked sideways by a blow to the leg slides 5 cm in
+	// two frames; that is not a step.
+	constexpr double StepMinAirS = 0.1;
 
 	/**
 	 * How far a joint is outside its limits, in degrees, axis by axis. The engine limits the two swings
@@ -671,12 +677,24 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			AssistForceShareMax = FMath::Max(AssistForceShareMax, Load.ForceShare);
 			AssistTorqueShareSum += Load.TorqueShare;
 			AssistTorqueShareMax = FMath::Max(AssistTorqueShareMax, Load.TorqueShare);
+			for (int32 Slot = 0; Slot < FSandboxAssistLoad::SlotCount; ++Slot)
+			{
+				AssistHorizontalShareSum[Slot] += Load.HorizontalShare[Slot];
+				AssistVerticalShareSum[Slot] += Load.VerticalShare[Slot];
+			}
 			++AssistSamples;
 		}
 
 		// The target pose: how far the muscles' targets are from the reference pose, and how well they hold it.
 		FSandboxBodyControlView View;
 		Controller->GetControlView(View);
+		if (StartAnchorsCm.Num() == 0)
+		{
+			for (const FSandboxAssistView& AssistView : View.Assists)
+			{
+				StartAnchorsCm.Add(AssistView.Bone, AssistView.Target.GetLocation());
+			}
+		}
 		PoseOffsetMaxDeg = 0.0;
 		PoseOffsetJoint = NAME_None;
 		double ErrorSumDeg = 0.0;
@@ -829,6 +847,30 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			Controller->MeasureBalance(Balance);
 		}
 		const bool bUpright = Controller && (State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch);
+		if (Balance.bValid && bUpright)
+		{
+			// From the first frame on: a push can land on the first frame after the settle time.
+			TrackFeet(*Controller, Balance, *Mesh, (FrameIndex + 1) * FixedDt);
+			if (Controller->IsStepNeeded())
+			{
+				if (StepNeededFrames == 0)
+				{
+					FirstStepNeededFrame = FrameIndex;
+				}
+				++StepNeededFrames;
+			}
+			if (bSettled)
+			{
+				MinDecisionMarginCm = FMath::Min(MinDecisionMarginCm, Controller->GetDecisionMarginCm());
+			}
+		}
+		if (Controller)
+		{
+			AnkleLeanMaxDeg = FMath::Max(AnkleLeanMaxDeg, Controller->GetAnkleLeanDeg().Size());
+			HipBendMaxDeg = FMath::Max(HipBendMaxDeg, Controller->GetHipBendDeg().Size());
+			LeanMaxCm = FMath::Max(LeanMaxCm, Controller->GetLeanCm().Size());
+			SustainedMaxN = FMath::Max(SustainedMaxN, Controller->GetPressureN().Size());
+		}
 		if (Balance.bValid && bUpright && bSettled)
 		{
 			++BalanceFrames;
@@ -1156,6 +1198,77 @@ double UScenarioRunnerSubsystem::FootTargetErrorCm(const FFootTarget& Placed) co
 {
 	const FBodyInstance* Foot = Ragdoll ? Ragdoll->GetBodyMesh()->GetBodyInstance(Placed.Body) : nullptr;
 	return Foot && Foot->IsValidBodyInstance() ? FVector::Dist(Foot->GetUnrealWorldTransform().GetLocation(), Placed.WorldLocation) : -1.0;
+}
+
+double UScenarioRunnerSubsystem::PelvisAnchorShiftCm() const
+{
+	const USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+	if (!Controller)
+	{
+		return 0.0;
+	}
+	FSandboxBodyControlView View;
+	Controller->GetControlView(View);
+	for (const FSandboxAssistView& AssistView : View.Assists)
+	{
+		const FVector* Start = StartAnchorsCm.Find(AssistView.Bone);
+		if (Start && AssistView.Bone == Controller->GetTuning().Rig.Pelvis)
+		{
+			return FVector::Dist2D(AssistView.Target.GetLocation(), *Start);
+		}
+	}
+	return 0.0;
+}
+
+void UScenarioRunnerSubsystem::TrackFeet(const USandboxBodyController& Controller, const FSandboxBalanceView& Balance, const USkeletalMeshComponent& Mesh, double TimeS)
+{
+	const FName Feet[2] = { Controller.GetTuning().Rig.FootLeft, Controller.GetTuning().Rig.FootRight };
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const FBodyInstance* Foot = Mesh.GetBodyInstance(Feet[Side]);
+		if (!Foot || !Foot->IsValidBodyInstance())
+		{
+			continue;
+		}
+		FFootTrack& Track = FootTracks[Side];
+		// On the floor is touched by it at all: a foot that only carries less than the standing threshold has
+		// not left the floor.
+		const bool bStanding = Balance.FootForceN[Side] > 0.0;
+		const FVector Location = Foot->GetUnrealWorldTransform().GetLocation();
+		if (!Track.bSeen)
+		{
+			// The first look: where the foot is, nothing to compare with yet.
+			Track.bSeen = true;
+			Track.bStanding = bStanding;
+			Track.LiftLocation = Location;
+			Track.LiftTimeS = TimeS;
+			continue;
+		}
+		if (Track.bStanding && !bStanding)
+		{
+			++FootLifts;
+		}
+		else if (!Track.bStanding && bStanding)
+		{
+			const FVector Way = Location - Track.LiftLocation;
+			if (Way.Size2D() >= StepMinLengthCm && TimeS - Track.LiftTimeS >= StepMinAirS)
+			{
+				FStep& Step = Steps.AddDefaulted_GetRef();
+				Step.Foot = Feet[Side];
+				Step.LiftTimeS = Track.LiftTimeS;
+				Step.LandTimeS = TimeS;
+				Step.LengthCm = Way.Size2D();
+				Step.DirectionDeg = FMath::Fmod(FMath::RadiansToDegrees(FMath::Atan2(Way.Y, Way.X)) + 360.0, 360.0);
+			}
+		}
+		if (bStanding)
+		{
+			// Where the foot stood last: the place it leaves from if it lifts in the next frame.
+			Track.LiftLocation = Location;
+			Track.LiftTimeS = TimeS;
+		}
+		Track.bStanding = bStanding;
+	}
 }
 
 void UScenarioRunnerSubsystem::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
@@ -1530,6 +1643,28 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MinPoseOffsetDeg.GetValue();
 		AddCheck(TEXT("min_pose_offset_deg"), PoseOffsetMaxDeg >= Limit, Number(PoseOffsetMaxDeg), Number(Limit));
 	}
+	if (Spec.Expect.MaxAssistForceShareMean.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxAssistForceShareMean.GetValue();
+		const double Mean = AssistSamples > 0 ? AssistForceShareSum / AssistSamples : 0.0;
+		AddCheck(TEXT("max_assist_force_share_mean"), Controller && AssistSamples > 0 && Mean <= Limit, Controller && AssistSamples > 0 ? Number(Mean) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinPelvisAnchorShiftCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinPelvisAnchorShiftCm.GetValue();
+		const double Shift = PelvisAnchorShiftCm();
+		AddCheck(TEXT("min_pelvis_anchor_shift_cm"), Controller && Shift >= Limit, Controller ? Number(Shift) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinLeanCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinLeanCm.GetValue();
+		AddCheck(TEXT("min_lean_cm"), Controller && LeanMaxCm >= Limit, Controller ? Number(LeanMaxCm) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxSteps.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxSteps.GetValue();
+		AddCheck(TEXT("max_steps"), Controller && Steps.Num() <= Limit, Controller ? Number(Steps.Num()) : Null(), Number(Limit));
+	}
 
 	// The states the body went through, as names joined by '>'.
 	FString StateSequence;
@@ -1706,7 +1841,33 @@ void UScenarioRunnerSubsystem::Finish()
 		Assist->SetNumberField(TEXT("force_share_max"), AssistForceShareMax);
 		Assist->SetNumberField(TEXT("torque_share_mean"), AssistSamples > 0 ? AssistTorqueShareSum / AssistSamples : 0.0);
 		Assist->SetNumberField(TEXT("torque_share_max"), AssistTorqueShareMax);
+		// Which body the assist holds hardest, and whether across or up: the mean of each part.
+		const TSharedRef<FJsonObject> BySlot = MakeShared<FJsonObject>();
+		for (int32 Slot = 0; Slot < FSandboxAssistLoad::SlotCount; ++Slot)
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetNumberField(TEXT("horizontal_share_mean"), AssistSamples > 0 ? AssistHorizontalShareSum[Slot] / AssistSamples : 0.0);
+			Entry->SetNumberField(TEXT("vertical_share_mean"), AssistSamples > 0 ? AssistVerticalShareSum[Slot] / AssistSamples : 0.0);
+			BySlot->SetObjectField(FSandboxAssistLoad::SlotName(Slot), Entry);
+		}
+		Assist->SetObjectField(TEXT("by_body"), BySlot);
 		ControlJson->SetObjectField(TEXT("assist_load"), Assist);
+
+		// Steps: a foot that left the floor and stood again elsewhere, while the body was upright.
+		TArray<TSharedPtr<FJsonValue>> StepsJson;
+		for (const FStep& Step : Steps)
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("foot"), Step.Foot.ToString());
+			Entry->SetNumberField(TEXT("lift_t"), Step.LiftTimeS);
+			Entry->SetNumberField(TEXT("land_t"), Step.LandTimeS);
+			Entry->SetNumberField(TEXT("length_cm"), Step.LengthCm);
+			Entry->SetNumberField(TEXT("direction_deg"), Step.DirectionDeg);
+			StepsJson.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		ControlJson->SetArrayField(TEXT("steps"), StepsJson);
+		ControlJson->SetNumberField(TEXT("step_count"), Steps.Num());
+		ControlJson->SetNumberField(TEXT("foot_lifts"), FootLifts);
 
 		// The target pose and how well the muscles hold it while the body stands.
 		const TSharedRef<FJsonObject> PoseJson = MakeShared<FJsonObject>();
@@ -1786,7 +1947,47 @@ void UScenarioRunnerSubsystem::Finish()
 		BalanceJson->SetNumberField(TEXT("capture_outside_frames"), CaptureOutsideFrames);
 		// The floor's push on the two feet over the body's weight: 1 when the feet carry all of it.
 		BalanceJson->SetField(TEXT("support_share_mean"), bHaveMargins ? Number(SupportShareSum / SupportedFrames) : Null());
+		// The controller's own decisions: frames in which it needed a step (and the assist held the body
+		// instead), and the lowest margin it decided on.
+		BalanceJson->SetNumberField(TEXT("step_needed_frames"), StepNeededFrames);
+		BalanceJson->SetField(TEXT("step_needed_first_t"), FirstStepNeededFrame >= 0 ? Number(FirstStepNeededFrame * FixedDt) : Null());
+		BalanceJson->SetField(TEXT("decision_margin_min_cm"), MinDecisionMarginCm != TNumericLimits<double>::Max() ? Number(MinDecisionMarginCm) : Null());
+		BalanceJson->SetNumberField(TEXT("replants"), Controller->GetReplantCount());
+		// The strategies: the largest lean of the legs at the ankles and bend at the hips, and the slow part's
+		// shift of the centre of pressure at the end (forward, sideways).
+		BalanceJson->SetNumberField(TEXT("ankle_lean_max_deg"), AnkleLeanMaxDeg);
+		BalanceJson->SetNumberField(TEXT("hip_bend_max_deg"), HipBendMaxDeg);
+		BalanceJson->SetNumberField(TEXT("ankle_integral_forward_cm"), Controller->GetAnkleIntegralCm().X);
+		BalanceJson->SetNumberField(TEXT("ankle_integral_side_cm"), Controller->GetAnkleIntegralCm().Y);
+		// A held push: the largest force felt in every frame of the pressure window, and the largest lean into it.
+		BalanceJson->SetNumberField(TEXT("sustained_force_max_n"), SustainedMaxN);
+		BalanceJson->SetNumberField(TEXT("lean_max_cm"), LeanMaxCm);
 		ControlJson->SetObjectField(TEXT("balance"), BalanceJson);
+
+		// Where the assist held each body at the end, relative to the spawn point: anchors follow the support.
+		{
+			FSandboxBodyControlView View;
+			Controller->GetControlView(View);
+			TArray<TSharedPtr<FJsonValue>> TargetsJson;
+			for (const FSandboxAssistView& AssistView : View.Assists)
+			{
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("bone"), AssistView.Bone.ToString());
+				const FVector Location = AssistView.Target.GetLocation() - Spec.SpawnLocationCm;
+				TArray<TSharedPtr<FJsonValue>> LocationJson;
+				for (int32 Axis = 0; Axis < 3; ++Axis)
+				{
+					LocationJson.Add(MakeShared<FJsonValueNumber>(Location[Axis]));
+				}
+				Entry->SetArrayField(TEXT("final_location_cm"), LocationJson);
+				if (const FVector* Start = StartAnchorsCm.Find(AssistView.Bone))
+				{
+					Entry->SetNumberField(TEXT("shift_cm"), FVector::Dist2D(AssistView.Target.GetLocation(), *Start));
+				}
+				TargetsJson.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+			ControlJson->SetArrayField(TEXT("assist_targets"), TargetsJson);
+		}
 
 		// The fall: when the controller let the body go, how long until it lay still, and which way it went
 		// (the angle of the centre of mass's way over the floor: 0 is +x, 90 is +y).

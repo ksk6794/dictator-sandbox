@@ -1021,6 +1021,116 @@ The push matrix differs in one of 128 runs: 80 N*s backward on the chest no long
 in step 0). Under the M2 rules the matrix still passes; under the owner's M3 table, standing without a step
 at 80 N*s is a failure, which parts 3 and 4 have to deal with.
 
+### M3 part 3 (standing balance), 2026-11-23
+
+Same machine and settings. Four steps, each against its own baseline (`m3_part3_start`, `_step2`, `_step3`,
+`_end`). The push matrix now has five bodies (the pelvis added) and names an outcome per push.
+
+**Step 1, measurements only: all 37 scenarios and the 128 runs of the old matrix kept their hashes and
+outcomes.** What the assist holds in quiet standing (`control.assist_load.by_body`), as a share of body weight:
+
+| Body | Horizontal | Vertical |
+| --- | --- | --- |
+| Pelvis | 0.0135 | (no vertical spring) |
+| Feet together | 0.0031 | 0.0015 |
+| Chest, head | 0 | 0 |
+
+So 79% of the 0.0171 was the pelvis standing about 0.7 cm from its anchor.
+
+**Step 2, the capture point decides and the anchors follow the feet.** Changed exactly the scenarios in which
+a foot lifts or the body falls; the 33 standing ones kept their hashes. Three things had to be corrected on
+the way, each found by a run:
+
+| Tried | What happened | Now |
+| --- | --- | --- |
+| Step reach compared with the capture point's margin now (30 cm) | `push_thigh_200_falls` (2000 N for 0.1 s on a thigh) was held at -29 cm by the assist with 110% of body weight, and did not fall | The margin is grown by e^(omega T) over a step (T = 0.25 s, 2.2 times) and compared with 50 cm: lost at about 23 cm outside |
+| Each decision held for 0.05 s | A 200 N*s blow to a thigh put the capture point 38 cm out in its first frame; the assist (3 times body weight) brought it back in three frames, and the body "stood" | Lost is decided at once; only "a step is needed" waits (`decision_s`, 0.03 s) |
+| Support = the feet carrying 20 N or more | After a 30 N*s blow to the side of the chest the far foot carried 14 to 30 N for 0.15 s, the polygon shrank to one foot, and a step "was needed" | Support for decisions = every foot the floor touches, or touched within `lift_grace_s` (0.25 s, for a foot knocked off by a blow to the leg) |
+
+Before any strategy, the matrix with the new decision: 30 N*s 27 stood, 13 held (4 of them failures, the
+thighs sideways), 200 N*s 38 fell and 2 held (diagonal blows to a thigh, before lost was made immediate).
+
+**Step 3, ankle and hip strategy.** Sweeps on `stand_npc` and `hit_chest_10_stands`
+(`Saved\Sweeps\ankle1..3`):
+
+| Ankle gain | Slow part | Assist share, standing | Pelvis drift |
+| --- | --- | --- | --- |
+| 0 | none | 0.0171 | 0.85 cm |
+| 1 | none | 0.0147 | 0.66 cm |
+| 2 | none | 0.0131 | 0.55 cm |
+| 0 | on the capture point, 2 s | 0.0111 | 0.80 cm |
+| 1 | on the pelvis's offset from its anchor, 0.5 s | 0.0050 | 0.59 cm |
+| 2 | the same | 0.0052 | 0.50 cm |
+
+The slow part on the capture point left 0.007 on the pelvis spring: under its weight the posture sags so that
+the pelvis stands 0.35 cm off its anchor while the centre of mass is where it was. On the pelvis's own offset
+it takes that up. Chosen: gain 1, slow part 0.5 s.
+
+Sideways the ankles made things worse. A 30 N*s push to the side of the chest: capture margin -5.1 cm with no
+strategy, -9.3 with ankle gain 1, -9.9 with 3; turned the other way, -10.4. Leaning the legs as a parallelogram
+(ankles and hips turned together) lifted the unloaded foot; the ankles alone did the same. `ankle_side_gain`
+is 0. The hip strategy (trunk toward the capture point while it is outside the support) at 3 degrees per cm
+changed no outcome of the 30 N*s row and lowered the assist's peak on a backward push to the chest from 0.238
+to 0.179 of body weight; it is on at 3, forward and back only.
+
+**Step 4, a held push.** Changed the two scenarios in which a hand presses longer than a blow
+(`effector_push_chest`, `effector_push_chest_falls`, which now flinches once instead of twice); the strikes
+kept their hashes, and the push matrix kept all 160 outcomes. Two more corrections:
+
+| Tried | What happened | Now |
+| --- | --- | --- |
+| The lean moved the strategies' reference and the anchors only | Under 40 N the assist carried 4.7% of body weight: the push. The ankle muscles held the upright pose against the lean | The ankle targets tilt by the lean's angle (lean / centre-of-mass height) |
+| The legs' turns weighted by each leg's share of the load | With the larger turns of a lean, the body rocked from foot to foot (each foot at 0 N in turn); assist up to 0.43 | Both legs turn alike |
+| The held-push window equal to the hit's pressure time (0.1 s) | A 2000 N shove of 0.1 s counted as held | `held_push_s` 0.3 s |
+
+| Scenario | Flinches | Lean | Step needed | Assist, mean / max |
+| --- | --- | --- | --- | --- |
+| `push_hold_chest`: 40 N backward on the chest for 2 s | 0 (the onset is gentle) | 6.2 cm (6.1 by F h / m g) | no | 0.017 / 0.143; 0.006 to 0.008 during the hold |
+| `effector_hold_chest`: a hand pressed against the chest for 3 s | 1, as it lands | 10 cm (the limit) | 1.8 s of it (117 N: more than a lean can take) | 0.032 / 0.193 |
+
+A hand held at a fixed point presses harder the more the body leans into it (the chest comes toward the hand):
+moving the hand's target 4 cm further out only lowered its force from 138 to 104 N. The clean test of a lean
+without a step is the scripted force.
+
+**The body at the end of the part, against the start:**
+
+| Figure | Start | End | Bound |
+| --- | --- | --- | --- |
+| Assist force share, `stand_npc` (10 s) | 0.0171 | 0.0052 | 0.0093 |
+| The same, `stand_npc_10min` | 0.0171 | 0.0041 | 0.0093 |
+| Pelvis drift, standing | 0.85 cm | 0.59 cm | 5 cm |
+| Fastest body after settling, standing | 0.155 rad/s | 0.162 rad/s | 0.3 rad/s |
+| Capture margin, standing (minimum) | 9.8 cm | 9.0 cm | 5 cm |
+| `hit_head_30_stands`: assist mean, capture margin min | 0.0365, -13.3 cm | 0.0270, -14.5 cm (step needed 9 frames) | |
+| `hit_chest_200_falls`: rest after the fall, energy | 0.61 s, 0.13 J | 0.79 s, 0.23 J | 3 s, 1 J |
+| `effector_push_chest_falls` | 0.86 s, 0.06 J | 0.92 s, 0.00 J | 3 s, 1 J |
+| `push_thigh_200_falls` | 2.43 s, 0.00 J | 3.69 s, 3.22 J | 4 s, 4 J until part 5 |
+
+`push_thigh_200_falls`: the fall is decided 0.03 s earlier, so the rest is counted from earlier; and 2 s into
+the fall the rolling body puts a foot 0.99 cm into the floor, and being pushed out gives it 3 J in one frame.
+Its trajectory is chaotic: it gained 0.005, 0.008 and 3.2 J in three successive builds that changed nothing
+of the fall itself. Its limits were loosened on the owner's decision until part 5.
+
+**Push matrix at the end** (160 runs, 212 s):
+
+| Impulse | Stood | Held | Stepped | Fell | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| 10 N*s | 40 | 0 | 0 | 0 | judged: pass |
+| 30 N*s | 37 | 3 (head at 0, 180, 270 degrees) | 0 | 0 | judged: pass, 3 pending part 4 |
+| 80 N*s | 12 | 24 | 0 | 4 (head at 0, 180, 270; chest at 270) | reported only: 12 fail (pelvis at 45 and 135, thighs at most angles), 24 pending |
+| 200 N*s | 0 | 0 | 0 | 40 | judged: pass |
+
+All 44 falls were decided by the capture point. After a 30 N*s push the assist's commanded force peaks at 0.26
+of body weight (median of the row; 0.53 at most), against 0.009 in quiet standing.
+
+Repeatability: `push_hold_chest`, `effector_hold_chest` and `hit_head_30_stands` rendered with all overlays
+gave the hashes of their headless runs. `Tools\bootstrap.ps1`: all 8 steps pass (40 scenarios, 27 unit
+tests, the matrix, the session's self-test 14 of 14).
+
+Pictures looked at: `push_hold_chest` at 4.8 s (leaning 6.2 cm into 40 N, ankles turned 4.7 degrees, assist 0.8%, the feet
+at 389 and 396 N), `effector_hold_chest`
+at 5.0 s (the trunk bent toward the hand, 117 N, "needs a step"), `hit_head_30_stands` 0.15 s after the blow.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

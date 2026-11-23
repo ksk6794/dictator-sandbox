@@ -80,9 +80,10 @@ struct FSandboxThresholdTuning
 	double FlinchImpulseNs = 0.0;
 	/** Impulses that arrive within this time of each other count as one hit. Seconds. */
 	double FlinchWindowS = 0.0;
-	/** Balance is lost once the pelvis is this far, horizontally, from where it stands. cm. */
-	double FallPelvisOffsetCm = 0.0;
-	/** ...or this far below its standing height: the legs gave way. cm. */
+	/**
+	 * The posture is lost, whatever the capture point says, once the pelvis is this far below its standing
+	 * height (the legs gave way)... cm.
+	 */
 	double FallPelvisDropCm = 0.0;
 	/** ...or tilted this far from its standing orientation. Degrees. */
 	double FallTiltDeg = 0.0;
@@ -106,6 +107,70 @@ struct FSandboxBalanceTuning
 	double FootContactMinN = 0.0;
 	/** The sole of a standing foot is the part of its shapes within this of its lowest point. cm. */
 	double SoleToleranceCm = 0.0;
+	/**
+	 * How far outside the support polygon the capture point may be and still be brought back without a step,
+	 * by the ankles and the hips. Beyond it a step is needed. cm.
+	 */
+	double RecoverableCm = 0.0;
+	/**
+	 * How far beyond the edge of the support a step can put a foot... cm. The capture point runs away from the
+	 * support while the step is under way (by e^(omega t), omega = sqrt(g / centre-of-mass height)), so a step
+	 * can catch it only if it is now no further out than this divided by that growth over StepTimeS.
+	 */
+	double StepReachCm = 0.0;
+	/** ...and how long a step takes, from the decision to the foot on the floor. Seconds. */
+	double StepTimeS = 0.0;
+	/** A step is needed only once the capture point has been past balance.recoverable_cm this long (losing balance needs no wait). Seconds. */
+	double DecisionS = 0.0;
+	/** Time over which the assist's anchors of pelvis, chest and head follow a new support, eased in and out. Seconds. */
+	double AnchorFollowS = 0.0;
+	/** A foot that has been off the floor at least this long is planted anew where it lands: its assist anchor moves there. Seconds. */
+	double ReplantAirS = 0.0;
+	/**
+	 * A foot knocked off the floor (a blow to the leg) still counts as support, where it is, for this long:
+	 * it comes back down by itself, which is not a step. Only after that is a capture point outside the other
+	 * foot a step needed. Seconds.
+	 */
+	double LiftGraceS = 0.0;
+
+	/**
+	 * Ankle strategy. The body brings its capture point back over the place it stands on (where its centre of
+	 * mass was at Start, in the frame of the feet) by shifting its centre of pressure: the ankles' targets
+	 * turn, so the muscles press the toes or the heels down, or, sideways, the legs lean like a parallelogram.
+	 * AnkleGain is the extra shift of the centre of pressure per cm of capture-point error (dimensionless);
+	 * the turn that gives it follows from the body's weight and the legs' stiffness. 0 switches it off.
+	 */
+	double AnkleGain = 0.0;
+	/**
+	 * The same sideways. Measured on this body, a sideways turn of the ankles after a blow took the load off the
+	 * far foot and made the capture point leave the support, whichever way it turned; so it stands at 0.
+	 */
+	double AnkleSideGain = 0.0;
+	/**
+	 * Time over which the strategy's slow part takes up a steady offset of the pelvis from its assist anchor
+	 * (what the assist would otherwise hold): the centre of pressure moves by the offset once per this time. 0 = none. Seconds.
+	 */
+	double AnkleIntegralS = 0.0;
+	/** The slow part's largest shift of the centre of pressure. cm. */
+	double AnkleIntegralMaxCm = 0.0;
+	/** Largest turn of the ankles' targets, in each direction. Degrees. */
+	double AnkleMaxDeg = 0.0;
+	/**
+	 * Hip strategy, for a capture point the ankles cannot bring back: the trunk bends toward the fall at the
+	 * hips, which drives the hips the other way. Degrees of bend per cm of capture point beyond
+	 * balance.recoverable_cm... 0 switches it off.
+	 */
+	double HipDegPerCm = 0.0;
+	/** ...up to this. Degrees. */
+	double HipMaxDeg = 0.0;
+	/** Time constant with which the strategies' turns follow what they are asked for: no target jumps. Seconds. */
+	double ResponseS = 0.0;
+	/**
+	 * Leaning into a held push: under a steady force F at height h the body stands with its centre of mass
+	 * F h / (m g) toward the force, so that its centre of pressure stays in the middle of its feet. At most
+	 * this far. cm.
+	 */
+	double LeanMaxCm = 0.0;
 };
 
 /** How the body reacts to a hit. */
@@ -122,6 +187,17 @@ struct FSandboxReactionTuning
 	double FlinchPoseFullNs = 0.0;
 	/** How far the struck body's joint gives way along the hit at full weight. Degrees. */
 	double FlinchGiveDeg = 0.0;
+	/**
+	 * What the body feels is split in two: pressure, the felt force smoothed over this time, and the hit, the
+	 * impulse beyond that pressure. Only a hit makes the body flinch, so a hand held against it is felt once,
+	 * as it lands, and not again for as long as it presses. Seconds.
+	 */
+	double PressureS = 0.0;
+	/**
+	 * A force felt in every frame for this long is a held push, which the body leans into. A shove over in a
+	 * tenth of a second is not one: its momentum is in the capture point already. Seconds.
+	 */
+	double HeldPushS = 0.0;
 };
 
 /**

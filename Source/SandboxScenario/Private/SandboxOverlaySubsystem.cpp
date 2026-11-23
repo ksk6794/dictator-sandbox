@@ -668,6 +668,14 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 			const FSandboxAssistLoad& Load = Controller->GetAssistLoad();
 			CornerLabel(FString::Printf(TEXT("Assist: force %.1f%% of body weight, torque %.1f%%; felt %.1f N*s from contacts"),
 				Load.ForceShare * 100.0, Load.TorqueShare * 100.0, Controller->GetContactImpulseNs()));
+			// What the controller makes of its balance: the margin it decides on, a step needed, the strategies.
+			const FVector2D Ankle = Controller->GetAnkleLeanDeg();
+			const FVector2D Hip = Controller->GetHipBendDeg();
+			CornerLabel(FString::Printf(TEXT("Balance: decided on %.1f cm %s%s; ankles %.1f / %.1f deg, hips %.1f deg; held push %.0f N, lean %.1f cm"),
+				FMath::Abs(Controller->GetDecisionMarginCm()), Controller->GetDecisionMarginCm() >= 0.0 ? TEXT("inside") : TEXT("outside"),
+				Controller->IsStepNeeded() ? TEXT(", NEEDS A STEP (held by the assist)") : TEXT(""),
+				Ankle.X, Ankle.Y, Hip.X, Controller->GetPressureN().Size(), Controller->GetLeanCm().Size()),
+				Controller->IsStepNeeded() ? ColorWeak : FLinearColor::White);
 		}
 		else
 		{

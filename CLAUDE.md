@@ -13,9 +13,9 @@ that mirror left to right, and passes the push matrix; the player has physical h
 with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
 test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
 on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
-tunnelling. **M3, balance and recovery, is in progress: parts 1 and 2 of 7 are done** (the plan and the parts are in
+tunnelling. **M3, balance and recovery, is in progress: parts 1 to 3 of 7 are done** (the plan and the parts are in
 the M3 section of `docs/PRD.md`). The body senses its own balance (standing feet, support polygon, capture
-point) but does not act on it yet; every run measures energy, rest after a fall and penetration of the body
+point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
 physics asset had no self-collision, the standing character slept one substep in six, and a run on a busy
@@ -26,8 +26,12 @@ punch on the forearm does not snap the wrist. Steps 1 to 3 gave the body a nativ
 source of its target pose, poses written as joint angles in `Config/Tuning/poses.json`, and the flinch's
 pose offset (the struck part gives way, shoulders up, head in); step 4 two-bone leg placement
 (`USandboxBodyController::SetFootTarget`, scenario event `foot_target`). The idle from `MM_Idle` moved to
-part 7. Next is part 3, standing balance (the capture point decides a fall; ankle and hip strategy; the
-assist's anchors follow the support; a held push is leant into).
+part 7. Part 3, standing balance: the capture point decides whether the body stands, needs a step (held by
+the assist until part 4, reported as `step_needed_frames`) or falls; ankle and hip strategies are turns of the
+leg targets; the assist's anchors follow the feet; a held push is leant into and makes the body flinch only as
+it lands; quiet-standing assist share 0.0052 (bound 0.0093); the push matrix names each outcome (stood, held,
+stepped, fell) and judges it by the owner's table (the 80 N*s row from part 4). `push_thigh_200_falls` carries
+loosened limits (4 s, 4 J) until part 5. Next is part 4, Stagger and the recovery step.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -50,7 +54,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight at a time; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Parallel 1` for physics step times nothing disturbed) |
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
-| Push matrix (128 pushes, the M2 fall rules) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values) |
+| Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
 | Self-test of the session, no window | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Smoke` (`-Smoke -Shot` renders it and saves `final.png`) |
@@ -60,9 +64,9 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Bake a map's lighting | `powershell -ExecutionPolicy Bypass -File Tools\bake-lighting.ps1 [-Quality Preview] [-Force]` |
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
-Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 105 s (35 scenarios, eight at a time;
-6 minutes one after another), the push matrix 3 minutes, a sweep of 7 runs 17 s, the session's self-test
+Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 110 s (40 scenarios, eight at a time;
+7 minutes one after another), the push matrix 3.5 minutes (one row of 40: 1 minute), a sweep of 7 runs 17 s, the session's self-test
 10 s, the whole bootstrap about 5 minutes.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
@@ -77,7 +81,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
@@ -315,13 +319,41 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **A static mesh component with the engine's basic sphere did not become a simulating body here** (valid
   body, `IsInstanceSimulatingPhysics` false; the cause was not chased). Hands are `USphereComponent`s with a
   mesh attached for looks.
-- **A sustained push by a hand makes the character flinch again every time a flinch ends** (0.35 s), until
-  it falls: each contact frame adds to the felt impulse, as a long `impulse` push would. Known; M3 decides
-  what a push should do.
+- **A sustained push by a hand made the character flinch again every time a flinch ended** (0.35 s), until
+  it fell: each contact frame added to the felt impulse. Since M3 part 3 only the impulse beyond the
+  smoothed pressure is a hit (`reactions.pressure_s`): one flinch as the hand lands (`effector_hold_chest`).
 - **Add a tuning name and its value in the same build.** A build that does not know a name refuses the
   file, so a new tuning file dropped in while an older build is running a suite fails every active scenario
   after it ("is not a tuning value").
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
+- **`| Select-Object -First N` stops the script that feeds it.** `suite.ps1 -SaveBaseline x | Select-Object
+  -First 15` ended the suite after 15 lines, with exit code 255 and no baseline. Redirect to a file and filter
+  that (`*> file; Get-Content file | ...`).
+- **A capture point compared with the support "now" lets the assist hold anything.** It runs away by
+  e^(omega t) while a step is under way; compared now with a 30 cm reach, a 200 N*s push was held by the assist
+  with 110% of body weight. Compare where it will be when a step lands (`balance.step_time_s`).
+- **A decision that waits lets the assist take back the blow.** The capture point is the whole body's momentum
+  and a blow gives it in one step; held for 0.05 s, a 200 N*s blow was undone by the assist (three times the
+  body's weight) in three frames. Losing balance is decided at once; only "a step is needed" waits.
+- **A foot below the standing threshold is still support.** After a sideways blow the far foot carried 14 to
+  30 N, under the 20 N of a standing foot; the support polygon shrank to one foot and a step "was needed".
+  Decisions take every foot the floor touches (force above 0).
+- **Leg turns must not depend on each leg's load.** Weighting the strategies' turns by load gave a feedback
+  loop: the lighter leg turned less, the body rolled onto the other, and under a held push it rocked from foot
+  to foot with the assist at 0.43 of body weight.
+- **Sideways, turning the ankles' targets after a blow lifted the unloaded foot, whichever way it turned**
+  (`balance.ankle_side_gain` is 0). A parallelogram lean (ankles and hips together) did the same.
+- **Leaning into a held push needs the ankle targets to tilt.** Moving only the strategies' reference and the
+  assist's anchors left the ankle muscles holding the upright pose: the assist carried the whole 40 N push.
+- **A filter that lets a blow count as pressure counts its momentum twice.** A blow's momentum is in the
+  capture point already. The lean and the decision use the force felt in every frame for
+  `reactions.held_push_s` (0.3 s); a shove of 0.1 s is not a held push.
+- **A hand held at a point pushes harder the more the body leans into it.** Moving the target 4 cm out lowered
+  the force only from 138 to 104 N. Test a lean with a scripted force (`impulse` with `duration_s`).
+- **A falling body kept reaching for a placed foot's point** and gained 1.7 J; the controller now lets placed
+  feet go (eased) when it falls.
+- **`Sandbox.Tune` with a value out of range changes nothing, and the run goes on.** A scenario's console
+  event did that (`step_reach_cm=500`, range 300): check `control.tuning_changes` after such an event.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,

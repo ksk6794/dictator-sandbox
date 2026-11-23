@@ -16,12 +16,23 @@ class USkeletalMeshComponent;
  * How hard the balance assist is working at one instant, estimated from the assist springs' settings and
  * the bodies' distance from their targets. Both values are sums over all assist bodies.
  */
-struct FSandboxAssistLoad
+struct SANDBOXBODY_API FSandboxAssistLoad
 {
 	/** Commanded linear force as a fraction of the character's weight. */
 	double ForceShare = 0.0;
 	/** Commanded torque as a fraction of weight times standing centre-of-mass height. */
 	double TorqueShare = 0.0;
+
+	/**
+	 * The force share by the body the assist holds (pelvis, chest, head, and both feet together), split into
+	 * its horizontal and vertical parts. Each part is the size of that component of the commanded force over
+	 * the character's weight, so a slot's two parts need not add up to its share of ForceShare.
+	 */
+	static constexpr int32 SlotCount = 4;
+	double HorizontalShare[SlotCount] = { 0.0, 0.0, 0.0, 0.0 };
+	double VerticalShare[SlotCount] = { 0.0, 0.0, 0.0, 0.0 };
+	/** "pelvis", "chest", "head", "feet": the slots in the order above, named as in the tuning ("assist.feet..."). */
+	static const TCHAR* SlotName(int32 Slot);
 };
 
 /** One change of the body's state, for result files and overlays. */
@@ -105,16 +116,24 @@ struct FSandboxBodyControlView
  *
  *   Muscles         one parent-space control per joint of the physics asset: an angular spring that turns
  *                   the child body toward the animation pose (the reference pose while no animation plays).
- *   Balance assist  world-space controls on pelvis, chest, head and both feet, with targets captured from
- *                   the pose the body was started in. Balance level 0: the assist alone keeps it upright.
+ *   Balance assist  world-space controls on pelvis, chest, head and both feet. A foot's anchor is where it
+ *                   was planted (at Start, or where it landed); the anchors of pelvis, chest and head are
+ *                   kept in the frame of the feet's and follow them (FollowSupport), and lean with a held push.
  *   States          Standing, Flinch, Falling, Lying. Each state reads its own tuning ("states.falling...");
  *                   the thresholds that move the body between them are tuning values too.
  *   Balance sense   Which feet stand (the floor's push on them, from the body's own contact events), the
- *                   support polygon under them, the centre of mass and the capture point. Sensed every tick
- *                   (GetBalance, MeasureBalance); the states do not act on it yet.
+ *                   support polygon under them, the centre of mass and the capture point (GetBalance,
+ *                   MeasureBalance).
+ *   Balance         The capture point decides (M3 part 3): inside the support, or outside by no more than the
+ *                   ankles and hips bring back, the body stands; further out it needs a step (held by the
+ *                   assist until the step exists); beyond a step's reach it falls. The ankle and hip
+ *                   strategies are turns of the leg targets (UpdateStrategies); a held push is leant into.
+ *   Feeling         Impulses on the body (contacts, scripted blows) are gathered over a frame (FeelFrame):
+ *                   what exceeds the pressure felt so far is a hit and may start a flinch; a force felt in
+ *                   every frame for a while is a held push.
  *
  *                     Standing --hit--> Flinch --recovered--> Standing
- *                     Standing or Flinch --pelvis too far, too low or too tilted--> Falling
+ *                     Standing or Flinch --capture point beyond a step, or pelvis too low or too tilted--> Falling
  *                     Falling --at rest for a while--> Lying
  *
  * All bodies stay dynamic, and awake: a body under control never sleeps (see Start). The controller owns a
@@ -200,6 +219,17 @@ public:
 	/** Simulated time since Start, at the beginning of the coming physics step. */
 	double GetElapsedS() const { return ElapsedS; }
 
+	/**
+	 * Whether the capture point is further outside the support than the ankles and hips can bring back
+	 * (balance.recoverable_cm), but within a step's reach, and has been for balance.decision_s: the body needs
+	 * a step. It cannot step yet (M3 part 4), so the assist holds it; result files report the frames.
+	 */
+	bool IsStepNeeded() const { return bStepNeeded; }
+	/** The capture point's margin to the support that the last decision was made on, cm; positive inside. */
+	double GetDecisionMarginCm() const { return LastDecisionMarginCm; }
+	/** How many times a foot was planted anew, its assist anchor moved to where it landed. */
+	int32 GetReplantCount() const { return ReplantCount; }
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void OnUnregister() override;
 
@@ -221,16 +251,88 @@ private:
 		FName Control;
 		FName Bone;
 		EAssistSlot Slot = EAssistSlot::Pelvis;
-		/** Where the body's bone should be, in world space. */
+		/** Where the body's bone should be, in world space: what the solver is given now. */
 		FTransform Target = FTransform::Identity;
+
+		/** Pelvis, chest and head: the anchor in the support's frame (see SupportFrame), as it was at Start. */
+		FVector SupportLocation = FVector::ZeroVector;
+		FQuat SupportRotation = FQuat::Identity;
+		/** Going over to a new support: from where, to where, and for how long so far. Below 0 when not. */
+		FTransform FollowFrom = FTransform::Identity;
+		FTransform FollowTo = FTransform::Identity;
+		double FollowElapsedS = -1.0;
+
+		/** Feet: 0 left, 1 right; -1 for the other bodies. */
+		int32 Side = -1;
+		/** Feet: the orientation the foot was planted with at Start, which the support's turn is counted from. */
+		FQuat StartRotation = FQuat::Identity;
+		/** Feet: whether it stood in the last tick, and how long it has been off the floor. */
+		bool bStanding = true;
+		double AirS = 0.0;
+		/** Pelvis, chest and head: how far the anchor moves with the lean, per cm the centre of mass leans (its height over the centre of mass's). */
+		double LeanFactor = 0.0;
+		/** The lean last handed to the solver with this anchor, cm. */
+		FVector2D AppliedLeanCm = FVector2D::ZeroVector;
 	};
+
+	/**
+	 * Moves the assist's anchors with the support. A foot that lands after ReplantAirS in the air is planted
+	 * where it landed: its anchor goes there. The anchors of pelvis, chest and head are fixed in the frame of
+	 * the feet's anchors, and when that frame moves they follow it over AnchorFollowS, eased, so that no
+	 * target jumps. While the feet stay where they are, nothing here touches a target.
+	 */
+	void FollowSupport(double DeltaTime);
+	/** The support's frame from the feet's anchors: the point between them, and their mean turn about the vertical since Start. */
+	void SupportFrame(FVector& OutLocation, FQuat& OutRotation) const;
+	void SetAssistTarget(const FAssist& Assist);
+
+	/** How far the capture point is inside the support it is judged against: the feet that stand, or the last ones that did. cm. */
+	double DecisionMarginCm() const;
+	/** Hull of the soles the last time a foot stood. */
+	TArray<FVector2D> LastSupportPolygon;
+	/** How long the capture point has been past the limit of a step being needed, and of balance being lost. */
+	double StepNeededS = 0.0;
+	double LostS = 0.0;
+	bool bStepNeeded = false;
+	double LastDecisionMarginCm = 0.0;
 
 	/** A contact of one of the character's bodies, reported by the physics scene after the step. */
 	UFUNCTION()
 	void OnBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
-	/** The character notices an impulse on one of its bodies, however it got there. May start a flinch. */
-	void FeelImpulse(FName Bone, const FVector& ImpulseNs);
+	/**
+	 * The character notices an impulse on one of its bodies, however it got there, at a point (world space).
+	 * Gathered over the frame and worked through in the next tick (FeelFrame).
+	 */
+	void FeelImpulse(FName Bone, const FVector& ImpulseNs, const FVector& PointCm);
+	/**
+	 * What was felt since the last tick: the pressure (the felt force, smoothed over reactions.pressure_s) and
+	 * its moment about the support follow it; the impulse beyond the pressure is a hit, and a hit large enough
+	 * makes a standing body flinch.
+	 */
+	void FeelFrame(double DeltaTime);
+	/** Felt since the last tick: the impulses' sum, N*s; their moment about the support's height, horizontal part times height, N*s*cm; the body felt most. */
+	FVector FrameImpulseNs = FVector::ZeroVector;
+	FVector2D FrameMomentNsCm = FVector2D::ZeroVector;
+	FName FrameBone;
+	double FrameBoneImpulseNs = 0.0;
+	/** The felt force smoothed over reactions.pressure_s, N: what an impulse has to exceed to be a hit. */
+	FVector PressureN = FVector::ZeroVector;
+	/**
+	 * The force felt in every frame of the last reactions.held_push_s (the frame with the least of it), N, and
+	 * its horizontal part times its height above the support, N*cm: a push that is held. A blow, over in a
+	 * frame or two, leaves nothing here; its momentum is in the capture point already.
+	 */
+	FVector SustainedN = FVector::ZeroVector;
+	FVector2D SustainedMomentNCm = FVector2D::ZeroVector;
+	/** The force and moment of each of the last frames, for SustainedN, oldest overwritten first. */
+	TArray<FVector> RecentForceN;
+	TArray<FVector2D> RecentMomentNCm;
+	int32 RecentNext = 0;
+	/** How far the body leans into a held push, after the lag: its centre of mass's offset from where it stands, cm (world x, y). */
+	FVector2D LeanCm = FVector2D::ZeroVector;
+	/** The assist's target of a body: its anchor, moved with the lean in proportion to the body's height. */
+	FTransform AssistGoal(const FAssist& Assist) const;
 
 	const FSandboxAssistTuning& AssistTuning(EAssistSlot Slot) const;
 	bool ReadStateTuning(FSandboxBodyTuning& OutTuning, FString& OutError) const;
@@ -284,7 +386,7 @@ private:
 	double StateEnteredS = 0.0;
 	/** Flinch: the muscle group that was hit. */
 	ESandboxMuscleGroup FlinchGroup = ESandboxMuscleGroup::Spine;
-	/** Impulses received since HitStartedS, added up: a push delivered over several frames is one hit. */
+	/** Hits (impulse beyond the pressure) received since HitStartedS, added up: a blow delivered over several frames is one hit. */
 	FVector HitImpulseNs = FVector::ZeroVector;
 	double HitStartedS = 0.0;
 	double ContactImpulseNs = 0.0;
@@ -305,6 +407,51 @@ private:
 
 	TArray<FMuscle> Muscles;
 	TArray<FAssist> Assists;
+	int32 ReplantCount = 0;
+	/**
+	 * The balance strategies (ankle and hip), worked out every tick from the capture point's error and handed
+	 * to the pose as turns (UpdatePoseTurns). The turns follow what is asked through a first-order lag
+	 * (balance.response_s) and fade the same way once the body is no longer upright.
+	 */
+	void UpdateStrategies(double DeltaTime);
+	/** Adds the strategies' turns to a set of pose turns, merged per bone. */
+	void AddStrategyTurns(TArray<FSandboxPoseTurn>& Turns) const;
+	/** Where the body's centre of mass stood at Start, in the support's frame: what the strategies bring the capture point back to. */
+	FVector ComSupportLocation = FVector::ZeroVector;
+	/** Height of the centre of mass above the feet's anchors at Start, cm: the radius of a lean about the ankles. */
+	double ComHeightCm = 100.0;
+	/** The strategies' current lean of the legs about the ankles (forward, sideways) and bend of the trunk at the hips, radians, after the lag. */
+	FVector2D AnkleLeanRad = FVector2D::ZeroVector;
+	FVector2D HipBendRad = FVector2D::ZeroVector;
+	/** The ankle strategy's slow part: the shift of the centre of pressure it has built up, cm (forward, sideways). */
+	FVector2D AnkleIntegralCm = FVector2D::ZeroVector;
+	/** The support's forward and sideways directions this tick (the character faces +y at Start). */
+	FVector SupportForward = FVector(0.0, 1.0, 0.0);
+	FVector SupportSide = FVector(1.0, 0.0, 0.0);
+	/** Capture-point error the strategies worked on this tick, cm, world x and y. */
+	FVector2D StrategyErrorCm = FVector2D::ZeroVector;
+	/** Whether the strategies hold turns that the pose must carry. */
+	bool bStrategyActive = false;
+	/** The legs the strategies turn: foot and thigh bones, left and right (mesh bone indices and names). */
+	int32 FootBoneIndex[2] = { INDEX_NONE, INDEX_NONE };
+	int32 ThighBoneIndex[2] = { INDEX_NONE, INDEX_NONE };
+	FName FootBoneName[2];
+	FName ThighBoneName[2];
+
+public:
+	/** The strategies' state for result files and overlays: ankle lean and hip bend (forward, sideways), degrees, and the slow part, cm. */
+	FVector2D GetAnkleLeanDeg() const { return FVector2D(FMath::RadiansToDegrees(AnkleLeanRad.X), FMath::RadiansToDegrees(AnkleLeanRad.Y)); }
+	FVector2D GetHipBendDeg() const { return FVector2D(FMath::RadiansToDegrees(HipBendRad.X), FMath::RadiansToDegrees(HipBendRad.Y)); }
+	FVector2D GetAnkleIntegralCm() const { return AnkleIntegralCm; }
+	/** The steady force the body feels (a held push), N, and how far it leans into it, cm (world x, y). */
+	const FVector& GetPressureN() const { return SustainedN; }
+	FVector2D GetLeanCm() const { return LeanCm; }
+
+private:
+	/** Feet the pose has been asked to place (SetFootTarget), by mesh bone index, with their points. */
+	TMap<int32, FVector> PlacedFeet;
+	/** Lets every placed foot go back to the pose, eased out. */
+	void ReleaseFootTargets();
 	FSandboxAssistLoad AssistLoad;
 	double WeightN = 0.0;
 	double StandingComHeightM = 0.0;

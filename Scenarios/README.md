@@ -195,6 +195,10 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_pose_error_mean_deg` | While the body stood (not flinching), after the settle time: the angle between each driven muscle's target and its body, averaged over the muscles and then over the frames, stayed at most this (`control.pose.error_mean_deg`) |
 | `max_foot_target_error_cm` | At the end of the run, every foot placed by a `foot_target` event is at most this far from its point |
 | `min_pose_offset_deg` | In the last frame some muscle's target was turned at least this far from the reference pose (`control.pose.target_offset_max_deg`): the pose of the tuning reached the solver |
+| `max_assist_force_share_mean` | The balance assist's commanded force over body weight, averaged over the settled frames, stayed at most this (`control.assist_load.force_share_mean`). The standing scenarios hold it to 0.0093, the owner's M3 bound. Active control only |
+| `max_steps` | At most this many steps while upright (`control.step_count`). Active control only |
+| `min_pelvis_anchor_shift_cm` | The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the feet (`control.assist_targets`). Active control only |
+| `min_lean_cm` | The body leaned into a held push at least this far at some time (`control.balance.lean_max_cm`). Active control only |
 
 A physics asset can be authored with joint anchors that do not coincide in the reference pose; the solver
 closes that gap in the first frames. It is reported as `metrics.initial_joint_offset_cm` and is not part of
@@ -287,6 +291,28 @@ assist's force share and the fastest joint of that frame with its speed. The joi
 angular velocity of the two bodies at the end of the frame: a peak in one frame that is gone in the next is
 a snap of one substep, not a body that is flying apart.
 
+**What the body does about its balance** (M3 part 3; `control.balance` and `control`):
+
+- `step_needed_frames`, `step_needed_first_t`: frames in which the controller found that the capture point
+  was further outside the support than the ankles and hips can bring back (`balance.recoverable_cm`) but
+  within a step's reach. Until the recovery step exists the assist holds such a body; the push matrix calls
+  that outcome `held`. `decision_margin_min_cm` is the lowest margin the controller decided on: it judges
+  against every foot the floor touches (or touched within `balance.lift_grace_s`), not only the feet that
+  stand by `balance.foot_contact_min_n`, and moves the capture point by the held push (below).
+- `replants`: times a foot was planted anew where it landed. `control.assist_targets` has every assist
+  anchor's final place (relative to the spawn point) and how far it moved (`shift_cm`): the anchors of
+  pelvis, chest and head follow the feet's (`stand_foot_moved`).
+- `ankle_lean_max_deg`, `hip_bend_max_deg`, `ankle_integral_forward_cm`, `ankle_integral_side_cm`: the
+  strategies' largest turns and the slow part's shift of the centre of pressure at the end.
+- `sustained_force_max_n`, `lean_max_cm`: the largest force felt in every frame of `reactions.pressure_s`
+  (a held push; a blow leaves nothing here) and the largest lean into it.
+- `control.steps`, `step_count`, `foot_lifts`: measured by the runner from the feet the floor touches. A
+  step is a foot that leaves the floor for at least 0.1 s and lands at least 5 cm from where it left; a
+  foot knocked aside along the floor, or lifted and put back, is not one.
+- `control.assist_load.by_body`: the assist's force share by the body it holds (pelvis, chest, head, feet),
+  horizontal and vertical parts. In quiet standing before part 3 the pelvis's horizontal pull was 0.0135
+  of the 0.0171.
+
 **Target pose** (`control.pose`): how far the muscles' targets are turned from the reference pose in the
 last frame (`target_offset_max_deg` and its joint; 0 for the standing pose of zeros), and how well the
 muscles hold them while the body stands: the mean over driven muscles of target-to-body angle per frame,
@@ -364,13 +390,22 @@ files that do not change this has no effect on the result.
 ## Push matrix
 
 `Tools\push-matrix.ps1` pushes the standing NPC with every combination of impulse (10, 30, 80, 200 N*s),
-body (head, chest, both thighs) and direction (8), 128 runs, several at a time, in about 3 minutes. It
-generates one scenario per push under `Saved\Matrix\push\scenarios`, runs them with
-`Tools\scenario.ps1 -File`, prints a table of who fell and writes `Saved\Matrix\push\matrix.json`.
-The rules it checks are the M2 gate: the smallest impulse never causes a fall, the largest always does,
-mirror-image pushes end the same way, and no run stretches a joint by more than 2 cm. By default each
-impulse is a single blow; `-PushSeconds 0.1` delivers it as a push. `-Tune` passes tuning overrides to
-every run, which is how a threshold is tried before it goes into the file.
+body (head, chest, pelvis, both thighs) and direction (8), 160 runs, eight at a time, in about 3.5 minutes.
+It generates one scenario per push under `Saved\Matrix\push\scenarios`, runs them with
+`Tools\scenario.ps1 -File`, names the outcome of each push and writes `Saved\Matrix\push\matrix.json`.
+
+An outcome is `stood` (no step, never needed one), `held` (no step although one was needed: the assist held
+the body), `stepped` (one or more steps, still up) or `fell`. They are judged by the owner's table of M3:
+10 N*s stood; 30 N*s never a fall, forward and sideways stood, backward (225, 270, 315 degrees) and any push
+on the head stood or one step; 80 N*s on the trunk (chest, pelvis) stepped, backward stepped or fell, on the
+head and the thighs stepped or fell; 200 N*s fell. `held` where the table allows a step is `pending` (the
+recovery step is M3 part 4), anywhere else a failure. Mirror-image pushes must end the same way. The table
+prints `s`, `h`, `S<n>`, `F`, with `!` for a failure and `?` for pending. `-Enforce` names the impulses whose
+rows are judged (10, 30 and 200 until part 4; the 80 row is printed and written but not judged), and
+`-Rules m2` checks only the M2 gate (the smallest impulse never fells, the largest always does). By default
+each impulse is a single blow; `-PushSeconds 0.1` delivers it as a push. `-Tune` passes tuning overrides
+to every run. `Tools\baseline.ps1 -CompareMatrix <baseline>` names the pushes that end otherwise than in a
+baseline's matrix.
 
 ## Output
 

@@ -26,7 +26,6 @@
   "thresholds": {
     "flinch_impulse_ns": 5,
     "flinch_window_s": 0.15,
-    "fall_pelvis_offset_cm": 15,
     "fall_pelvis_drop_cm": 20,
     "fall_tilt_deg": 35,
     "rest_speed_mps": 0.05,
@@ -35,13 +34,31 @@
   },
   "balance": {
     "foot_contact_min_n": 20,
-    "sole_tolerance_cm": 1.5
+    "sole_tolerance_cm": 1.5,
+    "recoverable_cm": 4,
+    "step_reach_cm": 50,
+    "step_time_s": 0.25,
+    "decision_s": 0.03,
+    "anchor_follow_s": 0.5,
+    "replant_air_s": 0.05,
+    "lift_grace_s": 0.25,
+    "ankle_gain": 1,
+    "ankle_side_gain": 0,
+    "ankle_integral_s": 0.5,
+    "ankle_integral_max_cm": 5,
+    "ankle_max_deg": 8,
+    "hip_deg_per_cm": 3,
+    "hip_max_deg": 15,
+    "response_s": 0.05,
+    "lean_max_cm": 10
   },
   "reactions": {
     "flinch_weakening": 0.3,
     "flinch_recovery_s": 0.35,
     "flinch_pose_full_ns": 30,
-    "flinch_give_deg": 15
+    "flinch_give_deg": 15,
+    "pressure_s": 0.1,
+    "held_push_s": 0.3
   },
   "states": {
     "falling": {

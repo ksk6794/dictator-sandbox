@@ -29,17 +29,34 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `solver.position_iterations`, `velocity_iterations`, `projection_iterations` | count | Solver effort on the character's bodies. Whole numbers, at most 255 |
 | `thresholds.flinch_impulse_ns` | N·s | A hit of at least this impulse makes a standing body flinch |
 | `thresholds.flinch_window_s` | s | Impulses that arrive within this time of each other count as one hit (a push delivered over several frames) |
-| `thresholds.fall_pelvis_offset_cm` | cm | Balance is lost once the pelvis is this far, horizontally, from where it stands. 15 cm is about the edge of the feet's support |
-| `thresholds.fall_pelvis_drop_cm` | cm | ...or this far below its standing height (the legs gave way) |
+| `thresholds.fall_pelvis_drop_cm` | cm | The posture is lost, whatever the capture point says, once the pelvis is this far below its standing height (the legs gave way) |
 | `thresholds.fall_tilt_deg` | degrees | ...or tilted this far from its standing orientation |
 | `thresholds.rest_speed_mps`, `rest_angular_speed_rads` | m/s, rad/s | A fallen body is at rest when it moves and turns no faster than this as a whole (root mean square over its bodies, weighted by mass) |
 | `thresholds.rest_time_s` | s | ...for this long |
 | `balance.foot_contact_min_n` | N | A foot stands when the floor pushes up on it with at least this force, averaged over a frame. In quiet standing each foot carries about 390 N |
 | `balance.sole_tolerance_cm` | cm | The sole of a standing foot is the part of its shapes within this of its lowest point: what the support polygon is the hull of |
+| `balance.recoverable_cm` | cm | How far outside the support the capture point may be and still be brought back by the ankles and hips. Further out, a step is needed |
+| `balance.step_reach_cm` | cm | How far beyond the support's edge a step can put a foot... |
+| `balance.step_time_s` | s | ...and how long a step takes. Balance is lost, at once, when the capture point would be further out than the reach by the time a step lands: it runs away by e^(omega t), omega = sqrt(g / centre-of-mass height) (2.2 times over 0.25 s) |
+| `balance.decision_s` | s | A step is needed only once the capture point has been past `recoverable_cm` this long |
+| `balance.replant_air_s` | s | A foot that the floor has not touched for this long is planted anew where it lands: its assist anchor goes there, and the anchors of pelvis, chest and head follow the new support |
+| `balance.lift_grace_s` | s | A foot knocked off the floor still counts as support, where it is, for this long: it comes back down by itself, which is not a step |
+| `balance.anchor_follow_s` | s | Time over which the anchors of pelvis, chest and head go over to a new support, eased in and out |
+| `balance.ankle_gain` | factor | Ankle strategy, forward and back: the centre of pressure moves toward the capture point by this times its error (the error against where the centre of mass stood at the start, over the feet). The ankles' targets turn by the torque that takes over the weight's stiffness. 0 switches it off |
+| `balance.ankle_side_gain` | factor | The same sideways. 0: on this body a sideways turn of the ankles after a blow lifted the unloaded foot, whichever way it turned (measured in M3 part 3) |
+| `balance.ankle_integral_s` | s | The ankles' slow part: a steady offset of the pelvis from its assist anchor moves the centre of pressure by the offset once per this time, so that the ankles, not the assist, hold the posture's sag. 0 switches it off |
+| `balance.ankle_integral_max_cm` | cm | The slow part's largest shift of the centre of pressure |
+| `balance.ankle_max_deg` | degrees | Largest turn of the ankles' targets |
+| `balance.hip_deg_per_cm` | degrees/cm | Hip strategy: while the capture point is outside the support, the trunk bends toward it at the hips (forward or back), by this per cm outside. 0 switches it off |
+| `balance.hip_max_deg` | degrees | ...up to this |
+| `balance.response_s` | s | Time constant with which the strategies' turns and the lean follow what they are asked for, also on the way out when the body falls: no target jumps |
+| `balance.lean_max_cm` | cm | Under a held push (a force felt in every frame of `reactions.pressure_s`) the centre of mass leans F h / (m g) toward the force, the assist's anchors with it: at most this far. The capture point a decision is made on moves the other way by the same amount |
 | `reactions.flinch_weakening` | fraction | Stiffness of the hit region's muscles at the moment of a hit, as a fraction of normal |
 | `reactions.flinch_recovery_s` | s | Time over which they return to full strength, in a straight line; also how long a flinch lasts |
 | `reactions.flinch_pose_full_ns` | N·s | A hit of this impulse puts the flinch's pose offset on at full weight, a smaller one in proportion. The offset fades over `flinch_recovery_s` from the hit, whatever state the body is in by then, and is gone once it lies |
 | `reactions.flinch_give_deg` | degrees | How far the struck body's own joint gives way along the hit at full weight |
+| `reactions.pressure_s` | s | What the body feels is split in two: pressure, the felt force smoothed over this time, and the hit, the impulse beyond it. Only a hit counts toward `thresholds.flinch_impulse_ns`, so a hand that keeps pressing is felt as it lands and not again |
+| `reactions.held_push_s` | s | A force felt in every frame for this long is a held push, which the body leans into (`balance.lean_max_cm`) and which moves the capture point a decision is made on. A shove of 0.1 s is not one: its momentum is in the capture point already (with a window of 0.1 s, a 2000 N shove of 0.1 s counted as held, the body leant into it as it fell, and lying it gained 3.2 J) |
 
 ## Poses of the body (`poses.json`)
 
@@ -68,8 +85,13 @@ A pose can be changed while a body runs, like any value: `Sandbox.Tune poses.sta
 leans the standing body forward over `poses.blend_s` (scenario `pose_lean`).
 
 The `balance` values decide what the body senses of its own balance (which feet stand, the support polygon,
-the capture point; `Scenarios/README.md`, "Balance, energy and penetration"). So far the body only senses:
-it still decides that it falls by the pelvis thresholds. The capture point takes that over in M3.
+the capture point; `Scenarios/README.md`, "Balance, energy and penetration") and what it does about it
+(M3 part 3): the capture point decides whether the body stands, needs a step or falls, the ankles and the
+hips bring it back, the assist's anchors follow the feet, and a held push is leant into. The support a
+decision is made on is every foot the floor touches at all (or touched within `lift_grace_s`), not only
+those that carry `foot_contact_min_n`: a foot resting lightly on the floor takes weight the moment the
+body sways onto it. Until the recovery step exists (part 4), a body that needs a step is held by the
+assist and its result file says so (`control.balance.step_needed_frames`).
 
 Groups are `spine`, `neck`, `arms`, `legs`; assist bodies are `pelvis`, `chest`, `head`, `feet`. The ranges
 that are accepted are in `FSandboxBodyTuning::Validate`; they catch a slipped decimal point, not physics.
@@ -133,8 +155,8 @@ so far; `stagger` and `get_up` come in M3.
 
 | State | The body is | Leaves when |
 | --- | --- | --- |
-| `standing` | Upright on the base values | A hit reaches `thresholds.flinch_impulse_ns`; or the pelvis leaves its place by more than a fall threshold |
-| `flinch` | Upright, the muscles of the hit region (spine, neck, arms or legs) weakened and recovering | `reactions.flinch_recovery_s` has passed; or a fall threshold is crossed |
+| `standing` | Upright on the base values | A hit reaches `thresholds.flinch_impulse_ns`; or the capture point is beyond a step's reach (`balance.step_reach_cm`, `step_time_s`); or the pelvis sinks or tilts past `thresholds.fall_pelvis_drop_cm`, `fall_tilt_deg` |
+| `flinch` | Upright, the muscles of the hit region (spine, neck, arms or legs) weakened and recovering | `reactions.flinch_recovery_s` has passed; or, as from `standing`, balance or posture is lost |
 | `falling` | Let go: no balance assist, weak muscles with strong damping | It has been at rest for `thresholds.rest_time_s` |
 | `lying` | Down and limp | Not yet (getting up is M3) |
 

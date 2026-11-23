@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonValue.h"
 #include "PhysicsEngine/ConstraintInstance.h"
+#include "SandboxBodyController.h"
 #include "SandboxBodyProbe.h"
 #include "ScenarioSpec.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -224,6 +225,49 @@ private:
 	double AssistTorqueShareSum = 0.0;
 	double AssistTorqueShareMax = 0.0;
 	int32 AssistSamples = 0;
+	/** The same by assist body (pelvis, chest, head, feet): horizontal and vertical parts, summed over the samples. */
+	double AssistHorizontalShareSum[FSandboxAssistLoad::SlotCount] = { 0.0, 0.0, 0.0, 0.0 };
+	double AssistVerticalShareSum[FSandboxAssistLoad::SlotCount] = { 0.0, 0.0, 0.0, 0.0 };
+
+	/**
+	 * Steps, as the body's own sense of its feet shows them: a foot that stops standing and stands again at
+	 * least StepMinLengthCm from where it left the floor, after StepMinAirS or more in the air. Counted while the body is upright, from the first
+	 * frame. A foot that is lifted and put back where it was is a lift, not a step.
+	 */
+	struct FFootTrack
+	{
+		bool bSeen = false;
+		bool bStanding = false;
+		FVector LiftLocation = FVector::ZeroVector;
+		double LiftTimeS = 0.0;
+	};
+	FFootTrack FootTracks[2];
+	struct FStep
+	{
+		FName Foot;
+		double LiftTimeS = 0.0;
+		double LandTimeS = 0.0;
+		double LengthCm = 0.0;
+		double DirectionDeg = 0.0;
+	};
+	TArray<FStep> Steps;
+	int32 FootLifts = 0;
+	/** Frames in which the controller found that a step was needed (while upright), and the first of them. */
+	int32 StepNeededFrames = 0;
+	int32 FirstStepNeededFrame = -1;
+	/** Largest turn the balance strategies put on the ankles and the hips, degrees. */
+	double AnkleLeanMaxDeg = 0.0;
+	double HipBendMaxDeg = 0.0;
+	/** Largest lean into a held push, cm, and the largest sustained force the body felt, N. */
+	double LeanMaxCm = 0.0;
+	double SustainedMaxN = 0.0;
+	/** Where each assist anchor was in the first frame, by bone: anchors follow the support. */
+	TMap<FName, FVector> StartAnchorsCm;
+	/** How far the pelvis's anchor ended up from where it started, horizontally, cm. */
+	double PelvisAnchorShiftCm() const;
+	/** Lowest capture margin the controller's own decisions were made on, cm. */
+	double MinDecisionMarginCm = TNumericLimits<double>::Max();
+	void TrackFeet(const USandboxBodyController& Controller, const FSandboxBalanceView& Balance, const USkeletalMeshComponent& Mesh, double TimeS);
 	/**
 	 * How well the muscles hold the target pose while the body stands, after the settle time: the mean over
 	 * the driven muscles of the angle between where each child body points and where its muscle turns it,

@@ -54,7 +54,6 @@ namespace
 		Visitor(FString(TEXT("solver.projection_iterations")), Tuning.Solver.ProjectionIterations);
 		Visitor(FString(TEXT("thresholds.flinch_impulse_ns")), Tuning.Thresholds.FlinchImpulseNs);
 		Visitor(FString(TEXT("thresholds.flinch_window_s")), Tuning.Thresholds.FlinchWindowS);
-		Visitor(FString(TEXT("thresholds.fall_pelvis_offset_cm")), Tuning.Thresholds.FallPelvisOffsetCm);
 		Visitor(FString(TEXT("thresholds.fall_pelvis_drop_cm")), Tuning.Thresholds.FallPelvisDropCm);
 		Visitor(FString(TEXT("thresholds.fall_tilt_deg")), Tuning.Thresholds.FallTiltDeg);
 		Visitor(FString(TEXT("thresholds.rest_speed_mps")), Tuning.Thresholds.RestSpeedMps);
@@ -62,10 +61,28 @@ namespace
 		Visitor(FString(TEXT("thresholds.rest_time_s")), Tuning.Thresholds.RestTimeS);
 		Visitor(FString(TEXT("balance.foot_contact_min_n")), Tuning.Balance.FootContactMinN);
 		Visitor(FString(TEXT("balance.sole_tolerance_cm")), Tuning.Balance.SoleToleranceCm);
+		Visitor(FString(TEXT("balance.recoverable_cm")), Tuning.Balance.RecoverableCm);
+		Visitor(FString(TEXT("balance.step_reach_cm")), Tuning.Balance.StepReachCm);
+		Visitor(FString(TEXT("balance.step_time_s")), Tuning.Balance.StepTimeS);
+		Visitor(FString(TEXT("balance.decision_s")), Tuning.Balance.DecisionS);
+		Visitor(FString(TEXT("balance.anchor_follow_s")), Tuning.Balance.AnchorFollowS);
+		Visitor(FString(TEXT("balance.replant_air_s")), Tuning.Balance.ReplantAirS);
+		Visitor(FString(TEXT("balance.lift_grace_s")), Tuning.Balance.LiftGraceS);
+		Visitor(FString(TEXT("balance.ankle_gain")), Tuning.Balance.AnkleGain);
+		Visitor(FString(TEXT("balance.ankle_side_gain")), Tuning.Balance.AnkleSideGain);
+		Visitor(FString(TEXT("balance.ankle_integral_s")), Tuning.Balance.AnkleIntegralS);
+		Visitor(FString(TEXT("balance.ankle_integral_max_cm")), Tuning.Balance.AnkleIntegralMaxCm);
+		Visitor(FString(TEXT("balance.ankle_max_deg")), Tuning.Balance.AnkleMaxDeg);
+		Visitor(FString(TEXT("balance.hip_deg_per_cm")), Tuning.Balance.HipDegPerCm);
+		Visitor(FString(TEXT("balance.hip_max_deg")), Tuning.Balance.HipMaxDeg);
+		Visitor(FString(TEXT("balance.response_s")), Tuning.Balance.ResponseS);
+		Visitor(FString(TEXT("balance.lean_max_cm")), Tuning.Balance.LeanMaxCm);
 		Visitor(FString(TEXT("reactions.flinch_weakening")), Tuning.Reactions.FlinchWeakening);
 		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
 		Visitor(FString(TEXT("reactions.flinch_pose_full_ns")), Tuning.Reactions.FlinchPoseFullNs);
 		Visitor(FString(TEXT("reactions.flinch_give_deg")), Tuning.Reactions.FlinchGiveDeg);
+		Visitor(FString(TEXT("reactions.pressure_s")), Tuning.Reactions.PressureS);
+		Visitor(FString(TEXT("reactions.held_push_s")), Tuning.Reactions.HeldPushS);
 		Visitor(FString(TEXT("poses.blend_s")), Tuning.Poses.BlendS);
 		const auto Pose = [&Visitor](const TCHAR* Name, auto& Values)
 		{
@@ -260,7 +277,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	// Thresholds. A fall threshold of zero would have the body fall where it stands.
 	if (!CheckRange(Thresholds.FlinchImpulseNs, 1000.0, TEXT("thresholds"), TEXT("flinch_impulse_ns"), OutError) ||
 		!CheckRange(Thresholds.FlinchWindowS, 5.0, TEXT("thresholds"), TEXT("flinch_window_s"), OutError) ||
-		!CheckRange(Thresholds.FallPelvisOffsetCm, 500.0, TEXT("thresholds"), TEXT("fall_pelvis_offset_cm"), OutError) ||
 		!CheckRange(Thresholds.FallPelvisDropCm, 500.0, TEXT("thresholds"), TEXT("fall_pelvis_drop_cm"), OutError) ||
 		!CheckRange(Thresholds.FallTiltDeg, 180.0, TEXT("thresholds"), TEXT("fall_tilt_deg"), OutError) ||
 		!CheckRange(Thresholds.RestSpeedMps, 10.0, TEXT("thresholds"), TEXT("rest_speed_mps"), OutError) ||
@@ -268,6 +284,24 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Thresholds.RestTimeS, 60.0, TEXT("thresholds"), TEXT("rest_time_s"), OutError) ||
 		!CheckRange(Balance.FootContactMinN, 5000.0, TEXT("balance"), TEXT("foot_contact_min_n"), OutError) ||
 		!CheckRange(Balance.SoleToleranceCm, 20.0, TEXT("balance"), TEXT("sole_tolerance_cm"), OutError) ||
+		!CheckRange(Balance.RecoverableCm, 100.0, TEXT("balance"), TEXT("recoverable_cm"), OutError) ||
+		!CheckRange(Balance.StepReachCm, 300.0, TEXT("balance"), TEXT("step_reach_cm"), OutError) ||
+		!CheckRange(Balance.StepTimeS, 2.0, TEXT("balance"), TEXT("step_time_s"), OutError) ||
+		!CheckRange(Balance.DecisionS, 2.0, TEXT("balance"), TEXT("decision_s"), OutError) ||
+		!CheckRange(Balance.AnchorFollowS, 10.0, TEXT("balance"), TEXT("anchor_follow_s"), OutError) ||
+		!CheckRange(Balance.ReplantAirS, 2.0, TEXT("balance"), TEXT("replant_air_s"), OutError) ||
+		!CheckRange(Balance.LiftGraceS, 2.0, TEXT("balance"), TEXT("lift_grace_s"), OutError) ||
+		!CheckRange(Balance.AnkleGain, 20.0, TEXT("balance"), TEXT("ankle_gain"), OutError) ||
+		!CheckRange(Balance.AnkleSideGain, 20.0, TEXT("balance"), TEXT("ankle_side_gain"), OutError) ||
+		!CheckRange(Balance.AnkleIntegralS, 60.0, TEXT("balance"), TEXT("ankle_integral_s"), OutError) ||
+		!CheckRange(Balance.AnkleIntegralMaxCm, 30.0, TEXT("balance"), TEXT("ankle_integral_max_cm"), OutError) ||
+		!CheckRange(Balance.AnkleMaxDeg, 30.0, TEXT("balance"), TEXT("ankle_max_deg"), OutError) ||
+		!CheckRange(Balance.HipDegPerCm, 10.0, TEXT("balance"), TEXT("hip_deg_per_cm"), OutError) ||
+		!CheckRange(Balance.HipMaxDeg, 60.0, TEXT("balance"), TEXT("hip_max_deg"), OutError) ||
+		!CheckRange(Balance.ResponseS, 2.0, TEXT("balance"), TEXT("response_s"), OutError) ||
+		!CheckRange(Balance.LeanMaxCm, 50.0, TEXT("balance"), TEXT("lean_max_cm"), OutError) ||
+		!CheckRange(Reactions.PressureS, 5.0, TEXT("reactions"), TEXT("pressure_s"), OutError) ||
+		!CheckRange(Reactions.HeldPushS, 5.0, TEXT("reactions"), TEXT("held_push_s"), OutError) ||
 		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
 		!CheckRange(Reactions.FlinchRecoveryS, 10.0, TEXT("reactions"), TEXT("flinch_recovery_s"), OutError))
 	{
@@ -303,9 +337,14 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		OutError = TEXT("reactions.flinch_pose_full_ns must be above 0");
 		return false;
 	}
-	if (Thresholds.FallPelvisOffsetCm <= 0.0 || Thresholds.FallPelvisDropCm <= 0.0 || Thresholds.FallTiltDeg <= 0.0)
+	if (Thresholds.FallPelvisDropCm <= 0.0 || Thresholds.FallTiltDeg <= 0.0)
 	{
-		OutError = TEXT("thresholds: fall_pelvis_offset_cm, fall_pelvis_drop_cm and fall_tilt_deg must be above 0");
+		OutError = TEXT("thresholds: fall_pelvis_drop_cm and fall_tilt_deg must be above 0");
+		return false;
+	}
+	if (Balance.StepReachCm <= Balance.RecoverableCm)
+	{
+		OutError = TEXT("balance.step_reach_cm must be larger than balance.recoverable_cm");
 		return false;
 	}
 

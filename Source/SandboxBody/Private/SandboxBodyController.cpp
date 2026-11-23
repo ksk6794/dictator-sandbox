@@ -155,6 +155,11 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		Assist.Slot = Entry.Value;
 		Assist.Target = Mesh->GetBodyInstance(Entry.Key)->GetUnrealWorldTransform();
 		Assist.Target.SetScale3D(FVector::OneVector);
+		if (Entry.Value == EAssistSlot::Feet)
+		{
+			Assist.Side = Entry.Key == InTuning.Rig.FootLeft ? 0 : 1;
+			Assist.StartRotation = Assist.Target.GetRotation();
+		}
 
 		// The target is the pose of the whole body; the spring itself acts at the centre of mass.
 		FPhysicsControlTarget Target;
@@ -167,6 +172,57 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 			return false;
 		}
 		Assists.Add(Assist);
+	}
+
+	// The anchors of pelvis, chest and head belong to the support, not to the place of spawn: they are kept in
+	// the frame of the feet's anchors, and follow it when a foot is planted elsewhere.
+	{
+		FVector SupportLocation;
+		FQuat SupportRotation;
+		SupportFrame(SupportLocation, SupportRotation);
+		for (FAssist& Assist : Assists)
+		{
+			if (Assist.Slot != EAssistSlot::Feet)
+			{
+				Assist.SupportLocation = SupportRotation.UnrotateVector(Assist.Target.GetLocation() - SupportLocation);
+				Assist.SupportRotation = SupportRotation.Inverse() * Assist.Target.GetRotation();
+			}
+		}
+
+		// Where the centre of mass stands over the feet: what the balance strategies bring it back to.
+		TArray<FSandboxBodySample> Bodies;
+		FSandboxBodyProbe::SampleBodies(Mesh, Bodies);
+		const FVector CenterOfMass = FSandboxBodyProbe::CenterOfMass(Bodies);
+		ComSupportLocation = SupportRotation.UnrotateVector(CenterOfMass - SupportLocation);
+
+		// A lean about the ankles moves each body in proportion to its height.
+		ComHeightCm = FMath::Max(CenterOfMass.Z - SupportLocation.Z, 1.0);
+		for (FAssist& Assist : Assists)
+		{
+			if (Assist.Slot != EAssistSlot::Feet)
+			{
+				Assist.LeanFactor = (Assist.Target.GetLocation().Z - SupportLocation.Z) / ComHeightCm;
+			}
+		}
+	}
+
+	// The legs the strategies turn: each foot, and the thigh two bones above it.
+	{
+		const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		const FName Feet[2] = { InTuning.Rig.FootLeft, InTuning.Rig.FootRight };
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			FootBoneName[Side] = Feet[Side];
+			FootBoneIndex[Side] = Skeleton.FindBoneIndex(Feet[Side]);
+			const int32 Calf = FootBoneIndex[Side] != INDEX_NONE ? Skeleton.GetParentIndex(FootBoneIndex[Side]) : INDEX_NONE;
+			ThighBoneIndex[Side] = Calf != INDEX_NONE ? Skeleton.GetParentIndex(Calf) : INDEX_NONE;
+			ThighBoneName[Side] = ThighBoneIndex[Side] != INDEX_NONE ? Skeleton.GetBoneName(ThighBoneIndex[Side]) : NAME_None;
+			if (ThighBoneIndex[Side] == INDEX_NONE || !Mesh->GetBodyInstance(ThighBoneName[Side]))
+			{
+				OutError = FString::Printf(TEXT("Foot '%s' is not the end of a leg with a thigh body"), *Feet[Side].ToString());
+				return false;
+			}
+		}
 	}
 
 	// Reference values for the assist-load estimate.
@@ -331,11 +387,201 @@ void USandboxBodyController::UpdatePoseTurns()
 			}
 		}
 	}
+	AddStrategyTurns(Turns);
+
 	// Nothing to hand over while there is no offset now and there was none before.
 	if (Turns.Num() > 0 || bPoseTurnsSet)
 	{
 		Animation->SetTurns(Turns);
 		bPoseTurnsSet = Turns.Num() > 0;
+	}
+}
+
+void USandboxBodyController::UpdateStrategies(double DeltaTime)
+{
+	const FSandboxBalanceTuning& Limits = Tuning.Balance;
+	const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch;
+	FVector2D LeanGoal = FVector2D::ZeroVector;
+	FVector2D HipGoal = FVector2D::ZeroVector;
+	StrategyErrorCm = FVector2D::ZeroVector;
+	const int32 Feet = Balance.bValid ? Balance.StandingFeet.Num() : 0;
+
+	// Leaning into a held push: the centre of mass goes F h / (m g) toward the force, so that the centre of
+	// pressure can stay in the middle of the feet. It follows the sustained force with the strategies' lag,
+	// and lets go of the lean the same way.
+	FVector2D LeanGoal2 = FVector2D::ZeroVector;
+	if (bUpright && WeightN > 0.0)
+	{
+		LeanGoal2 = -SustainedMomentNCm / WeightN;
+		if (LeanGoal2.Size() > Limits.LeanMaxCm)
+		{
+			LeanGoal2 = LeanGoal2.GetSafeNormal() * Limits.LeanMaxCm;
+		}
+	}
+	{
+		const double LeanFollow = Limits.ResponseS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Limits.ResponseS) : 1.0;
+		LeanCm += (LeanGoal2 - LeanCm) * LeanFollow;
+		if (LeanGoal2.IsZero() && LeanCm.Size() < 1.0e-6)
+		{
+			LeanCm = FVector2D::ZeroVector;
+		}
+	}
+	// The assist leans with the body rather than holding it upright against the push.
+	for (FAssist& Assist : Assists)
+	{
+		if (Assist.Slot != EAssistSlot::Feet && Assist.AppliedLeanCm != LeanCm)
+		{
+			Assist.AppliedLeanCm = LeanCm;
+			SetAssistTarget(Assist);
+		}
+	}
+
+	if (bUpright && Feet > 0)
+	{
+		FVector SupportLocation;
+		FQuat SupportRotation;
+		SupportFrame(SupportLocation, SupportRotation);
+		SupportForward = SupportRotation.RotateVector(FVector(0.0, 1.0, 0.0));
+		SupportSide = SupportRotation.RotateVector(FVector(1.0, 0.0, 0.0));
+		const FVector Reference = SupportLocation + SupportRotation.RotateVector(ComSupportLocation);
+		StrategyErrorCm = Balance.CapturePoint - (FVector2D(Reference.X, Reference.Y) + LeanCm);
+		// The error in the support's own axes: forward, sideways.
+		const FVector2D Error(
+			StrategyErrorCm.X * SupportForward.X + StrategyErrorCm.Y * SupportForward.Y,
+			StrategyErrorCm.X * SupportSide.X + StrategyErrorCm.Y * SupportSide.Y);
+
+		// Ankles: the centre of pressure moves toward the capture point by the gain, plus a slow part that takes
+		// up a steady error. Pressing the toes down by a torque tau moves it by tau / weight; the legs' muscles
+		// give that torque when their target turns by tau / stiffness.
+		if (Limits.AnkleIntegralS > 0.0)
+		{
+			// The slow part keeps the pelvis over the place it stands on, which is where the assist's anchor
+			// holds it: whatever steady offset the posture settles into under its weight is taken up by the
+			// ankles instead of by the assist.
+			FVector2D PelvisErrorCm = FVector2D::ZeroVector;
+			if (const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; }))
+			{
+				const FBodyInstance* Body = Mesh->GetBodyInstance(Pelvis->Bone);
+				if (Body && Body->IsValidBodyInstance())
+				{
+					const FVector Offset = Body->GetCOMPosition() - AssistGoal(*Pelvis).TransformPositionNoScale(Body->GetMassSpaceLocal().GetLocation());
+					PelvisErrorCm = FVector2D(Offset.X * SupportForward.X + Offset.Y * SupportForward.Y, Offset.X * SupportSide.X + Offset.Y * SupportSide.Y);
+				}
+			}
+			AnkleIntegralCm += PelvisErrorCm * (DeltaTime / Limits.AnkleIntegralS);
+			if (AnkleIntegralCm.Size() > Limits.AnkleIntegralMaxCm)
+			{
+				AnkleIntegralCm = AnkleIntegralCm.GetSafeNormal() * Limits.AnkleIntegralMaxCm;
+			}
+		}
+		else
+		{
+			AnkleIntegralCm = FVector2D::ZeroVector;
+		}
+		const double StiffnessNmPerRad = Tuning.Legs.StiffnessNmPerRad * MuscleScale(ESandboxMuscleGroup::Legs) * Feet;
+		if (StiffnessNmPerRad > 0.0)
+		{
+			const FVector2D ShiftM = (FVector2D(Error.X * Limits.AnkleGain, Error.Y * Limits.AnkleSideGain) + AnkleIntegralCm) * 0.01;
+			// Leaning into a held push the body tilts about its ankles as a whole: their targets turn by the
+			// lean's angle, so that the muscles hold the lean instead of pulling the body back upright (the
+			// push's torque and the lean's weight cancel at the ankles). A lean forward turns the body away from
+			// a centre of pressure behind it, hence the sign.
+			const FVector2D Lean(LeanCm.X * SupportForward.X + LeanCm.Y * SupportForward.Y, LeanCm.X * SupportSide.X + LeanCm.Y * SupportSide.Y);
+			const FVector2D TiltRad = -Lean / ComHeightCm;
+			const double MaxRad = FMath::DegreesToRadians(Limits.AnkleMaxDeg);
+			LeanGoal.X = FMath::Clamp(ShiftM.X * WeightN / StiffnessNmPerRad + TiltRad.X, -MaxRad, MaxRad);
+			LeanGoal.Y = FMath::Clamp(ShiftM.Y * WeightN / StiffnessNmPerRad + TiltRad.Y, -MaxRad, MaxRad);
+		}
+
+		// Hips: once the capture point is outside the support, where the ankles cannot help, the trunk bends
+		// toward it, in proportion to how far out it is. Forward and back only: bending sideways is not how a
+		// person catches a fall to the side.
+		const double OutsideCm = FMath::Max(-LastDecisionMarginCm, 0.0);
+		if (OutsideCm > 0.0 && Limits.HipDegPerCm > 0.0 && Error.X != 0.0)
+		{
+			const double BendRad = FMath::DegreesToRadians(FMath::Min(OutsideCm * Limits.HipDegPerCm, Limits.HipMaxDeg));
+			HipGoal = FVector2D(FMath::Sign(Error.X) * BendRad, 0.0);
+		}
+	}
+	else
+	{
+		AnkleIntegralCm = FVector2D::ZeroVector;
+	}
+
+	// Follow, never jump: a first-order lag toward the goal, also on the way out when the body falls.
+	const double Follow = Limits.ResponseS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Limits.ResponseS) : 1.0;
+	AnkleLeanRad += (LeanGoal - AnkleLeanRad) * Follow;
+	HipBendRad += (HipGoal - HipBendRad) * Follow;
+	// A turn too small to matter is no turn: a body without strategies carries none, and its run is unchanged.
+	constexpr double NegligibleRad = 1.0e-7;
+	if (LeanGoal.IsZero() && AnkleLeanRad.Size() < NegligibleRad)
+	{
+		AnkleLeanRad = FVector2D::ZeroVector;
+	}
+	if (HipGoal.IsZero() && HipBendRad.Size() < NegligibleRad)
+	{
+		HipBendRad = FVector2D::ZeroVector;
+	}
+	bStrategyActive = !AnkleLeanRad.IsZero() || !HipBendRad.IsZero();
+}
+
+void USandboxBodyController::AddStrategyTurns(TArray<FSandboxPoseTurn>& Turns) const
+{
+	if (!bStrategyActive)
+	{
+		return;
+	}
+	// The turns are rotations of the world as the bodies are now, carried into each bone's own space.
+	const auto Rotation = [](const FVector& Toward, double Angle)
+	{
+		// Turns the up direction toward Toward by Angle (radians).
+		const FVector Axis = FVector::CrossProduct(FVector::UpVector, Toward).GetSafeNormal();
+		return Axis.IsNearlyZero() || Angle == 0.0 ? FQuat::Identity : FQuat(Axis, Angle);
+	};
+	const auto AddTurn = [&Turns](int32 BoneIndex, const FQuat& Turn)
+	{
+		if (BoneIndex == INDEX_NONE || Turn.Equals(FQuat::Identity, 0.0))
+		{
+			return;
+		}
+		FSandboxPoseTurn* Existing = Turns.FindByPredicate([BoneIndex](const FSandboxPoseTurn& Each) { return Each.MeshBoneIndex == BoneIndex; });
+		if (Existing)
+		{
+			Existing->Turn = (Existing->Turn * Turn).GetNormalized();
+		}
+		else
+		{
+			Turns.Add(FSandboxPoseTurn{ BoneIndex, Turn.GetNormalized() });
+		}
+	};
+
+	// The ankles: the body above the feet leans away from where the centre of pressure is to go, forward
+	// as one piece, sideways as a parallelogram (the legs lean, the pelvis stays level).
+	const FVector LeanForward = SupportForward * AnkleLeanRad.X;
+	const FVector LeanSide = SupportSide * AnkleLeanRad.Y;
+	const FQuat Forward = Rotation(-LeanForward.GetSafeNormal(), LeanForward.Size());
+	const FQuat Sideways = Rotation(-LeanSide.GetSafeNormal(), LeanSide.Size());
+	const FQuat Legs = Sideways * Forward;
+	// The hips: the trunk bends toward the capture point.
+	const FVector Bend = SupportForward * HipBendRad.X + SupportSide * HipBendRad.Y;
+	const FQuat Trunk = Rotation(Bend.GetSafeNormal(), Bend.Size());
+
+	// Both legs turn alike. (Turning each in proportion to the load it carries was tried: the less loaded leg
+	// turned less, the body rolled onto the other, and under a held push it rocked from foot to foot.)
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const FBodyInstance* Foot = Mesh->GetBodyInstance(FootBoneName[Side]);
+		const FBodyInstance* Thigh = Mesh->GetBodyInstance(ThighBoneName[Side]);
+		if (!Foot || !Thigh || !Foot->IsValidBodyInstance() || !Thigh->IsValidBodyInstance())
+		{
+			continue;
+		}
+		// The foot stays on the floor while everything above it turns by Legs: relative to its calf it turns back.
+		const FQuat FootWorld = Foot->GetUnrealWorldTransform().GetRotation();
+		AddTurn(FootBoneIndex[Side], FootWorld.Inverse() * Legs.Inverse() * FootWorld);
+		// The thigh stays while the trunk bends: relative to the pelvis it turns back.
+		const FQuat ThighWorld = Thigh->GetUnrealWorldTransform().GetRotation();
+		AddTurn(ThighBoneIndex[Side], ThighWorld.Inverse() * Trunk.Inverse() * ThighWorld);
 	}
 }
 
@@ -402,6 +648,13 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	{
 		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps the previous state's tuning: %s"), *Error);
 	}
+
+	// A falling body has no use for a foot held at a point of the floor: its legs would keep reaching for it
+	// as the body goes down, and feed it.
+	if (NewState == ESandboxBodyState::Falling)
+	{
+		ReleaseFootTargets();
+	}
 }
 
 void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
@@ -413,7 +666,7 @@ void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
 	}
 	// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
 	Body->AddImpulse(ImpulseNs * 100.0, /*bVelChange*/ false);
-	FeelImpulse(Bone, ImpulseNs);
+	FeelImpulse(Bone, ImpulseNs, Body->GetCOMPosition());
 }
 
 bool USandboxBodyController::SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError)
@@ -435,7 +688,26 @@ bool USandboxBodyController::SetFootTarget(FName Foot, const FVector& WorldLocat
 		return false;
 	}
 	Animation->SetLimbTarget(End, WorldLocation, Weight, Tuning.Poses.BlendS);
+	PlacedFeet.Remove(End);
+	if (Weight > 0.0)
+	{
+		PlacedFeet.Add(End, WorldLocation);
+	}
 	return true;
+}
+
+void USandboxBodyController::ReleaseFootTargets()
+{
+	USandboxAnimInstance* Animation = Mesh ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
+	if (Animation)
+	{
+		// Eased out like any placement: a leg let go in one step would snap back.
+		for (const TPair<int32, FVector>& Placed : PlacedFeet)
+		{
+			Animation->SetLimbTarget(Placed.Key, Placed.Value, 0.0, Tuning.Poses.BlendS);
+		}
+	}
+	PlacedFeet.Reset();
 }
 
 void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
@@ -464,53 +736,139 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	}
 	ContactImpulseNs += ImpulseNs.Size();
 	++ContactReports;
-	FeelImpulse(Hit.MyBoneName, ImpulseNs);
+	FeelImpulse(Hit.MyBoneName, ImpulseNs, Hit.ImpactPoint);
 }
 
-void USandboxBodyController::FeelImpulse(FName Bone, const FVector& ImpulseNs)
+void USandboxBodyController::FeelImpulse(FName Bone, const FVector& ImpulseNs, const FVector& PointCm)
 {
-	// What is felt is the hit as a whole: impulses that follow each other closely are added up.
-	if (ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS)
+	FrameImpulseNs += ImpulseNs;
+	FrameMomentNsCm += FVector2D(ImpulseNs.X, ImpulseNs.Y) * (PointCm.Z - LastSupportHeightCm);
+	if (ImpulseNs.Size() > FrameBoneImpulseNs)
 	{
-		HitImpulseNs = FVector::ZeroVector;
-		HitStartedS = ElapsedS;
+		FrameBoneImpulseNs = ImpulseNs.Size();
+		FrameBone = Bone;
 	}
-	HitImpulseNs += ImpulseNs;
+}
 
-	if (State == ESandboxBodyState::Standing && HitImpulseNs.Size() >= Tuning.Thresholds.FlinchImpulseNs)
+void USandboxBodyController::FeelFrame(double DeltaTime)
+{
+	const FSandboxReactionTuning& Reactions = Tuning.Reactions;
+	const FVector Felt = FrameImpulseNs;
+
+	// The hit: what this frame brought beyond the pressure felt so far. A blow is all hit; a hand that keeps
+	// pressing is hit only while its force rises, and its pressure alone makes nobody flinch.
+	const FVector HitNs = Felt - PressureN * DeltaTime;
+	if (!Felt.IsZero())
 	{
-		FlinchGroup = FSandboxBodyTuning::GroupOfBone(Bone);
-		FlinchBone = Bone;
-		FlinchImpulseNs = HitImpulseNs;
-		FlinchStartedS = ElapsedS;
-		EnterState(ESandboxBodyState::Flinch, FString::Printf(TEXT("hit of %.1f N*s on %s"), HitImpulseNs.Size(), *Bone.ToString()));
-		HitImpulseNs = FVector::ZeroVector;
+		// What is felt is the hit as a whole: hits that follow each other closely are added up.
+		if (ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS)
+		{
+			HitImpulseNs = FVector::ZeroVector;
+			HitStartedS = ElapsedS;
+		}
+		HitImpulseNs += HitNs;
+		// A pressure that falls away is no hit, however fast: only what pushes along with this frame counts.
+		if (State == ESandboxBodyState::Standing && HitImpulseNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && (HitImpulseNs | Felt) > 0.0)
+		{
+			FlinchGroup = FSandboxBodyTuning::GroupOfBone(FrameBone);
+			FlinchBone = FrameBone;
+			FlinchImpulseNs = HitImpulseNs;
+			FlinchStartedS = ElapsedS;
+			EnterState(ESandboxBodyState::Flinch, FString::Printf(TEXT("hit of %.1f N*s on %s"), HitImpulseNs.Size(), *FrameBone.ToString()));
+			HitImpulseNs = FVector::ZeroVector;
+		}
 	}
+
+	// The pressure follows the felt force.
+	if (DeltaTime > 0.0)
+	{
+		const double Follow = Reactions.PressureS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Reactions.PressureS) : 1.0;
+		PressureN += (Felt / DeltaTime - PressureN) * Follow;
+		if (PressureN.Size() < 1.0e-6)
+		{
+			PressureN = FVector::ZeroVector;
+		}
+
+		// The sustained force: the least of the last frames, so that only a push felt in all of them counts.
+		const int32 Frames = FMath::Max(FMath::CeilToInt32(Reactions.HeldPushS / DeltaTime), 1);
+		if (RecentForceN.Num() != Frames)
+		{
+			RecentForceN.Init(FVector::ZeroVector, Frames);
+			RecentMomentNCm.Init(FVector2D::ZeroVector, Frames);
+			RecentNext = 0;
+		}
+		RecentForceN[RecentNext] = Felt / DeltaTime;
+		RecentMomentNCm[RecentNext] = FrameMomentNsCm / DeltaTime;
+		RecentNext = (RecentNext + 1) % Frames;
+		int32 Least = 0;
+		for (int32 Index = 1; Index < Frames; ++Index)
+		{
+			if (RecentForceN[Index].SizeSquared() < RecentForceN[Least].SizeSquared())
+			{
+				Least = Index;
+			}
+		}
+		SustainedN = RecentForceN[Least];
+		SustainedMomentNCm = RecentMomentNCm[Least];
+	}
+
+	FrameImpulseNs = FVector::ZeroVector;
+	FrameMomentNsCm = FVector2D::ZeroVector;
+	FrameBone = NAME_None;
+	FrameBoneImpulseNs = 0.0;
 }
 
 void USandboxBodyController::UpdateState(float DeltaTime)
 {
 	if (State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch)
 	{
-		// Balance level 0 has no way to win balance back: once the pelvis has left the place the assist
-		// holds it in, by distance, by height or by tilt, the body is let go.
+		// The capture point decides. Inside the support, or outside by no more than the ankles and the hips
+		// can bring back, the body stands. Further out it needs a step; it cannot step yet (M3 part 4), so the
+		// assist holds it and the need is reported. Beyond a step's reach balance is lost. Each holds only
+		// after decision_s, so that a foot that loses its load for one frame decides nothing.
+		const FSandboxBalanceTuning& Limits = Tuning.Balance;
+		LastDecisionMarginCm = DecisionMarginCm();
+		// Where the capture point will be when a step started now has landed: it runs away from the support's
+		// edge by e^(omega t) (linear inverted pendulum).
+		const double HeightCm = FMath::Max(Balance.CenterOfMass.Z - Balance.SupportHeightCm, 1.0);
+		const double Growth = FMath::Exp(FMath::Sqrt(GravityCmS2 / HeightCm) * Limits.StepTimeS);
+		const double AtLandingCm = -LastDecisionMarginCm * Growth;
+		// A step being needed has to last a moment. Balance beyond a step's reach is lost at once: the capture
+		// point is the whole body's momentum, which a blow gives it in one step, and waiting would only let
+		// the assist take back what the body could not.
+		StepNeededS = LastDecisionMarginCm < -Limits.RecoverableCm ? StepNeededS + DeltaTime : 0.0;
+		LostS = AtLandingCm > Limits.StepReachCm ? LostS + DeltaTime : 0.0;
+		bStepNeeded = StepNeededS >= Limits.DecisionS - KINDA_SMALL_NUMBER;
+		if (LostS > 0.0)
+		{
+			bStepNeeded = false;
+			EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("capture point %.1f cm outside the support, %.0f cm by the time a step lands: beyond a step"),
+				-LastDecisionMarginCm, AtLandingCm));
+		}
+	}
+	else
+	{
+		bStepNeeded = false;
+		StepNeededS = 0.0;
+		LostS = 0.0;
+	}
+
+	if (State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch)
+	{
+		// Whatever the capture point says, the posture itself can give way: the legs fold (the pelvis sinks) or
+		// the body bends over too far to stand.
 		const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
 		const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
 		if (Body && Body->IsValidBodyInstance())
 		{
 			const FTransform Now = Body->GetUnrealWorldTransform();
-			const double OffsetCm = FVector::Dist2D(Now.GetLocation(), Pelvis->Target.GetLocation());
 			const double DropCm = Pelvis->Target.GetLocation().Z - Now.GetLocation().Z;
 			// How far the direction that pointed up when standing has turned away from up.
 			const FVector Up = Now.GetRotation().RotateVector(Pelvis->Target.GetRotation().UnrotateVector(FVector::UpVector));
 			const double TiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Up.Z, -1.0, 1.0)));
 
 			const FSandboxThresholdTuning& Limits = Tuning.Thresholds;
-			if (OffsetCm > Limits.FallPelvisOffsetCm)
-			{
-				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("pelvis %.1f cm from where it stood"), OffsetCm));
-			}
-			else if (DropCm > Limits.FallPelvisDropCm)
+			if (DropCm > Limits.FallPelvisDropCm)
 			{
 				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("pelvis %.1f cm below its standing height"), DropCm));
 			}
@@ -681,7 +1039,11 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	if (Balance.IsSupported())
 	{
 		LastSupportHeightCm = Balance.SupportHeightCm;
+		LastSupportPolygon = Balance.SupportPolygon;
 	}
+	FollowSupport(DeltaTime);
+	// What the body felt since the last tick: a hit may make it flinch, a held push makes it lean.
+	FeelFrame(DeltaTime);
 	for (FVector& Impulse : SupportImpulseNs)
 	{
 		Impulse = FVector::ZeroVector;
@@ -690,12 +1052,177 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	Control->UpdateTargetCaches(DeltaTime);
 	UpdateState(DeltaTime);
+	UpdateStrategies(DeltaTime);
 	UpdatePoseTurns();
 	UpdateAssistLoad();
 	Control->UpdateControls(DeltaTime);
 
 	// Advanced last: during a tick this is the time at which the coming physics step begins.
 	ElapsedS += DeltaTime;
+}
+
+double USandboxBodyController::DecisionMarginCm() const
+{
+	if (!Balance.bValid)
+	{
+		return 0.0;
+	}
+	// The support a decision is made on: every foot the floor touches, whatever its load, and those it touched
+	// until a moment ago. A foot that carries less than the standing threshold (balance.foot_contact_min_n)
+	// is still under the body and takes weight the moment the body sways onto it; a foot knocked off the floor
+	// comes back down by itself, where it is, within balance.lift_grace_s. Only a foot that has been off the
+	// floor longer no longer counts. (AirS is kept by FollowSupport, which runs first.)
+	TArray<FName, TInlineAllocator<2>> Planted;
+	for (const FAssist& Assist : Assists)
+	{
+		if (Assist.Slot == EAssistSlot::Feet && Assist.AirS < Tuning.Balance.LiftGraceS - KINDA_SMALL_NUMBER)
+		{
+			Planted.Add(Assist.Bone);
+		}
+	}
+	// Under a held push the centre of pressure has to be F h / (m g) further along the force than the capture
+	// point alone says: that is the point that must stay inside the support.
+	const FVector2D Shift = WeightN > 0.0 ? SustainedMomentNCm / WeightN : FVector2D::ZeroVector;
+	const FVector2D Point = Balance.CapturePoint + Shift;
+	if (Shift.IsZero() && Planted.Num() == Balance.StandingFeet.Num() && Balance.IsSupported())
+	{
+		return Balance.CaptureMarginCm;
+	}
+	if (Planted.Num() > 0)
+	{
+		TArray<FVector2D> Polygon;
+		FSandboxBodyProbe::SupportPolygon(Mesh, Planted, Tuning.Balance.SoleToleranceCm, Polygon);
+		if (Polygon.Num() > 0)
+		{
+			return FSandboxBodyProbe::MarginInsidePolygon(Polygon, Point);
+		}
+	}
+	// No foot stands this instant (both lifted by a blow, or one frame without load): judged against where
+	// the body stood last.
+	return LastSupportPolygon.Num() > 0 ? FSandboxBodyProbe::MarginInsidePolygon(LastSupportPolygon, Point) : 0.0;
+}
+
+void USandboxBodyController::SupportFrame(FVector& OutLocation, FQuat& OutRotation) const
+{
+	FVector Sum = FVector::ZeroVector;
+	double YawSum = 0.0;
+	int32 Feet = 0;
+	for (const FAssist& Assist : Assists)
+	{
+		if (Assist.Slot != EAssistSlot::Feet)
+		{
+			continue;
+		}
+		Sum += Assist.Target.GetLocation();
+		// The foot's turn about the vertical since Start.
+		FQuat Swing, Twist;
+		(Assist.Target.GetRotation() * Assist.StartRotation.Inverse()).ToSwingTwist(FVector::UpVector, Swing, Twist);
+		YawSum += Twist.GetTwistAngle(FVector::UpVector);
+		++Feet;
+	}
+	OutLocation = Feet > 0 ? Sum / Feet : FVector::ZeroVector;
+	OutRotation = Feet > 0 ? FQuat(FVector::UpVector, YawSum / Feet) : FQuat::Identity;
+}
+
+FTransform USandboxBodyController::AssistGoal(const FAssist& Assist) const
+{
+	if (Assist.AppliedLeanCm.IsZero())
+	{
+		return Assist.Target;
+	}
+	FTransform Goal = Assist.Target;
+	Goal.AddToTranslation(FVector(Assist.AppliedLeanCm * Assist.LeanFactor, 0.0));
+	return Goal;
+}
+
+void USandboxBodyController::SetAssistTarget(const FAssist& Assist)
+{
+	const FTransform Goal = AssistGoal(Assist);
+	FPhysicsControlTarget Target;
+	Target.TargetPosition = Goal.GetLocation();
+	Target.TargetOrientation = Goal.Rotator();
+	Target.bApplyControlPointToTarget = true;
+	Control->SetControlTarget(Assist.Control, Target);
+}
+
+void USandboxBodyController::FollowSupport(double DeltaTime)
+{
+	// Only an upright body plants its feet; a falling or lying one has no assist to move.
+	const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch;
+	bool bSupportMoved = false;
+	for (FAssist& Assist : Assists)
+	{
+		if (Assist.Slot != EAssistSlot::Feet || !Balance.bValid)
+		{
+			continue;
+		}
+		// In the air is untouched by the floor: a foot that carries less than the standing threshold but still
+		// rests on the floor is not in the air, and takes weight again the moment the body sways onto it.
+		const bool bStanding = Assist.Side >= 0 && Balance.FootForceN[Assist.Side] > 0.0;
+		if (!bStanding)
+		{
+			Assist.AirS += DeltaTime;
+		}
+		else
+		{
+			// Landed after a real lift, not a frame without load: the foot is planted where it is now.
+			if (!Assist.bStanding && Assist.AirS >= Tuning.Balance.ReplantAirS - KINDA_SMALL_NUMBER && bUpright)
+			{
+				const FBodyInstance* Foot = Mesh->GetBodyInstance(Assist.Bone);
+				if (Foot && Foot->IsValidBodyInstance())
+				{
+					Assist.Target = Foot->GetUnrealWorldTransform();
+					Assist.Target.SetScale3D(FVector::OneVector);
+					SetAssistTarget(Assist);
+					bSupportMoved = true;
+					++ReplantCount;
+				}
+			}
+			Assist.AirS = 0.0;
+		}
+		Assist.bStanding = bStanding;
+	}
+
+	if (bSupportMoved)
+	{
+		FVector SupportLocation;
+		FQuat SupportRotation;
+		SupportFrame(SupportLocation, SupportRotation);
+		for (FAssist& Assist : Assists)
+		{
+			if (Assist.Slot == EAssistSlot::Feet)
+			{
+				continue;
+			}
+			Assist.FollowFrom = Assist.Target;
+			Assist.FollowTo = FTransform((SupportRotation * Assist.SupportRotation).GetNormalized(), SupportLocation + SupportRotation.RotateVector(Assist.SupportLocation));
+			Assist.FollowElapsedS = 0.0;
+		}
+	}
+
+	// The anchors on their way to a new support, eased in and out like a pose.
+	for (FAssist& Assist : Assists)
+	{
+		if (Assist.FollowElapsedS < 0.0)
+		{
+			continue;
+		}
+		Assist.FollowElapsedS += DeltaTime;
+		const double FollowS = Tuning.Balance.AnchorFollowS;
+		if (FollowS <= 0.0 || Assist.FollowElapsedS >= FollowS)
+		{
+			Assist.Target = Assist.FollowTo;
+			Assist.FollowElapsedS = -1.0;
+		}
+		else
+		{
+			const double Weight = FMath::SmoothStep(0.0, 1.0, Assist.FollowElapsedS / FollowS);
+			Assist.Target = FTransform(
+				FQuat::Slerp(Assist.FollowFrom.GetRotation(), Assist.FollowTo.GetRotation(), Weight).GetNormalized(),
+				FMath::Lerp(Assist.FollowFrom.GetLocation(), Assist.FollowTo.GetLocation(), Weight));
+		}
+		SetAssistTarget(Assist);
+	}
 }
 
 void USandboxBodyController::MeasureBalance(FSandboxBalanceView& OutView) const
@@ -778,7 +1305,7 @@ void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) co
 		const FSandboxAssistTuning& Slot = AssistTuning(Assist.Slot);
 		FSandboxAssistView& View = OutView.Assists.AddDefaulted_GetRef();
 		View.Bone = Assist.Bone;
-		View.Target = Assist.Target;
+		View.Target = AssistGoal(Assist);
 		View.bActive = Slot.HorizontalNPerM > 0.0 || Slot.VerticalNPerM > 0.0 || Slot.AngularNmPerRad > 0.0;
 	}
 }
@@ -790,6 +1317,8 @@ void USandboxBodyController::UpdateAssistLoad()
 	// the springs implicitly, so this is a close estimate rather than a reading.
 	double ForceN = 0.0;
 	double TorqueNm = 0.0;
+	double HorizontalN[FSandboxAssistLoad::SlotCount] = { 0.0, 0.0, 0.0, 0.0 };
+	double VerticalN[FSandboxAssistLoad::SlotCount] = { 0.0, 0.0, 0.0, 0.0 };
 	for (const FAssist& Assist : Assists)
 	{
 		const FBodyInstance* Body = Mesh->GetBodyInstance(Assist.Bone);
@@ -800,11 +1329,15 @@ void USandboxBodyController::UpdateAssistLoad()
 		const FSandboxAssistTuning& Slot = AssistTuning(Assist.Slot);
 
 		// Centimetres to metres.
-		const FVector TargetCom = Assist.Target.TransformPositionNoScale(Body->GetMassSpaceLocal().GetLocation());
+		const FVector TargetCom = AssistGoal(Assist).TransformPositionNoScale(Body->GetMassSpaceLocal().GetLocation());
 		const FVector ErrorM = (TargetCom - Body->GetCOMPosition()) * 0.01;
 		const FVector VelocityMps = Body->GetUnrealWorldVelocity() * 0.01;
 		const FVector Stiffness(Slot.HorizontalNPerM, Slot.HorizontalNPerM, Slot.VerticalNPerM);
-		ForceN += (Stiffness * (ErrorM - VelocityMps * Slot.DampingS)).Size();
+		const FVector CommandN = Stiffness * (ErrorM - VelocityMps * Slot.DampingS);
+		ForceN += CommandN.Size();
+		const int32 SlotIndex = static_cast<int32>(Assist.Slot);
+		HorizontalN[SlotIndex] += CommandN.Size2D();
+		VerticalN[SlotIndex] += FMath::Abs(CommandN.Z);
 
 		const FQuat Delta = (Assist.Target.GetRotation() * Body->GetUnrealWorldTransform().GetRotation().Inverse()).GetShortestArcWith(FQuat::Identity);
 		const FVector ErrorRad = Delta.ToRotationVector();
@@ -813,4 +1346,20 @@ void USandboxBodyController::UpdateAssistLoad()
 
 	AssistLoad.ForceShare = WeightN > 0.0 ? ForceN / WeightN : 0.0;
 	AssistLoad.TorqueShare = WeightN > 0.0 ? TorqueNm / (WeightN * StandingComHeightM) : 0.0;
+	for (int32 SlotIndex = 0; SlotIndex < FSandboxAssistLoad::SlotCount; ++SlotIndex)
+	{
+		AssistLoad.HorizontalShare[SlotIndex] = WeightN > 0.0 ? HorizontalN[SlotIndex] / WeightN : 0.0;
+		AssistLoad.VerticalShare[SlotIndex] = WeightN > 0.0 ? VerticalN[SlotIndex] / WeightN : 0.0;
+	}
+}
+
+const TCHAR* FSandboxAssistLoad::SlotName(int32 Slot)
+{
+	switch (Slot)
+	{
+	case 1: return TEXT("chest");
+	case 2: return TEXT("head");
+	case 3: return TEXT("feet");
+	default: return TEXT("pelvis");
+	}
 }

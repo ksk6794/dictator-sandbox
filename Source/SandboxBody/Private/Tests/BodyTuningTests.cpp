@@ -61,7 +61,8 @@ bool FBodyTuningRepoFilesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("muscle values are listed"), Names.Contains(TEXT("muscles.legs.stiffness_nm_per_rad")));
 	TestTrue(TEXT("assist values are listed"), Names.Contains(TEXT("assist.pelvis.horizontal_n_per_m")));
 	TestTrue(TEXT("solver values are listed"), Names.Contains(TEXT("solver.position_iterations")));
-	TestTrue(TEXT("thresholds are listed"), Names.Contains(TEXT("thresholds.fall_pelvis_offset_cm")));
+	TestTrue(TEXT("thresholds are listed"), Names.Contains(TEXT("thresholds.fall_pelvis_drop_cm")));
+	TestTrue(TEXT("balance decisions are listed"), Names.Contains(TEXT("balance.step_reach_cm")));
 	TestTrue(TEXT("reactions are listed"), Names.Contains(TEXT("reactions.flinch_weakening")));
 
 	// What the states are for: a flinch weakens, a falling body is let go and goes limp, a lying one more so.

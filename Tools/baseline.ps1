@@ -1,6 +1,7 @@
 # Keeps the results of a suite run as a baseline, or says how the latest suite run differs from one.
 #   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save m3_part2_start
 #   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Compare m3_part2_start [-FailOnChange]
+#   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -CompareMatrix m3_part2_start   (the latest push matrix against the baseline's)
 #   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -List
 # A baseline is a copy of Saved\Tools\suite.json, of the metrics.json of every scenario in it and, if there
 # is one, of the push matrix's result, under Saved\Baselines\<name>. It is taken before a change and compared
@@ -14,6 +15,7 @@
 param(
     [string]$Save,
     [string]$Compare,
+    [string]$CompareMatrix,
     [switch]$List,
     [switch]$FailOnChange
 )
@@ -53,8 +55,38 @@ if ($Save) {
     exit 0
 }
 
+if ($CompareMatrix) {
+    # The latest push matrix against the baseline's, run by run: the outcome (a baseline from before the
+    # outcome classes has only "fell"), the steps and the state sequence.
+    $oldMatrix = Read-JsonFile (Join-Path (Join-Path $baselineRoot $CompareMatrix) 'push-matrix.json')
+    $newMatrix = Read-JsonFile $matrixFile
+    if (-not $oldMatrix) { Write-Output "BASELINE ERROR: baseline '$CompareMatrix' has no push matrix"; exit 2 }
+    if (-not $newMatrix) { Write-Output "BASELINE ERROR: no push matrix to compare ($matrixFile); run Tools\push-matrix.ps1 first"; exit 2 }
+    function Get-Outcome($run) {
+        if ($null -ne $run.outcome) { return $run.outcome }
+        if ($run.fell) { return 'fell' }
+        return 'stood'
+    }
+    $oldByName = @{}
+    foreach ($run in $oldMatrix.results) { $oldByName[$run.name] = $run }
+    $sameRuns = 0
+    $changedRuns = @()
+    $newRuns = 0
+    foreach ($run in $newMatrix.results) {
+        $old = $oldByName[$run.name]
+        if (-not $old) { $newRuns++; continue }
+        $was = "$(Get-Outcome $old) [$($old.state_sequence)]"
+        $is = "$(Get-Outcome $run) [$($run.state_sequence)]"
+        if ($was -eq $is) { $sameRuns++ } else { $changedRuns += [ordered]@{ name = $run.name; before = $was; after = $is } }
+    }
+    Write-JsonFile (Join-Path $ToolsOut 'baseline-matrix-compare.json') ([ordered]@{ baseline = $CompareMatrix; same = $sameRuns; changed = $changedRuns; new = $newRuns })
+    Write-Output ("BASELINE MATRIX {0}: {1} run(s) end the same way, {2} differently, {3} new" -f $CompareMatrix, $sameRuns, $changedRuns.Count, $newRuns)
+    foreach ($entry in $changedRuns) { Write-Output "  $($entry.name): $($entry.before) -> $($entry.after)" }
+    exit 0
+}
+
 if (-not $Compare) {
-    Write-Output 'BASELINE ERROR: give -Save <name>, -Compare <name> or -List'
+    Write-Output 'BASELINE ERROR: give -Save <name>, -Compare <name>, -CompareMatrix <name> or -List'
     exit 2
 }
 

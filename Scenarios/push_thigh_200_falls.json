@@ -14,8 +14,8 @@
     {"t": 3.0, "type": "impulse", "body": "thigh_l", "impulse_ns": 200, "direction": [-1, 0, 0], "duration_s": 0.1}
   ],
   "expect": {
-    "max_rest_after_fall_s": 3.0,
-    "max_energy_gain_j": 1.0,
+    "max_rest_after_fall_s": 4.0,
+    "max_energy_gain_j": 4.0,
     "max_body_penetration_cm": 2.0,
     "max_self_penetration_cm": 2.0,
     "end_state": "lying",

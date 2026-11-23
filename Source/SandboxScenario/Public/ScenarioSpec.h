@@ -103,6 +103,14 @@ struct FScenarioExpect
 	TOptional<double> MinPoseOffsetDeg;
 	/** At the end of the run, every foot placed by a "foot_target" event is at most this far from its point. cm. */
 	TOptional<double> MaxFootTargetErrorCm;
+	/** The balance assist's commanded force over body weight, averaged over the settled frames, at most this. Active control only. */
+	TOptional<double> MaxAssistForceShareMean;
+	/** At most this many steps while upright (control.steps). Active control only. */
+	TOptional<double> MaxSteps;
+	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */
+	TOptional<double> MinPelvisAnchorShiftCm;
+	/** The body leaned into a held push at least this far at some point (control.balance.lean_max_cm). cm. */
+	TOptional<double> MinLeanCm;
 };
 
 /** How the body is driven. */
