@@ -77,6 +77,28 @@ namespace
 		Visitor(FString(TEXT("balance.hip_max_deg")), Tuning.Balance.HipMaxDeg);
 		Visitor(FString(TEXT("balance.response_s")), Tuning.Balance.ResponseS);
 		Visitor(FString(TEXT("balance.lean_max_cm")), Tuning.Balance.LeanMaxCm);
+		Visitor(FString(TEXT("balance.recover_s")), Tuning.Balance.RecoverS);
+		Visitor(FString(TEXT("balance.recover_speed_mps")), Tuning.Balance.RecoverSpeedMps);
+		Visitor(FString(TEXT("balance.step_margin_cm")), Tuning.Balance.StepMarginCm);
+		Visitor(FString(TEXT("balance.step_lift_cm")), Tuning.Balance.StepLiftCm);
+		Visitor(FString(TEXT("balance.step_press_cm")), Tuning.Balance.StepPressCm);
+		Visitor(FString(TEXT("balance.step_settle_s")), Tuning.Balance.StepSettleS);
+		Visitor(FString(TEXT("balance.step_over_share")), Tuning.Balance.StepOverShare);
+		Visitor(FString(TEXT("balance.swing_stiffness_scale")), Tuning.Balance.SwingStiffnessScale);
+		Visitor(FString(TEXT("balance.swing_damping_scale")), Tuning.Balance.SwingDampingScale);
+		Visitor(FString(TEXT("balance.swing_foot_n_per_m")), Tuning.Balance.SwingFootNPerM);
+		Visitor(FString(TEXT("balance.step_width_min_cm")), Tuning.Balance.StepWidthMinCm);
+		Visitor(FString(TEXT("balance.step_ease_s")), Tuning.Balance.StepEaseS);
+		Visitor(FString(TEXT("balance.stance_follow")), Tuning.Balance.StanceFollow);
+		Visitor(FString(TEXT("balance.leg_extension_max")), Tuning.Balance.LegExtensionMax);
+		Visitor(FString(TEXT("balance.step_shift_share")), Tuning.Balance.StepShiftShare);
+		Visitor(FString(TEXT("balance.step_shift_ready_cm")), Tuning.Balance.StepShiftReadyCm);
+		Visitor(FString(TEXT("balance.step_shift_s")), Tuning.Balance.StepShiftS);
+		Visitor(FString(TEXT("balance.step_shift_max_s")), Tuning.Balance.StepShiftMaxS);
+		Visitor(FString(TEXT("balance.step_asked_time_s")), Tuning.Balance.StepAskedTimeS);
+		Visitor(FString(TEXT("balance.anchor_room_share")), Tuning.Balance.AnchorRoomShare);
+		Visitor(FString(TEXT("balance.lower_s")), Tuning.Balance.LowerS);
+		Visitor(FString(TEXT("balance.lower_max_cm")), Tuning.Balance.LowerMaxCm);
 		Visitor(FString(TEXT("reactions.flinch_weakening")), Tuning.Reactions.FlinchWeakening);
 		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
 		Visitor(FString(TEXT("reactions.flinch_pose_full_ns")), Tuning.Reactions.FlinchPoseFullNs);
@@ -300,6 +322,28 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.HipMaxDeg, 60.0, TEXT("balance"), TEXT("hip_max_deg"), OutError) ||
 		!CheckRange(Balance.ResponseS, 2.0, TEXT("balance"), TEXT("response_s"), OutError) ||
 		!CheckRange(Balance.LeanMaxCm, 50.0, TEXT("balance"), TEXT("lean_max_cm"), OutError) ||
+		!CheckRange(Balance.RecoverS, 10.0, TEXT("balance"), TEXT("recover_s"), OutError) ||
+		!CheckRange(Balance.RecoverSpeedMps, 5.0, TEXT("balance"), TEXT("recover_speed_mps"), OutError) ||
+		!CheckRange(Balance.StepMarginCm, 50.0, TEXT("balance"), TEXT("step_margin_cm"), OutError) ||
+		!CheckRange(Balance.StepLiftCm, 50.0, TEXT("balance"), TEXT("step_lift_cm"), OutError) ||
+		!CheckRange(Balance.StepPressCm, 20.0, TEXT("balance"), TEXT("step_press_cm"), OutError) ||
+		!CheckRange(Balance.StepSettleS, 2.0, TEXT("balance"), TEXT("step_settle_s"), OutError) ||
+		!CheckRange(Balance.StepOverShare, 1.0, TEXT("balance"), TEXT("step_over_share"), OutError) ||
+		!CheckRange(Balance.SwingStiffnessScale, 10.0, TEXT("balance"), TEXT("swing_stiffness_scale"), OutError) ||
+		!CheckRange(Balance.SwingDampingScale, 10.0, TEXT("balance"), TEXT("swing_damping_scale"), OutError) ||
+		!CheckRange(Balance.SwingFootNPerM, MaxLinearStiffness, TEXT("balance"), TEXT("swing_foot_n_per_m"), OutError) ||
+		!CheckRange(Balance.StepWidthMinCm, 100.0, TEXT("balance"), TEXT("step_width_min_cm"), OutError) ||
+		!CheckRange(Balance.StepEaseS, 2.0, TEXT("balance"), TEXT("step_ease_s"), OutError) ||
+		!CheckRange(Balance.StanceFollow, 1.0, TEXT("balance"), TEXT("stance_follow"), OutError) ||
+		!CheckRange(Balance.LegExtensionMax, 1.0, TEXT("balance"), TEXT("leg_extension_max"), OutError) ||
+		!CheckRange(Balance.StepShiftShare, 1.0, TEXT("balance"), TEXT("step_shift_share"), OutError) ||
+		!CheckRange(Balance.StepShiftReadyCm, 50.0, TEXT("balance"), TEXT("step_shift_ready_cm"), OutError) ||
+		!CheckRange(Balance.StepShiftS, 2.0, TEXT("balance"), TEXT("step_shift_s"), OutError) ||
+		!CheckRange(Balance.StepShiftMaxS, 5.0, TEXT("balance"), TEXT("step_shift_max_s"), OutError) ||
+		!CheckRange(Balance.StepAskedTimeS, 2.0, TEXT("balance"), TEXT("step_asked_time_s"), OutError) ||
+		!CheckRange(Balance.AnchorRoomShare, 1.0, TEXT("balance"), TEXT("anchor_room_share"), OutError) ||
+		!CheckRange(Balance.LowerS, 2.0, TEXT("balance"), TEXT("lower_s"), OutError) ||
+		!CheckRange(Balance.LowerMaxCm, 60.0, TEXT("balance"), TEXT("lower_max_cm"), OutError) ||
 		!CheckRange(Reactions.PressureS, 5.0, TEXT("reactions"), TEXT("pressure_s"), OutError) ||
 		!CheckRange(Reactions.HeldPushS, 5.0, TEXT("reactions"), TEXT("held_push_s"), OutError) ||
 		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
@@ -395,6 +439,7 @@ const TCHAR* FSandboxBodyTuning::StateName(ESandboxBodyState State)
 	switch (State)
 	{
 	case ESandboxBodyState::Flinch: return TEXT("flinch");
+	case ESandboxBodyState::Stagger: return TEXT("stagger");
 	case ESandboxBodyState::Falling: return TEXT("falling");
 	case ESandboxBodyState::Lying: return TEXT("lying");
 	default: return TEXT("standing");

@@ -14,7 +14,7 @@
     {"t": 3.0, "type": "impulse", "body": "neck_01", "impulse_ns": 30, "direction": [1, 0, 0]}
   ],
   "expect": {
-    "state_sequence": "standing>flinch>standing",
+    "state_sequence": "standing>flinch>stagger>standing",
     "fell": false,
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30.0

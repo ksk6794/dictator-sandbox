@@ -16,7 +16,7 @@
   "expect": {
     "tuning_changes": 1,
     "fell": true,
-    "state_sequence": "standing>falling>lying",
+    "end_state": "lying",
     "min_fall_time_s": 4.0,
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30.0

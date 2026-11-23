@@ -55,6 +55,104 @@ FQuat FSandboxPoseRig::JointTurn(const FQuat& Frame, const FSandboxPoseAngles& A
 	return Frame * InFrame * Frame.Inverse();
 }
 
+bool FSandboxPoseRig::ReadJointLimits(const USkeletalMeshComponent* Mesh, FName ChildBone, FSandboxJointLimits& OutLimits)
+{
+	OutLimits = FSandboxJointLimits();
+	const UPhysicsAsset* Asset = Mesh ? Mesh->GetPhysicsAsset() : nullptr;
+	if (!Asset)
+	{
+		return false;
+	}
+	for (const UPhysicsConstraintTemplate* Template : Asset->ConstraintSetup)
+	{
+		if (!Template || Template->DefaultInstance.ConstraintBone1 != ChildBone)
+		{
+			continue;
+		}
+		const FConstraintInstance& Joint = Template->DefaultInstance;
+		const FConeConstraint& Cone = Joint.ProfileInstance.ConeLimit;
+		const FTwistConstraint& Twist = Joint.ProfileInstance.TwistLimit;
+		OutLimits.bValid = true;
+		OutLimits.ChildFrame = Joint.GetRefFrame(EConstraintFrame::Frame1).GetRotation();
+		OutLimits.ParentFrame = Joint.GetRefFrame(EConstraintFrame::Frame2).GetRotation();
+		OutLimits.Swing1Deg = Cone.Swing1Motion == ACM_Locked ? 0.0 : Cone.Swing1LimitDegrees;
+		OutLimits.Swing2Deg = Cone.Swing2Motion == ACM_Locked ? 0.0 : Cone.Swing2LimitDegrees;
+		OutLimits.TwistDeg = Twist.TwistMotion == ACM_Locked ? 0.0 : Twist.TwistLimitDegrees;
+		OutLimits.bSwing1Free = Cone.Swing1Motion == ACM_Free;
+		OutLimits.bSwing2Free = Cone.Swing2Motion == ACM_Free;
+		OutLimits.bTwistFree = Twist.TwistMotion == ACM_Free;
+		return true;
+	}
+	return false;
+}
+
+FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits)
+{
+	if (!Limits.bValid)
+	{
+		return ChildBone;
+	}
+	// The child's frame relative to the parent's: twist about X, then a swing whose axis lies in Y and Z.
+	const FQuat Parent = ParentBone * Limits.ParentFrame;
+	const FQuat Relative = (Parent.Inverse() * (ChildBone * Limits.ChildFrame)).GetNormalized();
+	FQuat Swing, Twist;
+	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
+
+	bool bClamped = false;
+	double TwistRad = Twist.GetTwistAngle(FVector::XAxisVector);
+	const double TwistMax = FMath::DegreesToRadians(Limits.TwistDeg);
+	if (!Limits.bTwistFree && FMath::Abs(TwistRad) > TwistMax)
+	{
+		TwistRad = FMath::Sign(TwistRad) * TwistMax;
+		bClamped = true;
+	}
+
+	// The swing as a rotation vector: its Z part is swing1, its Y part swing2.
+	FVector SwingAxis;
+	double SwingRad;
+	Swing.ToAxisAndAngle(SwingAxis, SwingRad);
+	SwingRad = FMath::UnwindRadians(SwingRad);
+	FVector SwingVector = SwingAxis * SwingRad;
+	SwingVector.X = 0.0;
+	const double Limit1 = FMath::DegreesToRadians(Limits.Swing1Deg);
+	const double Limit2 = FMath::DegreesToRadians(Limits.Swing2Deg);
+	if (!Limits.bSwing1Free && Limit1 <= 0.0 && SwingVector.Z != 0.0)
+	{
+		SwingVector.Z = 0.0;
+		bClamped = true;
+	}
+	if (!Limits.bSwing2Free && Limit2 <= 0.0 && SwingVector.Y != 0.0)
+	{
+		SwingVector.Y = 0.0;
+		bClamped = true;
+	}
+	const double Part1 = !Limits.bSwing1Free && Limit1 > 0.0 ? FMath::Square(SwingVector.Z / Limit1) : 0.0;
+	const double Part2 = !Limits.bSwing2Free && Limit2 > 0.0 ? FMath::Square(SwingVector.Y / Limit2) : 0.0;
+	const double Ellipse = Part1 + Part2;
+	if (Ellipse > 1.0)
+	{
+		// Back along the same direction onto the ellipse; a free axis keeps its part.
+		const double Scale = 1.0 / FMath::Sqrt(Ellipse);
+		if (!Limits.bSwing1Free)
+		{
+			SwingVector.Z *= Scale;
+		}
+		if (!Limits.bSwing2Free)
+		{
+			SwingVector.Y *= Scale;
+		}
+		bClamped = true;
+	}
+	if (!bClamped)
+	{
+		return ChildBone;
+	}
+	const double Angle = SwingVector.Size();
+	const FQuat NewSwing = Angle > UE_SMALL_NUMBER ? FQuat(SwingVector / Angle, Angle) : FQuat::Identity;
+	const FQuat NewRelative = NewSwing * FQuat(FVector::XAxisVector, TwistRad);
+	return ((Parent * NewRelative) * Limits.ChildFrame.Inverse()).GetNormalized();
+}
+
 void FSandboxPoseRig::BuildTurns(const FSandboxPose& Pose, double Weight, TArray<FSandboxPoseTurn>& OutTurns) const
 {
 	OutTurns.Reset();

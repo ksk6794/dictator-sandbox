@@ -75,6 +75,23 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("step"))
+		{
+			FString Body;
+			if (!Json->TryGetStringField(TEXT("body"), Body) || Body.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("events[%d].body is missing"), Index);
+				return false;
+			}
+			OutEvent.Body = FName(*Body);
+			if (!SandboxJson::TryGetVector(Json, TEXT("offset_cm"), OutEvent.OffsetCm))
+			{
+				OutError = FString::Printf(TEXT("events[%d].offset_cm must be [x, y, z]"), Index);
+				return false;
+			}
+			return true;
+		}
+
 		if (OutEvent.Type == TEXT("foot_target"))
 		{
 			FString Body;
@@ -365,6 +382,9 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_foot_target_error_cm"), &OutSpec.Expect.MaxFootTargetErrorCm },
 			{ TEXT("max_assist_force_share_mean"), &OutSpec.Expect.MaxAssistForceShareMean },
 			{ TEXT("max_steps"), &OutSpec.Expect.MaxSteps },
+			{ TEXT("max_landing_error_cm"), &OutSpec.Expect.MaxLandingErrorCm },
+			{ TEXT("max_recovery_steps"), &OutSpec.Expect.MaxRecoverySteps },
+			{ TEXT("max_flinches"), &OutSpec.Expect.MaxFlinches },
 			{ TEXT("min_pelvis_anchor_shift_cm"), &OutSpec.Expect.MinPelvisAnchorShiftCm },
 			{ TEXT("min_lean_cm"), &OutSpec.Expect.MinLeanCm } };
 
@@ -397,11 +417,11 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 				bool bValid = Names.Num() > 0 && (Entry.Key == TEXT("state_sequence") || Names.Num() == 1);
 				for (const FString& Name : Names)
 				{
-					bValid &= Name == TEXT("standing") || Name == TEXT("flinch") || Name == TEXT("falling") || Name == TEXT("lying");
+					bValid &= Name == TEXT("standing") || Name == TEXT("flinch") || Name == TEXT("stagger") || Name == TEXT("falling") || Name == TEXT("lying");
 				}
 				if (!bValid)
 				{
-					OutError = FString::Printf(TEXT("'expect.%s' must be %s of standing, flinch, falling, lying"), *Entry.Key,
+					OutError = FString::Printf(TEXT("'expect.%s' must be %s of standing, flinch, stagger, falling, lying"), *Entry.Key,
 						Entry.Key == TEXT("end_state") ? TEXT("one") : TEXT("a '>'-separated list"));
 					return false;
 				}

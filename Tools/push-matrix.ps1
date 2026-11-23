@@ -158,6 +158,9 @@ foreach ($trial in $trials) {
         fall_reason           = (@($runMetrics.control.states | Where-Object { $_.state -eq 'falling' } | ForEach-Object { $_.reason }) | Select-Object -First 1)
         capture_margin_min_cm = $runMetrics.control.balance.capture_margin_min_cm
         assist_force_share_max = $runMetrics.control.assist_load.force_share_max
+        recovery_steps        = $runMetrics.control.recovery_step_count
+        stagger_s             = $runMetrics.control.stagger.seconds
+        stagger_torque_share_max = $runMetrics.control.stagger.assist_torque_share_max
         max_joint_stretch_cm  = [Math]::Round($runMetrics.metrics.max_joint_stretch_cm, 3)
         max_joint_speed_rads  = [Math]::Round($runMetrics.metrics.max_joint_speed_rads, 1)
         max_pelvis_drift_cm   = [Math]::Round($runMetrics.metrics.max_pelvis_drift_cm, 1)

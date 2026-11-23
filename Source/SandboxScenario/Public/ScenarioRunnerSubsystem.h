@@ -255,6 +255,13 @@ private:
 	/** Frames in which the controller found that a step was needed (while upright), and the first of them. */
 	int32 StepNeededFrames = 0;
 	int32 FirstStepNeededFrame = -1;
+	/** Frames the body spent staggering, and the assist's force share over them (mean is the sum over the frames). */
+	int32 StaggerFrames = 0;
+	double StaggerAssistShareSum = 0.0;
+	double StaggerAssistShareMax = 0.0;
+	/** The same for the assist's torque (over weight times centre-of-mass height): in Stagger it holds the pelvis upright. */
+	double StaggerTorqueShareSum = 0.0;
+	double StaggerTorqueShareMax = 0.0;
 	/** Largest turn the balance strategies put on the ankles and the hips, degrees. */
 	double AnkleLeanMaxDeg = 0.0;
 	double HipBendMaxDeg = 0.0;

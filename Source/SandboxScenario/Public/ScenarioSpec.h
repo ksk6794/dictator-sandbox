@@ -68,7 +68,7 @@ struct FScenarioExpect
 	TOptional<double> TuningChanges;
 	/** Furthest any joint may be found outside its limits, in degrees. */
 	TOptional<double> MaxJointLimitViolationDeg;
-	/** State the body must be in at the end: "standing", "flinch", "falling" or "lying". Active control only. */
+	/** State the body must be in at the end: "standing", "flinch", "stagger", "falling" or "lying". Active control only. */
 	TOptional<FString> EndState;
 	/** Every state the body must go through, in order: "standing>flinch>standing". Active control only. */
 	TOptional<FString> StateSequence;
@@ -107,6 +107,12 @@ struct FScenarioExpect
 	TOptional<double> MaxAssistForceShareMean;
 	/** At most this many steps while upright (control.steps). Active control only. */
 	TOptional<double> MaxSteps;
+	/** Every step the controller made (control.recovery_steps) landed at most this far from its target; there was at least one. cm. */
+	TOptional<double> MaxLandingErrorCm;
+	/** The controller made at most this many steps of its own and asked for (control.recovery_steps). */
+	TOptional<double> MaxRecoverySteps;
+	/** The body went into Flinch at most this many times. Active control only. */
+	TOptional<double> MaxFlinches;
 	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */
 	TOptional<double> MinPelvisAnchorShiftCm;
 	/** The body leaned into a held push at least this far at some point (control.balance.lean_max_cm). cm. */

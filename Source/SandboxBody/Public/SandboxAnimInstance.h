@@ -23,6 +23,38 @@ struct FSandboxLimbTarget
 	FVector WorldLocation = FVector::ZeroVector;
 	/** 0 leaves the limb as the pose has it, 1 puts the end on the point. */
 	double Weight = 0.0;
+	/**
+	 * Where the component would be for the pose to be solved in, world space; used when bInFrame is set. The
+	 * point is carried into the pose's space through this transform instead of the component's own. A leg
+	 * solved in the frame of a pelvis that stands upright at its anchor gives the angles of that posture, so
+	 * the muscles pull the body toward it, rather than angles that follow wherever the pelvis is now.
+	 */
+	bool bInFrame = false;
+	FTransform Frame = FTransform::Identity;
+	/**
+	 * The end bone keeps the pose's orientation relative to this world rotation instead of relative to the
+	 * component; used when bEndInFrame is set. A foot in the air is held level this way, whatever the pelvis does.
+	 */
+	bool bEndInFrame = false;
+	FQuat EndFrame = FQuat::Identity;
+	/**
+	 * The range of the end's joint (the ankle): the end's orientation is brought into it after it is set. Held
+	 * level while the leg reaches out or back, a foot was asked to turn 34 degrees about the shin against a
+	 * range of 15; its muscle drove it into the limit and the limit turned the whole leg away from its pose.
+	 */
+	FSandboxJointLimits EndLimits;
+	/**
+	 * How much of that (0 to 1): a foot in the air is held to its ankle's range, a foot on the floor is not (the
+	 * floor holds it flat; asked to tilt onto its edge, a planted foot was rolled over by its own ankle), and
+	 * one that has just landed goes from the one to the other (at once, the ankle flipped the landed foot over).
+	 */
+	double EndLimitWeight = 0.0;
+	/**
+	 * The end is put no further from the limb's root than this share of the limb's length (0: as far as it
+	 * reaches). A point out of reach straightened the leg at once: a knee that went from 20 degrees to none in
+	 * one frame kicked the body off the floor.
+	 */
+	double ReachShare = 0.0;
 };
 
 /**
@@ -88,6 +120,20 @@ public:
 	 */
 	void SetLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, double Weight, double BlendS);
 
+	/**
+	 * Moves the point of a limb target that exists, and sets the frame it is solved in (nullptr: the component
+	 * itself), without touching the blend of its weight. Does nothing for a limb that has no target. For a
+	 * point that travels (a foot in a step) and a frame that moves with the body, every tick.
+	 */
+	void MoveLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, const FTransform* Frame, const FQuat* EndFrame = nullptr,
+		double EndLimitWeight = 0.0, double ReachShare = 0.0);
+
+	/** The weight a limb target has now, part way through its blend; 0 without one. */
+	double GetLimbWeight(int32 EndMeshBoneIndex) const;
+
+	/** The range of a limb end's joint, kept for every target of that end from now on (FSandboxLimbTarget::EndLimits). */
+	void SetLimbEndLimits(int32 EndMeshBoneIndex, const FSandboxJointLimits& Limits) { EndLimits.Add(EndMeshBoneIndex, Limits); }
+
 protected:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
@@ -114,6 +160,7 @@ private:
 		}
 	};
 	TArray<FLimbState> LimbStates;
+	TMap<int32, FSandboxJointLimits> EndLimits;
 
 	double BlendS = 0.0;
 	/** Time since the current blend started. */

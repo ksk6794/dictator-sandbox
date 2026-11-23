@@ -50,6 +50,15 @@ bool FBodyProbeSupportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a point beyond an edge is outside by its distance"), FSandboxBodyProbe::MarginInsidePolygon(Hull, FVector2D(0, 20)), -7.0, 1.0e-9);
 	TestEqual(TEXT("a point beyond a corner is outside by its distance to the corner"), FSandboxBodyProbe::MarginInsidePolygon(Hull, FVector2D(21, 17)), -5.0, 1.0e-9);
 
+	// The nearest point of the polygon: where a centre of pressure can go toward a capture point outside.
+	TestEqual(TEXT("a point inside is its own nearest point"), FSandboxBodyProbe::NearestPointOfPolygon(Hull, FVector2D(3, 4)), FVector2D(3, 4));
+	TestEqual(TEXT("beyond an edge the nearest point is on that edge"), FSandboxBodyProbe::NearestPointOfPolygon(Hull, FVector2D(5, 30)), FVector2D(5, 13));
+	TestEqual(TEXT("beyond a corner it is the corner"), FSandboxBodyProbe::NearestPointOfPolygon(Hull, FVector2D(21, 17)), FVector2D(18, 13));
+	TestEqual(TEXT("to the edge along x"), FSandboxBodyProbe::DistanceToEdgeAlong(Hull, FVector2D(3, 4), FVector2D(2, 0)), 15.0, 1.0e-9);
+	TestEqual(TEXT("to the edge along -y"), FSandboxBodyProbe::DistanceToEdgeAlong(Hull, FVector2D(3, 4), FVector2D(0, -1)), 16.0, 1.0e-9);
+	TestEqual(TEXT("to the nearer edge along a diagonal"), FSandboxBodyProbe::DistanceToEdgeAlong(Hull, FVector2D(3, 4), FVector2D(1, 1)), 9.0 * FMath::Sqrt(2.0), 1.0e-9);
+	TestEqual(TEXT("no way out from outside"), FSandboxBodyProbe::DistanceToEdgeAlong(Hull, FVector2D(30, 4), FVector2D(1, 0)), 0.0);
+
 	// Fewer than three distinct points have no inside.
 	TArray<FVector2D> Edge;
 	FSandboxBodyProbe::ConvexHull2D(TArray<FVector2D>{ FVector2D(0, 0), FVector2D(10, 0), FVector2D(0, 0), FVector2D(5, 0) }, Edge);

@@ -103,7 +103,11 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 		{
 			if (Limb.Target.Weight > 0.0)
 			{
-				Limbs.Add(Limb.Target);
+				FSandboxLimbTarget& Added = Limbs.Add_GetRef(Limb.Target);
+				if (const FSandboxJointLimits* Limits = Instance->EndLimits.Find(Limb.Target.EndMeshBoneIndex))
+				{
+					Added.EndLimits = *Limits;
+				}
 			}
 		}
 		Weight = Instance->GetBlendWeight();
@@ -162,8 +166,19 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		FTransform RootTransform = ComponentPose.GetComponentSpaceTransform(Root);
 		FTransform MiddleTransform = ComponentPose.GetComponentSpaceTransform(Middle);
 		FTransform EndTransform = ComponentPose.GetComponentSpaceTransform(End);
-		const FVector Target = Component.InverseTransformPosition(Limb.WorldLocation);
-		const FVector Effector = FMath::Lerp(EndTransform.GetLocation(), Target, FMath::Clamp(Limb.Weight, 0.0, 1.0));
+		const FVector Target = (Limb.bInFrame ? Limb.Frame : Component).InverseTransformPosition(Limb.WorldLocation);
+		FVector Effector = FMath::Lerp(EndTransform.GetLocation(), Target, FMath::Clamp(Limb.Weight, 0.0, 1.0));
+		if (Limb.ReachShare > 0.0)
+		{
+			// Within reach (FSandboxLimbTarget::ReachShare), along the line from the root.
+			const double ReachCm = Limb.ReachShare * (FVector::Dist(RootTransform.GetLocation(), MiddleTransform.GetLocation()) +
+				FVector::Dist(MiddleTransform.GetLocation(), EndTransform.GetLocation()));
+			const FVector FromRoot = Effector - RootTransform.GetLocation();
+			if (FromRoot.SizeSquared() > ReachCm * ReachCm)
+			{
+				Effector = RootTransform.GetLocation() + FromRoot.GetSafeNormal() * ReachCm;
+			}
+		}
 		// The knee bends toward the front of the mesh (+y, where the character faces), not the way the pose
 		// happens to bend it: a standing leg is almost straight, and its knee could sit a hair behind the line
 		// from hip to ankle and have the solver fold it backward.
@@ -171,7 +186,86 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		const FVector Bend = (FVector::YAxisVector - Along * Along.Y).GetSafeNormal();
 		const FVector Pole = MiddleTransform.GetLocation() + Bend * 50.0;
 
+		const FTransform RootBefore = RootTransform;
+		const FTransform MiddleBefore = MiddleTransform;
+		const FVector EndBefore = EndTransform.GetLocation();
 		AnimationCore::SolveTwoBoneIK(RootTransform, MiddleTransform, EndTransform, Pole, Effector, /*bAllowStretching*/ false, 1.0, 1.0);
+
+		// The solver turns each bone by the least rotation that points it at its new end, which leaves the
+		// thigh's twist as it was: for an end off to the side, the plane the knee then has to bend in is not
+		// the one its hinge allows, the joint's limits hold the shin in the hinge's plane, and the foot lands
+		// elsewhere (a step 10 cm out from the hip went 14 cm in). So both bones are turned as frames instead:
+		// the bone's direction and the hinge's axis (across the leg, the mesh's x in a straight leg, otherwise
+		// across the bend) from where they were to where they now are. The knee bends about its hinge alone,
+		// and the thigh twists to carry the hinge into the plane of the bend.
+		{
+			const FVector Hip = RootBefore.GetLocation();
+			const FVector KneeBefore = MiddleBefore.GetLocation();
+			const FVector KneeNow = MiddleTransform.GetLocation();
+			const FVector EndNow = EndTransform.GetLocation();
+			const auto HingeOf = [](const FVector& Upper, const FVector& Lower, const FVector& Fallback)
+			{
+				// Across the bend, signed as the fallback for a leg bent forward at the knee; the fallback for
+				// a leg too straight to tell, and a blend of the two in between. (Switched from one to the other
+				// at a threshold, the hinge of a leg reaching out to the side jumped by 17 degrees as the leg
+				// straightened, and a standing leg near the threshold had its thigh's twist flip every frame:
+				// the foot was kicked off the floor with 5000 N.)
+				const FVector Across = FVector::CrossProduct(Upper, Lower);
+				const FVector Along = Upper.GetSafeNormal();
+				const FVector Straight = (Fallback - Along * (Fallback | Along)).GetSafeNormal();
+				const double Sine = Across.Size() / FMath::Max(Upper.Size() * Lower.Size(), UE_SMALL_NUMBER);
+				constexpr double StraightSine = 0.05;
+				constexpr double BentSine = 0.15;
+				if (Sine <= StraightSine)
+				{
+					return Straight;
+				}
+				FVector Axis = Across.GetSafeNormal();
+				Axis = (Axis | Fallback) >= 0.0 ? Axis : -Axis;
+				const double Bent = FMath::SmoothStep(StraightSine, BentSine, Sine);
+				return Bent >= 1.0 ? Axis : (Straight * (1.0 - Bent) + Axis * Bent).GetSafeNormal();
+			};
+			const auto Basis = [](const FVector& Along, const FVector& Hinge)
+			{
+				const FVector X = Along.GetSafeNormal();
+				const FVector Y = (Hinge - X * (Hinge | X)).GetSafeNormal();
+				return FQuat(FMatrix(X, Y, FVector::CrossProduct(X, Y), FVector::ZeroVector));
+			};
+			// The knee bends toward +y: thigh down and forward, shin down and back, so the hinge is -x.
+			const FVector HingeBefore = HingeOf(KneeBefore - Hip, EndBefore - KneeBefore, -FVector::XAxisVector);
+			const FQuat Least = FQuat::FindBetweenVectors(KneeBefore - Hip, KneeNow - Hip);
+			const FVector HingeNow = HingeOf(KneeNow - Hip, EndNow - KneeNow, Least.RotateVector(HingeBefore));
+			const FQuat RootTurn = Basis(KneeNow - Hip, HingeNow) * Basis(KneeBefore - Hip, HingeBefore).Inverse();
+			const FQuat MiddleTurn = Basis(EndNow - KneeNow, HingeNow) * Basis(EndBefore - KneeBefore, HingeBefore).Inverse();
+			RootTransform.SetRotation((RootTurn * RootBefore.GetRotation()).GetNormalized());
+			MiddleTransform.SetRotation((MiddleTurn * MiddleBefore.GetRotation()).GetNormalized());
+		}
+		if (Limb.bEndInFrame)
+		{
+			// The pose's orientation of the end, taken relative to the given frame rather than to the component.
+			const FQuat Level = (Component.GetRotation().Inverse() * Limb.EndFrame * EndTransform.GetRotation()).GetNormalized();
+			EndTransform.SetRotation(FQuat::Slerp(EndTransform.GetRotation(), Level, FMath::Clamp(Limb.Weight, 0.0, 1.0)).GetNormalized());
+		}
+		if (Limb.EndLimits.bValid)
+		{
+			// Not more than the ankle can do (FSandboxLimbTarget::EndLimitWeight): the rest of the turn stays with the
+			// leg. Its twist is never asked for beyond its range, on the floor either: the floor holds a foot flat,
+			// but only friction holds it from turning about the shin, and a planted foot asked for 30 degrees of
+			// twist against 15 was spun round by its own ankle and slid 9 cm out under the body's weight.
+			FSandboxJointLimits TwistOnly = Limb.EndLimits;
+			TwistOnly.bSwing1Free = true;
+			TwistOnly.bSwing2Free = true;
+			const FQuat Twisted = FSandboxPoseRig::ClampToLimits(MiddleTransform.GetRotation(), EndTransform.GetRotation(), TwistOnly);
+			if (Limb.EndLimitWeight <= 0.0)
+			{
+				EndTransform.SetRotation(Twisted);
+			}
+			else
+			{
+				const FQuat Limited = FSandboxPoseRig::ClampToLimits(MiddleTransform.GetRotation(), EndTransform.GetRotation(), Limb.EndLimits);
+				EndTransform.SetRotation(Limb.EndLimitWeight >= 1.0 ? Limited : FQuat::Slerp(Twisted, Limited, Limb.EndLimitWeight).GetNormalized());
+			}
+		}
 		const FBoneTransform Placed[] = { FBoneTransform(Root, RootTransform), FBoneTransform(Middle, MiddleTransform), FBoneTransform(End, EndTransform) };
 		ComponentPose.SafeSetCSBoneTransforms(Placed);
 	}
@@ -195,6 +289,29 @@ void USandboxAnimInstance::SetLimbTarget(int32 EndMeshBoneIndex, const FVector& 
 	State->BlendS = InBlendS;
 	State->ElapsedS = 0.0;
 	State->Target.WorldLocation = WorldLocation;
+}
+
+void USandboxAnimInstance::MoveLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, const FTransform* Frame, const FQuat* EndFrame,
+	double EndLimitWeight, double ReachShare)
+{
+	FLimbState* State = LimbStates.FindByPredicate([EndMeshBoneIndex](const FLimbState& Limb) { return Limb.Target.EndMeshBoneIndex == EndMeshBoneIndex; });
+	if (!State)
+	{
+		return;
+	}
+	State->Target.WorldLocation = WorldLocation;
+	State->Target.bInFrame = Frame != nullptr;
+	State->Target.Frame = Frame ? *Frame : FTransform::Identity;
+	State->Target.bEndInFrame = EndFrame != nullptr;
+	State->Target.EndFrame = EndFrame ? *EndFrame : FQuat::Identity;
+	State->Target.EndLimitWeight = FMath::Clamp(EndLimitWeight, 0.0, 1.0);
+	State->Target.ReachShare = FMath::Max(ReachShare, 0.0);
+}
+
+double USandboxAnimInstance::GetLimbWeight(int32 EndMeshBoneIndex) const
+{
+	const FLimbState* State = LimbStates.FindByPredicate([EndMeshBoneIndex](const FLimbState& Limb) { return Limb.Target.EndMeshBoneIndex == EndMeshBoneIndex; });
+	return State ? State->CurrentWeight() : 0.0;
 }
 
 FAnimInstanceProxy* USandboxAnimInstance::CreateAnimInstanceProxy()

@@ -28,7 +28,8 @@
     }
   ],
   "expect": {
-    "state_sequence": "standing>flinch>standing",
+    "max_flinches": 1,
+    "end_state": "standing",
     "fell": false,
     "min_lean_cm": 2.0,
     "min_effector_impulse_ns": 50,

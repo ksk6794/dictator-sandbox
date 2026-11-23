@@ -575,6 +575,23 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 		Line(Ground, Capture, Color, ThickCm);
 		Ring(Capture, 5.0, Color, ThickCm);
 		Cross(Capture, 5.0, Color, ThinCm);
+
+		// A recovery step: where the capture point was expected when the foot lands, where the foot is aimed, and
+		// the point the swing has reached (magenta while the foot is in the air).
+		if (Controller && Controller->GetStepLog().Num() > 0)
+		{
+			const FSandboxStepRecord& Step = Controller->GetStepLog().Last();
+			const bool bSwinging = Controller->IsStepping();
+			const FLinearColor StepColor = bSwinging ? FLinearColor(1.0f, 0.2f, 1.0f) : ColorSlack;
+			const FVector Aim(Step.Target.X, Step.Target.Y, FloorCm + 0.3);
+			Ring(Aim, 8.0, StepColor, ThickCm);
+			Line(FVector(Step.From.X, Step.From.Y, FloorCm + 0.3), Aim, StepColor, ThinCm);
+			Cross(FVector(Step.CaptureAtLanding.X, Step.CaptureAtLanding.Y, FloorCm + 0.3), 4.0, StepColor, ThinCm);
+			if (bSwinging)
+			{
+				Cross(Controller->GetSwingPoint(), 4.0, StepColor, ThickCm);
+			}
+		}
 	}
 
 	FSandboxBodyControlView View;
@@ -655,7 +672,8 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 		if (Controller && Controller->GetStateLog().Num() > 0)
 		{
 			const FSandboxStateChange& Last = Controller->GetStateLog().Last();
-			const FLinearColor Color = Last.State == ESandboxBodyState::Standing ? ColorGood : Last.State == ESandboxBodyState::Flinch ? ColorWeak
+			const FLinearColor Color = Last.State == ESandboxBodyState::Standing ? ColorGood
+				: Last.State == ESandboxBodyState::Flinch || Last.State == ESandboxBodyState::Stagger ? ColorWeak
 				: Last.State == ESandboxBodyState::Falling ? ColorBad : ColorSlack;
 			const FString StateText = FString::Printf(TEXT("%s for %.2f s (%s)"),
 				*FString(FSandboxBodyTuning::StateName(Last.State)).ToUpper(), Controller->GetElapsedS() - Last.TimeS, *Last.Reason);
@@ -673,7 +691,7 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 			const FVector2D Hip = Controller->GetHipBendDeg();
 			CornerLabel(FString::Printf(TEXT("Balance: decided on %.1f cm %s%s; ankles %.1f / %.1f deg, hips %.1f deg; held push %.0f N, lean %.1f cm"),
 				FMath::Abs(Controller->GetDecisionMarginCm()), Controller->GetDecisionMarginCm() >= 0.0 ? TEXT("inside") : TEXT("outside"),
-				Controller->IsStepNeeded() ? TEXT(", NEEDS A STEP (held by the assist)") : TEXT(""),
+				Controller->IsStepNeeded() ? TEXT(", NEEDS A STEP") : TEXT(""),
 				Ankle.X, Ankle.Y, Hip.X, Controller->GetPressureN().Size(), Controller->GetLeanCm().Size()),
 				Controller->IsStepNeeded() ? ColorWeak : FLinearColor::White);
 		}

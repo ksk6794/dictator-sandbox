@@ -104,6 +104,36 @@ struct FSandboxBalanceView
 	bool IsSupported() const { return SupportPolygon.Num() > 0; }
 };
 
+/** One recovery step the controller made, for result files and overlays. World space, cm, seconds since Start. */
+struct FSandboxStepRecord
+{
+	/** The foot that stepped: 0 left, 1 right; and its bone. */
+	int32 Side = 0;
+	FName Foot;
+	/** Which step of its stagger this was, from 1. */
+	int32 Number = 1;
+	double StartS = 0.0;
+	/** When the foot touched the floor again; below 0 while it is in the air. */
+	double LandS = -1.0;
+	/** Where the foot's bone was when it lifted, where the step was aimed, and where it came down. */
+	FVector From = FVector::ZeroVector;
+	FVector Target = FVector::ZeroVector;
+	FVector Landed = FVector::ZeroVector;
+	/** The capture point the step was planned on (with a held push's shift), and where it was then expected at landing. */
+	FVector2D CapturePoint = FVector2D::ZeroVector;
+	FVector2D CaptureAtLanding = FVector2D::ZeroVector;
+	/** How far inside the support the step would make (the other sole and this one at its target) the capture point at landing is, cm. */
+	double PlannedMarginCm = 0.0;
+	/** Where the capture point really was when the foot came down, and its margin to the support the decision was made on then, cm. */
+	FVector2D CaptureAtTouch = FVector2D::ZeroVector;
+	double MarginAtTouchCm = 0.0;
+	/** Whether the plan had to be cut short: by the reach, or by keeping to its own side of the other foot. */
+	bool bReachLimited = false;
+	bool bWidthLimited = false;
+	/** False when the swing ran out of time without the foot finding the floor. */
+	bool bTouched = false;
+};
+
 /** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */
 struct FSandboxBodyControlView
 {
@@ -133,7 +163,8 @@ struct FSandboxBodyControlView
  *                   every frame for a while is a held push.
  *
  *                     Standing --hit--> Flinch --recovered--> Standing
- *                     Standing or Flinch --capture point beyond a step, or pelvis too low or too tilted--> Falling
+ *                     Standing or Flinch --a step is needed--> Stagger --centre of mass over the support for a while--> Standing
+ *                     Standing, Flinch or Stagger --capture point beyond a step, or pelvis too low or too tilted--> Falling
  *                     Falling --at rest for a while--> Lying
  *
  * All bodies stay dynamic, and awake: a body under control never sleeps (see Start). The controller owns a
@@ -177,6 +208,13 @@ public:
 	bool SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError);
 
 	/**
+	 * Makes a step with one foot to a point of the floor (x and y; the foot comes down at the height it stands
+	 * at), as a recovery step is made: swing, landing, the foot planted there. For testing the swing on its own.
+	 * False with a reason if the body is not upright, a step is under way or the bone is not a foot of the rig.
+	 */
+	bool RequestStep(FName Foot, const FVector& WorldTarget, FString& OutError);
+
+	/**
 	 * What the body has taken from contacts with other simulated bodies since it was started: the sum of
 	 * the contact impulses' sizes in N*s and the number of contact reports. Contacts with the static world
 	 * (the floor under the feet) and between the character's own bodies are not hits and are not counted.
@@ -191,6 +229,12 @@ public:
 	int32 GetTuningChangeCount() const { return TuningChangeCount; }
 
 	ESandboxBodyState GetState() const { return State; }
+	/** Standing, flinching or staggering: on its feet, with its balance in the controller's hands. */
+	bool IsUpright() const { return IsUprightState(State); }
+	static bool IsUprightState(ESandboxBodyState InState)
+	{
+		return InState == ESandboxBodyState::Standing || InState == ESandboxBodyState::Flinch || InState == ESandboxBodyState::Stagger;
+	}
 	/** Every state the body has been in, the first entry being Standing at time 0. */
 	const TArray<FSandboxStateChange>& GetStateLog() const { return StateLog; }
 	int32 GetMuscleCount() const { return Muscles.Num(); }
@@ -222,13 +266,22 @@ public:
 	/**
 	 * Whether the capture point is further outside the support than the ankles and hips can bring back
 	 * (balance.recoverable_cm), but within a step's reach, and has been for balance.decision_s: the body needs
-	 * a step. It cannot step yet (M3 part 4), so the assist holds it; result files report the frames.
+	 * a step. A standing or flinching body that needs one staggers; result files report the frames.
 	 */
 	bool IsStepNeeded() const { return bStepNeeded; }
 	/** The capture point's margin to the support that the last decision was made on, cm; positive inside. */
 	double GetDecisionMarginCm() const { return LastDecisionMarginCm; }
 	/** How many times a foot was planted anew, its assist anchor moved to where it landed. */
 	int32 GetReplantCount() const { return ReplantCount; }
+
+	/** Every recovery step so far, the one under way last (LandS below 0 while its foot is in the air). */
+	const TArray<FSandboxStepRecord>& GetStepLog() const { return StepLog; }
+	/** Whether a step is under way, and where its foot is meant to be now (the point the swing has reached). */
+	bool IsStepping() const { return Swing.bActive; }
+	FVector GetSwingPoint() const { return Swing.Point; }
+	/** Where each foot is held by the pose after its steps (empty while the feet are where the pose puts them). */
+	bool IsFootPlanted(int32 Side) const { return Side >= 0 && Side < 2 && Placement[Side].Mode != EPlacement::None; }
+	FVector GetFootPoint(int32 Side) const { return Side >= 0 && Side < 2 ? Placement[Side].Point : FVector::ZeroVector; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void OnUnregister() override;
@@ -257,10 +310,11 @@ private:
 		/** Pelvis, chest and head: the anchor in the support's frame (see SupportFrame), as it was at Start. */
 		FVector SupportLocation = FVector::ZeroVector;
 		FQuat SupportRotation = FQuat::Identity;
-		/** Going over to a new support: from where, to where, and for how long so far. Below 0 when not. */
+		/** Going over to a new support: from where, to where, for how long so far (below 0 when not), and in how long (GlideSeconds). */
 		FTransform FollowFrom = FTransform::Identity;
 		FTransform FollowTo = FTransform::Identity;
 		double FollowElapsedS = -1.0;
+		double FollowS = 0.0;
 
 		/** Feet: 0 left, 1 right; -1 for the other bodies. */
 		int32 Side = -1;
@@ -295,6 +349,10 @@ private:
 	double LostS = 0.0;
 	bool bStepNeeded = false;
 	double LastDecisionMarginCm = 0.0;
+	/** Stagger: how long the centre of mass has been over the support with the capture point within reach of the ankles. */
+	double RecoveredS = 0.0;
+	/** Whether the weakening of the last flinch has run its course (the muscles are back to full strength). */
+	bool bFlinchWeakeningOver = true;
 
 	/** A contact of one of the character's bodies, reported by the physics scene after the step. */
 	UFUNCTION()
@@ -437,6 +495,7 @@ private:
 	int32 ThighBoneIndex[2] = { INDEX_NONE, INDEX_NONE };
 	FName FootBoneName[2];
 	FName ThighBoneName[2];
+	FName CalfBoneName[2];
 
 public:
 	/** The strategies' state for result files and overlays: ankle lean and hip bend (forward, sideways), degrees, and the slow part, cm. */
@@ -452,6 +511,169 @@ private:
 	TMap<int32, FVector> PlacedFeet;
 	/** Lets every placed foot go back to the pose, eased out. */
 	void ReleaseFootTargets();
+
+	/**
+	 * The frames a leg's placement can be solved in (see FSandboxLimbTarget::Frame):
+	 *   Actual   the component as it is: the foot goes to its point whatever the pelvis does (a swinging leg).
+	 *   Here     the pelvis upright and at its anchor's height, where it is over the floor: the leg holds the
+	 *            body up and level and lets it go where it goes.
+	 *   Stance   the same, but only balance.stance_follow of the way from the anchor to where the pelvis is: the
+	 *            leg that carries the body while the other swings, holding it back that much.
+	 *   Anchor   the pelvis where the assist anchors it: the posture of a body standing on its planted feet,
+	 *            which the muscles then pull the body toward.
+	 * Upright frames are lowered for the given leg (Side) as far as it needs to reach its planted foot.
+	 */
+	enum class EFrame : uint8 { Actual, Here, Stance, Anchor };
+	FTransform FrameTransform(EFrame Frame, int32 Side, bool bLowered = true) const;
+	/** How far an upright frame's pelvis has to come down for a leg to reach Foot with balance.leg_extension_max of its length, cm. */
+	double LoweringFor(const FTransform& Frame, int32 Leg, const FVector& Foot) const;
+	/**
+	 * How long an anchor takes to glide from one point to another over the floor: balance.anchor_follow_s, or
+	 * longer, so that a body pulled along keeps its capture point (v / omega ahead of it) within
+	 * balance.anchor_room_share of the way from the glide's end to the edge of the support, along the glide.
+	 */
+	double GlideSeconds(const FVector& From, const FVector& To) const;
+	/** How far the upright frames are lowered now, cm, following what the planted (and the swinging) legs need. */
+	double LowerCm = 0.0;
+	void UpdateLowering(double DeltaTime);
+
+	/** What the pose does with one foot of the controller's own (feet placed from outside are in PlacedFeet). */
+	enum class EPlacement : uint8 { None, Swing, Planted };
+	struct FFootPlacement
+	{
+		EPlacement Mode = EPlacement::None;
+		/** Where the foot's bone is to be, world space. */
+		FVector Point = FVector::ZeroVector;
+		/** The frame the placement goes over to, the one it comes from, and how far that change has come. */
+		EFrame Frame = EFrame::Anchor;
+		EFrame FromFrame = EFrame::Anchor;
+		double FrameElapsedS = 0.0;
+		double FrameBlendS = 0.0;
+		/** The frame the leg was last solved in (world), and whether a change of frame starts from it rather than from FromFrame. */
+		FTransform LastFrame = FTransform::Identity;
+		bool bHasLastFrame = false;
+		bool bFromLastFrame = false;
+		FTransform FromTransform = FTransform::Identity;
+		/**
+		 * A foot that has just landed: its point starts this far above Point (where the bone was as the sole
+		 * touched) and comes down to it over SettleS, so that a foot that touched with its toe or edge is let down
+		 * onto its sole rather than driven into the floor. cm, s.
+		 */
+		double SettleCm = 0.0;
+		double SettleElapsedS = 0.0;
+		double SettleS = 0.0;
+		/** What is left of the settling, 1 at the landing to 0, eased. */
+		double SettleLeft() const
+		{
+			return SettleS > 0.0 && SettleElapsedS < SettleS ? 1.0 - FMath::SmoothStep(0.0, 1.0, SettleElapsedS / SettleS) : 0.0;
+		}
+		/** The point the leg is solved for now: Point, raised by what is left of the settling. */
+		FVector SettledPoint() const { return Point + FVector(0.0, 0.0, SettleCm * SettleLeft()); }
+	};
+	FFootPlacement Placement[2];
+	/** Each leg's hip (the thigh bone) in the reference pose, component space, and its length from hip to ankle, cm. */
+	FVector HipReferenceCs[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	double LegLengthCm[2] = { 0.0, 0.0 };
+	/**
+	 * Puts a foot under the controller's placement (or changes its frame), easing in what changes over BlendS.
+	 * From names the frame the change starts from when it is not the one the foot is in now; bFromLast starts it
+	 * from the frame the leg was last solved in, held where it was (for a change that moves the frames themselves,
+	 * as the anchors' jump to the body when it stands again).
+	 */
+	void PlaceFoot(int32 Side, EPlacement Mode, const FVector& Point, EFrame Frame, double BlendS, const EFrame* From = nullptr, bool bFromLast = false);
+	/**
+	 * Where the assist plants a foot that stands where it is now: over the floor where its bone is, turned only
+	 * about the vertical, flat, at the height its bone had over the floor at Start. A foot on its toe or edge is
+	 * not to be held so (the pelvis's anchor and the next step's height are taken from the feet's anchors).
+	 */
+	FTransform FlatFootTransform(const FAssist& Assist) const;
+	/** Height of each foot's bone over the lowest point of its sole at Start, standing flat, cm. */
+	double FootStandHeightCm[2] = { 0.0, 0.0 };
+	/** Lets a foot of the controller's go back to the pose, eased out. */
+	void ReleaseFoot(int32 Side, double BlendS);
+	/** Hands every placement its point and frame for this tick. */
+	void UpdatePlacements(double DeltaTime);
+
+	/** The step under way. */
+	struct FSwing
+	{
+		bool bActive = false;
+		int32 Side = 0;
+		double ElapsedS = 0.0;
+		FVector From = FVector::ZeroVector;
+		FVector Target = FVector::ZeroVector;
+		/** Where the swing has brought the foot's point now. */
+		FVector Point = FVector::ZeroVector;
+		/** The sole as it will stand at the target, seen from above. */
+		TArray<FVector2D> TargetSole;
+		/** How fast the point moves, cm/s: the guiding assist's target velocity. */
+		FVector VelocityCmS = FVector::ZeroVector;
+		/** How far across (0 to 1) the point has come toward the target, seen from above, and how far down after that. */
+		double Across = 0.0;
+		double Descent = 0.0;
+		/** How long the swing takes: balance.step_time_s for a recovery step, balance.step_asked_time_s for one asked for. */
+		double DurationS = 0.0;
+		/**
+		 * A recovery step is aimed anew every tick until the foot starts down (a step asked for keeps its target): the
+		 * capture point is predicted over the time left, so the prediction's error shrinks as the foot travels. The
+		 * sole as it was when the foot lifted, which the aim moves.
+		 */
+		bool bReaim = false;
+		TArray<FVector2D> LiftSole;
+	};
+	/** Whether an assist control is the one on the foot of a step under way. */
+	bool IsSwingFoot(const FAssist& Assist) const { return Swing.bActive && Assist.Slot == EAssistSlot::Feet && Assist.Side == Swing.Side; }
+	/** Whether a step is under way or waiting for its weight shift. */
+	bool IsStepUnderWay() const { return Swing.bActive || Pending.bActive; }
+	FSwing Swing;
+	TArray<FSandboxStepRecord> StepLog;
+	/** Steps made in the current stagger. */
+	int32 StaggerSteps = 0;
+	/** Starts, carries on and ends recovery steps while the body staggers (M3 part 4). */
+	void UpdateStep(double DeltaTime);
+	/** Sets a planned step going: the log entry, the swing, the legs' placements, the swing leg's muscles. */
+	void StartSwing(const FSandboxStepRecord& Plan, const TArray<FVector2D>& TargetSole, double DurationS, bool bReaim);
+	/**
+	 * Where a step of this foot should go now: the capture point as it will be when the foot lands, TimeS from now
+	 * (it runs away from the other foot's sole), a margin beyond it, kept on this foot's own side of the other foot
+	 * and within reach. The bone's point, at the height a flat foot has on the floor. False if a foot has no sole.
+	 * For a foot in the air (a step aimed anew), LiftSole and LiftFrom give its sole and bone as they were when it
+	 * lifted, which the reach is counted from.
+	 */
+	bool PlanStep(int32 Side, double TimeS, FSandboxStepRecord& OutPlan, TArray<FVector2D>& OutTargetSole,
+		const TArray<FVector2D>* LiftSole = nullptr, const FVector* LiftFrom = nullptr) const;
+	/** The support a step under way will give: the hull of the stance sole and of the swinging sole put at its target. Empty without a step. */
+	void PlannedSupport(TArray<FVector2D>& OutPolygon) const;
+	/**
+	 * The capture point (moved by a held push) as it will be when a step of the other foot lands, if it starts
+	 * now: it runs away from the nearest point of StanceSide's sole by e^(omega TimeS).
+	 */
+	FVector2D CaptureAtLanding(int32 StanceSide, double TimeS) const;
+	/** How far inside the support a step of Side to TargetSole would give that capture point lies, cm (negative: outside). */
+	double LandingMarginCm(int32 Side, const TArray<FVector2D>& TargetSole, double TimeS, FVector2D& OutLanding) const;
+
+	/**
+	 * A step asked for (RequestStep) waits while the weight goes over onto the other foot: the legs move the
+	 * pelvis toward the stance foot (ShiftCm), and the foot lifts once the step, started then, would catch the
+	 * capture point, or after balance.step_shift_max_s.
+	 */
+	struct FPendingStep
+	{
+		bool bActive = false;
+		FSandboxStepRecord Plan;
+		TArray<FVector2D> TargetSole;
+		double ElapsedS = 0.0;
+	};
+	FPendingStep Pending;
+	/** How far the pelvis's goal in the legs' upright frames is moved for a weight shift (world x, y, cm), and toward what. */
+	FVector2D ShiftCm = FVector2D::ZeroVector;
+	FVector2D ShiftGoalCm = FVector2D::ZeroVector;
+	/** The swing of a step that began with a weight shift: the shift is held until the foot is down. */
+	bool bShiftHeld = false;
+	/** The shift as it was when the foot lifted. */
+	FVector2D ShiftAtLiftCm = FVector2D::ZeroVector;
+	/** Moves the shift toward its goal, with balance.step_shift_s's lag. */
+	void UpdateShift(double DeltaTime);
 	FSandboxAssistLoad AssistLoad;
 	double WeightN = 0.0;
 	double StandingComHeightM = 0.0;

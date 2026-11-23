@@ -50,7 +50,29 @@
     "hip_deg_per_cm": 3,
     "hip_max_deg": 15,
     "response_s": 0.05,
-    "lean_max_cm": 10
+    "lean_max_cm": 10,
+    "recover_s": 0.05,
+    "recover_speed_mps": 0.2,
+    "step_margin_cm": 5,
+    "step_lift_cm": 8,
+    "step_press_cm": 2,
+    "step_settle_s": 0.15,
+    "step_over_share": 0.55,
+    "swing_stiffness_scale": 2,
+    "swing_damping_scale": 2,
+    "swing_foot_n_per_m": 0,
+    "step_width_min_cm": 18,
+    "step_ease_s": 0.05,
+    "stance_follow": 0.5,
+    "leg_extension_max": 0.995,
+    "step_shift_share": 0.8,
+    "step_shift_ready_cm": 1,
+    "step_shift_s": 0.1,
+    "step_shift_max_s": 0.6,
+    "step_asked_time_s": 0.5,
+    "anchor_room_share": 0.5,
+    "lower_s": 0.1,
+    "lower_max_cm": 15
   },
   "reactions": {
     "flinch_weakening": 0.3,
@@ -61,6 +83,18 @@
     "held_push_s": 0.3
   },
   "states": {
+    "flinch": {
+      "assist": {
+        "pelvis": { "horizontal_n_per_m": 0 },
+        "feet": { "horizontal_n_per_m": 0 }
+      }
+    },
+    "stagger": {
+      "assist": {
+        "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 1000 },
+        "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
+      }
+    },
     "falling": {
       "muscles": {
         "spine": { "stiffness_nm_per_rad": 150, "damping_s": 0.3 },

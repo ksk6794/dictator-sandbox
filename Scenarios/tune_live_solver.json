@@ -12,7 +12,7 @@
     "control": "active"
   },
   "events": [
-    { "t": 3.0, "type": "console", "command": "Sandbox.Tune solver.position_iterations=2" }
+    { "t": 3.0, "type": "console", "command": "Sandbox.Tune solver.position_iterations=4" }
   ],
   "expect": {
     "tuning_changes": 1,

@@ -67,6 +67,8 @@ enum class ESandboxBodyState : uint8
 	Standing,
 	/** Just hit: still upright, the muscles of the hit region are weak for a moment. */
 	Flinch,
+	/** The capture point has left what the ankles and hips can bring back: the body has to step. */
+	Stagger,
 	/** Balance is lost: the assist is off and the body goes down. */
 	Falling,
 	/** Down and at rest. */
@@ -171,6 +173,113 @@ struct FSandboxBalanceTuning
 	 * this far. cm.
 	 */
 	double LeanMaxCm = 0.0;
+	/**
+	 * Stagger ends, back to standing, once the centre of mass has been over the support and the capture point
+	 * within balance.recoverable_cm of it for this long (and no step is under way). Seconds.
+	 */
+	double RecoverS = 0.0;
+	/**
+	 * ...and only once the centre of mass moves no faster than this over the floor. A body that came out of its
+	 * stagger at 0.7 m/s over a wide stance was caught by the assist's springs at full strength, and they threw it
+	 * into the next stagger. m/s.
+	 */
+	double RecoverSpeedMps = 0.0;
+
+	/**
+	 * The recovery step. The foot is put where the capture point will be when it lands (it runs away from the
+	 * other foot's sole by e^(omega t) over balance.step_time_s, which is also how long the swing takes), this
+	 * much further along the way it runs, so that the body comes to rest over the new support. cm.
+	 */
+	double StepMarginCm = 0.0;
+	/** How high the swinging foot is lifted at the top of its arc. cm. */
+	double StepLiftCm = 0.0;
+	/**
+	 * Share of the swing (0 to 1) by which the foot's point is over its target; it comes down only after that. The
+	 * leg lags behind its point, and a point that came down along the whole way set the foot on the floor short of
+	 * the target (40% short at 0.25 s for 30 to 50 cm).
+	 */
+	double StepOverShare = 0.0;
+	/**
+	 * The swinging leg's muscles (hip, knee, ankle of that side) are this many times as stiff as the legs' group
+	 * while the foot is in the air: at the group's stiffness the leg lagged its point by 10 to 20 cm. The swing
+	 * starts from where the leg is, so the stronger muscles start with nothing to pull. Factor, at least 1.
+	 */
+	double SwingStiffnessScale = 0.0;
+	/**
+	 * The swinging leg's muscles' damping, as a factor on the legs' group (the damping follows the muscle's
+	 * target, so it helps the leg keep up with its point rather than holding it back): at the group's 0.06 s the
+	 * foot overshot its point by 4 to 5 cm. Factor.
+	 */
+	double SwingDampingScale = 0.0;
+	/**
+	 * The balance assist's spring on the swinging foot (horizontal and vertical), pulling it along its swing,
+	 * the target moving with it: the "foot-planting control" of the assist (docs/PRD.md, "Control stack"),
+	 * which puts the foot where the step is aimed while the leg's muscles lag behind. Counted in the assist's
+	 * load like every assist spring. N/m; 0 leaves the swing to the muscles alone.
+	 */
+	double SwingFootNPerM = 0.0;
+	/**
+	 * The swing ends this far below the height the foot was planted at, so that the leg puts the foot down on the
+	 * floor rather than next to it in the air; it goes on until the foot touches (twice its time at most). cm.
+	 */
+	double StepPressCm = 0.0;
+	/**
+	 * A foot that touches the floor once it is over its target (in the swing's way down) has landed. It may touch
+	 * with its toe or an edge (the ankle cannot keep it level when the leg reaches back or out): its point is then
+	 * let down from where the bone was at the touch to the planted height over this long, so that the sole comes
+	 * down onto the floor and the leg does not push the body up. Seconds.
+	 */
+	double StepSettleS = 0.0;
+	/** The stepping foot's bone stays at least this far to its own side of the other foot's: no crossing over. cm. */
+	double StepWidthMinCm = 0.0;
+	/** Time over which a step's placement of the legs eases in, and a swinging leg's frame changes. Seconds. */
+	double StepEaseS = 0.0;
+	/**
+	 * While a foot swings, the leg that carries the body is solved with the pelvis upright and at its standing
+	 * height, and this far (0 to 1) from its anchor toward where it is over the floor: 0 holds the body back
+	 * toward the old support, 1 lets it travel over the stance foot toward the step.
+	 */
+	double StanceFollow = 0.0;
+	/**
+	 * The legs of planted feet are solved with the pelvis no higher than lets each reach its foot with the leg
+	 * at most this share of its full length (hip to ankle): in a wide stance the pelvis is held lower than
+	 * standing, so that no leg is asked for more than it has and lifts its foot off the floor. 0 to 1.
+	 */
+	double LegExtensionMax = 0.0;
+	/**
+	 * A step asked for while the body stands (not a recovery step) first moves the weight onto the other foot:
+	 * the pelvis's goal in the legs' upright frames goes this share (0 to 1) of the way sideways from the middle
+	 * of the feet to the stance foot (sideways and, from a stance with one foot ahead, forward or back too), and
+	 * stays there until the swinging foot is down; then it goes over to the new support with the anchors.
+	 */
+	double StepShiftShare = 0.0;
+	/** The foot lifts once the capture point is within this distance of the stance sole (or inside it). cm. */
+	double StepShiftReadyCm = 0.0;
+	/** Lag of that shift, in and out (out after the step has landed). Seconds. */
+	double StepShiftS = 0.0;
+	/** The foot lifts after this long of shifting even if the capture point is not where it should be yet. Seconds. */
+	double StepShiftMaxS = 0.0;
+	/**
+	 * The anchors glide to a new support no faster than keeps the capture point of a body pulled along (its speed
+	 * over omega ahead of it) within this share (0 to 1) of the way from the glide's end to the edge of the
+	 * support, along the glide; such a glide takes longer than balance.anchor_follow_s. After a step of 25 cm
+	 * back, a half-second glide put the capture point outside the new support. 0: no limit.
+	 */
+	double AnchorRoomShare = 0.0;
+	/** How long the swing of a step asked for takes (a recovery step's takes balance.step_time_s). Seconds. */
+	double StepAskedTimeS = 0.0;
+	/**
+	 * Lag of the pelvis's height in the legs' upright frames as it follows what the planted legs (and the swinging
+	 * one, as it travels over) need to reach their feet; down and up alike. Seconds.
+	 */
+	double LowerS = 0.0;
+	/**
+	 * The legs' frames are lowered no further than this, and only this much of a pelvis below its standing height is
+	 * the posture's own and not a fall. A leg of 81 cm reaches 46 cm to the side of its hip with the pelvis 15 cm
+	 * down; a stance that needs more is no stance. (Unbounded, a body that had sprawled with its feet 80 cm apart was
+	 * lowered by 42 cm, never counted as fallen, and its legs went on swinging until the solver blew up.) cm.
+	 */
+	double LowerMaxCm = 0.0;
 };
 
 /** How the body reacts to a hit. */
@@ -316,6 +425,6 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	/** Group a joint belongs to, from the name of its child bone (UE5 mannequin and MetaHuman naming). */
 	static ESandboxMuscleGroup GroupOfBone(FName ChildBone);
 	static const TCHAR* GroupName(ESandboxMuscleGroup Group);
-	/** "standing", "flinch", "falling" or "lying": the state's name in tuning files and result files. */
+	/** "standing", "flinch", "stagger", "falling" or "lying": the state's name in tuning files and result files. */
 	static const TCHAR* StateName(ESandboxBodyState State);
 };

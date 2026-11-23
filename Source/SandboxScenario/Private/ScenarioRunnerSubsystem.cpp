@@ -684,6 +684,17 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			}
 			++AssistSamples;
 		}
+		// What the assist does while the body staggers: Stagger is where it should give the body up to its feet.
+		if (Controller->GetState() == ESandboxBodyState::Stagger)
+		{
+			const double Share = Controller->GetAssistLoad().ForceShare;
+			StaggerAssistShareSum += Share;
+			StaggerAssistShareMax = FMath::Max(StaggerAssistShareMax, Share);
+			const double Torque = Controller->GetAssistLoad().TorqueShare;
+			StaggerTorqueShareSum += Torque;
+			StaggerTorqueShareMax = FMath::Max(StaggerTorqueShareMax, Torque);
+			++StaggerFrames;
+		}
 
 		// The target pose: how far the muscles' targets are from the reference pose, and how well they hold it.
 		FSandboxBodyControlView View;
@@ -846,7 +857,7 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		{
 			Controller->MeasureBalance(Balance);
 		}
-		const bool bUpright = Controller && (State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch);
+		const bool bUpright = Controller && USandboxBodyController::IsUprightState(State);
 		if (Balance.bValid && bUpright)
 		{
 			// From the first frame on: a push can land on the first frame after the settle time.
@@ -1175,6 +1186,20 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			if (Event.Weight > 0.0)
 			{
 				FootTargets.Add(FFootTarget{ Event.Body, Target, Event.OffsetCm, Event.Weight });
+			}
+			bInputPending = true;
+		}
+		else if (Event.Type == TEXT("step"))
+		{
+			// A step asked for from outside, by the same machinery as a recovery step: the test of the swing alone.
+			USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+			const FVector Target = Body->GetUnrealWorldTransform().GetLocation() + FVector(Event.OffsetCm.X, Event.OffsetCm.Y, 0.0);
+			FString Error;
+			if (!Controller || !Controller->RequestStep(Event.Body, Target, Error))
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f could not step with '%s': %s"), Event.TimeS, *Event.Body.ToString(),
+					Controller ? *Error : TEXT("the body is not under active control"));
+				continue;
 			}
 			bInputPending = true;
 		}
@@ -1665,6 +1690,27 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxSteps.GetValue();
 		AddCheck(TEXT("max_steps"), Controller && Steps.Num() <= Limit, Controller ? Number(Steps.Num()) : Null(), Number(Limit));
 	}
+	if (Spec.Expect.MaxLandingErrorCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxLandingErrorCm.GetValue();
+		double Worst = -1.0;
+		bool bAllLanded = Controller != nullptr;
+		if (Controller)
+		{
+			for (const FSandboxStepRecord& Record : Controller->GetStepLog())
+			{
+				bAllLanded &= Record.LandS >= 0.0;
+				Worst = FMath::Max(Worst, Record.LandS >= 0.0 ? FVector::Dist2D(Record.Landed, Record.Target) : 0.0);
+			}
+		}
+		AddCheck(TEXT("max_landing_error_cm"), bAllLanded && Worst >= 0.0 && Worst <= Limit, Worst >= 0.0 ? Number(Worst) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxRecoverySteps.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxRecoverySteps.GetValue();
+		const int32 Count = Controller ? Controller->GetStepLog().Num() : 0;
+		AddCheck(TEXT("max_recovery_steps"), Controller && Count <= Limit, Controller ? Number(Count) : Null(), Number(Limit));
+	}
 
 	// The states the body went through, as names joined by '>'.
 	FString StateSequence;
@@ -1685,6 +1731,19 @@ void UScenarioRunnerSubsystem::Finish()
 	if (Spec.Expect.StateSequence.IsSet())
 	{
 		AddCheck(TEXT("state_sequence"), Controller && StateSequence == Spec.Expect.StateSequence.GetValue(), Controller ? Text(StateSequence) : Null(), Text(Spec.Expect.StateSequence.GetValue()));
+	}
+	if (Spec.Expect.MaxFlinches.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxFlinches.GetValue();
+		int32 Flinches = 0;
+		if (Controller)
+		{
+			for (const FSandboxStateChange& Change : Controller->GetStateLog())
+			{
+				Flinches += Change.State == ESandboxBodyState::Flinch ? 1 : 0;
+			}
+		}
+		AddCheck(TEXT("max_flinches"), Controller && Flinches <= Limit, Controller ? Number(Flinches) : Null(), Number(Limit));
 	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -1869,6 +1928,40 @@ void UScenarioRunnerSubsystem::Finish()
 		ControlJson->SetNumberField(TEXT("step_count"), Steps.Num());
 		ControlJson->SetNumberField(TEXT("foot_lifts"), FootLifts);
 
+		// The controller's own recovery steps: what it planned and where the foot came down. (The steps above
+		// are measured from outside, by the feet the floor touches.)
+		{
+			const auto Vector2 = [](double X, double Y)
+			{
+				TArray<TSharedPtr<FJsonValue>> Values{ MakeShared<FJsonValueNumber>(X), MakeShared<FJsonValueNumber>(Y) };
+				return Values;
+			};
+			TArray<TSharedPtr<FJsonValue>> RecoveryJson;
+			for (const FSandboxStepRecord& Record : Controller->GetStepLog())
+			{
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("foot"), Record.Foot.ToString());
+				Entry->SetNumberField(TEXT("number"), Record.Number);
+				Entry->SetNumberField(TEXT("start_t"), Record.StartS);
+				Entry->SetField(TEXT("land_t"), Record.LandS >= 0.0 ? Number(Record.LandS) : Null());
+				Entry->SetNumberField(TEXT("planned_length_cm"), FVector::Dist2D(Record.Target, Record.From));
+				Entry->SetNumberField(TEXT("landed_length_cm"), Record.LandS >= 0.0 ? FVector::Dist2D(Record.Landed, Record.From) : 0.0);
+				Entry->SetNumberField(TEXT("landing_error_cm"), Record.LandS >= 0.0 ? FVector::Dist2D(Record.Landed, Record.Target) : 0.0);
+				Entry->SetArrayField(TEXT("target_cm"), Vector2(Record.Target.X - Spec.SpawnLocationCm.X, Record.Target.Y - Spec.SpawnLocationCm.Y));
+				Entry->SetArrayField(TEXT("capture_point_cm"), Vector2(Record.CapturePoint.X - Spec.SpawnLocationCm.X, Record.CapturePoint.Y - Spec.SpawnLocationCm.Y));
+				Entry->SetArrayField(TEXT("capture_at_landing_cm"), Vector2(Record.CaptureAtLanding.X - Spec.SpawnLocationCm.X, Record.CaptureAtLanding.Y - Spec.SpawnLocationCm.Y));
+			Entry->SetNumberField(TEXT("planned_margin_cm"), Record.PlannedMarginCm);
+			Entry->SetArrayField(TEXT("capture_at_touch_cm"), Vector2(Record.CaptureAtTouch.X - Spec.SpawnLocationCm.X, Record.CaptureAtTouch.Y - Spec.SpawnLocationCm.Y));
+			Entry->SetNumberField(TEXT("margin_at_touch_cm"), Record.MarginAtTouchCm);
+				Entry->SetBoolField(TEXT("reach_limited"), Record.bReachLimited);
+				Entry->SetBoolField(TEXT("width_limited"), Record.bWidthLimited);
+				Entry->SetBoolField(TEXT("touched"), Record.bTouched);
+				RecoveryJson.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+			ControlJson->SetArrayField(TEXT("recovery_steps"), RecoveryJson);
+			ControlJson->SetNumberField(TEXT("recovery_step_count"), Controller->GetStepLog().Num());
+		}
+
 		// The target pose and how well the muscles hold it while the body stands.
 		const TSharedRef<FJsonObject> PoseJson = MakeShared<FJsonObject>();
 		PoseJson->SetNumberField(TEXT("target_offset_max_deg"), PoseOffsetMaxDeg);
@@ -1963,6 +2056,24 @@ void UScenarioRunnerSubsystem::Finish()
 		BalanceJson->SetNumberField(TEXT("sustained_force_max_n"), SustainedMaxN);
 		BalanceJson->SetNumberField(TEXT("lean_max_cm"), LeanMaxCm);
 		ControlJson->SetObjectField(TEXT("balance"), BalanceJson);
+
+		// Stagger: how often and how long the body had to step, and how much the assist did meanwhile.
+		{
+			const TSharedRef<FJsonObject> StaggerJson = MakeShared<FJsonObject>();
+			int32 Entries = 0;
+			for (const FSandboxStateChange& Change : Controller->GetStateLog())
+			{
+				Entries += Change.State == ESandboxBodyState::Stagger ? 1 : 0;
+			}
+			StaggerJson->SetNumberField(TEXT("count"), Entries);
+			StaggerJson->SetNumberField(TEXT("frames"), StaggerFrames);
+			StaggerJson->SetNumberField(TEXT("seconds"), StaggerFrames * FixedDt);
+			StaggerJson->SetNumberField(TEXT("assist_force_share_mean"), StaggerFrames > 0 ? StaggerAssistShareSum / StaggerFrames : 0.0);
+			StaggerJson->SetNumberField(TEXT("assist_force_share_max"), StaggerAssistShareMax);
+			StaggerJson->SetNumberField(TEXT("assist_torque_share_mean"), StaggerFrames > 0 ? StaggerTorqueShareSum / StaggerFrames : 0.0);
+			StaggerJson->SetNumberField(TEXT("assist_torque_share_max"), StaggerTorqueShareMax);
+			ControlJson->SetObjectField(TEXT("stagger"), StaggerJson);
+		}
 
 		// Where the assist held each body at the end, relative to the spawn point: anchors follow the support.
 		{

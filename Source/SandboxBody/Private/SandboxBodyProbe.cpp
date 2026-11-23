@@ -265,6 +265,59 @@ double FSandboxBodyProbe::MarginInsidePolygon(TConstArrayView<FVector2D> Polygon
 	return bInside ? NearestEdge : -NearestEdge;
 }
 
+FVector2D FSandboxBodyProbe::NearestPointOfPolygon(TConstArrayView<FVector2D> Polygon, const FVector2D& Point)
+{
+	if (Polygon.Num() == 0 || (Polygon.Num() >= 3 && MarginInsidePolygon(Polygon, Point) >= 0.0))
+	{
+		return Point;
+	}
+	FVector2D Nearest = Polygon[0];
+	double NearestDistance = TNumericLimits<double>::Max();
+	for (int32 Index = 0; Index < Polygon.Num(); ++Index)
+	{
+		const FVector2D& From = Polygon[Index];
+		const FVector2D& To = Polygon[(Index + 1) % Polygon.Num()];
+		const FVector2D Edge = To - From;
+		const double LengthSquared = Edge.SizeSquared();
+		const double Along = LengthSquared > 0.0 ? FMath::Clamp(FVector2D::DotProduct(Point - From, Edge) / LengthSquared, 0.0, 1.0) : 0.0;
+		const FVector2D OnEdge = From + Edge * Along;
+		const double Distance = FVector2D::Distance(Point, OnEdge);
+		if (Distance < NearestDistance)
+		{
+			NearestDistance = Distance;
+			Nearest = OnEdge;
+		}
+	}
+	return Nearest;
+}
+
+double FSandboxBodyProbe::DistanceToEdgeAlong(TConstArrayView<FVector2D> Polygon, const FVector2D& Point, const FVector2D& Direction)
+{
+	const FVector2D Way = Direction.GetSafeNormal();
+	if (Polygon.Num() < 3 || Way.IsNearlyZero() || MarginInsidePolygon(Polygon, Point) < 0.0)
+	{
+		return 0.0;
+	}
+	// The nearest edge the ray leaves through: for a convex polygon, the least distance over the edges it
+	// crosses going outward.
+	double Nearest = TNumericLimits<double>::Max();
+	for (int32 Index = 0; Index < Polygon.Num(); ++Index)
+	{
+		const FVector2D& From = Polygon[Index];
+		const FVector2D Edge = Polygon[(Index + 1) % Polygon.Num()] - From;
+		// Counter-clockwise: the outward normal is the edge turned clockwise.
+		const FVector2D Outward(Edge.Y, -Edge.X);
+		const double Toward = FVector2D::DotProduct(Way, Outward);
+		if (Toward <= 0.0)
+		{
+			continue;
+		}
+		const double Distance = FVector2D::DotProduct(From - Point, Outward) / Toward;
+		Nearest = FMath::Min(Nearest, FMath::Max(Distance, 0.0));
+	}
+	return Nearest == TNumericLimits<double>::Max() ? 0.0 : Nearest;
+}
+
 double FSandboxBodyProbe::TranslationalKineticEnergyJ(const TArray<FSandboxBodySample>& Samples)
 {
 	double Energy = 0.0;

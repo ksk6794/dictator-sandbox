@@ -90,6 +90,18 @@ struct SANDBOXBODY_API FSandboxBodyProbe
 	 */
 	static double MarginInsidePolygon(TConstArrayView<FVector2D> Polygon, const FVector2D& Point);
 
+	/**
+	 * The point of a convex polygon nearest to a point: the point itself if it is inside, else the nearest point
+	 * of the edges. A polygon of one or two points is a point or a segment. An empty one gives the point back.
+	 */
+	static FVector2D NearestPointOfPolygon(TConstArrayView<FVector2D> Polygon, const FVector2D& Point);
+
+	/**
+	 * How far a point inside a counter-clockwise convex polygon can go along a direction before it leaves it, cm.
+	 * 0 for a point outside, for a zero direction and for a polygon of fewer than three points.
+	 */
+	static double DistanceToEdgeAlong(TConstArrayView<FVector2D> Polygon, const FVector2D& Point, const FVector2D& Direction);
+
 	/** Velocity of the centre of mass, cm/s. */
 	static FVector CenterOfMassVelocity(const TArray<FSandboxBodySample>& Samples);
 

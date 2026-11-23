@@ -24,6 +24,25 @@ struct FSandboxPoseTurn
 };
 
 /**
+ * The range of one joint, as the physics asset sets it: the frames on either side (each in its own bone's
+ * space; the parent-side frame turned to the middle of the range) and the half-ranges. A locked axis has 0,
+ * a free one is not limited.
+ */
+struct FSandboxJointLimits
+{
+	bool bValid = false;
+	FQuat ParentFrame = FQuat::Identity;
+	FQuat ChildFrame = FQuat::Identity;
+	/** Half-ranges, degrees: swing1 (about the frame's Z), swing2 (about its Y), twist (about its X). */
+	double Swing1Deg = 0.0;
+	double Swing2Deg = 0.0;
+	double TwistDeg = 0.0;
+	bool bSwing1Free = false;
+	bool bSwing2Free = false;
+	bool bTwistFree = false;
+};
+
+/**
  * Turns a pose written as joint angles (FSandboxPose) into bone rotations for one mesh. The axes are the
  * joints' own, read from the physics asset: the generator puts the child-side frame of every joint on the
  * anatomical axes of its spec in the reference pose (X twist, Z swing1, Y swing2; mirrored on the right),
@@ -52,6 +71,16 @@ public:
 
 	/** The rotation, relative to the reference pose and in the child bone's space, of one joint's angles. */
 	static FQuat JointTurn(const FQuat& Frame, const FSandboxPoseAngles& Angles);
+
+	/** The range of the joint whose child is ChildBone in the mesh's physics asset. False if there is no such joint. */
+	static bool ReadJointLimits(const USkeletalMeshComponent* Mesh, FName ChildBone, FSandboxJointLimits& OutLimits);
+
+	/**
+	 * A child bone's rotation (component space) brought into its joint's range, the parent's rotation given: the
+	 * twist clamped to its half-range, the swing scaled back onto the ellipse of the two swing half-ranges, as
+	 * the solver limits them. Inside the range the rotation comes back exactly as it was given.
+	 */
+	static FQuat ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits);
 
 private:
 	struct FJoint
