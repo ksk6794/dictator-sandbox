@@ -11,6 +11,8 @@
  *   "console"           runs a console command, as typed in a running session
  *   "edit_tuning_file"  writes new values into the run's own copy of the tuning files, as an editor would
  *   "effector"          starts a trajectory of one of the player's hands: its target moves along the keys
+ *   "foot_target"       asks the body's target pose to put a foot at a point: offset_cm from where the foot
+ *                       is when the event fires, with weight 0 to 1 (0 lets the foot go back to the pose)
  */
 struct FScenarioEvent
 {
@@ -30,6 +32,11 @@ struct FScenarioEvent
 	/** "effector": which hand ("hand_left", "hand_right"), and where its target is at times after the event. */
 	FName Effector;
 	TArray<FSandboxPathKey> Path;
+	/** "pin": also hold the body's orientation, not only its position (a weld instead of a ball joint). */
+	bool bLockRotation = false;
+	/** "foot_target": where to, from the foot's position when the event fires, cm; and how strongly. */
+	FVector OffsetCm = FVector::ZeroVector;
+	double Weight = 0.0;
 };
 
 /** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
@@ -90,6 +97,12 @@ struct FScenarioExpect
 	/** Deepest any shape of the body may be found inside the world, and two of its bodies inside each other, cm. */
 	TOptional<double> MaxBodyPenetrationCm;
 	TOptional<double> MaxSelfPenetrationCm;
+	/** Mean angle between the driven muscles' targets and the bodies while the body stands, settled. Degrees. */
+	TOptional<double> MaxPoseErrorMeanDeg;
+	/** At the end of the run, a muscle's target is turned at least this far from the reference pose. Degrees. */
+	TOptional<double> MinPoseOffsetDeg;
+	/** At the end of the run, every foot placed by a "foot_target" event is at most this far from its point. cm. */
+	TOptional<double> MaxFootTargetErrorCm;
 };
 
 /** How the body is driven. */

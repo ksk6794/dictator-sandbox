@@ -1,0 +1,43 @@
+{
+  "poses": {
+    "blend_s": 0.4,
+    "stance": {
+      "spine_02": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "spine_04": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "neck_01": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "clavicle_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "upperarm_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "lowerarm_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "hand_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "clavicle_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "upperarm_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "lowerarm_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "hand_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "thigh_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "calf_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "foot_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "thigh_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "calf_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "foot_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 }
+    },
+    "flinch": {
+      "spine_02": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "spine_04": { "swing1_deg": -4, "swing2_deg": 0, "twist_deg": 0 },
+      "neck_01": { "swing1_deg": -10, "swing2_deg": 0, "twist_deg": 0 },
+      "clavicle_l": { "swing1_deg": 12, "swing2_deg": 0, "twist_deg": 0 },
+      "upperarm_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "lowerarm_l": { "swing1_deg": 15, "swing2_deg": 0, "twist_deg": 0 },
+      "hand_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "clavicle_r": { "swing1_deg": 12, "swing2_deg": 0, "twist_deg": 0 },
+      "upperarm_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "lowerarm_r": { "swing1_deg": 15, "swing2_deg": 0, "twist_deg": 0 },
+      "hand_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "thigh_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "calf_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "foot_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "thigh_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "calf_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+      "foot_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 }
+    }
+  }
+}

@@ -13,14 +13,21 @@ that mirror left to right, and passes the push matrix; the player has physical h
 with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
 test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
 on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
-tunnelling. **M3, balance and recovery, is in progress: part 1 of 7 is done** (the plan and the parts are in
+tunnelling. **M3, balance and recovery, is in progress: parts 1 and 2 of 7 are done** (the plan and the parts are in
 the M3 section of `docs/PRD.md`). The body senses its own balance (standing feet, support polygon, capture
 point) but does not act on it yet; every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
 physics asset had no self-collision, the standing character slept one substep in six, and a run on a busy
-machine could differ from the one before it (the solver's determinism mode is now on). Next is part 2,
-the source of the target pose (a native animation instance, poses from text).
+machine could differ from the one before it (the solver's determinism mode is now on). Part 2, the source
+of the target pose (a native animation instance, poses from text), is done: its step 0 gave the
+body collarbones (18 bodies; the shoulder is two links) and the hands three times their inertia, so that a
+punch on the forearm does not snap the wrist. Steps 1 to 3 gave the body a native animation instance as the
+source of its target pose, poses written as joint angles in `Config/Tuning/poses.json`, and the flinch's
+pose offset (the struck part gives way, shoulders up, head in); step 4 two-bone leg placement
+(`USandboxBodyController::SetFootTarget`, scenario event `foot_target`). The idle from `MM_Idle` moved to
+part 7. Next is part 3, standing balance (the capture point decides a fall; ankle and hip strategy; the
+assist's anchors follow the support; a held push is leant into).
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -54,7 +61,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 15 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 100 s (34 scenarios, eight at a time;
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 105 s (35 scenarios, eight at a time;
 6 minutes one after another), the push matrix 3 minutes, a sweep of 7 runs 17 s, the session's self-test
 10 s, the whole bootstrap about 5 minutes.
 
@@ -70,7 +77,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
@@ -172,7 +179,29 @@ touch must not be in that list, and the ones that are get explained in the part'
   one of its 120 pairs off from M1 to M3: no self-collision, a forearm 17 cm inside the chest after a fall.
   The generator's log listed "colliding bodies" from its own plan, not from the asset. Read such a fact
   back from the asset: `penetration.self_collision_pairs` in `metrics.json` is what the run-time asset
-  allows (101 for the NPC), and a metric that reads exactly 0 in every run is a metric to distrust.
+  allows (127 for the NPC), and a metric that reads exactly 0 in every run is a metric to distrust.
+- **A strike scenario can pass because it lands on a lucky spot.** `strike_punch_forearm` passed M2 at
+  10 rad/s; 2 cm higher the same punch snapped the wrist at 37 rad/s, and adding the collarbones moved the
+  arm enough to land in that band. Sweeping the point of impact (and the stiffness: 11, 49, 41, 35, 30,
+  38 rad/s for 100 to 300 N*m/rad) showed it. A figure that jumps back and forth as a setting changes
+  smoothly is a scenario on an edge; strike more than one point (`strike_punch_forearm_heights`).
+- **A muscle target that jumps puts energy into the body.** The flinch's pose offset first ended with the
+  Flinch state; a hit that knocked the body over ended it in one step, the muscles snapped the falling body
+  back, and the run gained 13.8 J (`max_energy_gain_j` caught it). Anything added to the target pose fades by
+  its own clock, not with a state.
+  The same holds for a foot placement switched on at full weight (the calf snapped at 84 rad/s): weights
+  ease in over `poses.blend_s`.
+- **A point fixed in the world is a moving target for a body that turns.** A leg placed at a world point
+  on a body pinned by a ball joint tipped the body, the point moved against it, the leg chased it, and the
+  body fell. Test a placement on a welded pelvis (`"lock_rotation": true` on a `pin` event).
+- **A pose of zeros must leave a run bit for bit as it was.** `FSandboxPoseRig::Build` keeps the reference
+  rotation itself for a joint at 0, and the animation instance writes only bones some pose has turned:
+  `Ref * Frame * Identity * Frame^-1` need not round to `Ref` exactly (not measured; the code does not
+  rely on it), and a hash moves with the last bit.
+- **Chaos's inertia conditioning is global and slows a fallen body's rest.** Raising
+  `p.Chaos.Solver.InertiaConditioning.Distance` (default 20) calmed the wrist and the standing feet, but a
+  lying body then took 3.3 to 6.7 s to come to rest instead of 2.6. The project scales one body's inertia in
+  its spec instead (`inertia_scale`, the hands).
 - **Bodies that collide must not overlap in the reference pose.** They push each other apart from the first
   step: with the two thighs colliding (1.4 cm into each other) the standing character's feet turned at
   1.3 rad/s and the assist's load went from 0.05 to 0.22. Such pairs go under `collision.disable` in the

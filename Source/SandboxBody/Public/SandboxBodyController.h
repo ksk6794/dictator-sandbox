@@ -4,6 +4,8 @@
 #include "Components/ActorComponent.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyTuning.h"
+#include "SandboxPoseRig.h"
+#include "SandboxAnimInstance.h"
 #include "SandboxBodyController.generated.h"
 
 class FSandboxParamStore;
@@ -46,6 +48,8 @@ struct FSandboxMuscleView
 	FQuat TargetRotation = FQuat::Identity;
 	/** Angle between that and where the child bone is, radians. */
 	double ErrorRad = 0.0;
+	/** How far the target is turned from the reference pose, radians: what the pose asks of this joint. */
+	double TargetOffsetRad = 0.0;
 };
 
 /** One balance-assist control as an overlay shows it. */
@@ -146,6 +150,14 @@ public:
 	void ApplyImpulse(FName Bone, const FVector& ImpulseNs);
 
 	/**
+	 * Asks the target pose to put a foot's bone origin at a world point: the thigh and the calf turn (two-bone
+	 * placement), the foot keeps the orientation the pose gives it. Weight 0 to 1; 0 lets the foot go back to
+	 * the pose. The muscles then do the work; nothing moves the foot directly. False with a reason if the bone
+	 * is not the end of two segments that have bodies.
+	 */
+	bool SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError);
+
+	/**
 	 * What the body has taken from contacts with other simulated bodies since it was started: the sum of
 	 * the contact impulses' sizes in N*s and the number of contact reports. Contacts with the static world
 	 * (the floor under the feet) and between the character's own bodies are not hits and are not counted.
@@ -198,6 +210,8 @@ private:
 		FName ParentBone;
 		FName ChildBone;
 		ESandboxMuscleGroup Group = ESandboxMuscleGroup::Spine;
+		/** The child's orientation relative to the parent in the reference pose. */
+		FQuat ReferenceRelative = FQuat::Identity;
 	};
 
 	enum class EAssistSlot : uint8 { Pelvis, Chest, Head, Feet };
@@ -229,6 +243,20 @@ private:
 	void RefreshSolverIsland();
 	void ReleaseIslandRefresh();
 	void UpdateAssistLoad();
+	/** Hands the pose of the tuning to the animation instance, which blends to it if it is new. */
+	void ApplyPose();
+	/** Works out the turns added on top of the pose this tick (the flinch's offset) and hands them over. */
+	void UpdatePoseTurns();
+	/** Whether the animation instance holds turns from an earlier tick. */
+	bool bPoseTurnsSet = false;
+	/** Flinch: the body that was hit and the hit's impulse, N*s. */
+	FName FlinchBone;
+	FVector FlinchImpulseNs = FVector::ZeroVector;
+	/** When the last flinch began; below 0 before the first. */
+	double FlinchStartedS = -1.0;
+
+	/** Turns the tuning's joint angles into bone rotations for this mesh. */
+	FSandboxPoseRig PoseRig;
 
 	/**
 	 * A constraint that restricts nothing, alive for one frame after the solver iteration counts change.

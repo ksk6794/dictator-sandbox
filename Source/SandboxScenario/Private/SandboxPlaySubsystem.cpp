@@ -419,7 +419,10 @@ void USandboxPlaySubsystem::TickSmoke()
 	// The drag handle: take the left forearm and lift it.
 	case 260:
 	{
-		const FVector Forearm = Spec.SpawnLocationCm + FVector(40.0, 0.0, 107.0);
+		// Aimed at where the forearm is, not at a point written down for one physics asset: the collarbones
+		// of M3 let the arm hang 2 to 3 cm lower and closer to the body, and a fixed point missed it.
+		const FBodyInstance* ForearmBody = Character ? Character->GetBodyMesh()->GetBodyInstance(TEXT("lowerarm_l")) : nullptr;
+		const FVector Forearm = ForearmBody ? ForearmBody->GetCOMPosition() : Spec.SpawnLocationCm + FVector(40.0, 0.0, 107.0);
 		Player->SetView(FVector(Forearm.X, Spec.SpawnLocationCm.Y + 120.0, Forearm.Z), TowardCharacter);
 		Player->SelectTool(ESandboxTool::Drag);
 		Player->SetPrimary(true);

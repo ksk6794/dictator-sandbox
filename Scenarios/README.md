@@ -58,6 +58,14 @@ Event types. Unknown types are a parse error.
   centre of mass and touches nothing. The impulse tool of an interactive session uses the same entry.
 - `pin` fixes the body on bone `body` at its current world position with a ball joint; the rest of the
   character hangs from it. `metrics.max_pin_error_cm` reports how far the body strayed from the pin point.
+  With `"lock_rotation": true` the body's orientation is held as well (a weld): `pose_foot_place` holds
+  the pelvis that way, so that a leg can be placed without the body having to balance.
+- `foot_target` asks the body's target pose to put a foot (`body`, the foot's bone) at a point: `offset_cm`
+  from where the foot is when the event fires, with `weight` from 0 to 1. The thigh and the calf turn
+  (two-bone placement) and the foot keeps the orientation the pose gives it; the weight eases in over
+  `poses.blend_s`, and 0 lets the foot go back to the pose. The muscles do the work; nothing moves the foot
+  directly. `control.foot_targets` lists each placed foot with its distance from its point at the end
+  (`final_error_cm`). Active control only.
 - `console` runs `command` as if it were typed into the console of the running session, for example
   `"Sandbox.Tune muscles.legs.stiffness_nm_per_rad=0"`. It counts as applied when the engine knows the
   command; whether a tuning command changed anything shows in `control.tuning_changes`.
@@ -184,6 +192,9 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_rest_after_fall_s` | The body went into `falling` and was at rest, for good, within this time of it. Fails if it never fell. Active control only |
 | `max_body_penetration_cm` | No shape of the body was found deeper inside the world (floor, walls, props), from the sixth frame on |
 | `max_self_penetration_cm` | No two bodies of the character that may collide were found deeper inside each other, from the sixth frame on |
+| `max_pose_error_mean_deg` | While the body stood (not flinching), after the settle time: the angle between each driven muscle's target and its body, averaged over the muscles and then over the frames, stayed at most this (`control.pose.error_mean_deg`) |
+| `max_foot_target_error_cm` | At the end of the run, every foot placed by a `foot_target` event is at most this far from its point |
+| `min_pose_offset_deg` | In the last frame some muscle's target was turned at least this far from the reference pose (`control.pose.target_offset_max_deg`): the pose of the tuning reached the solver |
 
 A physics asset can be authored with joint anchors that do not coincide in the reference pose; the solver
 closes that gap in the first frames. It is reported as `metrics.initial_joint_offset_cm` and is not part of
@@ -265,14 +276,29 @@ These are the runner's own figures and do not follow the tuning's rest threshold
 bone, what it is inside and when), and how deep two bodies of the character are inside each other
 (`max_self_cm`), each as the distance the shape would have to move to be clear. The player's hands are
 left out here: they are measured on their own. Bodies of the character count against each other only where
-the physics asset lets them collide; `self_collision_pairs` says how many such pairs there are, because
+the physics asset lets them collide; `self_collision_pairs` says how many such pairs there are (127 for the NPC), because
 with 0 the body passes through itself and the figure reads 0 whatever happens. The first five frames are
 reported apart (`spawn_world_cm`, `spawn_self_cm`). Boxes, capsules and spheres are measured;
 `unmeasured_shapes` counts the others.
 
 `series.csv` has all of this for every frame: time, state, feet standing, the floor's force on each foot,
-kinetic and gravitational energy, the body's speed as a whole, both margins, both penetrations and the
-assist's force share.
+kinetic and gravitational energy, the body's speed as a whole, both margins, both penetrations, the
+assist's force share and the fastest joint of that frame with its speed. The joint speed is the relative
+angular velocity of the two bodies at the end of the frame: a peak in one frame that is gone in the next is
+a snap of one substep, not a body that is flying apart.
+
+**Target pose** (`control.pose`): how far the muscles' targets are turned from the reference pose in the
+last frame (`target_offset_max_deg` and its joint; 0 for the standing pose of zeros), and how well the
+muscles hold them while the body stands: the mean over driven muscles of target-to-body angle per frame,
+averaged (`error_mean_deg`, 1.08 standing) and at its largest (`error_mean_max_deg`), and the single worst
+muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's weight, about 5 degrees).
+
+`body.bodies` lists every body's mass and its principal moments of inertia (`inertia_kg_cm2`) as the solver
+uses them: from the mass and the shapes, times the physics asset's inertia scale.
+
+A strike's outcome can depend on the exact point it lands on. `strike_punch_forearm_heights` strikes the
+forearm at four more heights, one every 2 s, so that a scenario cannot pass by landing on the one good spot
+(see "Inertia of the hands" in `Specs/README.md`).
 
 The player of a scenario run is a spectator without a body: the project's own pawn, with its two physical
 hands, exists only in an interactive session.

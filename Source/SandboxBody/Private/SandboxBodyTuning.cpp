@@ -64,8 +64,29 @@ namespace
 		Visitor(FString(TEXT("balance.sole_tolerance_cm")), Tuning.Balance.SoleToleranceCm);
 		Visitor(FString(TEXT("reactions.flinch_weakening")), Tuning.Reactions.FlinchWeakening);
 		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
+		Visitor(FString(TEXT("reactions.flinch_pose_full_ns")), Tuning.Reactions.FlinchPoseFullNs);
+		Visitor(FString(TEXT("reactions.flinch_give_deg")), Tuning.Reactions.FlinchGiveDeg);
+		Visitor(FString(TEXT("poses.blend_s")), Tuning.Poses.BlendS);
+		const auto Pose = [&Visitor](const TCHAR* Name, auto& Values)
+		{
+			for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+			{
+				Visitor(FString::Printf(TEXT("poses.%s.%s.swing1_deg"), Name, SandboxPoseJoints[Index]), Values.Joints[Index].Swing1Deg);
+				Visitor(FString::Printf(TEXT("poses.%s.%s.swing2_deg"), Name, SandboxPoseJoints[Index]), Values.Joints[Index].Swing2Deg);
+				Visitor(FString::Printf(TEXT("poses.%s.%s.twist_deg"), Name, SandboxPoseJoints[Index]), Values.Joints[Index].TwistDeg);
+			}
+		};
+		Pose(TEXT("stance"), Tuning.Poses.Stance);
+		Pose(TEXT("flinch"), Tuning.Poses.Flinch);
 	}
 }
+
+const TCHAR* const SandboxPoseJoints[SandboxPoseJointCount] = {
+	TEXT("spine_02"), TEXT("spine_04"), TEXT("neck_01"),
+	TEXT("clavicle_l"), TEXT("upperarm_l"), TEXT("lowerarm_l"), TEXT("hand_l"),
+	TEXT("clavicle_r"), TEXT("upperarm_r"), TEXT("lowerarm_r"), TEXT("hand_r"),
+	TEXT("thigh_l"), TEXT("calf_l"), TEXT("foot_l"),
+	TEXT("thigh_r"), TEXT("calf_r"), TEXT("foot_r") };
 
 void FSandboxBodyTuning::ListValues(TArray<TPair<FString, double>>& OutValues) const
 {
@@ -250,6 +271,36 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
 		!CheckRange(Reactions.FlinchRecoveryS, 10.0, TEXT("reactions"), TEXT("flinch_recovery_s"), OutError))
 	{
+		return false;
+	}
+	if (!CheckRange(Poses.BlendS, 10.0, TEXT("poses"), TEXT("blend_s"), OutError))
+	{
+		return false;
+	}
+	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch } };
+	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
+	{
+		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+		{
+			const FSandboxPoseAngles& Angles = Entry.Value->Joints[Index];
+			for (const double Angle : { Angles.Swing1Deg, Angles.Swing2Deg, Angles.TwistDeg })
+			{
+				if (!FMath::IsFinite(Angle) || FMath::Abs(Angle) > 180.0)
+				{
+					OutError = FString::Printf(TEXT("poses.%s.%s: %g degrees is outside -180..180"), Entry.Key, SandboxPoseJoints[Index], Angle);
+					return false;
+				}
+			}
+		}
+	}
+	if (!CheckRange(Reactions.FlinchPoseFullNs, 1000.0, TEXT("reactions"), TEXT("flinch_pose_full_ns"), OutError) ||
+		!CheckRange(Reactions.FlinchGiveDeg, 90.0, TEXT("reactions"), TEXT("flinch_give_deg"), OutError))
+	{
+		return false;
+	}
+	if (Reactions.FlinchPoseFullNs <= 0.0)
+	{
+		OutError = TEXT("reactions.flinch_pose_full_ns must be above 0");
 		return false;
 	}
 	if (Thresholds.FallPelvisOffsetCm <= 0.0 || Thresholds.FallPelvisDropCm <= 0.0 || Thresholds.FallTiltDeg <= 0.0)

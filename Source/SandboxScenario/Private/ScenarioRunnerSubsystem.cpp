@@ -674,6 +674,41 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			++AssistSamples;
 		}
 
+		// The target pose: how far the muscles' targets are from the reference pose, and how well they hold it.
+		FSandboxBodyControlView View;
+		Controller->GetControlView(View);
+		PoseOffsetMaxDeg = 0.0;
+		PoseOffsetJoint = NAME_None;
+		double ErrorSumDeg = 0.0;
+		int32 Driven = 0;
+		for (const FSandboxMuscleView& Muscle : View.Muscles)
+		{
+			const double OffsetDeg = FMath::RadiansToDegrees(Muscle.TargetOffsetRad);
+			if (OffsetDeg > PoseOffsetMaxDeg)
+			{
+				PoseOffsetMaxDeg = OffsetDeg;
+				PoseOffsetJoint = Muscle.ChildBone;
+			}
+			if (Muscle.bDriven)
+			{
+				const double ErrorDeg = FMath::RadiansToDegrees(Muscle.ErrorRad);
+				ErrorSumDeg += ErrorDeg;
+				++Driven;
+				if (bSettled && Controller->GetState() == ESandboxBodyState::Standing && ErrorDeg > PoseErrorWorstDeg)
+				{
+					PoseErrorWorstDeg = ErrorDeg;
+					PoseErrorWorstJoint = Muscle.ChildBone;
+				}
+			}
+		}
+		if (bSettled && Controller->GetState() == ESandboxBodyState::Standing && Driven > 0)
+		{
+			const double MeanDeg = ErrorSumDeg / Driven;
+			PoseErrorSumDeg += MeanDeg;
+			PoseErrorMeanMaxDeg = FMath::Max(PoseErrorMeanMaxDeg, MeanDeg);
+			++PoseErrorFrames;
+		}
+
 		if (Controller->GetStateLog().Num() != SeenStateChanges)
 		{
 			// The timeline is kept in the run's own time, like everything else in the result: a state seen
@@ -846,10 +881,10 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 
 		if (Series.IsEmpty())
 		{
-			Series = TEXT("t,state,feet,foot_left_n,foot_right_n,kinetic_j,potential_j,rms_speed_mps,rms_angular_speed_rads,com_margin_cm,capture_margin_cm,penetration_world_cm,penetration_self_cm,assist_force_share\n");
+			Series = TEXT("t,state,feet,foot_left_n,foot_right_n,kinetic_j,potential_j,rms_speed_mps,rms_angular_speed_rads,com_margin_cm,capture_margin_cm,penetration_world_cm,penetration_self_cm,assist_force_share,fastest_joint_rads,fastest_joint\n");
 		}
 		const auto Optional = [](bool bHave, double Value, int32 Digits) { return bHave ? FString::Printf(TEXT("%.*f"), Digits, Value) : FString(); };
-		Series += FString::Printf(TEXT("%.4f,%s,%s,%s,%s,%.3f,%.3f,%.4f,%.4f,%s,%s,%.3f,%.3f,%s\n"),
+		Series += FString::Printf(TEXT("%.4f,%s,%s,%s,%s,%.3f,%.3f,%.4f,%.4f,%s,%s,%.3f,%.3f,%s,%.2f,%s\n"),
 			(FrameIndex + 1) * FixedDt,
 			Controller ? FSandboxBodyTuning::StateName(State) : TEXT("passive"),
 			*Optional(Balance.bValid, Balance.StandingFeet.Num(), 0),
@@ -859,7 +894,8 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			*Optional(Balance.bValid && Balance.IsSupported(), Balance.CenterOfMassMarginCm, 2),
 			*Optional(Balance.bValid && Balance.IsSupported(), Balance.CaptureMarginCm, 2),
 			Penetration.WorldCm, Penetration.SelfCm,
-			*Optional(Controller != nullptr, Controller ? Controller->GetAssistLoad().ForceShare : 0.0, 4));
+			*Optional(Controller != nullptr, Controller ? Controller->GetAssistLoad().ForceShare : 0.0, 4),
+			JointSpeed, FrameFastestJoint.IsNone() ? TEXT("") : *FrameFastestJoint.ToString());
 	}
 
 	// A physics asset can be authored with joint anchors that do not coincide in the reference pose.
@@ -1073,12 +1109,31 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			Pin.WorldLocation = BodyTransform.GetLocation();
 			Pin.Constraint = MakeUnique<FConstraintInstance>();
 			Pin.Constraint->SetLinearLimits(LCM_Locked, LCM_Locked, LCM_Locked, 0.0f);
-			Pin.Constraint->SetAngularSwing1Motion(ACM_Free);
-			Pin.Constraint->SetAngularSwing2Motion(ACM_Free);
-			Pin.Constraint->SetAngularTwistMotion(ACM_Free);
+			const EAngularConstraintMotion Turning = Event.bLockRotation ? ACM_Locked : ACM_Free;
+			Pin.Constraint->SetAngularSwing1Motion(Turning);
+			Pin.Constraint->SetAngularSwing2Motion(Turning);
+			Pin.Constraint->SetAngularTwistMotion(Turning);
 			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame1, FTransform::Identity);
 			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame2, BodyTransform);
 			Pin.Constraint->InitConstraint(Body, nullptr, 1.0f, Ragdoll);
+			bInputPending = true;
+		}
+		else if (Event.Type == TEXT("foot_target"))
+		{
+			USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+			const FVector Target = Body->GetUnrealWorldTransform().GetLocation() + Event.OffsetCm;
+			FString Error;
+			if (!Controller || !Controller->SetFootTarget(Event.Body, Target, Event.Weight, Error))
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f could not place '%s': %s"), Event.TimeS, *Event.Body.ToString(),
+					Controller ? *Error : TEXT("the body is not under active control"));
+				continue;
+			}
+			FootTargets.RemoveAll([&Event](const FFootTarget& Placed) { return Placed.Body == Event.Body; });
+			if (Event.Weight > 0.0)
+			{
+				FootTargets.Add(FFootTarget{ Event.Body, Target, Event.OffsetCm, Event.Weight });
+			}
 			bInputPending = true;
 		}
 		else
@@ -1095,6 +1150,12 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 		}
 		++EventsApplied;
 	}
+}
+
+double UScenarioRunnerSubsystem::FootTargetErrorCm(const FFootTarget& Placed) const
+{
+	const FBodyInstance* Foot = Ragdoll ? Ragdoll->GetBodyMesh()->GetBodyInstance(Placed.Body) : nullptr;
+	return Foot && Foot->IsValidBodyInstance() ? FVector::Dist(Foot->GetUnrealWorldTransform().GetLocation(), Placed.WorldLocation) : -1.0;
 }
 
 void UScenarioRunnerSubsystem::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
@@ -1448,6 +1509,27 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxSelfPenetrationCm.GetValue();
 		AddCheck(TEXT("max_self_penetration_cm"), Spec.bSimulate && MaxSelfPenetrationCm <= Limit, Spec.bSimulate ? Number(MaxSelfPenetrationCm) : Null(), Number(Limit));
 	}
+	if (Spec.Expect.MaxPoseErrorMeanDeg.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxPoseErrorMeanDeg.GetValue();
+		const double Mean = PoseErrorFrames > 0 ? PoseErrorSumDeg / PoseErrorFrames : 0.0;
+		AddCheck(TEXT("max_pose_error_mean_deg"), PoseErrorFrames > 0 && Mean <= Limit, PoseErrorFrames > 0 ? Number(Mean) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxFootTargetErrorCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxFootTargetErrorCm.GetValue();
+		double Worst = -1.0;
+		for (const FFootTarget& Placed : FootTargets)
+		{
+			Worst = FMath::Max(Worst, FootTargetErrorCm(Placed));
+		}
+		AddCheck(TEXT("max_foot_target_error_cm"), Worst >= 0.0 && Worst <= Limit, Worst >= 0.0 ? Number(Worst) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinPoseOffsetDeg.IsSet())
+	{
+		const double Limit = Spec.Expect.MinPoseOffsetDeg.GetValue();
+		AddCheck(TEXT("min_pose_offset_deg"), PoseOffsetMaxDeg >= Limit, Number(PoseOffsetMaxDeg), Number(Limit));
+	}
 
 	// The states the body went through, as names joined by '>'.
 	FString StateSequence;
@@ -1516,6 +1598,23 @@ void UScenarioRunnerSubsystem::Finish()
 			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
 			Entry->SetStringField(TEXT("bone"), Mesh->GetBoneName(Instance->InstanceBoneIndex).ToString());
 			Entry->SetNumberField(TEXT("mass_kg"), Instance->GetBodyMass());
+			// Principal moments of inertia as the solver uses them: from mass and shapes, times the asset's
+			// inertia scale. Inertia conditioning of the solver, if any, is not included.
+			const FVector Inertia = Instance->GetBodyInertiaTensor();
+			TArray<TSharedPtr<FJsonValue>> InertiaJson;
+			for (int32 Axis = 0; Axis < 3; ++Axis)
+			{
+				InertiaJson.Add(MakeShared<FJsonValueNumber>(Inertia[Axis]));
+			}
+			Entry->SetArrayField(TEXT("inertia_kg_cm2"), InertiaJson);
+			// Where the body's centre of mass is at the end of the run, relative to the spawn point.
+			const FVector Final = Instance->GetCOMPosition() - Spec.SpawnLocationCm;
+			TArray<TSharedPtr<FJsonValue>> FinalJson;
+			for (int32 Axis = 0; Axis < 3; ++Axis)
+			{
+				FinalJson.Add(MakeShared<FJsonValueNumber>(Final[Axis]));
+			}
+			Entry->SetArrayField(TEXT("final_location_cm"), FinalJson);
 			if (const FVector2D* Fastest = SettledBodySpeeds.Find(Mesh->GetBoneName(Instance->InstanceBoneIndex)))
 			{
 				// Fastest this body moved and turned after the settle time: shows which body jitters.
@@ -1608,6 +1707,35 @@ void UScenarioRunnerSubsystem::Finish()
 		Assist->SetNumberField(TEXT("torque_share_mean"), AssistSamples > 0 ? AssistTorqueShareSum / AssistSamples : 0.0);
 		Assist->SetNumberField(TEXT("torque_share_max"), AssistTorqueShareMax);
 		ControlJson->SetObjectField(TEXT("assist_load"), Assist);
+
+		// The target pose and how well the muscles hold it while the body stands.
+		const TSharedRef<FJsonObject> PoseJson = MakeShared<FJsonObject>();
+		PoseJson->SetNumberField(TEXT("target_offset_max_deg"), PoseOffsetMaxDeg);
+		PoseJson->SetStringField(TEXT("target_offset_joint"), PoseOffsetJoint.IsNone() ? FString() : PoseOffsetJoint.ToString());
+		PoseJson->SetNumberField(TEXT("error_mean_deg"), PoseErrorFrames > 0 ? PoseErrorSumDeg / PoseErrorFrames : 0.0);
+		PoseJson->SetNumberField(TEXT("error_mean_max_deg"), PoseErrorMeanMaxDeg);
+		PoseJson->SetNumberField(TEXT("error_worst_deg"), PoseErrorWorstDeg);
+		PoseJson->SetStringField(TEXT("error_worst_joint"), PoseErrorWorstJoint.IsNone() ? FString() : PoseErrorWorstJoint.ToString());
+		PoseJson->SetNumberField(TEXT("frames"), PoseErrorFrames);
+		ControlJson->SetObjectField(TEXT("pose"), PoseJson);
+
+		// Feet the target pose was asked to place, and how far each is from its point at the end.
+		TArray<TSharedPtr<FJsonValue>> FeetJson;
+		for (const FFootTarget& Placed : FootTargets)
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("bone"), Placed.Body.ToString());
+			TArray<TSharedPtr<FJsonValue>> Offset;
+			for (int32 Axis = 0; Axis < 3; ++Axis)
+			{
+				Offset.Add(MakeShared<FJsonValueNumber>(Placed.OffsetCm[Axis]));
+			}
+			Entry->SetArrayField(TEXT("offset_cm"), Offset);
+			Entry->SetNumberField(TEXT("weight"), Placed.Weight);
+			Entry->SetNumberField(TEXT("final_error_cm"), FootTargetErrorCm(Placed));
+			FeetJson.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		ControlJson->SetArrayField(TEXT("foot_targets"), FeetJson);
 
 		// The tuning the body had at the end of the run, where it came from and every change on the way,
 		// so a result can always be traced back to its parameters.

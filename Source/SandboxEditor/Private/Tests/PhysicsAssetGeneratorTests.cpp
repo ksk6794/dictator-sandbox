@@ -97,6 +97,7 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			const USkeletalBodySetup* Body = Asset->SkeletalBodySetups[Index];
 			TestTrue(BodyLabel + TEXT(" overrides its mass"), Body->DefaultInstance.bOverrideMass);
 			TestEqual(BodyLabel + TEXT(" mass"), static_cast<double>(Body->DefaultInstance.GetMassOverride()), BodySpec.MassFraction * Spec.TotalMassKg, 1.0e-3);
+			TestEqual(BodyLabel + TEXT(" inertia scale"), FVector(Body->DefaultInstance.InertiaTensorScale), FVector(BodySpec.InertiaScale), 1.0e-6f);
 			TestTrue(BodyLabel + TEXT(" has collision shapes"), Body->AggGeom.GetElementCount() > 0);
 			TestTrue(BodyLabel + TEXT(" has every box written out in the spec"), Body->AggGeom.BoxElems.Num() >= BodySpec.Shapes.Num());
 			if (BodySpec.ShapesFrom.Num() == 0)
@@ -317,6 +318,12 @@ bool FPhysicsJointAnatomyTest::RunTest(const FString& Parameters)
 			// The shoulder raises the arm outward and forward much further than it lets it cross behind the body.
 			const FVector Reference = BoneLocation(TEXT("lowerarm_l")) - BoneLocation(TEXT("upperarm_l"));
 			TestTrue(TEXT("npc_body: the shoulder's middle has the arm raised and forward"), End.Z > Reference.Z + 5.0 && End.Y > Reference.Y + 5.0);
+		}
+		if (EndAtMiddle(TEXT("clavicle_l"), TEXT("upperarm_l"), End))
+		{
+			// The collarbone lifts the shoulder (40 degrees) much further than it lowers it (10).
+			const FVector Reference = BoneLocation(TEXT("upperarm_l")) - BoneLocation(TEXT("clavicle_l"));
+			TestTrue(TEXT("npc_body: the collarbone's middle has the shoulder raised"), End.Z > Reference.Z + 2.0);
 		}
 	}
 	return true;

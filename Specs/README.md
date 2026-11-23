@@ -38,6 +38,7 @@ generated asset matches its spec.
 | `total_mass_kg` | Body mass; each body gets `mass_fraction` of it. Fractions must sum to 1 |
 | `bodies[].bone` | Bone the body is attached to. Bones without a body follow their parent rigidly |
 | `bodies[].shapes_from` | Template bodies whose shapes this body takes over. Listing several merges them |
+| `bodies[].inertia_scale` | Optional factor (1 to 20) on the inertia the engine works out from the body's mass and shapes. See "Inertia of the hands" |
 | `bodies[].shapes` | Boxes written out in the spec: `center_cm` and `yaw_deg` (rotation about the vertical) in the mesh's reference-pose space, where the floor is z = 0, and `size_cm` along the box's own axes. A body needs `shapes_from`, `shapes` or both |
 | `joints[].child` | Child body. Its parent is the nearest ancestor bone that has a body. One joint per non-root body, written out or mirrored |
 | `joints[].mirror` | Child body of the same joint on the other side. It is generated as the exact mirror image, with the same ranges, so left and right cannot differ |
@@ -80,10 +81,12 @@ that the NPC's knee bends backward, its elbow folds, its hip flexes forward.
 
 Every pair of bodies collides, except the jointed pairs and the pairs under `collision.disable`. That list
 is for bodies whose shapes overlap in the reference pose: left on, they push each other apart from the
-first step and the character cannot hold the pose it is spawned in. `npc_body.json` lists four: the two
-thighs (1.4 cm into each other), the pelvis and the chest across the lower spine (5.5 cm), and the lower
-spine with each thigh (0.9 cm). So the legs can cross at the thighs; shanks and feet do collide with the
-other leg.
+first step and the character cannot hold the pose it is spawned in. `npc_body.json` lists nine: the two
+thighs (1.4 cm into each other), the pelvis and the chest across the lower spine (5.5 cm), the lower
+spine with each thigh (0.9 cm), the neck with each collarbone (6.0 cm), the two collarbones where they meet
+at the breastbone, and the chest with each upper arm (the shoulder's capsule reaches into the chest's; they
+were a jointed pair, and so never collided, until the collarbones came between them). So the legs can
+cross at the thighs; shanks and feet do collide with the other leg, and forearms and hands with the chest.
 
 Which pairs overlap is measured, not guessed: a scenario run reports the deepest overlap of colliding
 bodies in the spawn pose (`penetration.spawn_self_cm` in `metrics.json`), and a run with active control
@@ -122,10 +125,15 @@ the reference pose. Bounding boxes overstate capsules, so a small overlap can be
 The ranges in `npc_body.json` are the starting limits of `docs/PRD.md`, with these choices where the table
 or the engine leaves room:
 
-- **Shoulder.** The engine limits the two swings together, as an elliptical cone around one direction, so
-  180 degrees of flexion and 180 of abduction cannot both be given. The cone is 105 degrees wide around a
-  direction forward and to the side: the arm hangs at the side and reaches straight up, both with 15
-  degrees to spare, but reaches back by only about 20 degrees instead of 50.
+- **Shoulder: two links since M3.** The engine limits the two swings of a joint together, as an elliptical
+  cone around one direction, so one joint cannot give 180 degrees of flexion and 180 of abduction. The
+  shoulder joint's cone is 105 degrees wide around a direction forward and to the side: the arm hangs at
+  the side and reaches straight up, both with 15 degrees to spare, but reaches back by only about 20 degrees
+  instead of 50. Each collarbone is a body of its own (0.64 kg, taken from the chest's mass) on a
+  sternoclavicular joint: 40 degrees of elevation and 10 of depression (swing1), 20 of protraction and 25
+  of retraction (swing2), plus or minus 30 of rotation about its length. The shoulder girdle adds its range
+  to the arm's, as a person's does, and the arm can rise in front and to the side. Its muscle is in the
+  `arms` group.
 - **Spine.** The table's totals are split evenly over the two spine joints.
 - **Neck.** One joint carries the whole range; head and neck are one body.
 - **Forearm rotation** is on the wrist's twist (plus or minus 70), because the forearm is one body.
@@ -136,6 +144,19 @@ or the engine leaves room:
   0.08). Two degrees of slack remove that; five and ten change nothing further.
 
 Still the template's: limit softness (stiffness 50, damping 5 on every cone and twist limit).
+
+### Inertia of the hands
+
+The hands have `"inertia_scale": 3`, a stability measure and not anatomy. Their inertia from shape and mass
+(5.5, 15.2 and 12.6 kg*cm2) already matches de Leva's figures for a hand (about 5.9, 14.4 and 9.6), and so do
+the forearm and the upper arm. But a fist at 9 m/s on the forearm near the wrist spins the 1.3 kg forearm,
+and the 0.49 kg hand behind it snaps round its wrist at 30 to 47 rad/s for one substep before its muscle
+catches it. How fast depended on the exact point struck: 2 cm higher or lower switched it on or off, and
+the scenario `strike_punch_forearm` of M2 happened to strike where it was off. Three times the inertia keeps
+the snap under 24 rad/s at every height from 102.6 to 110.6 cm (`strike_punch_forearm_heights`), and leaves
+standing, falls and the push matrix as they were. The engine's own remedy, inertia conditioning of the solver
+(`p.Chaos.Solver.InertiaConditioning.Distance`), was tried and not taken: it acts on every body, and a fallen
+body then took 3.3 to 6.7 s to come to rest instead of 2.6. The solver's other joint settings changed nothing.
 
 ## rooms/*.json: room maps
 

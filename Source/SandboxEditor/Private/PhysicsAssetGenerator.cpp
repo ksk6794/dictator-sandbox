@@ -291,6 +291,7 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		}
 
 		Body->DefaultInstance.SetMassOverride(static_cast<float>(BodySpec.MassFraction * Spec.TotalMassKg), true);
+		Body->DefaultInstance.InertiaTensorScale = FVector(BodySpec.InertiaScale);
 	}
 
 	// ---- Joints: axes and limits from the spec; softness and projection settings from the template's joint.

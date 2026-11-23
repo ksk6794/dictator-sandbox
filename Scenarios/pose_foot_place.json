@@ -1,0 +1,28 @@
+{
+  "name": "pose_foot_place",
+  "duration_s": 7.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "camera": {"location_cm": [-260, 160, 90], "look_at_cm": [0, 0, 60]},
+  "events": [
+    { "t": 0.0, "type": "pin", "body": "pelvis", "lock_rotation": true },
+    { "t": 1.0, "type": "console", "command": "Sandbox.Tune assist.feet.horizontal_n_per_m=0,assist.feet.vertical_n_per_m=0,assist.feet.angular_nm_per_rad=0" },
+    { "t": 3.0, "type": "foot_target", "body": "foot_l", "offset_cm": [0, 10, 12], "weight": 1.0 }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": false,
+    "max_foot_target_error_cm": 3.0,
+    "min_pose_offset_deg": 55,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_speed_rads": 30.0,
+    "max_joint_limit_violation_deg": 1.0
+  }
+}

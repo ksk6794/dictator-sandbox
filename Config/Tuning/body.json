@@ -39,7 +39,9 @@
   },
   "reactions": {
     "flinch_weakening": 0.3,
-    "flinch_recovery_s": 0.35
+    "flinch_recovery_s": 0.35,
+    "flinch_pose_full_ns": 30,
+    "flinch_give_deg": 15
   },
   "states": {
     "falling": {

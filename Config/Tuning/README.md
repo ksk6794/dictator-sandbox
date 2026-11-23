@@ -12,8 +12,8 @@ A value's name is its path in the file. In `body.json`
 
 is `muscles.legs.stiffness_nm_per_rad`. That name is used everywhere: here, in `-Tune`, in the console and
 in `metrics.json`. Several files are merged into one set of names; a name may be defined only once. There
-are three: `body.json` (the character), `effectors.json` (the player's hands) and `tools.json` (the
-desktop pawn's tools).
+are four: `body.json` (the character), `poses.json` (the poses the character's muscles hold),
+`effectors.json` (the player's hands) and `tools.json` (the desktop pawn's tools).
 
 ## Values of the body (`body.json`)
 
@@ -38,6 +38,34 @@ desktop pawn's tools).
 | `balance.sole_tolerance_cm` | cm | The sole of a standing foot is the part of its shapes within this of its lowest point: what the support polygon is the hull of |
 | `reactions.flinch_weakening` | fraction | Stiffness of the hit region's muscles at the moment of a hit, as a fraction of normal |
 | `reactions.flinch_recovery_s` | s | Time over which they return to full strength, in a straight line; also how long a flinch lasts |
+| `reactions.flinch_pose_full_ns` | N·s | A hit of this impulse puts the flinch's pose offset on at full weight, a smaller one in proportion. The offset fades over `flinch_recovery_s` from the hit, whatever state the body is in by then, and is gone once it lies |
+| `reactions.flinch_give_deg` | degrees | How far the struck body's own joint gives way along the hit at full weight |
+
+## Poses of the body (`poses.json`)
+
+The muscles turn each body toward a target pose. That pose is written here as joint angles and evaluated
+by the body's animation instance (`USandboxAnimInstance`, no Animation Blueprint).
+
+| Name | Unit | Meaning |
+| --- | --- | --- |
+| `poses.blend_s` | s | Time over which the target goes from one pose to the next, eased in and out |
+| `poses.<pose>.<joint>.swing1_deg`, `swing2_deg`, `twist_deg` | degrees | How far the joint is turned from the reference pose, about its own axes |
+| `poses.stance.*` | | The standing pose. All zeros is the reference pose, which is what the body held before it had poses: with it every run is the same as without an animation instance |
+| `poses.flinch.*` | | Added on top of the pose during a flinch, at full weight for a hit of `reactions.flinch_pose_full_ns`: the shoulders rise (collarbones +12), the head draws in (neck -10), the chest bends a little (-4) and the elbows close (+15) |
+
+Joints are named by their child bone: `spine_02`, `spine_04`, `neck_01`, `clavicle_<side>`, `upperarm_<side>`,
+`lowerarm_<side>`, `hand_<side>`, `thigh_<side>`, `calf_<side>`, `foot_<side>`, with `_l` and `_r`. The axes
+are the ones `Specs/README.md` gives each joint's limits in, so the same numbers mean the same thing in a
+pose and in a limit: for the spine and the hip, swing1 positive bends backward and forward respectively as
+the spec's ranges say (spine -22.5 is forward, hip +100 is forward); for the knee and the elbow positive
+bends further; for a collarbone positive lifts the shoulder; for the neck positive tilts the head back. A
+mirrored joint (the right side) moves as the mirror image for the same numbers. Angles are counted from the
+reference pose, including for the elbow, whose reference pose is already bent by about 37 degrees (its spec
+range counts from the straight arm). A pose is not checked against the joint limits; a run reports any
+violation (`max_joint_limit_violation_deg`).
+
+A pose can be changed while a body runs, like any value: `Sandbox.Tune poses.stance.spine_02.swing1_deg=-10`
+leans the standing body forward over `poses.blend_s` (scenario `pose_lean`).
 
 The `balance` values decide what the body senses of its own balance (which feet stand, the support polygon,
 the capture point; `Scenarios/README.md`, "Balance, energy and penetration"). So far the body only senses:

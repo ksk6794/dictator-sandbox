@@ -62,6 +62,38 @@ namespace
 				return false;
 			}
 			OutEvent.Body = FName(*Body);
+			if (const TSharedPtr<FJsonValue> Lock = Json->TryGetField(TEXT("lock_rotation")))
+			{
+				// Checked by type: the JSON reader would take a number for a boolean.
+				if (Lock->Type != EJson::Boolean)
+				{
+					OutError = FString::Printf(TEXT("events[%d].lock_rotation must be true or false"), Index);
+					return false;
+				}
+				OutEvent.bLockRotation = Lock->AsBool();
+			}
+			return true;
+		}
+
+		if (OutEvent.Type == TEXT("foot_target"))
+		{
+			FString Body;
+			if (!Json->TryGetStringField(TEXT("body"), Body) || Body.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("events[%d].body is missing"), Index);
+				return false;
+			}
+			OutEvent.Body = FName(*Body);
+			if (!SandboxJson::TryGetVector(Json, TEXT("offset_cm"), OutEvent.OffsetCm))
+			{
+				OutError = FString::Printf(TEXT("events[%d].offset_cm must be [x, y, z]"), Index);
+				return false;
+			}
+			if (!Json->TryGetNumberField(TEXT("weight"), OutEvent.Weight) || OutEvent.Weight < 0.0 || OutEvent.Weight > 1.0)
+			{
+				OutError = FString::Printf(TEXT("events[%d].weight must be a number from 0 to 1"), Index);
+				return false;
+			}
 			return true;
 		}
 
@@ -327,7 +359,10 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_energy_gain_j"), &OutSpec.Expect.MaxEnergyGainJ },
 			{ TEXT("max_rest_after_fall_s"), &OutSpec.Expect.MaxRestAfterFallS },
 			{ TEXT("max_body_penetration_cm"), &OutSpec.Expect.MaxBodyPenetrationCm },
-			{ TEXT("max_self_penetration_cm"), &OutSpec.Expect.MaxSelfPenetrationCm } };
+			{ TEXT("max_self_penetration_cm"), &OutSpec.Expect.MaxSelfPenetrationCm },
+			{ TEXT("max_pose_error_mean_deg"), &OutSpec.Expect.MaxPoseErrorMeanDeg },
+			{ TEXT("min_pose_offset_deg"), &OutSpec.Expect.MinPoseOffsetDeg },
+			{ TEXT("max_foot_target_error_cm"), &OutSpec.Expect.MaxFootTargetErrorCm } };
 
 		// Every key must be a known expectation with a numeric value: a misspelt one would otherwise
 		// never be checked and the scenario would pass for the wrong reason.

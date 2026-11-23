@@ -923,6 +923,104 @@ yet); penetration of convex hulls (the NPC has none); falls against walls or fur
 never-sleeping body while it lies still (it is solved like a standing one, 0.45 ms); whether the
 determinism mode holds for a scene with props.
 
+### M3 part 2, step 0 (collarbones, inertia of the hands), 2026-11-23
+
+The NPC's physics asset got a body for each collarbone (0.64 kg each, from the chest's 12.77 kg; joint
+ranges in `Specs/README.md`), five more pairs under `collision.disable` (neck and each collarbone 6.0 cm
+into each other in the spawn pose, the two collarbones, the chest and each upper arm) and three times the
+inertia on the hands. 18 bodies, 17 joints, 127 colliding pairs.
+
+Against `m3_part1_end`: 29 scenarios changed, every one with the NPC's asset in it; the five without it
+(`drop_passive`, `drop_metahuman`, `impulse_passive`, `face_metahuman`, `portrait_metahuman`) did not.
+`room_portrait`, `vr_room_look` and `vr_room_perf` hold the asset without simulating it: the body hash
+moved because there are two more bodies, the bone hash did not. All 35 pass (one new scenario). The push
+matrix has the same 128 outcomes; its fastest joint is 38.4 rad/s (39.6 before).
+
+| Figure | Before | After |
+| --- | --- | --- |
+| Standing: assist force share | 0.0185 | 0.0171 |
+| Standing: pelvis drift | 0.97 cm | 0.85 cm |
+| Standing: fastest body after settling | 0.150 rad/s | 0.155 rad/s |
+| Standing: capture margin (minimum) | 9.9 cm | 9.8 cm |
+| `hit_chest_200_falls`: rest after the fall / energy gain | 0.60 s / 0.1 J | 0.62 s / 0.2 J |
+| `push_thigh_200_falls` | 2.64 s / 0.2 J | 2.57 s / 0.1 J |
+| `effector_push_chest_falls` | 0.86 s / 0.0 J | 0.86 s / 0.1 J |
+| `strike_punch_forearm`: fastest joint | 10.2 rad/s (`upperarm_l`) | 20.9 rad/s (`hand_l`) |
+| `hang_npc_hand`: limit violation / energy gain | 0.4 deg / 18 J | 4.4 deg / 5.6 J |
+
+The collarbones alone failed `strike_punch_forearm`: the wrist snapped at 41 rad/s in the frame of the
+punch and was at 7 in the next. It was not the collarbones' doing. The same punch on the old asset:
+
+| Height of the punch | 102.6 cm | 104.6 | 106.6 (the scenario) | 108.6 | 110.6 |
+| --- | --- | --- | --- | --- | --- |
+| Old asset | 10.3 | 10.3 | 10.2 | 36.8 (`hand_l`) | 24.6 |
+| Collarbones | 29.4 | 35.5 | 41.1 | 46.8 | 5.0 |
+| Collarbones, hands at 3x inertia | 16.1 | not run alone | 20.9 | 23.5 | not run alone |
+
+`strike_punch_forearm_heights` strikes 102.6, 104.6, 108.6 and 110.6 cm one after another on the final
+asset: 22.8 rad/s at most.
+
+What was ruled out: the hand touching thigh or pelvis (switching those pairs off left the hashes the same),
+the collarbones' mass (0.004 to 0.016 of the body: 31 to 43 rad/s), and seven solver settings (soft limits
+off, velocity projection, position solved last, shock propagation, inertia ratio, parent mass ratio, CCD:
+40.4 to 41.5). Inertia conditioning did work: `p.Chaos.Solver.InertiaConditioning.Distance` 0 / 20 (default)
+/ 40 / 80 gave 62 / 41 / 25 / 14 rad/s; but over the suite `push_thigh_200_falls` then took 3.3 to 6.7 s to
+rest at any distance from 30 to 100, and `tune_live_solver` no longer told 2 iterations from 64 by its
+bound. The hands' inertia, from the engine, is 5.5 / 15.2 / 12.6 kg*cm2, close to de Leva's 5.9 / 14.4 / 9.6
+for a hand of 0.49 kg; so the factor of 3 is a stability measure, and is written down as one. Factors of 2,
+3 and 5 gave 36, 24 and 16 rad/s at the worst height; standing and the three falls were within noise of
+each other at all of them, except that `push_thigh_200_falls` rested in 3.5 s at a factor of 2: its rest
+time is itself on an edge (a lying body that rolls over late), which part 5 has to deal with.
+
+`series.csv` has two more columns (the fastest joint of each frame and its speed), and `metrics.json` the
+inertia of every body. Both are measurements only.
+
+Missed in step 0 and found in step 1: the session's self-test aimed its drag handle at a point written down
+for the old asset, and with the collarbones the arm hangs elsewhere, so the handle took nothing (12 of 14
+checks). Measured on `stand_npc` with `body.bodies[].final_location_cm`: the upper arm's centre of mass is
+1.8 cm lower and 1.1 cm closer to the body than before, the hand 3.4 cm lower and 3.3 cm closer; the
+collarbone gives a little under the arm's weight. (The chest's centre of mass is 3 cm lower only because the
+collarbones' shapes left it.) The test now aims at where the forearm is: 14 of 14.
+
+### M3 part 2, steps 1 to 3 (animation instance, poses from text, flinch offset), 2026-11-23
+
+Step 1, the native animation instance giving the reference pose: all 35 scenarios had the same hashes as
+`m3_part2_step0`. Step 2, poses from `Config/Tuning/poses.json` with a stance of zeros: the same 35 again,
+plus `pose_lean`, where the stance changes at 3 s (chest -10 and -8, neck +12, collarbones +10, elbows +30):
+the forearm's target ends 30.0 degrees from the reference pose, which is the angle asked for, and the body
+holds the new pose with a mean error of 1.16 degrees (1.08 standing in the reference pose; the worst single
+muscle is a collarbone, 4.7 to 5.8 degrees). Pictures before and after: the chest leans forward, the head
+stays level, the elbows close.
+
+Step 3, the flinch's pose offset: 15 scenarios changed, exactly those in which a hit makes the body flinch;
+the 20 others kept their hashes. The first version dropped the offset when the Flinch state ended, and two
+falls gained 13.8 and 7.9 J (over the 1 J bound) in the frames after they began to fall; fading it by its
+own clock instead gave 0.13, 0.00 and 0.06 J for the three falls, which rest after 0.61, 2.43 and 0.86 s.
+
+| Figure | Step 0 | Step 3 |
+| --- | --- | --- |
+| `hit_head_30_stands`: fastest joint / assist / capture margin (min) | 12.3 rad/s / 0.0359 / -13.2 cm | 18.5 / 0.0365 / -13.3 |
+| `hit_chest_10_stands`: fastest joint | 1.3 rad/s | 6.1 |
+| `strike_punch_torso`: fastest joint | 3.7 rad/s | 9.2 |
+| `effector_push_chest`: fastest joint / capture margin | 1.4 rad/s / 2.6 cm | 3.4 / 2.7 |
+| `hit_chest_200_falls`: energy gain / rest | 0.2 J / 0.62 s | 0.13 J / 0.61 s |
+| `push_thigh_200_falls` | 0.1 J / 2.57 s | 0.00 J / 2.43 s |
+
+Step 4, two-bone leg placement (`pose_foot_place`: pelvis welded to the world, foot anchors of the assist
+off, the left foot asked to go 12 cm up and 10 cm forward): the foot ends 1.8 cm from its point, the knee's
+target is bent 61 degrees, the body holds the pose with a mean error of 1.08 degrees. Three things went wrong
+on the way. With the pelvis on a ball joint instead of welded, the lifted leg tipped the body over the pin,
+the world-fixed point moved against the body, the leg chased it and the body fell (35 degrees of tilt): the
+test, not the placement. With the placement switched on at full weight in one step, the knee's target
+jumped 61 degrees and the calf snapped at 84 rad/s; eased in over `poses.blend_s`, 4.7 rad/s. My first
+guess for the fall was a knee folding backward; the knee's bending direction is now taken as the front of
+the mesh rather than from the pose, which changed nothing in this test (same hashes) and is kept as the
+safer rule. The other 36 scenarios kept their hashes.
+
+The push matrix differs in one of 128 runs: 80 N*s backward on the chest no longer fells the body (it did
+in step 0). Under the M2 rules the matrix still passes; under the owner's M3 table, standing without a step
+at 80 N*s is a failure, which parts 3 and 4 have to deal with.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

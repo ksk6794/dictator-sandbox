@@ -3,6 +3,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "SandboxAnimInstance.h"
 #include "SandboxBodyController.h"
 
 ASandboxRagdollActor::ASandboxRagdollActor()
@@ -63,6 +64,15 @@ bool ASandboxRagdollActor::StartActiveControl(const FSandboxParamStore& Params, 
 	if (BodyMesh->Bodies.Num() == 0 || !BodyMesh->IsAnySimulatingPhysics())
 	{
 		OutError = TEXT("Active control needs a simulating body: call InitBody with bSimulate first");
+		return false;
+	}
+
+	// The muscles' targets come from the pose the mesh evaluates; this instance is its only source.
+	BodyMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	BodyMesh->SetAnimInstanceClass(USandboxAnimInstance::StaticClass());
+	if (!Cast<USandboxAnimInstance>(BodyMesh->GetAnimInstance()))
+	{
+		OutError = TEXT("The body's mesh did not take the sandbox animation instance");
 		return false;
 	}
 

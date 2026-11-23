@@ -184,6 +184,12 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 			}
 		}
 		if (Body.ShapesFrom.Num() == 0 && Body.Shapes.Num() == 0) { return Fail(Context + TEXT(" needs 'shapes_from' (template bodies) or 'shapes' (boxes written out), or both")); }
+		if (BodyJson->HasField(TEXT("inertia_scale")) &&
+			(!BodyJson->TryGetNumberField(TEXT("inertia_scale"), Body.InertiaScale) || BodyJson->Values[TEXT("inertia_scale")]->Type != EJson::Number ||
+			 Body.InertiaScale < 1.0 || Body.InertiaScale > 20.0))
+		{
+			return Fail(Context + TEXT(".inertia_scale must be a number from 1 to 20"));
+		}
 		OutSpec.Bodies.Add(MoveTemp(Body));
 	}
 	if (FMath::Abs(FractionSum - 1.0) > 1.0e-3)

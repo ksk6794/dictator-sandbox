@@ -1,6 +1,8 @@
 #include "SandboxBodyController.h"
 
+#include "SandboxAnimInstance.h"
 #include "SandboxBodyProbe.h"
+#include "AnimationRuntime.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -125,6 +127,16 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		Muscle.ParentBone = Parent;
 		Muscle.ChildBone = Child;
 		Muscle.Group = FSandboxBodyTuning::GroupOfBone(Child);
+		{
+			const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+			const int32 ParentIndex = Skeleton.FindBoneIndex(Parent);
+			const int32 ChildIndex = Skeleton.FindBoneIndex(Child);
+			if (ParentIndex != INDEX_NONE && ChildIndex != INDEX_NONE)
+			{
+				Muscle.ReferenceRelative = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, ParentIndex).GetRotation().Inverse() *
+					FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, ChildIndex).GetRotation();
+			}
+		}
 		if (!Control->CreateNamedControl(Muscle.Control, Mesh, Parent, Mesh, Child, FPhysicsControlData(), FPhysicsControlTarget(), MuscleSet))
 		{
 			OutError = FString::Printf(TEXT("Could not create the muscle control for joint '%s'"), *Child.ToString());
@@ -178,6 +190,20 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	Balance = FSandboxBalanceView();
 
 	PushTuningToControls();
+
+	// The target pose: joint angles from the tuning, evaluated by the mesh's animation instance.
+	if (!PoseRig.Init(Mesh, OutError))
+	{
+		return false;
+	}
+	{
+		TArray<FSandboxPoseBone> Bones;
+		if (!PoseRig.Build(Tuning.Poses.Stance, Bones, OutError))
+		{
+			return false;
+		}
+	}
+	ApplyPose();
 
 	// A body under control never sleeps. A standing character is still enough for the solver to put its
 	// island to sleep, and the next tick woke it again: one substep in six it was frozen, with no gravity,
@@ -235,12 +261,82 @@ bool USandboxBodyController::ApplyTuning(const FSandboxBodyTuning& InTuning, FSt
 	Tuning = InTuning;
 	Tuning.Rig = Rig;
 	PushTuningToControls();
+	ApplyPose();
 	if (Solver.PositionIterations != Tuning.Solver.PositionIterations || Solver.VelocityIterations != Tuning.Solver.VelocityIterations ||
 		Solver.ProjectionIterations != Tuning.Solver.ProjectionIterations)
 	{
 		RefreshSolverIsland();
 	}
 	return true;
+}
+
+void USandboxBodyController::ApplyPose()
+{
+	USandboxAnimInstance* Animation = Mesh ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
+	if (!Animation)
+	{
+		// A mesh without the sandbox animation instance holds its reference pose; that is all it can do.
+		return;
+	}
+	TArray<FSandboxPoseBone> Bones;
+	FString Error;
+	if (!PoseRig.Build(Tuning.Poses.Stance, Bones, Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its pose: %s"), *Error);
+		return;
+	}
+	Animation->SetTargetPose(Bones, Tuning.Poses.BlendS);
+}
+
+void USandboxBodyController::UpdatePoseTurns()
+{
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	if (!Animation)
+	{
+		return;
+	}
+	TArray<FSandboxPoseTurn> Turns;
+	// The flinch's pose offset: as strong as the hit, up to reactions.flinch_pose_full_ns, and gone by the time
+	// the muscles are back to full strength. It fades by its own clock, not with the state: a hit that knocks
+	// the body over ends the flinch at once, and an offset dropped in one step had the muscles snap the body
+	// back (13.8 J put into a falling body). Once the body lies, nothing is left of it.
+	if (FlinchStartedS >= 0.0 && State != ESandboxBodyState::Lying)
+	{
+		const FSandboxReactionTuning& Reactions = Tuning.Reactions;
+		const double Strength = FMath::Clamp(FlinchImpulseNs.Size() / Reactions.FlinchPoseFullNs, 0.0, 1.0);
+		const double Left = Reactions.FlinchRecoveryS > 0.0 ? FMath::Clamp(1.0 - (ElapsedS - FlinchStartedS) / Reactions.FlinchRecoveryS, 0.0, 1.0) : 0.0;
+		const double Weight = Strength * Left;
+		PoseRig.BuildTurns(Tuning.Poses.Flinch, Weight, Turns);
+
+		// The struck body gives way: its joint turns so that the body moves along the hit, about the axis
+		// across the line from the joint to the body's centre of mass and the hit.
+		const int32 StruckIndex = PoseRig.MeshBoneIndexOf(FlinchBone);
+		const FBodyInstance* Struck = Mesh->GetBodyInstance(FlinchBone);
+		if (Weight > 0.0 && StruckIndex != INDEX_NONE && Struck && Struck->IsValidBodyInstance())
+		{
+			const FTransform Bone = Struck->GetUnrealWorldTransform();
+			const FVector Axis = FVector::CrossProduct(Struck->GetCOMPosition() - Bone.GetLocation(), FlinchImpulseNs).GetSafeNormal();
+			if (!Axis.IsNearlyZero())
+			{
+				const FQuat Give(Bone.GetRotation().UnrotateVector(Axis), FMath::DegreesToRadians(Reactions.FlinchGiveDeg * Weight));
+				FSandboxPoseTurn* Existing = Turns.FindByPredicate([StruckIndex](const FSandboxPoseTurn& Turn) { return Turn.MeshBoneIndex == StruckIndex; });
+				if (Existing)
+				{
+					Existing->Turn = (Existing->Turn * Give).GetNormalized();
+				}
+				else
+				{
+					Turns.Add(FSandboxPoseTurn{ StruckIndex, Give });
+				}
+			}
+		}
+	}
+	// Nothing to hand over while there is no offset now and there was none before.
+	if (Turns.Num() > 0 || bPoseTurnsSet)
+	{
+		Animation->SetTurns(Turns);
+		bPoseTurnsSet = Turns.Num() > 0;
+	}
 }
 
 void USandboxBodyController::RefreshSolverIsland()
@@ -320,6 +416,28 @@ void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
 	FeelImpulse(Bone, ImpulseNs);
 }
 
+bool USandboxBodyController::SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError)
+{
+	USandboxAnimInstance* Animation = bStarted ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
+	if (!Animation)
+	{
+		OutError = TEXT("The body is not started, or its mesh has no sandbox animation instance");
+		return false;
+	}
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	const int32 End = Skeleton.FindBoneIndex(Foot);
+	const int32 Middle = End != INDEX_NONE ? Skeleton.GetParentIndex(End) : INDEX_NONE;
+	const int32 Root = Middle != INDEX_NONE ? Skeleton.GetParentIndex(Middle) : INDEX_NONE;
+	if (Root == INDEX_NONE || !Mesh->GetBodyInstance(Foot) || !Mesh->GetBodyInstance(Skeleton.GetBoneName(Middle)) ||
+		!Mesh->GetBodyInstance(Skeleton.GetBoneName(Root)))
+	{
+		OutError = FString::Printf(TEXT("'%s' is not the end of two segments with bodies"), *Foot.ToString());
+		return false;
+	}
+	Animation->SetLimbTarget(End, WorldLocation, Weight, Tuning.Poses.BlendS);
+	return true;
+}
+
 void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
 	// An arm resting against the character's own side is neither a hit nor support.
@@ -362,6 +480,9 @@ void USandboxBodyController::FeelImpulse(FName Bone, const FVector& ImpulseNs)
 	if (State == ESandboxBodyState::Standing && HitImpulseNs.Size() >= Tuning.Thresholds.FlinchImpulseNs)
 	{
 		FlinchGroup = FSandboxBodyTuning::GroupOfBone(Bone);
+		FlinchBone = Bone;
+		FlinchImpulseNs = HitImpulseNs;
+		FlinchStartedS = ElapsedS;
 		EnterState(ESandboxBodyState::Flinch, FString::Printf(TEXT("hit of %.1f N*s on %s"), HitImpulseNs.Size(), *Bone.ToString()));
 		HitImpulseNs = FVector::ZeroVector;
 	}
@@ -569,6 +690,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	Control->UpdateTargetCaches(DeltaTime);
 	UpdateState(DeltaTime);
+	UpdatePoseTurns();
 	UpdateAssistLoad();
 	Control->UpdateControls(DeltaTime);
 
@@ -648,6 +770,7 @@ void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) co
 		View.bDriven = Tuning.Muscle(Muscle.Group).StiffnessNmPerRad > 0.0;
 		View.TargetRotation = (Parent->GetUnrealWorldTransform().GetRotation() * Relative).GetNormalized();
 		View.ErrorRad = View.TargetRotation.AngularDistance(Child->GetUnrealWorldTransform().GetRotation());
+		View.TargetOffsetRad = Relative.AngularDistance(Muscle.ReferenceRelative);
 	}
 
 	for (const FAssist& Assist : Assists)

@@ -1,0 +1,27 @@
+{
+  "name": "pose_lean",
+  "duration_s": 8.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "camera": {"location_cm": [-260, 160, 120], "look_at_cm": [0, 0, 100]},
+  "events": [
+    { "t": 3.0, "type": "console", "command": "Sandbox.Tune poses.stance.spine_02.swing1_deg=-10,poses.stance.spine_04.swing1_deg=-8,poses.stance.neck_01.swing1_deg=12,poses.stance.clavicle_l.swing1_deg=10,poses.stance.clavicle_r.swing1_deg=10,poses.stance.lowerarm_l.swing1_deg=30,poses.stance.lowerarm_r.swing1_deg=30" }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": false,
+    "state_sequence": "standing",
+    "min_pose_offset_deg": 29.9,
+    "max_pose_error_mean_deg": 2.0,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_speed_rads": 30.0,
+    "max_joint_limit_violation_deg": 1.0
+  }
+}

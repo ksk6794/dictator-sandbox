@@ -57,6 +57,18 @@ protected:
 private:
 	enum class EPhase : uint8 { Idle, Running, Finishing };
 
+	/** A foot the body's target pose is asked to put at a point ("foot_target"), and where. */
+	struct FFootTarget
+	{
+		FName Body;
+		FVector WorldLocation = FVector::ZeroVector;
+		FVector OffsetCm = FVector::ZeroVector;
+		double Weight = 0.0;
+	};
+	TArray<FFootTarget> FootTargets;
+	/** How far the foot's bone origin is from its point now, cm; -1 if the foot has no body. */
+	double FootTargetErrorCm(const FFootTarget& Placed) const;
+
 	/** A body held at a fixed world position by a "pin" event. */
 	struct FPin
 	{
@@ -212,6 +224,19 @@ private:
 	double AssistTorqueShareSum = 0.0;
 	double AssistTorqueShareMax = 0.0;
 	int32 AssistSamples = 0;
+	/**
+	 * How well the muscles hold the target pose while the body stands, after the settle time: the mean over
+	 * the driven muscles of the angle between where each child body points and where its muscle turns it,
+	 * per frame; then the mean and the largest of those, and the single worst muscle seen. Degrees.
+	 */
+	double PoseErrorSumDeg = 0.0;
+	double PoseErrorMeanMaxDeg = 0.0;
+	double PoseErrorWorstDeg = 0.0;
+	FName PoseErrorWorstJoint;
+	int32 PoseErrorFrames = 0;
+	/** How far the muscles' targets are turned from the reference pose in the last frame, the largest. Degrees. */
+	double PoseOffsetMaxDeg = 0.0;
+	FName PoseOffsetJoint;
 
 	// Balance as the body itself senses it (active control only), over the frames after the settle time in
 	// which the body is upright (standing or flinching).

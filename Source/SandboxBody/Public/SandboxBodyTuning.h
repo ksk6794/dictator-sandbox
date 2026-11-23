@@ -115,6 +115,55 @@ struct FSandboxReactionTuning
 	double FlinchWeakening = 0.0;
 	/** Time over which those muscles come back to full strength, which is also how long a flinch lasts. Seconds. */
 	double FlinchRecoveryS = 0.0;
+	/**
+	 * A hit of this impulse puts the flinch's pose offset on at full weight (poses.flinch, and the struck
+	 * body giving way); a smaller one in proportion. The offset fades out over the flinch. N*s.
+	 */
+	double FlinchPoseFullNs = 0.0;
+	/** How far the struck body's joint gives way along the hit at full weight. Degrees. */
+	double FlinchGiveDeg = 0.0;
+};
+
+/**
+ * Joints a pose can turn, by the name of their child bone (MetaHuman and UE5 mannequin naming). The order is
+ * the order of FSandboxPose::Joints.
+ */
+constexpr int32 SandboxPoseJointCount = 17;
+extern SANDBOXBODY_API const TCHAR* const SandboxPoseJoints[SandboxPoseJointCount];
+
+/**
+ * How far one joint is turned from the reference pose, in the joint's own anatomical axes as the physics
+ * asset's spec defines them (Specs/README.md, "Joints"): swing1 about swing1_axis, swing2 about the third
+ * axis, twist about the limb. A positive angle turns the child body the way the spec's limits count it, and
+ * the same angles on a mirrored joint give the mirror-image motion. Degrees. All three 0 is the reference pose.
+ */
+struct FSandboxPoseAngles
+{
+	double Swing1Deg = 0.0;
+	double Swing2Deg = 0.0;
+	double TwistDeg = 0.0;
+
+	bool IsZero() const { return Swing1Deg == 0.0 && Swing2Deg == 0.0 && TwistDeg == 0.0; }
+};
+
+/** A whole-body target pose, joint by joint ("poses.stance.thigh_l.swing1_deg"). */
+struct FSandboxPose
+{
+	FSandboxPoseAngles Joints[SandboxPoseJointCount];
+};
+
+/** The poses the body is asked to hold, and how it goes from one to the next. */
+struct FSandboxPoseTuning
+{
+	/** Time over which the target goes from one pose to the next, eased in and out. Seconds. */
+	double BlendS = 0.0;
+	/** Standing. All zero is the reference pose the body held before it had poses. */
+	FSandboxPose Stance;
+	/**
+	 * Added on top of the pose while the body flinches, at full weight for a hit of
+	 * reactions.flinch_pose_full_ns: the shoulders rise and the head draws in.
+	 */
+	FSandboxPose Flinch;
 };
 
 /** Which bones the balance assist holds ("rig.pelvis" and so on). Each must have a body in the physics asset. */
@@ -155,6 +204,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxThresholdTuning Thresholds;
 	FSandboxBalanceTuning Balance;
 	FSandboxReactionTuning Reactions;
+	FSandboxPoseTuning Poses;
 
 	/**
 	 * Tells a parameter store which names the body understands and which states may carry values of their

@@ -41,6 +41,8 @@ struct FPhysicsBodySpec
 	TArray<FName> ShapesFrom;
 	/** Shapes written out in the spec, added to those taken from the template. */
 	TArray<FPhysicsShapeSpec> Shapes;
+	/** Factor on the inertia the engine works out from the mass and the shapes (FBodyInstance::InertiaTensorScale). */
+	double InertiaScale = 1.0;
 };
 
 /** How a joint's swing1 axis (the one its main bending turns about) is found. */
