@@ -97,6 +97,15 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 	if (const USandboxAnimInstance* Instance = Cast<USandboxAnimInstance>(InAnimInstance))
 	{
 		Bones = Instance->Bones;
+		LayerWeight = Instance->Layer.Num() > 0 ? Instance->LayerWeight : 0.0;
+		if (LayerWeight > 0.0)
+		{
+			Layer = Instance->Layer;
+		}
+		else
+		{
+			Layer.Reset();
+		}
 		Turns = Instance->Turns;
 		Limbs.Reset();
 		for (const USandboxAnimInstance::FLimbState& Limb : Instance->LimbStates)
@@ -124,6 +133,15 @@ bool FSandboxAnimInstanceProxy::Evaluate(FPoseContext& Output)
 		if (Index != INDEX_NONE)
 		{
 			Output.Pose[Index].SetRotation(Blend(Bone, Weight));
+		}
+	}
+	// A pose laid over the base one (USandboxAnimInstance::SetLayer).
+	for (const FSandboxPoseBone& Bone : Layer)
+	{
+		const FCompactPoseBoneIndex Index = Container.MakeCompactPoseIndex(FMeshPoseBoneIndex(Bone.MeshBoneIndex));
+		if (Index != INDEX_NONE)
+		{
+			Output.Pose[Index].SetRotation(LayerWeight >= 1.0 ? Bone.Rotation : FQuat::Slerp(Output.Pose[Index].GetRotation(), Bone.Rotation, LayerWeight).GetNormalized());
 		}
 	}
 	for (const FSandboxPoseTurn& Turn : Turns)

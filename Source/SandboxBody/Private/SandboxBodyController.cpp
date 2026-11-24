@@ -273,6 +273,8 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	SupportStepS = 0.0;
 	LastSupportHeightCm = Mesh->GetComponentLocation().Z;
 	Balance = FSandboxBalanceView();
+	StartSpace = Mesh->GetComponentTransform();
+	StartSpace.SetScale3D(FVector::OneVector);
 
 	PushTuningToControls();
 
@@ -415,7 +417,8 @@ void USandboxBodyController::ApplyPose()
 	// Upright the body holds its stance. Going down, and lying, it holds the pose of its fall, unless the fall does
 	// not happen because something holds the body up (UpdateHeld): then it hangs, in its stance's pose again and
 	// with the falling body's soft muscles.
-	const bool bDown = (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying) && !bHeldUp;
+	// Getting up, the clip's pose lies over this one (SetLayer): under it the body keeps the pose it lay in.
+	const bool bDown = (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying || State == ESandboxBodyState::GetUp) && !bHeldUp;
 	FSandboxPose Mirror;
 	const FSandboxPose* Pose = &Tuning.Poses.Stance;
 	if (bDown)
@@ -558,13 +561,42 @@ void USandboxBodyController::UpdatePoseTurns()
 			}
 		}
 	}
-	// The idle's motion, as much of it as the body carries now (UpdateIdle).
-	if (IdleShare > 0.0)
+	// What the body adds for its balance and while it idles is its own, and gives way to a pose asked for from
+	// outside (SetClipPose) as that pose comes in.
+	const double Posed = IsPosedFromOutside() ? ClipWeight() : 0.0;
+	if (Posed <= 0.0)
 	{
-		IdleMotion.AddTurns(ElapsedS, FMath::SmoothStep(0.0, 1.0, IdleShare) * Tuning.Poses.IdleWeight, Turns);
+		// The idle's motion, as much of it as the body carries now (UpdateIdle).
+		if (IdleShare > 0.0)
+		{
+			IdleMotion.AddTurns(ElapsedS, FMath::SmoothStep(0.0, 1.0, IdleShare) * Tuning.Poses.IdleWeight, Turns);
+		}
+		AddArmTurns(Turns);
+		AddStrategyTurns(Turns);
 	}
-	AddArmTurns(Turns);
-	AddStrategyTurns(Turns);
+	else if (Posed < 1.0)
+	{
+		TArray<FSandboxPoseTurn> Own;
+		if (IdleShare > 0.0)
+		{
+			IdleMotion.AddTurns(ElapsedS, FMath::SmoothStep(0.0, 1.0, IdleShare) * Tuning.Poses.IdleWeight, Own);
+		}
+		AddArmTurns(Own);
+		AddStrategyTurns(Own);
+		for (const FSandboxPoseTurn& Each : Own)
+		{
+			const FQuat Left = FQuat::MakeFromRotationVector(Each.Turn.ToRotationVector() * (1.0 - Posed));
+			const int32 Bone = Each.MeshBoneIndex;
+			if (FSandboxPoseTurn* Existing = Turns.FindByPredicate([Bone](const FSandboxPoseTurn& Turn) { return Turn.MeshBoneIndex == Bone; }))
+			{
+				Existing->Turn = (Existing->Turn * Left).GetNormalized();
+			}
+			else
+			{
+				Turns.Add(FSandboxPoseTurn{ Bone, Left.GetNormalized() });
+			}
+		}
+	}
 
 	// Nothing to hand over while there is no offset now and there was none before.
 	if (Turns.Num() > 0 || bPoseTurnsSet)
@@ -572,6 +604,182 @@ void USandboxBodyController::UpdatePoseTurns()
 		Animation->SetTurns(Turns);
 		bPoseTurnsSet = Turns.Num() > 0;
 	}
+}
+
+bool USandboxBodyController::SetClipPose(const FString& ClipPath, double TimeS, double Rate, FString& OutError)
+{
+	if (State == ESandboxBodyState::GetUp)
+	{
+		GiveUpGetUp(TEXT("a pose was asked for from outside"));
+	}
+	if (!HoldClip(ClipPath, TimeS, Rate, OutError))
+	{
+		return false;
+	}
+	ClipHold.bOutside = true;
+	return true;
+}
+
+const FSandboxClipPose* USandboxBodyController::FindOrReadClip(const FString& ClipPath, FString& OutPath, FString& OutError)
+{
+	USandboxAnimInstance* Animation = bStarted ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
+	if (!Animation)
+	{
+		OutError = TEXT("The body is not started, or its mesh has no sandbox animation instance");
+		return nullptr;
+	}
+	// "/Game/Folder/Clip" is the object "/Game/Folder/Clip.Clip".
+	FString Path = ClipPath;
+	int32 Slash = INDEX_NONE;
+	if (!Path.Contains(TEXT(".")) && Path.FindLastChar(TEXT('/'), Slash))
+	{
+		Path += TEXT(".") + Path.Mid(Slash + 1);
+	}
+	if (!Clips.Contains(Path))
+	{
+		const UAnimSequence* Sequence = LoadObject<UAnimSequence>(nullptr, *Path);
+		if (!Sequence)
+		{
+			OutError = FString::Printf(TEXT("no animation at '%s' (the clips of Epic's Game Animation Sample come with Tools\\fetch-sample-anims.ps1)"), *Path);
+			return nullptr;
+		}
+		// Every joint the muscles hold. The body of the head takes the head's own orientation; arms and legs point
+		// where the clip's point.
+		TArray<FSandboxClipJoint> Joints;
+		const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		static const FName HeadBone(TEXT("head"));
+		for (const FMuscle& Muscle : Muscles)
+		{
+			FSandboxClipJoint& Joint = Joints.AddDefaulted_GetRef();
+			Joint.ChildBone = Muscle.ChildBone;
+			Joint.ParentBone = Muscle.ParentBone;
+			Joint.bAlignDirection = Muscle.Group == ESandboxMuscleGroup::Arms || Muscle.Group == ESandboxMuscleGroup::Legs;
+			if (Muscle.ChildBone == Tuning.Rig.Head && Muscle.ChildBone != HeadBone)
+			{
+				// Only a head bone that this body carries: below its bone, with no body of its own.
+				for (int32 Bone = Skeleton.FindBoneIndex(HeadBone); Bone != INDEX_NONE; Bone = Skeleton.GetParentIndex(Bone))
+				{
+					const FName Name = Skeleton.GetBoneName(Bone);
+					if (Name == Muscle.ChildBone)
+					{
+						Joint.OrientationBone = HeadBone;
+						break;
+					}
+					if (Mesh->GetBodyInstance(Name))
+					{
+						break;
+					}
+				}
+			}
+		}
+		FSandboxClipPose Clip;
+		if (!Clip.Load(Sequence, Mesh, Tuning.Rig.Pelvis, Joints, OutError))
+		{
+			return nullptr;
+		}
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: clip '%s' read, %d keys over %.2f s"), *Path, Clip.GetKeyCount(), Clip.GetLengthS());
+		Clips.Add(Path, MoveTemp(Clip));
+	}
+	OutPath = Path;
+	return Clips.Find(Path);
+}
+
+bool USandboxBodyController::HoldClip(const FString& ClipPath, double TimeS, double Rate, FString& OutError)
+{
+	FString Path;
+	const FSandboxClipPose* Read = FindOrReadClip(ClipPath, Path, OutError);
+	if (!Read)
+	{
+		return false;
+	}
+	const FSandboxClipPose& Clip = *Read;
+	if (!ClipHold.Path.IsEmpty() && ClipHold.Last.Num() > 0)
+	{
+		// From the clip pose the target has now, so that it does not jump.
+		ClipHold.From = ClipHold.Last;
+		ClipHold.FromPelvis = ClipHold.LastPelvis;
+		ClipHold.CrossShare = 0.0;
+	}
+	else
+	{
+		ClipHold = FClipHold();
+	}
+	ClipHold.Path = Path;
+	ClipHold.TimeS = FMath::Clamp(TimeS, 0.0, Clip.GetLengthS());
+	ClipHold.Rate = Rate;
+	ClipHold.bReleased = false;
+	ClipHold.bOutside = false;
+	if (ClipHold.CrossShare >= 1.0)
+	{
+		ClipHold.LastPelvis = Clip.PelvisAt(ClipHold.TimeS);
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: the pose of clip '%s' at %.2f s is asked for at %.3f s (rate %.2f)"), *Path, ClipHold.TimeS, ElapsedS, Rate);
+	return true;
+}
+
+void USandboxBodyController::ReleaseClipPose()
+{
+	if (!ClipHold.Path.IsEmpty() && !ClipHold.bReleased)
+	{
+		ClipHold.bReleased = true;
+		ClipHold.Rate = 0.0;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: the clip's pose is let go at %.3f s"), ElapsedS);
+	}
+}
+
+bool USandboxBodyController::GetClipPose(FString& OutClipPath, double& OutTimeS, double& OutWeight) const
+{
+	OutClipPath = ClipHold.Path;
+	OutTimeS = ClipHold.TimeS;
+	OutWeight = ClipWeight();
+	return !ClipHold.Path.IsEmpty();
+}
+
+bool USandboxBodyController::GetClipPelvis(FTransform& OutPelvis, double& OutWeight) const
+{
+	OutPelvis = ClipHold.LastPelvis;
+	OutWeight = ClipWeight();
+	return !ClipHold.Path.IsEmpty();
+}
+
+void USandboxBodyController::UpdateClipPose(double DeltaTime)
+{
+	if (ClipHold.Path.IsEmpty())
+	{
+		return;
+	}
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FSandboxClipPose* Clip = Clips.Find(ClipHold.Path);
+	if (!Animation || !Clip)
+	{
+		ClipHold = FClipHold();
+		return;
+	}
+	const double Step = Tuning.Poses.BlendS > 0.0 ? DeltaTime / Tuning.Poses.BlendS : 1.0;
+	ClipHold.Share = FMath::Clamp(ClipHold.Share + (ClipHold.bReleased ? -Step : Step), 0.0, 1.0);
+	ClipHold.CrossShare = FMath::Min(ClipHold.CrossShare + Step, 1.0);
+	if (ClipHold.bReleased && ClipHold.Share <= 0.0)
+	{
+		Animation->SetLayer(TArray<FSandboxPoseBone>(), 0.0);
+		ClipHold = FClipHold();
+		return;
+	}
+	ClipHold.TimeS = FMath::Clamp(ClipHold.TimeS + ClipHold.Rate * DeltaTime, 0.0, Clip->GetLengthS());
+	TArray<FSandboxPoseBone> Bones;
+	Clip->Evaluate(ClipHold.TimeS, Bones);
+	ClipHold.LastPelvis = Clip->PelvisAt(ClipHold.TimeS);
+	if (ClipHold.CrossShare < 1.0 && ClipHold.From.Num() == Bones.Num())
+	{
+		const double Over = FMath::SmoothStep(0.0, 1.0, ClipHold.CrossShare);
+		ClipHold.LastPelvis = FTransform(FQuat::Slerp(ClipHold.FromPelvis.GetRotation(), ClipHold.LastPelvis.GetRotation(), Over).GetNormalized(),
+			FMath::Lerp(ClipHold.FromPelvis.GetLocation(), ClipHold.LastPelvis.GetLocation(), Over));
+		for (int32 Index = 0; Index < Bones.Num(); ++Index)
+		{
+			Bones[Index].Rotation = FQuat::Slerp(ClipHold.From[Index].Rotation, Bones[Index].Rotation, Over).GetNormalized();
+		}
+	}
+	Animation->SetLayer(Bones, ClipWeight());
+	ClipHold.Last = MoveTemp(Bones);
 }
 
 void USandboxBodyController::UpdateIdle(double DeltaTime)
@@ -887,8 +1095,262 @@ bool USandboxBodyController::ReadStateTuning(FSandboxBodyTuning& OutTuning, FStr
 	return FSandboxBodyTuning::FromParams(*Params, FSandboxBodyTuning::StateName(State), OutTuning, OutError);
 }
 
+double USandboxBodyController::GetUpEase() const
+{
+	if (State != ESandboxBodyState::GetUp || Tuning.GetUp.EaseS <= 0.0)
+	{
+		return 1.0;
+	}
+	return FMath::SmoothStep(0.0, 1.0, (ElapsedS - StateEnteredS) / Tuning.GetUp.EaseS);
+}
+
+bool USandboxBodyController::IsAtRest() const
+{
+	// As a falling body is judged (UpdateState): the root mean square over the bodies, weighted by mass.
+	double MassKg = 0.0;
+	double LinearSquared = 0.0;
+	double AngularSquared = 0.0;
+	for (const FBodyInstance* Body : Mesh->Bodies)
+	{
+		if (Body && Body->IsValidBodyInstance())
+		{
+			const double BodyMassKg = Body->GetBodyMass();
+			MassKg += BodyMassKg;
+			LinearSquared += BodyMassKg * (Body->GetUnrealWorldVelocity() * 0.01).SizeSquared();
+			AngularSquared += BodyMassKg * Body->GetUnrealWorldAngularVelocityInRadians().SizeSquared();
+		}
+	}
+	return MassKg > 0.0 && FMath::Sqrt(LinearSquared / MassKg) <= Tuning.Thresholds.RestSpeedMps &&
+		FMath::Sqrt(AngularSquared / MassKg) <= Tuning.Thresholds.RestAngularSpeedRadS;
+}
+
+bool USandboxBodyController::StartGetUp(FString& OutError)
+{
+	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+	if (!Body || !Body->IsValidBodyInstance())
+	{
+		OutError = TEXT("the pelvis has no body");
+		return false;
+	}
+	const FTransform Now = Body->GetUnrealWorldTransform();
+	// How the pelvis lies is where the world's up points in the pelvis's own space; each clip starts with a pelvis
+	// that lies some way, and the clip that starts most like the body lies is the one to get up by.
+	const FVector UpInPelvis = Now.GetRotation().UnrotateVector(FVector::UpVector);
+	const FString* const Paths[] = { &Tuning.GetUp.ClipBack, &Tuning.GetUp.ClipFront, &Tuning.GetUp.ClipLeft, &Tuning.GetUp.ClipRight };
+	const FSandboxClipPose* Best = nullptr;
+	FString BestPath;
+	double BestLikeness = -2.0;
+	for (const FString* Path : Paths)
+	{
+		if (Path->IsEmpty())
+		{
+			continue;
+		}
+		FString Kept;
+		const FSandboxClipPose* Clip = FindOrReadClip(*Path, Kept, OutError);
+		if (!Clip)
+		{
+			return false;
+		}
+		const FQuat Unturned = StartSpace.GetRotation() * Clip->PelvisAt(0.0).GetRotation();
+		const double Likeness = FVector::DotProduct(Unturned.UnrotateVector(FVector::UpVector), UpInPelvis);
+		if (Likeness > BestLikeness)
+		{
+			BestLikeness = Likeness;
+			Best = Clip;
+			BestPath = Kept;
+		}
+	}
+	if (!Best)
+	{
+		OutError = TEXT("no clip to get up by (getup.clip_*)");
+		return false;
+	}
+
+	// The clip's root in the world: turned about the vertical to how the body lies, with the clip's pelvis over
+	// the body's, on the floor the body last stood on.
+	const FTransform First = Best->PelvisAt(0.0);
+	FQuat Tilt, Yaw;
+	(Now.GetRotation() * (StartSpace.GetRotation() * First.GetRotation()).Inverse()).ToSwingTwist(FVector::UpVector, Tilt, Yaw);
+	FTransform Frame((Yaw * StartSpace.GetRotation()).GetNormalized(), FVector::ZeroVector);
+	const FVector Offset = Frame.GetRotation().RotateVector(First.GetLocation());
+	Frame.SetLocation(FVector(Now.GetLocation().X - Offset.X, Now.GetLocation().Y - Offset.Y, LastSupportHeightCm));
+
+	if (!HoldClip(BestPath, 0.0, 0.0, OutError))
+	{
+		return false;
+	}
+	// At once and whole: it is the strength of the muscles that comes up from nothing, not the pose that comes in.
+	ClipHold.Share = 1.0;
+	ClipHold.CrossShare = 1.0;
+	GetUpRun = FGetUpRun();
+	GetUpRun.Path = BestPath;
+	GetUpRun.Frame = Frame;
+	Pelvis->Target = First * Frame;
+	Pelvis->Target.SetScale3D(FVector::OneVector);
+	SetAssistTarget(*Pelvis);
+	++GetUpView.Attempts;
+	GetUpView.Clip = BestPath;
+	GetUpView.StartedS = ElapsedS;
+	GetUpView.DurationS = -1.0;
+	GetUpView.StallS = 0.0;
+	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; by '%s' (likeness %.2f)"), Tuning.GetUp.RestS, *FPaths::GetBaseFilename(BestPath), BestLikeness));
+	return true;
+}
+
+void USandboxBodyController::GiveUpGetUp(const FString& Reason)
+{
+	if (State != ESandboxBodyState::GetUp)
+	{
+		return;
+	}
+	GetUpView.GivenUp = Reason;
+	ReleaseClipPose();
+	EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("the get-up is given up: %s"), *Reason));
+}
+
+void USandboxBodyController::UpdateGetUp(double DeltaTime)
+{
+	if (State != ESandboxBodyState::GetUp)
+	{
+		return;
+	}
+	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+	const FSandboxClipPose* Clip = Clips.Find(GetUpRun.Path);
+	if (!Body || !Body->IsValidBodyInstance() || !Clip || ClipHold.Path != GetUpRun.Path)
+	{
+		GiveUpGetUp(TEXT("its clip is gone"));
+		return;
+	}
+	if (bHeldUp)
+	{
+		GiveUpGetUp(TEXT("the body is held up"));
+		return;
+	}
+	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	// The muscles and the assist come up from nothing (MuscleScale, PushTuningToControls).
+	const double Ease = GetUpEase();
+	if (!GetUpRun.bEased)
+	{
+		PushTuningToControls();
+		const bool bHitOver = FlinchStartedS < StateEnteredS || ElapsedS - FlinchStartedS >= Tuning.Reactions.FlinchRecoveryS;
+		GetUpRun.bEased = Ease >= 1.0 && bHitOver;
+	}
+
+	// The pelvis's assist is aimed at where the clip has the pelvis now, and the feet's at where it has the feet:
+	// a clip brings the feet under the body while the hands carry it, and feet that the floor's friction kept where
+	// they were left the body leaning like a plank from feet half a metre behind it.
+	FTransform Goal = Clip->PelvisAt(ClipHold.TimeS) * GetUpRun.Frame;
+	Goal.SetScale3D(FVector::OneVector);
+	Pelvis->Target = Goal;
+	SetAssistTarget(*Pelvis);
+	for (FAssist& Assist : Assists)
+	{
+		FTransform InClip;
+		if (Assist.Slot == EAssistSlot::Feet && Clip->BodyAt(Assist.Bone, ClipHold.TimeS, InClip))
+		{
+			Assist.Target = InClip * GetUpRun.Frame;
+			Assist.Target.SetScale3D(FVector::OneVector);
+			SetAssistTarget(Assist);
+		}
+	}
+
+	const FTransform Now = Body->GetUnrealWorldTransform();
+	const double LagCm = FVector::Dist(Now.GetLocation(), Goal.GetLocation());
+	if (LagCm > Limits.LostCm)
+	{
+		GiveUpGetUp(FString::Printf(TEXT("the pelvis is %.0f cm from where the clip has it"), LagCm));
+		return;
+	}
+	// The feet against the clip. A foot off the floor has to come to where the clip has it, and the clip waits for
+	// it. A foot the body stands on is where it is: the clip is laid over it instead, its root following the feet in
+	// proportion to the weight they carry (getup.frame_follow_s).
+	double FootLagCm[2] = { 0.0, 0.0 };
+	double AirLagCm = 0.0;
+	FVector2D CarriedOff = FVector2D::ZeroVector;
+	double CarriedN = 0.0;
+	for (const FAssist& Assist : Assists)
+	{
+		const FBodyInstance* Foot = Assist.Slot == EAssistSlot::Feet && Assist.Side >= 0 ? Mesh->GetBodyInstance(Assist.Bone) : nullptr;
+		if (Foot && Foot->IsValidBodyInstance())
+		{
+			const FVector Off = Foot->GetUnrealWorldTransform().GetLocation() - Assist.Target.GetLocation();
+			FootLagCm[Assist.Side] = Off.Size();
+			const double LoadN = Balance.bValid ? Balance.FootForceN[Assist.Side] : 0.0;
+			if (LoadN > 0.0)
+			{
+				CarriedOff += FVector2D(Off.X, Off.Y) * LoadN;
+				CarriedN += LoadN;
+			}
+			else
+			{
+				AirLagCm = FMath::Max(AirLagCm, FootLagCm[Assist.Side]);
+			}
+		}
+	}
+	if (CarriedN > 0.0 && Limits.FrameFollowS > 0.0 && WeightN > 0.0)
+	{
+		const double Share = FMath::Clamp(CarriedN / WeightN, 0.0, 1.0);
+		const FVector2D Shift = (CarriedOff / CarriedN) * FMath::Min(Share * DeltaTime / Limits.FrameFollowS, 1.0);
+		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
+	}
+	// A line of the log four times a second: where the body is against the clip.
+	if (FMath::FloorToInt32(ElapsedS * 4.0) != FMath::FloorToInt32((ElapsedS - DeltaTime) * 4.0))
+	{
+		const FVector Off = Now.GetLocation() - Goal.GetLocation();
+		const FVector Leans = (Now.GetRotation() * Goal.GetRotation().Inverse()).RotateVector(FVector::UpVector);
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up at %.2f s: clip %.2f s, pelvis %.0f cm off (%.0f, %.0f, %.0f) at %.0f cm up, turned %.0f deg from the clip's, feet %.0f and %.0f cm off, floor on feet %.0f and %.0f N, assist %.2f"),
+			ElapsedS, ClipHold.TimeS, LagCm, Off.X, Off.Y, Off.Z, Now.GetLocation().Z - LastSupportHeightCm,
+			FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Leans.Z, -1.0, 1.0))), FootLagCm[0], FootLagCm[1],
+			Balance.bValid ? Balance.FootForceN[0] : 0.0, Balance.bValid ? Balance.FootForceN[1] : 0.0, AssistLoad.ForceShare);
+	}
+	// The clip's time waits for a body that does not keep up, and stops at the time by which the clip stands.
+	const bool bBehind = LagCm > Limits.LagCm || AirLagCm > Limits.FootLagCm;
+	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
+	ClipHold.Rate = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
+	if (Ease >= 1.0 && (bBehind || bThrough))
+	{
+		GetUpRun.StallS += DeltaTime;
+		GetUpRun.WaitedS += DeltaTime;
+		GetUpView.StallS = GetUpRun.WaitedS;
+	}
+	else
+	{
+		GetUpRun.StallS = 0.0;
+	}
+	if (bThrough)
+	{
+		const FVector Up = (Now.GetRotation() * Goal.GetRotation().Inverse()).RotateVector(FVector::UpVector);
+		const double TiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Up.Z, -1.0, 1.0)));
+		const bool bOnFeet = Balance.bValid && Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0;
+		if (!bBehind && TiltDeg <= Limits.UprightDeg && bOnFeet)
+		{
+			++GetUpView.Successes;
+			GetUpView.DurationS = ElapsedS - GetUpView.StartedS;
+			ReleaseClipPose();
+			EnterState(ESandboxBodyState::Standing, FString::Printf(TEXT("got up in %.2f s"), GetUpView.DurationS));
+			return;
+		}
+	}
+	if (GetUpRun.StallS > Limits.StallS)
+	{
+		GiveUpGetUp(FString::Printf(TEXT("the clip stood at %.2f s for %.1f s waiting for the body (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
+			ClipHold.TimeS, GetUpRun.StallS, LagCm, FootLagCm[0], FootLagCm[1]));
+	}
+}
+
 double USandboxBodyController::MuscleScale(ESandboxMuscleGroup Group) const
 {
+	// A body that begins to get up was limp a moment ago: its muscles come up from nothing.
+	if (State == ESandboxBodyState::GetUp)
+	{
+		// A hit taken while getting up weakens the struck part for a moment, as a flinch does.
+		const bool bHit = Group == FlinchGroup && FlinchStartedS >= StateEnteredS && Tuning.Reactions.FlinchRecoveryS > 0.0;
+		const double Recovered = bHit ? FMath::Clamp((ElapsedS - FlinchStartedS) / Tuning.Reactions.FlinchRecoveryS, 0.0, 1.0) : 1.0;
+		return GetUpEase() * FMath::Lerp(Tuning.Reactions.FlinchWeakening, 1.0, Recovered);
+	}
 	// A flinch that turns into a stagger keeps its weakening: it fades by its own clock from the hit, so that the
 	// change of state does not hand the hit muscles their full strength back in one step.
 	if ((State != ESandboxBodyState::Flinch && State != ESandboxBodyState::Stagger) || Group != FlinchGroup || FlinchStartedS < 0.0)
@@ -934,7 +1396,12 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	// Back from a stagger or a flinch (states without the assist's horizontal pull) the assist takes hold again,
 	// at full strength. Its anchors of pelvis, chest and head start where those bodies are and glide to their
 	// places over the support, so that the pull grows from nothing instead of arriving at once.
-	if ((OldState == ESandboxBodyState::Stagger || OldState == ESandboxBodyState::Flinch) && NewState == ESandboxBodyState::Standing)
+	if (OldState == ESandboxBodyState::GetUp && NewState == ESandboxBodyState::Standing)
+	{
+		// The feet stand where the get-up left them: brought back together like after a step.
+		RegroupLeft = FMath::RoundToInt32(Tuning.Balance.RegroupMaxSteps);
+	}
+	if ((OldState == ESandboxBodyState::Stagger || OldState == ESandboxBodyState::Flinch || OldState == ESandboxBodyState::GetUp) && NewState == ESandboxBodyState::Standing)
 	{
 		// The feet are anchored where they stand: without the assist's pull they may have turned or slid a little.
 		// (After a flinch too: a foot that had slid 7 cm under a push to the pelvis was pulled back by its spring, and
@@ -2264,6 +2731,20 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			EnterState(ESandboxBodyState::Flinch, FString::Printf(TEXT("hit of %.1f N*s on %s"), HitImpulseNs.Size(), *FrameBone.ToString()));
 			HitImpulseNs = FVector::ZeroVector;
 		}
+		else if (State == ESandboxBodyState::GetUp && HitImpulseNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && (HitImpulseNs | Felt) > 0.0)
+		{
+			// Getting up, a hit is felt as it is standing: the struck part gives way and its muscles are weak for a
+			// moment (the flinch's pose offset and weakening, each by its own clock). The body does not leave the
+			// get-up for it: it goes on if it can, and is given up if the hit has thrown it off (UpdateGetUp).
+			FlinchGroup = FSandboxBodyTuning::GroupOfBone(FrameBone);
+			FlinchBone = FrameBone;
+			FlinchImpulseNs = HitImpulseNs;
+			FlinchStartedS = ElapsedS;
+			GetUpRun.bEased = false;
+			++GetUpView.Hits;
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: hit of %.1f N*s on %s while getting up, at %.3f s"), HitImpulseNs.Size(), *FrameBone.ToString(), ElapsedS);
+			HitImpulseNs = FVector::ZeroVector;
+		}
 	}
 
 	// The pressure follows the felt force.
@@ -2307,7 +2788,11 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 
 void USandboxBodyController::UpdateState(float DeltaTime)
 {
-	if (IsUpright())
+	// A body whose pose is asked for from outside (SetClipPose) does not judge its balance, by the capture point or
+	// by its posture: it cannot step for it, the pose may be one of lying down, and whoever asks for it holds the body.
+	// (Carried through a get-up by its pelvis, it took itself for fallen as the pelvis was laid down, and hung limp.)
+	const bool bJudged = IsUpright() && !IsPosedFromOutside();
+	if (bJudged)
 	{
 		// The capture point decides. Inside the support, or outside by no more than the ankles and the hips
 		// can bring back, the body stands. Further out it needs a step, and staggers. Beyond a step's reach
@@ -2357,7 +2842,7 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 		LostS = 0.0;
 	}
 
-	if (IsUpright())
+	if (bJudged && IsUpright())
 	{
 		// Whatever the capture point says, the posture itself can give way: the legs fold (the pelvis sinks) or
 		// the body bends over too far to stand.
@@ -2470,6 +2955,26 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 		TrunkTouchedS = -1.0;
 	}
 	bTrunkTouched = false;
+
+	// A body that has lain still for a while gets up, unless something holds it up or it has been told to stay down.
+	if (State == ESandboxBodyState::Lying)
+	{
+		LyingS = IsAtRest() && !bHeldUp ? LyingS + DeltaTime : 0.0;
+		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= Tuning.GetUp.RestS - KINDA_SMALL_NUMBER)
+		{
+			LyingS = 0.0;
+			FString Error;
+			if (!StartGetUp(Error))
+			{
+				bGetUpBroken = true;
+				UE_LOG(LogSandbox, Error, TEXT("Body controller: the body cannot get up and stays down: %s"), *Error);
+			}
+		}
+	}
+	else
+	{
+		LyingS = 0.0;
+	}
 }
 
 void USandboxBodyController::FollowParams()
@@ -2553,6 +3058,14 @@ void USandboxBodyController::PushTuningToControls()
 			Slot.HorizontalNPerM = Tuning.Balance.SwingFootNPerM;
 			Slot.VerticalNPerM = Tuning.Balance.SwingFootNPerM;
 		}
+		if (State == ESandboxBodyState::GetUp)
+		{
+			// The pull that helps the body up comes up from nothing, as its muscles do.
+			const double Ease = GetUpEase();
+			Slot.HorizontalNPerM *= Ease;
+			Slot.VerticalNPerM *= Ease;
+			Slot.AngularNmPerRad *= Ease;
+		}
 		const double AngularSpring = Slot.AngularNmPerRad * TorqueToUnreal / ChaosAngularDriveScale;
 		FPhysicsControlData Data;
 		Data.bUseAccelerationDriveMode = false;
@@ -2565,6 +3078,8 @@ void USandboxBodyController::PushTuningToControls()
 		Data.AngularDampingRatio = 0.0f;
 		Data.AngularExtraDamping = static_cast<float>(AngularSpring * Slot.DampingS);
 		Data.MaxTorque = static_cast<float>(Slot.MaxTorqueNm * TorqueToUnreal);
+		// 1 N = 100 kg*cm/s^2.
+		Data.MaxForce = static_cast<float>(Slot.MaxForceN * 100.0);
 		Data.bUseSkeletalAnimation = false; // the target is fixed in the world, not taken from the mesh
 		Control->SetControlData(Assist.Control, Data);
 
@@ -2622,6 +3137,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	Control->UpdateTargetCaches(DeltaTime);
 	UpdateState(DeltaTime);
 	UpdateHeld(DeltaTime);
+	UpdateGetUp(DeltaTime);
 	UpdateRegroup(DeltaTime);
 	UpdateStep(DeltaTime);
 	UpdateShift(DeltaTime);
@@ -2629,6 +3145,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateIdle(DeltaTime);
 	UpdateStrategies(DeltaTime);
 	UpdatePlacements(DeltaTime);
+	UpdateClipPose(DeltaTime);
 	UpdatePoseTurns();
 	UpdateAssistLoad();
 	Control->UpdateControls(DeltaTime);
@@ -2964,8 +3481,20 @@ void USandboxBodyController::UpdateAssistLoad()
 		const FVector TargetCom = Goal.TransformPositionNoScale(Body->GetMassSpaceLocal().GetLocation());
 		const FVector ErrorM = (TargetCom - Body->GetCOMPosition()) * 0.01;
 		const FVector VelocityMps = Body->GetUnrealWorldVelocity() * 0.01 - GoalVelocityMps;
+		if (State == ESandboxBodyState::GetUp)
+		{
+			const double Ease = GetUpEase();
+			Slot.HorizontalNPerM *= Ease;
+			Slot.VerticalNPerM *= Ease;
+			Slot.AngularNmPerRad *= Ease;
+		}
 		const FVector Stiffness(Slot.HorizontalNPerM, Slot.HorizontalNPerM, Slot.VerticalNPerM);
-		const FVector CommandN = Stiffness * (ErrorM - VelocityMps * Slot.DampingS);
+		FVector CommandN = Stiffness * (ErrorM - VelocityMps * Slot.DampingS);
+		if (Slot.MaxForceN > 0.0)
+		{
+			// The engine caps a drive's force axis by axis.
+			CommandN = CommandN.BoundToCube(Slot.MaxForceN);
+		}
 		ForceN += CommandN.Size();
 		const int32 SlotIndex = static_cast<int32>(Assist.Slot);
 		HorizontalN[SlotIndex] += CommandN.Size2D();

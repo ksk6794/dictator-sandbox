@@ -440,10 +440,12 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 	{
 		return false;
 	}
-	if (const USandboxBodyController* Controller = Ragdoll->GetController())
+	if (USandboxBodyController* Controller = Ragdoll->GetController())
 	{
 		Controller->GetTuning().ListValues(LastTuningValues);
 		HeadBone = Controller->GetTuning().Rig.Head;
+		// A scenario's body stays down unless the scenario is about getting up.
+		Controller->SetGetUpAllowed(Spec.bGetUp);
 	}
 
 	// Where the body starts: the reference for the drift metrics. The pelvis is the root body.
@@ -546,6 +548,7 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 	SampleFrame(DeltaTime);
 	ContinuePushes();
 	ApplyDueEvents(SimTimeS);
+	MovePins();
 
 	// Where the hands should be at the start of the coming step, which begins at SimTimeS.
 	if (EffectorRig)
@@ -735,6 +738,15 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			StaggerTorqueShareSum += Torque;
 			StaggerTorqueShareMax = FMath::Max(StaggerTorqueShareMax, Torque);
 			++StaggerFrames;
+		}
+
+		if (Controller->GetState() == ESandboxBodyState::GetUp)
+		{
+			const double Share = Controller->GetAssistLoad().ForceShare;
+			GetUpAssistShareSum += Share;
+			GetUpAssistShareMax = FMath::Max(GetUpAssistShareMax, Share);
+			GetUpTorqueShareMax = FMath::Max(GetUpTorqueShareMax, Controller->GetAssistLoad().TorqueShare);
+			++GetUpFrames;
 		}
 
 		// The target pose: how far the muscles' targets are from the reference pose, and how well they hold it.
@@ -1185,6 +1197,31 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			}
 			continue;
 		}
+		if (Event.Type == TEXT("clip_pose"))
+		{
+			USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+			FString Error;
+			if (!Controller)
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f asks for a clip's pose, and the body is not under active control"), Event.TimeS);
+			}
+			else if (Event.bRelease)
+			{
+				Controller->ReleaseClipPose();
+				++EventsApplied;
+				bInputPending = true;
+			}
+			else if (Controller->SetClipPose(Event.Clip, Event.ClipTimeS, Event.ClipRate, Error))
+			{
+				++EventsApplied;
+				bInputPending = true;
+			}
+			else
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f could not ask for the pose of clip '%s': %s"), Event.TimeS, *Event.Clip, *Error);
+			}
+			continue;
+		}
 
 		FBodyInstance* Body = Mesh ? Mesh->GetBodyInstance(Event.Body) : nullptr;
 		if (!Body || !Body->IsValidBodyInstance())
@@ -1210,6 +1247,10 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame1, FTransform::Identity);
 			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame2, BodyTransform);
 			Pin.Constraint->InitConstraint(Body, nullptr, 1.0f, Ragdoll);
+			Pin.bFollowClip = Event.bFollowClip;
+			Pin.RaiseCm = Event.RaiseCm;
+			Pin.Start = BodyTransform;
+			Pin.Space = Mesh->GetComponentTransform();
 			bInputPending = true;
 		}
 		else if (Event.Type == TEXT("foot_target"))
@@ -1349,6 +1390,35 @@ void UScenarioRunnerSubsystem::ApplyImpulse(FName Bone, const FVector& ImpulseNs
 	{
 		// 1 N*s = 1 kg*m/s = 100 kg*cm/s in Unreal units.
 		Body->AddImpulse(ImpulseNs * 100.0, /*bVelChange*/ false);
+	}
+}
+
+void UScenarioRunnerSubsystem::MovePins()
+{
+	const USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+	for (FPin& Pin : Pins)
+	{
+		if (!Pin.bFollowClip || !Pin.Constraint.IsValid())
+		{
+			continue;
+		}
+		// From where the body was pinned to where the clip has the pelvis, as far as the clip's pose has come in.
+		FTransform Pelvis;
+		double Weight = 0.0;
+		FTransform To = Pin.Start;
+		if (Controller && Controller->GetClipPelvis(Pelvis, Weight) && Weight > 0.0)
+		{
+			const FTransform InClip = FTransform(Pelvis.GetRotation(), Pelvis.GetLocation() + FVector(0.0, 0.0, Pin.RaiseCm)) * Pin.Space;
+			To = FTransform(FQuat::Slerp(Pin.Start.GetRotation(), InClip.GetRotation(), Weight).GetNormalized(),
+				FMath::Lerp(Pin.Start.GetLocation(), InClip.GetLocation(), Weight));
+		}
+		const FTransform Now = Pin.Constraint->GetRefFrame(EConstraintFrame::Frame2);
+		if (!To.GetLocation().Equals(Now.GetLocation(), 0.0) || !To.GetRotation().Equals(Now.GetRotation(), 0.0))
+		{
+			Pin.Constraint->SetRefFrame(EConstraintFrame::Frame2, To);
+			Pin.WorldLocation = To.GetLocation();
+			bInputPending = true;
+		}
 	}
 }
 
@@ -1807,6 +1877,16 @@ void UScenarioRunnerSubsystem::Finish()
 		}
 		AddCheck(TEXT("max_flinches"), Controller && Flinches <= Limit, Controller ? Number(Flinches) : Null(), Number(Limit));
 	}
+	if (Spec.Expect.MinGetUps.IsSet())
+	{
+		const double Limit = Spec.Expect.MinGetUps.GetValue();
+		AddCheck(TEXT("min_get_ups"), Controller && Controller->GetGetUpView().Successes >= Limit, Controller ? Number(Controller->GetGetUpView().Successes) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxGetUpAttempts.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxGetUpAttempts.GetValue();
+		AddCheck(TEXT("max_get_up_attempts"), Controller && Controller->GetGetUpView().Attempts <= Limit, Controller ? Number(Controller->GetGetUpView().Attempts) : Null(), Number(Limit));
+	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetBoolField(TEXT("ok"), true);
@@ -2074,6 +2154,99 @@ void UScenarioRunnerSubsystem::Finish()
 			FeetJson.Add(MakeShared<FJsonValueObject>(Entry));
 		}
 		ControlJson->SetArrayField(TEXT("foot_targets"), FeetJson);
+
+		// The get-ups: how many the body began and how many ended standing, the last one's clip and times, and what
+		// the assist did while the body was getting up.
+		if (Spec.bGetUp || Controller->GetGetUpView().Attempts > 0)
+		{
+			const FSandboxGetUpView& GetUps = Controller->GetGetUpView();
+			const TSharedRef<FJsonObject> GetUpJson = MakeShared<FJsonObject>();
+			GetUpJson->SetNumberField(TEXT("attempts"), GetUps.Attempts);
+			GetUpJson->SetNumberField(TEXT("successes"), GetUps.Successes);
+			GetUpJson->SetStringField(TEXT("clip"), GetUps.Clip);
+			GetUpJson->SetNumberField(TEXT("started_s"), GetUps.StartedS);
+			GetUpJson->SetNumberField(TEXT("duration_s"), GetUps.DurationS);
+			GetUpJson->SetNumberField(TEXT("stall_s"), GetUps.StallS);
+			GetUpJson->SetStringField(TEXT("given_up"), GetUps.GivenUp);
+			GetUpJson->SetNumberField(TEXT("hits"), GetUps.Hits);
+			GetUpJson->SetNumberField(TEXT("seconds"), GetUpFrames * FixedDt);
+			GetUpJson->SetNumberField(TEXT("assist_force_share_mean"), GetUpFrames > 0 ? GetUpAssistShareSum / GetUpFrames : 0.0);
+			GetUpJson->SetNumberField(TEXT("assist_force_share_max"), GetUpAssistShareMax);
+			GetUpJson->SetNumberField(TEXT("assist_torque_share_max"), GetUpTorqueShareMax);
+			ControlJson->SetObjectField(TEXT("get_up"), GetUpJson);
+		}
+
+		// A clip's pose asked for at the end of the run, and how every clip that was read fits the body: how far
+		// the two skeletons' reference poses are apart at each joint, and the furthest the clip asks a joint
+		// beyond its range.
+		{
+			FString ClipPath;
+			double ClipTimeS = 0.0;
+			double ClipWeight = 0.0;
+			if (Controller->GetClipPose(ClipPath, ClipTimeS, ClipWeight))
+			{
+				const TSharedRef<FJsonObject> Held = MakeShared<FJsonObject>();
+				Held->SetStringField(TEXT("clip"), ClipPath);
+				Held->SetNumberField(TEXT("time_s"), ClipTimeS);
+				Held->SetNumberField(TEXT("weight"), ClipWeight);
+				ControlJson->SetObjectField(TEXT("clip_pose"), Held);
+			}
+			TArray<FString> Paths;
+			Controller->GetClips().GetKeys(Paths);
+			Paths.Sort();
+			TArray<TSharedPtr<FJsonValue>> ClipsJson;
+			const auto Triple = [](const FVector& Value)
+			{
+				TArray<TSharedPtr<FJsonValue>> Out;
+				for (int32 Axis = 0; Axis < 3; ++Axis)
+				{
+					Out.Add(MakeShared<FJsonValueNumber>(Value[Axis]));
+				}
+				return Out;
+			};
+			for (const FString& Path : Paths)
+			{
+				const FSandboxClipPose& Clip = Controller->GetClips()[Path];
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("clip"), Path);
+				Entry->SetNumberField(TEXT("length_s"), Clip.GetLengthS());
+				Entry->SetNumberField(TEXT("keys"), Clip.GetKeyCount());
+				// Where the clip has the pelvis at its start and at its end, in the space of its root, scaled to this body.
+				Entry->SetArrayField(TEXT("pelvis_start_cm"), Triple(Clip.PelvisAt(0.0).GetLocation()));
+				Entry->SetArrayField(TEXT("pelvis_end_cm"), Triple(Clip.PelvisAt(Clip.GetLengthS()).GetLocation()));
+				double ExcessDeg = 0.0;
+				FString ExcessJoint;
+				TArray<TSharedPtr<FJsonValue>> JointsJson;
+				for (const FSandboxClipJointFit& Fit : Clip.GetFits())
+				{
+					const TSharedRef<FJsonObject> JointJson = MakeShared<FJsonObject>();
+					JointJson->SetStringField(TEXT("bone"), Fit.Bone.ToString());
+					JointJson->SetNumberField(TEXT("reference_turn_deg"), Fit.ReferenceTurnDeg);
+					if (Fit.ReferenceDirectionDeg >= 0.0)
+					{
+						JointJson->SetNumberField(TEXT("reference_direction_deg"), Fit.ReferenceDirectionDeg);
+					}
+					JointJson->SetNumberField(TEXT("limit_excess_deg"), Fit.LimitExcessDeg);
+					JointJson->SetNumberField(TEXT("limit_excess_at_s"), Fit.LimitExcessAtS);
+					JointJson->SetArrayField(TEXT("limit_angles_deg"), Triple(Fit.LimitAnglesDeg));
+					JointJson->SetArrayField(TEXT("limit_ranges_deg"), Triple(Fit.LimitRangeDeg));
+					JointsJson.Add(MakeShared<FJsonValueObject>(JointJson));
+					if (Fit.LimitExcessDeg > ExcessDeg)
+					{
+						ExcessDeg = Fit.LimitExcessDeg;
+						ExcessJoint = Fit.Bone.ToString();
+					}
+				}
+				Entry->SetNumberField(TEXT("limit_excess_max_deg"), ExcessDeg);
+				Entry->SetStringField(TEXT("limit_excess_joint"), ExcessJoint);
+				Entry->SetArrayField(TEXT("joints"), JointsJson);
+				ClipsJson.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+			if (ClipsJson.Num() > 0)
+			{
+				ControlJson->SetArrayField(TEXT("clips"), ClipsJson);
+			}
+		}
 
 		// The tuning the body had at the end of the run, where it came from and every change on the way,
 		// so a result can always be traced back to its parameters.

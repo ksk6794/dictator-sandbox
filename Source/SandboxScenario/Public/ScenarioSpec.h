@@ -8,11 +8,15 @@
  * A scripted stimulus applied at a fixed simulation time.
  *   "impulse"           an instantaneous impulse on one body
  *   "pin"               fixes one body where it is with a ball joint to the world; the rest hangs from it
+ *                       ("lock_rotation": a weld; "follow_clip": the weld goes where a clip has the pelvis)
  *   "console"           runs a console command, as typed in a running session
  *   "edit_tuning_file"  writes new values into the run's own copy of the tuning files, as an editor would
  *   "effector"          starts a trajectory of one of the player's hands: its target moves along the keys
  *   "foot_target"       asks the body's target pose to put a foot at a point: offset_cm from where the foot
  *                       is when the event fires, with weight 0 to 1 (0 lets the foot go back to the pose)
+ *   "step"              asks the body for a step with one foot, to offset_cm from where the foot is
+ *   "clip_pose"         asks the body's muscles for the pose a recorded clip has at time_s, and holds it; with a
+ *                       rate the clip's time runs on from there; "release": true lets the pose go again
  */
 struct FScenarioEvent
 {
@@ -34,9 +38,20 @@ struct FScenarioEvent
 	TArray<FSandboxPathKey> Path;
 	/** "pin": also hold the body's orientation, not only its position (a weld instead of a ball joint). */
 	bool bLockRotation = false;
+	/**
+	 * "pin": the pin carries the body to where the clip whose pose is asked for ("clip_pose") has the pelvis, raised by
+	 * RaiseCm: the body is seen lying, kneeling and standing as the clip has it, above the floor or on it.
+	 */
+	bool bFollowClip = false;
+	double RaiseCm = 0.0;
 	/** "foot_target": where to, from the foot's position when the event fires, cm; and how strongly. */
 	FVector OffsetCm = FVector::ZeroVector;
 	double Weight = 0.0;
+	/** "clip_pose": the animation sequence's path, the time in it, how fast that time runs on (0 holds), or letting go. */
+	FString Clip;
+	double ClipTimeS = 0.0;
+	double ClipRate = 0.0;
+	bool bRelease = false;
 };
 
 /** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
@@ -70,7 +85,7 @@ struct FScenarioExpect
 	TOptional<double> TuningChanges;
 	/** Furthest any joint may be found outside its limits, in degrees. */
 	TOptional<double> MaxJointLimitViolationDeg;
-	/** State the body must be in at the end: "standing", "flinch", "stagger", "falling" or "lying". Active control only. */
+	/** State the body must be in at the end: "standing", "flinch", "stagger", "falling", "lying" or "get_up". Active control only. */
 	TOptional<FString> EndState;
 	/** Every state the body must go through, in order: "standing>flinch>standing". Active control only. */
 	TOptional<FString> StateSequence;
@@ -117,6 +132,10 @@ struct FScenarioExpect
 	TOptional<double> MaxStanceErrorCm;
 	/** The body went into Flinch at most this many times. Active control only. */
 	TOptional<double> MaxFlinches;
+	/** The body got up at least this many times (control.get_up.successes). Active control only. */
+	TOptional<double> MinGetUps;
+	/** The body began to get up at most this many times (control.get_up.attempts). Active control only. */
+	TOptional<double> MaxGetUpAttempts;
 	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */
 	TOptional<double> MinPelvisAnchorShiftCm;
 	/** The body leaned into a held push at least this far at some point (control.balance.lean_max_cm). cm. */
@@ -156,6 +175,11 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	/** False keeps the body kinematic in its reference pose: for portraits and rendering-cost scenes. */
 	bool bSimulate = true;
 	EScenarioBodyControl Control = EScenarioBodyControl::Passive;
+	/**
+	 * Whether a body that lies gets up by itself ("body.get_up"). Off unless a scenario asks for it: a scenario about
+	 * a fall is about the fall, and its body stays where it came to rest. (In a session the body gets up.)
+	 */
+	bool bGetUp = false;
 
 	/** Start-up transient: "settled" metrics and expectations only look at the run after this time. */
 	double SettleS = 2.0;

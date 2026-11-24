@@ -125,6 +125,51 @@ double FSandboxPoseRig::LimitExcessDeg(const FQuat& ParentBone, const FQuat& Chi
 		Excess(Limits.bSwing2Free, Swing2Rad, Limits.Swing2Deg)));
 }
 
+FQuat FSandboxPoseRig::ClampToRange(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits)
+{
+	if (!Limits.bValid)
+	{
+		return ChildBone;
+	}
+	// The same three angles as LimitExcessDeg measures.
+	const FQuat Parent = ParentBone * Limits.ParentFrame;
+	const FQuat Relative = (Parent.Inverse() * (ChildBone * Limits.ChildFrame)).GetNormalized();
+	FQuat Swing, Twist;
+	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
+	if (Swing.W < 0.0)
+	{
+		Swing = FQuat(-Swing.X, -Swing.Y, -Swing.Z, -Swing.W);
+	}
+	double TwistRad = Twist.GetTwistAngle(FVector::XAxisVector);
+	double Swing1Rad = 4.0 * FMath::Atan2(Swing.Z, 1.0 + Swing.W);
+	double Swing2Rad = 4.0 * FMath::Atan2(Swing.Y, 1.0 + Swing.W);
+	bool bClamped = false;
+	const auto Hold = [&bClamped](bool bFree, double& AngleRad, double LimitDeg)
+	{
+		const double Limit = FMath::DegreesToRadians(LimitDeg);
+		if (!bFree && FMath::Abs(AngleRad) > Limit)
+		{
+			AngleRad = FMath::Sign(AngleRad) * Limit;
+			bClamped = true;
+		}
+	};
+	Hold(Limits.bTwistFree, TwistRad, Limits.TwistDeg);
+	Hold(Limits.bSwing1Free, Swing1Rad, Limits.Swing1Deg);
+	Hold(Limits.bSwing2Free, Swing2Rad, Limits.Swing2Deg);
+	if (!bClamped)
+	{
+		return ChildBone;
+	}
+	// The swing with those two angles: z = a (1 + w) and y = b (1 + w) with a and b the tangents of a quarter of
+	// each, and a unit quaternion with no x.
+	const double A = FMath::Tan(Swing1Rad * 0.25);
+	const double B = FMath::Tan(Swing2Rad * 0.25);
+	const double K = A * A + B * B;
+	const FQuat NewSwing(0.0, 2.0 * B / (1.0 + K), 2.0 * A / (1.0 + K), (1.0 - K) / (1.0 + K));
+	const FQuat NewRelative = NewSwing * FQuat(FVector::XAxisVector, TwistRad);
+	return ((Parent * NewRelative) * Limits.ChildFrame.Inverse()).GetNormalized();
+}
+
 FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits)
 {
 	if (!Limits.bValid)

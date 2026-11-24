@@ -72,6 +72,25 @@ namespace
 				}
 				OutEvent.bLockRotation = Lock->AsBool();
 			}
+			if (const TSharedPtr<FJsonValue> Follow = Json->TryGetField(TEXT("follow_clip")))
+			{
+				if (Follow->Type != EJson::Boolean)
+				{
+					OutError = FString::Printf(TEXT("events[%d].follow_clip must be true or false"), Index);
+					return false;
+				}
+				OutEvent.bFollowClip = Follow->AsBool();
+				if (OutEvent.bFollowClip && !OutEvent.bLockRotation)
+				{
+					OutError = FString::Printf(TEXT("events[%d].follow_clip needs lock_rotation: a clip gives the pelvis an orientation too"), Index);
+					return false;
+				}
+			}
+			if (Json->HasField(TEXT("raise_cm")) && !Json->TryGetNumberField(TEXT("raise_cm"), OutEvent.RaiseCm))
+			{
+				OutError = FString::Printf(TEXT("events[%d].raise_cm must be a number"), Index);
+				return false;
+			}
 			return true;
 		}
 
@@ -109,6 +128,40 @@ namespace
 			if (!Json->TryGetNumberField(TEXT("weight"), OutEvent.Weight) || OutEvent.Weight < 0.0 || OutEvent.Weight > 1.0)
 			{
 				OutError = FString::Printf(TEXT("events[%d].weight must be a number from 0 to 1"), Index);
+				return false;
+			}
+			return true;
+		}
+
+		if (OutEvent.Type == TEXT("clip_pose"))
+		{
+			if (const TSharedPtr<FJsonValue> Release = Json->TryGetField(TEXT("release")))
+			{
+				// Checked by type: the JSON reader would take a number for a boolean.
+				if (Release->Type != EJson::Boolean)
+				{
+					OutError = FString::Printf(TEXT("events[%d].release must be true or false"), Index);
+					return false;
+				}
+				OutEvent.bRelease = Release->AsBool();
+			}
+			if (OutEvent.bRelease)
+			{
+				return true;
+			}
+			if (!Json->TryGetStringField(TEXT("clip"), OutEvent.Clip) || OutEvent.Clip.TrimStartAndEnd().IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("events[%d].clip must be the path of an animation sequence"), Index);
+				return false;
+			}
+			if (!Json->TryGetNumberField(TEXT("time_s"), OutEvent.ClipTimeS) || OutEvent.ClipTimeS < 0.0)
+			{
+				OutError = FString::Printf(TEXT("events[%d].time_s must be a number >= 0"), Index);
+				return false;
+			}
+			if (Json->HasField(TEXT("rate")) && (!Json->TryGetNumberField(TEXT("rate"), OutEvent.ClipRate) || OutEvent.ClipRate < 0.0))
+			{
+				OutError = FString::Printf(TEXT("events[%d].rate must be a number >= 0"), Index);
 				return false;
 			}
 			return true;
@@ -289,6 +342,16 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 		return false;
 	}
 
+	if (const TSharedPtr<FJsonValue> GetUp = (*Body)->TryGetField(TEXT("get_up")))
+	{
+		if (GetUp->Type != EJson::Boolean)
+		{
+			OutError = TEXT("'body.get_up' must be true or false");
+			return false;
+		}
+		OutSpec.bGetUp = GetUp->AsBool();
+	}
+
 	if ((*Body)->HasField(TEXT("control")))
 	{
 		FString Control;
@@ -387,6 +450,8 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_recovery_steps"), &OutSpec.Expect.MaxRecoverySteps },
 			{ TEXT("max_stance_error_cm"), &OutSpec.Expect.MaxStanceErrorCm },
 			{ TEXT("max_flinches"), &OutSpec.Expect.MaxFlinches },
+			{ TEXT("min_get_ups"), &OutSpec.Expect.MinGetUps },
+			{ TEXT("max_get_up_attempts"), &OutSpec.Expect.MaxGetUpAttempts },
 			{ TEXT("min_pelvis_anchor_shift_cm"), &OutSpec.Expect.MinPelvisAnchorShiftCm },
 			{ TEXT("min_lean_cm"), &OutSpec.Expect.MinLeanCm } };
 
@@ -419,11 +484,12 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 				bool bValid = Names.Num() > 0 && (Entry.Key == TEXT("state_sequence") || Names.Num() == 1);
 				for (const FString& Name : Names)
 				{
-					bValid &= Name == TEXT("standing") || Name == TEXT("flinch") || Name == TEXT("stagger") || Name == TEXT("falling") || Name == TEXT("lying");
+					bValid &= Name == TEXT("standing") || Name == TEXT("flinch") || Name == TEXT("stagger") || Name == TEXT("falling") || Name == TEXT("lying") ||
+						Name == TEXT("get_up");
 				}
 				if (!bValid)
 				{
-					OutError = FString::Printf(TEXT("'expect.%s' must be %s of standing, flinch, stagger, falling, lying"), *Entry.Key,
+					OutError = FString::Printf(TEXT("'expect.%s' must be %s of standing, flinch, stagger, falling, lying, get_up"), *Entry.Key,
 						Entry.Key == TEXT("end_state") ? TEXT("one") : TEXT("a '>'-separated list"));
 					return false;
 				}

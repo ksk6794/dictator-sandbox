@@ -78,8 +78,15 @@ private:
 		FName Body;
 		FVector WorldLocation = FVector::ZeroVector;
 		TUniquePtr<FConstraintInstance> Constraint;
+		/** "follow_clip": where the body was pinned, and the mesh's own space then, which the clip's root is taken to be. */
+		bool bFollowClip = false;
+		double RaiseCm = 0.0;
+		FTransform Start = FTransform::Identity;
+		FTransform Space = FTransform::Identity;
 	};
 	TArray<FPin> Pins;
+	/** Moves the pins that follow a clip to where the clip has the pelvis now. */
+	void MovePins();
 
 	/** An impulse event with a duration: one equal share of it is applied on each of the frames left. */
 	struct FPush
@@ -269,6 +276,11 @@ private:
 	int32 FirstStepNeededFrame = -1;
 	/** Frames the body spent staggering, and the assist's force share over them (mean is the sum over the frames). */
 	int32 StaggerFrames = 0;
+	// What the assist does while the body gets up: its commanded force over body weight and its torque share.
+	int32 GetUpFrames = 0;
+	double GetUpAssistShareSum = 0.0;
+	double GetUpAssistShareMax = 0.0;
+	double GetUpTorqueShareMax = 0.0;
 	double StaggerAssistShareSum = 0.0;
 	double StaggerAssistShareMax = 0.0;
 	/** The same for the assist's torque (over weight times centre-of-mass height): in Stagger it holds the pelvis upright. */

@@ -43,6 +43,7 @@ The file name must equal the `name` field (a unit test checks this).
 | `body.rotation_deg` | no | `[pitch, yaw, roll]` |
 | `body.attached_meshes` | no | Extra skeletal meshes that follow the body's pose and have no collision (a MetaHuman face) |
 | `body.simulate` | no, default `true` | `false` keeps the body kinematic in its reference pose, for portraits and rendering-cost scenes |
+| `body.get_up` | no, default `false` | Whether a body that lies gets up by itself (`getup.*`). Off unless asked for: a scenario about a fall is about the fall, and its body stays where it came to rest, so that rest time and energy are those of the fall. In a session the body gets up |
 | `body.control` | no, default `"passive"` | `"passive"` is a plain ragdoll. `"active"` adds muscles and balance assist, tuned by the files in `Config/Tuning`: the character holds the pose it is spawned in. Spawn it with the feet on the floor (`location_cm` z = 0) |
 | `settle_s` | no, default 2 | Start-up time left out of the "settled" metrics and expectations |
 | `camera` | no | `{ "location_cm": [x, y, z], "look_at_cm": [x, y, z] }` for rendered runs. Without it the runner frames the body |
@@ -59,7 +60,20 @@ Event types. Unknown types are a parse error.
 - `pin` fixes the body on bone `body` at its current world position with a ball joint; the rest of the
   character hangs from it. `metrics.max_pin_error_cm` reports how far the body strayed from the pin point.
   With `"lock_rotation": true` the body's orientation is held as well (a weld): `pose_foot_place` holds
-  the pelvis that way, so that a leg can be placed without the body having to balance.
+  the pelvis that way, so that a leg can be placed without the body having to balance. With `"follow_clip":
+  true` as well, the weld goes to where the clip whose pose is asked for (`clip_pose`) has the pelvis, raised
+  by `raise_cm`: the body is laid down, turned and stood up as the clip has it, clear of the floor or on it.
+  The mesh's own space at the time of the pin is taken for the clip's root, so pin at `t` 0. This is a rig for
+  looking at a clip (`Tools\clip-film.ps1 -Carry`), not a way to move a body: a weld gives way to nothing, and
+  a body carried through a get-up on the floor is pressed up to 10 cm into it.
+- `clip_pose` asks the body's muscles for the pose a recorded clip has at `time_s` (`clip`, the path of an
+  animation sequence) and holds it; the target goes over within `poses.blend_s`, from the body's own pose or
+  from the clip pose asked for before. With `"rate": 1` the clip's time then runs on as recorded, up to the
+  clip's end. `"release": true` (and nothing else) lets the pose go again. The clip may be made for another
+  skeleton with the same bone names (`FSandboxClipPose`). While a clip's pose is asked for the body leaves
+  its balance alone: no step, no fall by its posture, no idle. Hold the body (`pin`) or expect it to go
+  over. `control.clip_pose` is the clip and time at the end, `control.clips` every clip read. Active control
+  only.
 - `foot_target` asks the body's target pose to put a foot (`body`, the foot's bone) at a point: `offset_cm`
   from where the foot is when the event fires, with `weight` from 0 to 1. The thigh and the calf turn
   (two-bone placement) and the foot keeps the orientation the pose gives it; the weight eases in over
@@ -199,6 +213,8 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_assist_force_share_mean` | The balance assist's commanded force over body weight, averaged over the settled frames, stayed at most this (`control.assist_load.force_share_mean`). The standing scenarios hold it to 0.0093, the owner's M3 bound. Active control only |
 | `max_steps` | At most this many steps while upright (`control.step_count`). Active control only |
 | `max_flinches` | The body went into Flinch at most this many times (a held push: once, as the hand lands). Active control only |
+| `min_get_ups` | The body got up at least this many times (`control.get_up.successes`). Active control only, with `"get_up": true` |
+| `max_get_up_attempts` | The body began to get up at most this many times (`control.get_up.attempts`): 1 for a get-up that a push must not end |
 | `min_pelvis_anchor_shift_cm` | The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the feet (`control.assist_targets`). Active control only |
 | `min_lean_cm` | The body leaned into a held push at least this far at some time (`control.balance.lean_max_cm`). Active control only |
 
@@ -321,6 +337,25 @@ muscles hold them while the body stands: the mean over driven muscles of target-
 averaged (`error_mean_deg`, 1.08 standing) and at its largest (`error_mean_max_deg`), and the single worst
 muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's weight, about 5 degrees).
 
+**Get-ups** (`control.get_up`, in a run with `"get_up": true`): how many times the body began to get up and how many
+ended standing (`attempts`, `successes`); the last attempt's clip, when it began and how long it took to stand
+(`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`), and why the
+last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`); and what the assist
+did over all the time spent getting up (`seconds`): its commanded force over body weight, mean and largest
+(`assist_force_share_mean` 0.44 to 0.49, `assist_force_share_max` 0.63 to 0.77), and its largest torque share. The
+run's log has a line four times a second while the body gets up: the clip's time, how far the pelvis and the feet
+are from where the clip has them, and what the floor carries of each foot.
+
+**Clips** (`control.clips`, one entry for each clip a `clip_pose` event read): its length and keys, where it
+has the pelvis at its start and end (`pelvis_start_cm`, `pelvis_end_cm`: in the space of the clip's root,
+scaled to this body), and for every joint how the clip fits the body. `reference_turn_deg` is the angle between
+the bone's orientation in the reference pose of the clip's skeleton and of the body's mesh, and
+`reference_direction_deg` the angle between the ways the two hold that segment of an arm or a leg (10 to 18 and
+3 to 13 degrees for the sample's mannequin against the MetaHuman body: why a clip's rotations are not copied).
+`limit_excess_deg` is the furthest the clip asks the joint beyond its range, with the time and the joint's
+angles then (`limit_angles_deg`: twist, swing1, swing2, against `limit_ranges_deg`); the muscle is asked for
+the end of the range instead. `limit_excess_max_deg` and `limit_excess_joint` name the worst joint of the clip.
+
 `body.bodies` lists every body's mass and its principal moments of inertia (`inertia_kg_cm2`) as the solver
 uses them: from the mass and the shapes, times the physics asset's inertia scale.
 
@@ -429,6 +464,11 @@ To look at a motion rather than at its numbers, `Tools\film.ps1 -Name hit_chest_
 `-Events <file>` for other events, `-Tune`, `-Overlay`). A body that passes every check can still move like a
 statue: the arms held out, a fall like a plank and a body frozen in a lunge all passed the suite.
 ## Push matrix
+
+To look at what a recorded clip asks of the body, `Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes
+"0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60`: the body hangs by its welded pelvis, is asked for the clip's pose
+at each time in turn, and a picture is taken of each (`-Carry` turns and moves the pelvis as the clip does;
+without it the pelvis stays upright).
 
 `Tools\push-matrix.ps1` pushes the standing NPC with every combination of impulse (10, 30, 80, 200 N*s),
 body (head, chest, pelvis, both thighs) and direction (8), 160 runs, eight engine processes that take the

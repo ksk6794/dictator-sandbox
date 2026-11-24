@@ -8,7 +8,7 @@ are built and its six criteria are met; the owner's hand check of the desktop se
 not hold up M3** (the deferred list is at the end of the M2 section of `docs/PRD.md`).
 The NPC stands under full simulation for 10 minutes (muscles and balance assist through Physics Control);
 every tuning value lives in `Config/Tuning`, is hot-reloaded and can be overridden from the console and
-the command line; the body has the states Standing, Flinch, Falling and Lying, joint limits from anatomy
+the command line; the body has the states Standing, Flinch, Stagger, Falling, Lying and GetUp, joint limits from anatomy
 that mirror left to right, and passes the push matrix; the player has physical hands (effectors: bodies
 with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
 test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
@@ -43,7 +43,16 @@ body carries the motion of the engine's `MM_Idle` on top of its stance (breathin
 directions pass (`Tools\knockdowns.ps1`), the muscles have torque caps from published strength figures, they
 let go after the body meets the floor, joint limits are written in the spec, and continuous collision detection
 stays off by measurement; whether the poses of Epic's Game Animation Sample are better than these is looked at
-once the owner has downloaded it. Next is part 6, the get-up.
+once the owner has downloaded it (done: its get-up clips are taken, its logic is not). **Part 6, the get-up, is in
+progress: step 1 of 3 is done.** A recorded clip is a source of the target pose (`FSandboxClipPose`: the four
+get-ups of Epic's Game Animation Sample, made for another skeleton, carried over to the body's 17 joints;
+`USandboxBodyController::SetClipPose`, scenario event `clip_pose`, `Tools\clip-film.ps1`). **Step 2 is done:** the
+state GetUp. A body that has lain still for `getup.rest_s` takes the clip whose pelvis lies most like its own and
+gets up by it under full simulation: the muscles are asked for the clip's pose, the clip's time waits for the body,
+the assist pulls the pelvis and the feet toward where the clip has them with capped forces, and the clip is laid
+over the feet the body really stands on. It gets up from all four sides in 4.0 to 5.2 s; a 30 N*s push does not
+stop it, a 200 N*s blow fells it and it tries again, and two hands that hold it down are waited out (scenarios
+`getup_*`). A scenario's body gets up only with `"get_up": true`. Next is step 3, the stand of 50 falls.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -65,6 +74,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight engine processes take the scenarios from one queue; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Long` adds the scenarios over 60 s, `stand_npc_10min`; `-Parallel 1` for physics step times nothing disturbed) |
 | A motion as a sheet of pictures over time | `powershell -ExecutionPolicy Bypass -File Tools\film.ps1 -Name hit_chest_200_falls -Times "3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0"` (`-Camera side\|front\|back\|quarter`, `-Events <file>`, `-Tune`; `Saved\Films\<name>\sheet.png`) |
+| What a recorded clip asks of the body, as a sheet of pictures | `powershell -ExecutionPolicy Bypass -File Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60` (the body hangs by its welded pelvis and is asked for the clip's pose at each time; `-Carry` moves the pelvis as the clip does; several clips separated by commas; `Saved\Films\clip_<name>\sheet.png`) |
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
@@ -97,7 +107,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
@@ -474,6 +484,43 @@ touch must not be in that list, and the ones that are get explained in the part'
   read "its" file. About one job in a thousand was run by nobody. A job is taken by writing a marker while a
   lock file is held open for writing (`UScenarioBatchSubsystem::TakeJob`), and a job without a result now prints
   `QUEUE WARNING` and keeps the processes' logs under `Saved\Queue`.
+- **A clip steps a foot that the body is standing on.** A recording brings a foot forward while its weight is on
+  the hands or the other leg; the simulated body's weight is where its own feet, hands and friction put it. With
+  the clip's time waiting only for the pelvis, the body stood up leaning like a plank from a foot 45 cm behind where
+  the clip had it; made to wait for the feet too, it waited for good, at 16 cm, for a foot that carried 525 N. A
+  foot the body stands on is where it is: the clip's root follows the loaded feet (`getup.frame_follow_s`), and the
+  clip waits only for a foot that is off the floor.
+- **The assist of a get-up takes back a blow unless it is capped and the body may be lost.** With 500 N on the
+  pelvis and `getup.lost_cm` at 45, a 200 N*s blow moved the body 40 cm and the assist had it back in half a second
+  with 1.2 times its weight. Capped at 250 N (feet 50 N) and lost at 30 cm, the same blow fells it. Sweep the caps
+  down to what the body still gets up with; the share is in `control.get_up`.
+- **A scenario about a fall must keep its body down.** With the get-up on for every body, the fall scenarios and
+  the knockdowns would measure "at rest for good" at the end of a get-up. A scenario's body gets up only when its
+  file says `"get_up": true`; the session's does by default.
+- **A clip made for another skeleton cannot be copied bone by bone, even with the same bone names.** The sample's
+  mannequin and the MetaHuman body differ in their reference poses by 4 to 21 degrees a bone, partly in how the
+  axes lie and partly in how the limbs are held (upper arm 11.6, forearm 12.8, thigh 4.0 degrees apart in
+  direction). `FSandboxClipPose` carries over what each bone has turned from its own reference pose, in the space
+  of the whole body, and aligns the segments of arms and legs; a run's `control.clips` has the figures.
+- **A recorded get-up asks joints for more than the body's have.** Over the sample's four get-ups: the wrist 73
+  degrees beyond its range, the foot 48, the shoulder's twist 43, the hip 29. Asked as recorded, the muscles
+  pushed into the limits and the mean pose error was 7 to 12 degrees; with every target held to its joint's range
+  (`FSandboxPoseRig::ClampToRange`) it is 3. The wrist is a defect of the model, not of the clip: the forearm's
+  turn is in the wrist's twist, the two swings are limited in the forearm's frame, so a hand turned palm down has
+  its bending back limited by the 25 degrees meant for the sideways bend.
+- **A body whose pose is held from outside must not judge itself.** Carried through a get-up by its pelvis for a
+  film, it took itself for fallen as soon as the pelvis was laid down, went limp in the Lying state's muscles,
+  and the film showed a standing body with its head and trunk hanging. Nothing failed: a film drops the
+  scenario's expectations. While a clip's pose is asked for (`SetClipPose`) the controller decides nothing about
+  balance; look at the state log of a run made for looking.
+- **A weld gives way to nothing.** A body carried by its pelvis through a get-up on the floor (`pin` with
+  `follow_clip`, `raise_cm` 0) is pressed 10 cm into the floor and its joints stretch by 6 cm: its limbs are in
+  the way and the weld does not care. And the first move, from standing to lying within `poses.blend_s`, swings
+  the legs through the floor even at 60 cm (joints at 160 rad/s for a moment). The rig is for looking at poses in
+  the air.
+- **The sample's clips log load errors that are not failures.** Each names anim notifies of the sample that were
+  not copied (`BP_AnimNotify_FoleyEvent_*`); the keys load. An automation test must not load one: it fails on any
+  logged error.
 - **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated
   code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

@@ -10,6 +10,7 @@
 #   ... -Overlay all                         debug overlays in the pictures
 #   ... -CropW 0.6 -Cols 6 -TileH 400        share of each picture's width kept, pictures per row, height of one
 #   ... -Tag <name>                          output name (default: the scenario's)
+#   ... -Labels "0.0,0.5,1.0"                what to write on the pictures instead of their times, one for each
 # Writes Saved\Films\<tag>\sheet.png next to the run's own results. The scenario's expectations are dropped:
 # this is for looking, the suite does the judging. Exit code: 0 a sheet was written, 1 not.
 param(
@@ -23,7 +24,8 @@ param(
     [string]$Overlay,
     [double]$CropW = 0.6,
     [int]$Cols = 6,
-    [int]$TileH = 400
+    [int]$TileH = 400,
+    [string]$Labels
 )
 . "$PSScriptRoot\common.ps1"
 
@@ -67,9 +69,15 @@ $runOutput | Select-Object -First 1
 
 Add-Type -AssemblyName System.Drawing
 $tiles = @()
-foreach ($time in @($Times.Split(',') | ForEach-Object { [double]$_ })) {
+$shotList = @($Times.Split(',') | ForEach-Object { [double]$_ })
+$labelList = @()
+if ($Labels) { $labelList = @($Labels.Split(',')) }
+for ($shotIndex = 0; $shotIndex -lt $shotList.Count; $shotIndex++) {
+    $time = $shotList[$shotIndex]
     $picture = Join-Path $outDir ('shot_{0:F3}.png' -f $time)
-    if (Test-Path $picture) { $tiles += [pscustomobject]@{ T = $time; Path = $picture } }
+    $caption = '{0:F2}' -f $time
+    if ($shotIndex -lt $labelList.Count) { $caption = $labelList[$shotIndex].Trim() }
+    if (Test-Path $picture) { $tiles += [pscustomobject]@{ T = $time; Path = $picture; Caption = $caption } }
 }
 if ($tiles.Count -eq 0) {
     Write-Output "FILM ERROR: the run saved no pictures (see $outDir)"
@@ -92,8 +100,8 @@ for ($index = 0; $index -lt $tiles.Count; $index++) {
     $x = ($index % $Cols) * $tileW
     $y = [int][math]::Floor($index / $Cols) * $TileH
     $canvas.DrawImage($picture, (New-Object System.Drawing.Rectangle $x, $y, $tileW, $TileH), $from, [System.Drawing.GraphicsUnit]::Pixel)
-    $canvas.FillRectangle([System.Drawing.Brushes]::Black, $x, $y, 62, 20)
-    $canvas.DrawString(('{0:F2}' -f $tiles[$index].T), $font, [System.Drawing.Brushes]::Yellow, $x + 2, $y + 1)
+    $canvas.FillRectangle([System.Drawing.Brushes]::Black, $x, $y, [int]($canvas.MeasureString($tiles[$index].Caption, $font).Width) + 4, 20)
+    $canvas.DrawString($tiles[$index].Caption, $font, [System.Drawing.Brushes]::Yellow, $x + 2, $y + 1)
     $picture.Dispose()
 }
 $canvas.Dispose()

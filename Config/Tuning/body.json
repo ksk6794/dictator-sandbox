@@ -13,10 +13,10 @@
     "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0 }
   },
   "assist": {
-    "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0 },
-    "chest": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0 },
-    "head": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 10, "damping_s": 0.2, "max_torque_nm": 0 },
-    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2, "max_torque_nm": 0 }
+    "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
+    "chest": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
+    "head": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 10, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
+    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 }
   },
   "solver": {
     "position_iterations": 64,
@@ -103,6 +103,22 @@
     "pressure_s": 0.1,
     "held_push_s": 0.3
   },
+  "getup": {
+    "rest_s": 1.5,
+    "ease_s": 0.6,
+    "rate": 1.0,
+    "end_s": 2.6,
+    "lag_cm": 12,
+    "foot_lag_cm": 15,
+    "frame_follow_s": 0.3,
+    "stall_s": 3.0,
+    "lost_cm": 30,
+    "upright_deg": 15,
+    "clip_back": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_B.M_ragdoll_getup_stand_B",
+    "clip_front": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_F.M_ragdoll_getup_stand_F",
+    "clip_left": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_L.M_ragdoll_getup_stand_L",
+    "clip_right": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_R.M_ragdoll_getup_stand_R"
+  },
   "states": {
     "flinch": {
       "assist": {
@@ -128,6 +144,17 @@
         "chest": { "angular_nm_per_rad": 0 },
         "head": { "angular_nm_per_rad": 0 },
         "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
+      }
+    },
+    "get_up": {
+      "muscles": {
+        "arms": { "stiffness_nm_per_rad": 200, "damping_s": 0.1 }
+      },
+      "assist": {
+        "pelvis": { "horizontal_n_per_m": 3000, "vertical_n_per_m": 6000, "angular_nm_per_rad": 600, "max_torque_nm": 200, "max_force_n": 250 },
+        "chest": { "angular_nm_per_rad": 0 },
+        "head": { "angular_nm_per_rad": 0 },
+        "feet": { "horizontal_n_per_m": 2000, "vertical_n_per_m": 2000, "angular_nm_per_rad": 0, "max_force_n": 50 }
       }
     },
     "lying": {

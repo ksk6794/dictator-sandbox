@@ -42,6 +42,7 @@ namespace
 			Visitor(FString::Printf(TEXT("assist.%s.angular_nm_per_rad"), Group), Values.AngularNmPerRad);
 			Visitor(FString::Printf(TEXT("assist.%s.damping_s"), Group), Values.DampingS);
 			Visitor(FString::Printf(TEXT("assist.%s.max_torque_nm"), Group), Values.MaxTorqueNm);
+			Visitor(FString::Printf(TEXT("assist.%s.max_force_n"), Group), Values.MaxForceN);
 		};
 		Muscle(TEXT("spine"), Tuning.Spine);
 		Muscle(TEXT("neck"), Tuning.Neck);
@@ -149,9 +150,29 @@ namespace
 		Pose(TEXT("balance_side"), Tuning.Poses.BalanceSide);
 		Visitor(FString(TEXT("poses.idle.weight")), Tuning.Poses.IdleWeight);
 		Visitor(FString(TEXT("poses.idle.sway_weight")), Tuning.Poses.IdleSwayWeight);
+		Visitor(FString(TEXT("getup.rest_s")), Tuning.GetUp.RestS);
+		Visitor(FString(TEXT("getup.ease_s")), Tuning.GetUp.EaseS);
+		Visitor(FString(TEXT("getup.rate")), Tuning.GetUp.Rate);
+		Visitor(FString(TEXT("getup.end_s")), Tuning.GetUp.EndS);
+		Visitor(FString(TEXT("getup.lag_cm")), Tuning.GetUp.LagCm);
+		Visitor(FString(TEXT("getup.foot_lag_cm")), Tuning.GetUp.FootLagCm);
+		Visitor(FString(TEXT("getup.frame_follow_s")), Tuning.GetUp.FrameFollowS);
+		Visitor(FString(TEXT("getup.stall_s")), Tuning.GetUp.StallS);
+		Visitor(FString(TEXT("getup.lost_cm")), Tuning.GetUp.LostCm);
+		Visitor(FString(TEXT("getup.upright_deg")), Tuning.GetUp.UprightDeg);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
+
+	/** Calls Visitor(name, text) for every clip of the get-up. */
+	template <typename TuningType, typename VisitorType>
+	void VisitClips(TuningType& GetUp, VisitorType&& Visitor)
+	{
+		Visitor(TEXT("getup.clip_back"), GetUp.ClipBack);
+		Visitor(TEXT("getup.clip_front"), GetUp.ClipFront);
+		Visitor(TEXT("getup.clip_left"), GetUp.ClipLeft);
+		Visitor(TEXT("getup.clip_right"), GetUp.ClipRight);
+	}
 }
 
 FSandboxPose FSandboxPoseTuning::Mirrored(const FSandboxPose& Pose)
@@ -234,6 +255,7 @@ void FSandboxBodyTuning::DeclareParams(FSandboxParamStore& Params)
 	VisitValues(Names, [&Params](const FString& Key, double&) { Params.DeclareNumber(Key); });
 	VisitRig(Names.Rig, [&Params](const TCHAR* Key, FName&) { Params.DeclareString(Key); });
 	Params.DeclareString(IdleAnimationKey);
+	VisitClips(Names.GetUp, [&Params](const TCHAR* Key, FString&) { Params.DeclareString(Key); });
 	for (const TCHAR* State : StateNames)
 	{
 		Params.DeclareState(State);
@@ -288,6 +310,13 @@ bool FSandboxBodyTuning::FromParams(const FSandboxParamStore& Params, const FStr
 	{
 		Missing = IdleAnimationKey;
 	}
+	VisitClips(OutTuning.GetUp, [&](const TCHAR* Key, FString& Path)
+	{
+		if (!Params.FindString(Key, Path) && Missing.IsEmpty())
+		{
+			Missing = Key;
+		}
+	});
 	if (!Missing.IsEmpty())
 	{
 		OutError = FString::Printf(TEXT("'%s' is missing from the tuning files"), *Missing);
@@ -338,10 +367,24 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 			!CheckRange(Entry.Value->VerticalNPerM, MaxLinearStiffness, Entry.Key, TEXT("vertical_n_per_m"), OutError) ||
 			!CheckRange(Entry.Value->AngularNmPerRad, MaxAngularStiffness, Entry.Key, TEXT("angular_nm_per_rad"), OutError) ||
 			!CheckRange(Entry.Value->DampingS, MaxDampingS, Entry.Key, TEXT("damping_s"), OutError) ||
-			!CheckRange(Entry.Value->MaxTorqueNm, MaxTorque, Entry.Key, TEXT("max_torque_nm"), OutError))
+			!CheckRange(Entry.Value->MaxTorqueNm, MaxTorque, Entry.Key, TEXT("max_torque_nm"), OutError) ||
+			!CheckRange(Entry.Value->MaxForceN, 100000.0, Entry.Key, TEXT("max_force_n"), OutError))
 		{
 			return false;
 		}
+	}
+	if (!CheckRange(GetUp.RestS, 600.0, TEXT("getup"), TEXT("rest_s"), OutError) ||
+		!CheckRange(GetUp.EaseS, 10.0, TEXT("getup"), TEXT("ease_s"), OutError) ||
+		!CheckRange(GetUp.Rate, 4.0, TEXT("getup"), TEXT("rate"), OutError) ||
+		!CheckRange(GetUp.EndS, 60.0, TEXT("getup"), TEXT("end_s"), OutError) ||
+		!CheckRange(GetUp.LagCm, 500.0, TEXT("getup"), TEXT("lag_cm"), OutError) ||
+		!CheckRange(GetUp.FootLagCm, 500.0, TEXT("getup"), TEXT("foot_lag_cm"), OutError) ||
+		!CheckRange(GetUp.FrameFollowS, 60.0, TEXT("getup"), TEXT("frame_follow_s"), OutError) ||
+		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
+		!CheckRange(GetUp.LostCm, 1000.0, TEXT("getup"), TEXT("lost_cm"), OutError) ||
+		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError))
+	{
+		return false;
 	}
 
 	// Iteration counts are whole numbers that fit the engine's per-body setting (one byte).
@@ -540,6 +583,7 @@ const TCHAR* FSandboxBodyTuning::StateName(ESandboxBodyState State)
 	case ESandboxBodyState::Stagger: return TEXT("stagger");
 	case ESandboxBodyState::Falling: return TEXT("falling");
 	case ESandboxBodyState::Lying: return TEXT("lying");
+	case ESandboxBodyState::GetUp: return TEXT("get_up");
 	default: return TEXT("standing");
 	}
 }

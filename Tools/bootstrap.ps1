@@ -1,12 +1,14 @@
-# Takes a clean clone to a verified build: stock content, compile, asset generation, lighting bake, unit tests,
+# Takes a clean clone to a verified build: stock content, the clips of Epic's Game Animation Sample, compile, asset generation, lighting bake, unit tests,
 # scenario suite, push matrix, knockdowns, self-test of the interactive session.
 #   powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1
-# Needs: Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
+# Needs: Epic's Game Animation Sample as a project of its own (a manual download; Tools\fetch-sample-anims.ps1 says
+# where it is looked for), Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
 # Windows SDK 10.0.22621. Stops at the first failing step. Writes Saved\Tools\bootstrap.json.
 . "$PSScriptRoot\common.ps1"
 
 $steps = @(
     @{ name = 'fetch-stock-content'; script = 'fetch-stock-content.ps1' },
+    @{ name = 'fetch-sample-anims';  script = 'fetch-sample-anims.ps1' },
     @{ name = 'build';               script = 'build.ps1' },
     @{ name = 'gen-assets';          script = 'gen-assets.ps1' },
     @{ name = 'bake-lighting';       script = 'bake-lighting.ps1' },

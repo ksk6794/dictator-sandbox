@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyTuning.h"
+#include "SandboxClipPose.h"
 #include "SandboxIdleMotion.h"
 #include "SandboxPoseRig.h"
 #include "SandboxAnimInstance.h"
@@ -146,6 +147,23 @@ struct FSandboxStepRecord
 	bool bRegroup = false;
 };
 
+/** The body's get-ups so far, for result files. Seconds since Start. */
+struct FSandboxGetUpView
+{
+	/** How many times the body began to get up, and how many of those ended standing. */
+	int32 Attempts = 0;
+	int32 Successes = 0;
+	/** The last attempt: its clip, when it began, how long it took to stand (below 0: it did not, or not yet), and how long its clip waited for the body. */
+	FString Clip;
+	double StartedS = -1.0;
+	double DurationS = -1.0;
+	double StallS = 0.0;
+	/** Why the last attempt that was given up was given up. */
+	FString GivenUp;
+	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */
+	int32 Hits = 0;
+};
+
 /** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */
 struct FSandboxBodyControlView
 {
@@ -225,6 +243,37 @@ public:
 	 * False with a reason if the body is not upright, a step is under way or the bone is not a foot of the rig.
 	 */
 	bool RequestStep(FName Foot, const FVector& WorldTarget, FString& OutError);
+
+	/**
+	 * Asks the muscles for the pose a recorded clip has at a time, in place of the pose of the body's state: the
+	 * target goes over to it within poses.blend_s, from the state's pose or from the clip pose asked for before,
+	 * and stays there. With a rate the time then runs on (1: as recorded) up to the clip's end. The clip is an
+	 * animation sequence's path; it may be made for another skeleton with the same bone names (FSandboxClipPose),
+	 * and is read the first time it is asked for. The body stays what it is, simulated, with the muscles of its
+	 * state; nothing is played on it. While a pose is asked for this way the body leaves its balance alone: it
+	 * neither steps nor adds its idle's motion or its balance strategies to the pose. False with a reason if the
+	 * clip cannot be read.
+	 */
+	bool SetClipPose(const FString& ClipPath, double TimeS, double Rate, FString& OutError);
+	/**
+	 * Whether a body that lies gets up by itself (getup.*). It does unless told otherwise; a scenario about a fall
+	 * tells it otherwise.
+	 */
+	void SetGetUpAllowed(bool bAllowed) { bGetUpAllowed = bAllowed; }
+	const FSandboxGetUpView& GetGetUpView() const { return GetUpView; }
+
+	/** Lets the clip's pose go: the target goes back to the state's pose within poses.blend_s. */
+	void ReleaseClipPose();
+	/** Whether a clip's pose is asked for (also while it is being let go), which clip, and its time now. */
+	bool GetClipPose(FString& OutClipPath, double& OutTimeS, double& OutWeight) const;
+	/**
+	 * Where the clip whose pose is asked for has the pelvis, in the space of the clip's root (FSandboxClipPose::PelvisAt;
+	 * gone over from the clip pose before as the pose is), and how much of the clip's pose the target has, 0 to 1. For
+	 * whoever carries the body's pelvis through the clip. False without a clip.
+	 */
+	bool GetClipPelvis(FTransform& OutPelvis, double& OutWeight) const;
+	/** Every clip read so far, by path: for result files (how each joint of a clip fits the body). */
+	const TMap<FString, FSandboxClipPose>& GetClips() const { return Clips; }
 
 	/**
 	 * What the body has taken from contacts with other simulated bodies since it was started: the sum of
@@ -438,6 +487,73 @@ private:
 	double IdleShare = 0.0;
 	/** The idle's sway now: the lean it asks of the whole body, cm (world x, y). */
 	FVector2D IdleSwayCm = FVector2D::ZeroVector;
+	/**
+	 * A clip's pose asked for in place of the state's (SetClipPose). The clips read so far are kept by path. Share
+	 * is how much of the clip's pose the target has, before easing: it rises while the pose is held and falls once
+	 * it is let go. A new clip or time starts from the pose handed over last (From) and goes over by CrossShare, so
+	 * that the target never jumps.
+	 */
+	struct FClipHold
+	{
+		FString Path;
+		double TimeS = 0.0;
+		double Rate = 0.0;
+		double Share = 0.0;
+		bool bReleased = false;
+		/** Asked for from outside (SetClipPose), not by the body's own get-up: the body then leaves its balance alone. */
+		bool bOutside = false;
+		TArray<FSandboxPoseBone> From;
+		double CrossShare = 1.0;
+		/** What was handed to the animation instance last. */
+		TArray<FSandboxPoseBone> Last;
+		/** The clip's pelvis, as the pose: where it goes over from, and where it is now. */
+		FTransform FromPelvis = FTransform::Identity;
+		FTransform LastPelvis = FTransform::Identity;
+	};
+	FClipHold ClipHold;
+	TMap<FString, FSandboxClipPose> Clips;
+	void UpdateClipPose(double DeltaTime);
+	/** The clip at a path, read if it has not been yet; OutPath is the path it is kept by. Null with a reason if it cannot be read. */
+	const FSandboxClipPose* FindOrReadClip(const FString& ClipPath, FString& OutPath, FString& OutError);
+	/** Makes a clip's pose the target (SetClipPose without the rule that the body then leaves its balance alone). */
+	bool HoldClip(const FString& ClipPath, double TimeS, double Rate, FString& OutError);
+	bool IsPosedFromOutside() const { return !ClipHold.Path.IsEmpty() && ClipHold.bOutside; }
+
+	/**
+	 * The get-up (ESandboxBodyState::GetUp). A body that has lain still for getup.rest_s takes the clip whose pelvis
+	 * lies most like its own, turned about the vertical to how the body lies and put where its pelvis is (Frame: the
+	 * clip's root in the world). The muscles are asked for the clip's pose; the pelvis's assist is aimed at where the
+	 * clip has the pelvis; both come up from nothing over getup.ease_s. The clip's time runs while the pelvis keeps
+	 * up with it and waits while it does not. Through the clip, upright and on both feet, the body stands; thrown
+	 * off, held up or kept waiting too long, it lets go and lies again.
+	 */
+	struct FGetUpRun
+	{
+		FString Path;
+		FTransform Frame = FTransform::Identity;
+		/** How long the clip's time has stood still now, and how long it has waited in all. */
+		double StallS = 0.0;
+		double WaitedS = 0.0;
+		bool bEased = false;
+	};
+	FGetUpRun GetUpRun;
+	FSandboxGetUpView GetUpView;
+	bool bGetUpAllowed = true;
+	/** Set when a get-up could not begin (a clip is missing): it is not tried again. */
+	bool bGetUpBroken = false;
+	/** How long the body has lain still. */
+	double LyingS = 0.0;
+	/** The mesh's own space when the body was started: the space a clip's root is in for a body that stands as this one stood. */
+	FTransform StartSpace = FTransform::Identity;
+	bool StartGetUp(FString& OutError);
+	void UpdateGetUp(double DeltaTime);
+	void GiveUpGetUp(const FString& Reason);
+	/** How far the muscles and the assist have come up since the get-up began, 0 to 1 (1 in any other state). */
+	double GetUpEase() const;
+	/** Whether the body as a whole moves and turns no faster than thresholds.rest_*. */
+	bool IsAtRest() const;
+	/** How much of a clip's pose the target has now, eased: 0 without one. */
+	double ClipWeight() const { return ClipHold.Path.IsEmpty() ? 0.0 : FMath::SmoothStep(0.0, 1.0, ClipHold.Share); }
 	/** The way the body goes down, chosen as it starts to fall: which of the fall's poses it takes (ApplyPose). */
 	enum class EFallWay : uint8 { Back, Forward, Left, Right };
 	EFallWay FallWay = EFallWay::Back;

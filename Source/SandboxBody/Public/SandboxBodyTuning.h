@@ -55,6 +55,11 @@ struct FSandboxAssistTuning
 	 * a body whose centre of mass was far outside its feet, and a 200 N*s shove did not fell it.)
 	 */
 	double MaxTorqueNm = 0.0;
+	/**
+	 * Largest pull along each axis, N. 0 = no cap. (The pull that helps a body up from the floor is capped, so that
+	 * it helps and does not carry: what holds the body down, or throws it off, wins.)
+	 */
+	double MaxForceN = 0.0;
 };
 
 /**
@@ -85,7 +90,13 @@ enum class ESandboxBodyState : uint8
 	/** The posture has given way: the assist is off, the body goes down and takes the pose of its fall (poses.fall_*). */
 	Falling,
 	/** Down and nearly still: the muscles let go. */
-	Lying
+	Lying,
+	/**
+	 * Getting up from the floor: the muscles are asked for the pose of a recorded get-up, the clip's time waits for
+	 * the body, and the assist pulls the pelvis toward where the clip has it, with a capped force (getup.*). Still a
+	 * simulated body like any other: a push moves it, and one that throws it off the clip's path fells it again.
+	 */
+	GetUp
 };
 
 /** When the body changes state. */
@@ -488,6 +499,46 @@ struct FSandboxPoseTuning
 	static FSandboxPose Mirrored(const FSandboxPose& Pose);
 };
 
+/** How a body that lies gets up ("getup.*"). */
+struct FSandboxGetUpTuning
+{
+	/** A body that has lain still this long gets up. 0: it stays down. Seconds. */
+	double RestS = 0.0;
+	/** Time over which the muscles and the assist's pull come up from nothing as the get-up begins. Seconds. */
+	double EaseS = 0.0;
+	/** How fast the clip's time runs while the body keeps up: 1 as recorded. */
+	double Rate = 0.0;
+	/** The time in a clip by which its body stands; the rest of the clip is standing still. Seconds. */
+	double EndS = 0.0;
+	/** The clip's time waits while the pelvis is further than this from where the clip has it. cm. */
+	double LagCm = 0.0;
+	/** ...or a foot that is off the floor is further than this from where the clip has it. cm. */
+	double FootLagCm = 0.0;
+	/**
+	 * The clip is laid over the feet the body stands on: its root follows the feet that carry weight, to where they
+	 * are from where the clip has them, with this lag when they carry all of the body's weight and more slowly in
+	 * proportion when they carry less. 0: the clip stays where it was put. Seconds. (A foot that the body stands on
+	 * cannot go where the clip steps it to, and a pelvis pulled over the clip's feet instead of the body's own left
+	 * the body leaning or waiting for good.)
+	 */
+	double FrameFollowS = 0.0;
+	/** A get-up whose clip has waited this long without moving on is given up: the body lets go and lies, and tries again. Seconds. */
+	double StallS = 0.0;
+	/** A pelvis this far from where the clip has it has been thrown off: the get-up is given up at once. cm. */
+	double LostCm = 0.0;
+	/** The body stands again once the clip is through and its pelvis is within this of upright, with both feet on the floor. Degrees. */
+	double UprightDeg = 0.0;
+	/**
+	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
+	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
+	 * lies most like the body's is taken, whatever its name.
+	 */
+	FString ClipBack;
+	FString ClipFront;
+	FString ClipLeft;
+	FString ClipRight;
+};
+
 /** Which bones the balance assist holds ("rig.pelvis" and so on). Each must have a body in the physics asset. */
 struct FSandboxBodyRig
 {
@@ -527,6 +578,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxBalanceTuning Balance;
 	FSandboxReactionTuning Reactions;
 	FSandboxPoseTuning Poses;
+	FSandboxGetUpTuning GetUp;
 
 	/**
 	 * Tells a parameter store which names the body understands and which states may carry values of their
@@ -562,6 +614,6 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	/** Group a joint belongs to, from the name of its child bone (UE5 mannequin and MetaHuman naming). */
 	static ESandboxMuscleGroup GroupOfBone(FName ChildBone);
 	static const TCHAR* GroupName(ESandboxMuscleGroup Group);
-	/** "standing", "flinch", "stagger", "falling" or "lying": the state's name in tuning files and result files. */
+	/** "standing", "flinch", "stagger", "falling", "lying" or "get_up": the state's name in tuning files and result files. */
 	static const TCHAR* StateName(ESandboxBodyState State);
 };

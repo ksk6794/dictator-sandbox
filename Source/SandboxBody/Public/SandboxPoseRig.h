@@ -86,6 +86,14 @@ public:
 	static FQuat ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits);
 
 	/**
+	 * A child bone's rotation (component space) brought into its joint's range as the solver limits it
+	 * (LimitExcessDeg): the twist and each of the two swings held to its own half-range, a locked axis to 0. Inside
+	 * the range the rotation comes back exactly as it was given. For a target taken from elsewhere (a recorded
+	 * clip): a muscle asked for more than its joint can do pushes into the limit for as long as it is asked.
+	 */
+	static FQuat ClampToRange(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits);
+
+	/**
 	 * How far a joint is outside its range, degrees: the largest of what the twist and each of the two swings is
 	 * beyond its own half-range. Measured as the engine's joint solver limits a joint, each angle by itself (a box;
 	 * see the function), so 0 inside the range. The engine's own FConstraintInstance::GetCurrentSwing1 is not the

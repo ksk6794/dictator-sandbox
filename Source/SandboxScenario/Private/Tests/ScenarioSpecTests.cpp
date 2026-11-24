@@ -165,6 +165,60 @@ bool FScenarioSpecStatesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecClipPoseTest, "DictatorSandbox.Scenario.Spec.ParsesClipPoses", SandboxTestFlags)
+bool FScenarioSpecClipPoseTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* Text = TEXT(R"({
+		"name": "clip",
+		"duration_s": 8.0,
+		"body": { "mesh": "/Game/Some.Mesh", "control": "active" },
+		"events": [
+			{ "t": 0.0, "type": "pin", "body": "pelvis", "lock_rotation": true, "follow_clip": true, "raise_cm": 60 },
+			{ "t": 1.0, "type": "clip_pose", "clip": "/Game/Some/Clip", "time_s": 1.5 },
+			{ "t": 2.0, "type": "clip_pose", "clip": "/Game/Some/Clip", "time_s": 0, "rate": 1 },
+			{ "t": 3.0, "type": "clip_pose", "release": true }
+		]
+	})");
+
+	FScenarioSpec Spec;
+	FString Error;
+	if (!TestTrue(TEXT("spec with clip poses parses"), FScenarioSpec::FromString(Text, Spec, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	if (TestEqual(TEXT("event count"), Spec.Events.Num(), 4))
+	{
+		TestTrue(TEXT("the pin follows the clip"), Spec.Events[0].bLockRotation && Spec.Events[0].bFollowClip);
+		TestEqual(TEXT("raised"), Spec.Events[0].RaiseCm, 60.0);
+		TestEqual(TEXT("the clip"), Spec.Events[1].Clip, FString(TEXT("/Game/Some/Clip")));
+		TestEqual(TEXT("its time"), Spec.Events[1].ClipTimeS, 1.5);
+		TestEqual(TEXT("held unless a rate is given"), Spec.Events[1].ClipRate, 0.0);
+		TestEqual(TEXT("a rate"), Spec.Events[2].ClipRate, 1.0);
+		TestTrue(TEXT("letting go"), Spec.Events[3].bRelease && !Spec.Events[1].bRelease);
+	}
+
+	const TCHAR* Invalid[] = {
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "clip_pose" } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "clip_pose", "clip": "/Game/C" } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "clip_pose", "clip": "/Game/C", "time_s": -1 } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "clip_pose", "clip": "/Game/C", "time_s": 0, "rate": -1 } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "clip_pose", "release": 1 } ] })"),
+		// A clip gives the pelvis an orientation: a ball joint cannot follow it.
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "pin", "body": "pelvis", "follow_clip": true } ] })"),
+		TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 0, "type": "pin", "body": "pelvis", "lock_rotation": true, "follow_clip": 1 } ] })"),
+	};
+	for (const TCHAR* Bad : Invalid)
+	{
+		FScenarioSpec Rejected;
+		FString Reason;
+		const bool bParsed = FScenarioSpec::FromString(Bad, Rejected, Reason);
+		TestFalse(FString::Printf(TEXT("rejects: %s"), Bad), bParsed);
+		TestFalse(TEXT("a rejection carries a reason"), !bParsed && Reason.IsEmpty());
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecEffectorTest, "DictatorSandbox.Scenario.Spec.ParsesEffectorPaths", SandboxTestFlags)
 bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
 {

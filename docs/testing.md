@@ -1442,8 +1442,161 @@ is played back up by a montage; the logic is Blueprint and has no balance in it.
 | `M_ragdoll_flail_armsFirst`, `_legsFirst`, `_armsDown` | Loops for a body in the air, chosen by the way it flies | 4.7 to 8.3 s |
 | `M_ragdoll_reach_*` (nine) | Reaching for the coming impact, aimed by a blend space over direction and pitch | 2.0 s |
 
-Not measured: how its poses look on this body next to the three fall poses written here. That needs a clip to
-be a source of the target pose, which part 6 builds if the owner takes the get-up clips.
+How its poses look on this body next to the three fall poses written here is in "M3 part 6, step 1", below.
+
+### M3 part 6, step 1 (a recorded clip as the source of the target pose), 2026-11-24
+
+The get-up takes the four clips of Epic's Game Animation Sample that end standing in place
+(`M_ragdoll_getup_stand_B`, `_F`, `_L`, `_R`; owner's decision). They are made for the sample's mannequin, whose
+bones have the names of the body's and a different reference pose. This step makes a clip a source of the
+muscles' targets and shows the clips on the body; the body does not get up yet.
+
+**How far the two reference poses are apart**, measured when a clip is read (`control.clips` of a run): the angle
+between a bone's orientation in the reference pose of the clip's skeleton and of the body's mesh, in the space of
+the whole body, and, for the segments of arms and legs, the angle between the ways the two point.
+
+| Joint | Orientations apart, degrees | Directions apart, degrees |
+| --- | --- | --- |
+| `spine_02`, `spine_04` | 10.3, 7.6 | |
+| `neck_01` (the head's bone) | 0.5 | |
+| collarbone | 4.0 | |
+| upper arm | 12.3 | 11.6 |
+| forearm | 18.4 | 12.8 |
+| hand | 21.4 | |
+| thigh | 9.3 | 4.0 |
+| calf | 8.8 | 2.9 |
+| foot | 3.5 | |
+
+So the difference is of both kinds: the arms are held 12 degrees differently (a copy of what each bone turns from
+its reference pose would leave the hands 12 to 15 cm from where the clip has them), and thigh and calf agree in
+direction to 3 or 4 degrees while their axes lie 9 apart (a copy of the rotations themselves would twist them).
+`FSandboxClipPose` turns each body of the physics asset, in the space of the whole body, by what the clip's bone
+has turned from its own reference pose, and first turns the segments of arms and legs to point as the clip's
+skeleton holds them. Trunk, neck, collarbones, hands and feet keep their own reference: the body's own posture,
+and feet that are flat when the clip's are. What comes out is one rotation for each of the 17 joints' bones, as a
+pose written in joint angles gives; the bones between two bodies stay as they are, and the body of the head takes
+the orientation of the head's own bone, so that the turn of the whole neck is in the one joint there is.
+
+**What the clips ask of the joints**, the furthest beyond its range over the four get-ups (angles as the solver
+limits them: twist, swing1, swing2, against the half-ranges):
+
+| Joint | Beyond its range, degrees | Where |
+| --- | --- | --- |
+| hand | 73 | `_R` at 0.90 s: -60, 2, -98 against 70, 60, 25 |
+| foot | 48 | `_F` at 1.83 s: -10, -73, 55 against 15, 25, 10 |
+| upper arm | 43 | `_L` at 0.00 s: twist 123 against 80 |
+| thigh | 29 | `_R` at 0.97 s: twist 74 against 45, swing2 -52 against 30 |
+| forearm | 14 | twist 14 against a locked axis |
+| `spine_02` | 14 | `_L` at 1.70 s: swing1 -31 against 18 |
+| collarbone | 11 | swing2 33 against 22 |
+| calf, `spine_04`, neck | 3, 2, 0 | |
+
+Asked for as recorded, the muscles pushed the joints into their limits: mean pose error 7 to 12 degrees over a
+film, a foot 3.7 degrees past its range while a pose was held. Every target is now held to its joint's range
+(`FSandboxPoseRig::ClampToRange`, the box the solver limits by): mean error 2.9, 0.6 degrees past a limit. Two of
+the rows are the body's model and not the clip. The wrist: the forearm's turn (palm up, palm down) is in the
+wrist's twist, and the two swings are limited in the forearm's frame, so with the palm turned down the hand's
+bending back is the "sideways" swing and ends at 25 degrees; a body that pushes itself up on its hands will meet
+this in step 2. The foot: there is no toe joint, a foot "on its toes" in the clip is a rigid foot asked to stand
+on its tip.
+
+**What the pictures show** (`Tools\clip-film.ps1`; the body hangs by its welded pelvis, the weld carried as the
+clip has the pelvis, 60 cm above the floor; `Saved\Films\clip_B_carried` and `_F`, `_L`, `_R`). All four read as
+a person getting up, on this body: from the back a roll onto the side with the knees drawn up, one arm down, a
+crouch, up; from the front a push-up onto hands and a knee; from a side onto hands and knees. The body stands by
+2.2 to 2.5 s of the 5 s; the rest of each clip is standing still. The clip has the pelvis 11 cm above the floor
+and 34 cm behind its root at the start (from the back) and 89 cm up over the root at the end. Played at its own
+speed on the carried body, the muscles follow: mean pose error 3.8 degrees, no joint faster than 16 rad/s, none
+more than 0.6 degrees past its range. With the weld at the clip's own height the body is pressed up to 10 cm
+into the floor and its joints stretch by 5.8 cm: limbs in the way of a pelvis that gives way to nothing. That
+is the rig, and says only that the get-up cannot be a pelvis dragged along the clip's path.
+
+**The sample's other poses next to ours** (`Saved\Films\poses_fall_ours`, `poses_reach`, `poses_flail`,
+`poses_onground`). Its nine reaching poses and three flailing loops are for a body thrown through the air: the
+arms reach where the impact comes from, the legs trail, each pose is asymmetric as a recording is. The three
+written here (`poses.fall_*`) are for a body going over from standing: backward it sits down and tucks its chin,
+forward the hands come up in front of the face, sideways one arm goes out. Theirs are not better at that, and
+they would need a blend aimed by the direction of the fall to be used at all; the fall keeps its own poses. The
+sample's four poses for lying (on the back with the knees up, on either side curled, face down) are the first
+frames of its get-ups; ours lies as it fell, with its muscles let go.
+
+**A mistake found by a picture.** The first sheet of a carried body showed it standing at the end with its head
+and trunk hanging forward. The controller had taken the body for fallen as the weld laid the pelvis down (tilted
+by 35.6 degrees), and from then on the film showed the Lying state's muscles, a tenth as strong. Nothing failed,
+since a film has no expectations. A body whose pose is asked for from outside no longer judges its balance.
+
+New: `FSandboxClipPose`, a layer in `USandboxAnimInstance`, `USandboxBodyController::SetClipPose`, the scenario
+event `clip_pose` and `follow_clip` on a pin, `Tools\clip-film.ps1`, scenario `clip_pose_hold` (the welded body
+holds the clip's standing pose and then its crouch at 1.4 s: a calf's target 120 degrees from the reference pose,
+mean pose error 2.4 degrees, nothing past a limit, no energy gained), three unit tests (31 in all). Against
+`m3_part6_start` all 50 scenarios have the same hashes and one is new. Suite 51 of 51 with `-Long`,
+push matrix 160 of 160, knockdowns 8 of 8 (as in part 5: 1.94 s, 25.9 J, 1.22 cm), session self-test 14 of 14.
+
+### M3 part 6, step 2 (the GetUp state), 2026-11-24
+
+A body that has lain still for 1.5 s gets up by one of the four clips, under full simulation. Seven scenarios:
+a knockdown of 200 N*s on the chest from each of four directions and the get-up after it (`getup_back`, `_front`,
+`_left`, `_right`), and three with something done to the body while it is on its hands and knees (`getup_push_weak`,
+`getup_hit_strong`, `getup_held`).
+
+| Scenario | Attempts | Stood after, s | Clip waited, s | Assist force share, mean and most | Joint past its range, degrees |
+| --- | --- | --- | --- | --- | --- |
+| `getup_back` (lies on its back, half on its right side; clip `_R`) | 1 | 5.2 | 2.0 | 0.47, 0.68 | 1.4 |
+| `getup_front` | 1 | 4.0 | 0.8 | 0.44, 0.63 | 1.0 |
+| `getup_left` | 1 | 4.7 | 1.5 | 0.47, 0.65 | 1.8 |
+| `getup_right` | 1 | 4.9 | 1.7 | 0.44, 0.69 | 1.4 |
+| `getup_push_weak` (30 N*s on the chest at 8.5 s) | 1 | 5.2 | 2.0 | 0.48, 0.68 | 1.5 |
+| `getup_hit_strong` (200 N*s on the chest at 8.5 s) | 3 | 4.5 (the third) | 1.3 | 0.49, 0.77 | 1.6 |
+| `getup_held` (two hands on the pelvis from 7.9 to 12 s) | 1 | 8.6 | 5.4 | 0.53, 0.68 | 1.3 |
+
+Joints stretch by at most 0.3 cm and turn no faster than 38 rad/s; the body is at most 0.8 cm in the floor. The
+recording stands at 2.5 s: the body takes twice as long, most of it on hands and knees while the pelvis rises
+more slowly than the clip's.
+
+**Three things that did not work, each found in the log line the controller writes four times a second** (the
+clip's time, the pelvis and the feet against the clip, what the floor carries of each foot):
+
+1. *The clip's time waiting for the pelvis alone.* The body rolled over, came onto hands and knees and stood up
+   as a plank leaning 18 to 26 degrees, held by the assist with 0.9 of its weight, until the attempt was given up.
+   Up to 1.3 s of the clip the feet were within 10 cm of the clip's; from 1.5 to 1.7 s the clip steps the right
+   foot 45 cm forward, and ours stood where it was under 370 to 840 N.
+2. *Waiting for the feet as well.* The clip stood at 1.50 s for good: the foot was 16 cm from where the clip had
+   it (the limit was 15) and carried 525 N of a body that by then stood crouched on both feet.
+3. *The clip laid over the feet the body stands on* (its root follows the feet that carry weight, in proportion to
+   what they carry; only a foot in the air is waited for): the body stands, at the first attempt, from all four
+   sides.
+
+**The assist** was then swept down (`Tools\sweep.ps1`, six scenarios a setting):
+
+| Pelvis cap, N | Feet cap, N | Gets up from four sides | Assist force share, mean | 200 N*s blow |
+| --- | --- | --- | --- | --- |
+| 500 | 200 (and lost at 45 cm) | yes | 0.61 to 0.76 | not felled: 40 cm off, back in 0.5 s with 1.2 of body weight |
+| 500, 350, 250 | 200 | yes | 0.58 to 0.76 | felled (lost at 30 cm), up at the second attempt |
+| 150 | 200 | no (back and right fail) | | |
+| 250, 350 | 1 | no (only from the left) | | |
+| 250 | 50 | yes | 0.44 to 0.48 | felled, up at the third attempt |
+| 350 | 50 | yes | 0.46 to 0.51 | felled, not up within 24 s |
+| any | any, pelvis pull 1000 N/m instead of 3000 | no (back and right fail) | | |
+
+Taken: 250 N and 50 N, lost at 30 cm. The share is what the body's hands do not carry: arms of 200 N*m/rad with a
+cap of 80 N*m and a wrist that cannot bend back with the palm down (step 1).
+
+**What an interaction does** (FR-18). A hit of the flinch's threshold or more is felt as a standing body feels it,
+without leaving the state: the struck part gives way and its muscles are weak for 0.35 s. The 30 N*s push delays
+standing by 0.05 s. The 200 N*s blow puts the pelvis 31 cm from the clip's 0.09 s later and the get-up is given up;
+the body lies on its back, tries by the clip for the back and is given up after the clip has stood at 0.76 s for
+3 s (on its back with its knees up, it does not roll), rolls half over as it lets go, and gets up by the clip for
+the right side. The hands land with 5 to 8 N*s each (felt as hits), press with 310 N on average for 4.5 s; the
+clip's time creeps from 0.96 to 1.09 s, the pelvis stays 41 to 46 cm up, no joint is more than 1.3 degrees past
+its range; 2.7 s after they leave the body stands.
+
+Against `m3_part6_step1` the 51 scenarios before this step have the same hashes (a scenario's body gets up only
+with `"get_up": true`) and seven are new: suite 58 of 58 with `-Long`. Push matrix 160 of 160, knockdowns 8 of 8,
+unit tests 31, session self-test 14 of 14.
+
+Seen and left for step 3: from a pose it did not fall into by itself (after the blow) the body needed three
+attempts, and the clip for the back failed where the one for the side worked; the stand of 50 falls will say how
+often. The films: `Saved\Films\getup_back`, `_front`, `_left`, `_right`, `_hit_strong`, `_held`.
 
 ## Known behaviour of the stock mannequin
 

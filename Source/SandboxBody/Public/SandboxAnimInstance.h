@@ -74,6 +74,8 @@ private:
 	void PlaceLimbs(FPoseContext& Output) const;
 
 	TArray<FSandboxPosedBone> Bones;
+	TArray<FSandboxPoseBone> Layer;
+	double LayerWeight = 0.0;
 	TArray<FSandboxPoseTurn> Turns;
 	TArray<FSandboxLimbTarget> Limbs;
 	/** How far the blend from From to To has come, eased: 0 to 1. */
@@ -104,6 +106,19 @@ public:
 
 	/** The blend's progress, 0 to 1, eased. 1 when no blend is running. */
 	double GetBlendWeight() const;
+
+	/**
+	 * A pose laid over the base pose from the next evaluation on: these bones go from where the base pose has them
+	 * to the rotations given, by Weight (0 the base pose, 1 this one). With no blend of its own: whoever sets it
+	 * hands it over every tick and shapes both the pose and the weight over time (a recorded clip that is held or
+	 * played, USandboxBodyController::SetClipPose). Turns and limb targets come on top of it as they do on the base
+	 * pose. An empty set, or weight 0, is no layer: the evaluation is then exactly what it is without one.
+	 */
+	void SetLayer(const TArray<FSandboxPoseBone>& InBones, double InWeight)
+	{
+		Layer = InBones;
+		LayerWeight = FMath::Clamp(InWeight, 0.0, 1.0);
+	}
 
 	/**
 	 * Turns added on top of the pose from the next evaluation on, with no blend: whoever sets them shapes
@@ -143,6 +158,8 @@ private:
 	friend struct FSandboxAnimInstanceProxy;
 
 	TArray<FSandboxPosedBone> Bones;
+	TArray<FSandboxPoseBone> Layer;
+	double LayerWeight = 0.0;
 	TArray<FSandboxPoseTurn> Turns;
 
 	/** A limb target on the game thread, with the blend of its weight. */

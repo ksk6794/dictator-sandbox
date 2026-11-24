@@ -28,6 +28,17 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `assist.<body>.angular_nm_per_rad` | N·m/rad | Turn of the body toward its standing orientation |
 | `assist.<body>.damping_s` | s | Damping of the three assist springs, as a time |
 | `assist.<body>.max_torque_nm` | N·m | Largest torque of the assist's turn. 0 = no cap |
+| `assist.<body>.max_force_n` | N | Largest pull of the assist along each axis. 0 = no cap. Set for the get-up (`states.get_up`), where the pull has to help and not carry |
+| `getup.rest_s` | s | A body that has lain still this long gets up. 0: it stays down. A scenario's body stays down whatever this says, unless the scenario has `"get_up": true` in its `body` |
+| `getup.clip_back`, `clip_front`, `clip_left`, `clip_right` | asset paths | The clips to get up by: recorded get-ups that end standing in place, here the four of Epic's Game Animation Sample (`Tools\fetch-sample-anims.ps1`). The one whose pelvis lies at its start most like the body's is taken, whatever its name. Read when a body first gets up |
+| `getup.ease_s` | s | Time over which the muscles and the assist's pull come up from nothing as the get-up begins (the body was limp a moment before; the clip's first pose is asked for at once and whole) |
+| `getup.rate` | | How fast the clip's time runs while the body keeps up: 1 as recorded |
+| `getup.end_s` | s | The time in a clip by which its body stands (2.6 s; the rest of the sample's 5 s is standing still) |
+| `getup.lag_cm`, `foot_lag_cm` | cm | The clip's time waits while the pelvis is further than `lag_cm` from where the clip has it, or a foot that is off the floor further than `foot_lag_cm`. A body that is slower than the recording, or held down, is waited for |
+| `getup.frame_follow_s` | s | The clip is laid over the feet the body stands on: its root follows the feet that carry weight to where they are from where the clip has them, with this lag when they carry all of the body's weight, more slowly when less. Without it a foot the body stood on could not go where the clip stepped it to, and the pelvis was pulled over the clip's feet instead of the body's own |
+| `getup.stall_s` | s | A get-up whose clip has stood still this long is given up: the body lets go, lies, and tries again after `rest_s` |
+| `getup.lost_cm` | cm | A pelvis this far from where the clip has it has been thrown off: the get-up is given up at once. At 45 the assist brought back a body that a 200 N*s blow had moved 40 cm; at 30 that blow fells it |
+| `getup.upright_deg` | degrees | The body stands again once the clip is through and its pelvis is within this of upright, with both feet on the floor |
 | `solver.position_iterations`, `velocity_iterations`, `projection_iterations` | count | Solver effort on the character's bodies. Whole numbers, at most 255 |
 | `thresholds.flinch_impulse_ns` | N·s | A hit of at least this impulse makes a standing body flinch |
 | `thresholds.flinch_window_s` | s | Impulses that arrive within this time of each other count as one hit (a push delivered over several frames) |
@@ -188,8 +199,9 @@ not set comes from the base values above.
 ```
 
 The names are `states.falling.muscles.legs.stiffness_nm_per_rad` and so on. Known states are `standing`,
-`flinch`, `stagger`, `falling`, `lying` and `get_up`. The body has `standing`, `flinch`, `falling` and `lying`
-so far; `stagger` and `get_up` come in M3.
+`flinch`, `stagger`, `falling`, `lying` and `get_up`. `states.get_up` holds what the body gets up with: stronger
+arms, and an assist that pulls the pelvis and the feet toward where the clip has them, each with a cap on its
+force (250 N and 50 N: the lowest of a sweep with which the body gets up from all four sides).
 
 | State | The body is | Leaves when |
 | --- | --- | --- |

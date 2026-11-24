@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "SandboxClipPose.h"
 #include "SandboxPoseRig.h"
 
 /**
@@ -83,6 +84,82 @@ bool FPoseRigClampTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the swing keeps its direction"), Axis.Equals(Diagonal, 1.0e-6));
 	TestEqual(TEXT("and ends on the ellipse"), FMath::Square(Vector.Z / 25.0) + FMath::Square(Vector.Y / 10.0), 1.0, 1.0e-6);
 	TestEqual(TEXT("with no twist"), FMath::RadiansToDegrees(Twist.GetTwistAngle(FVector::XAxisVector)), 0.0, 1.0e-6);
+	return true;
+}
+
+/**
+ * A child bone is brought into its joint's range as the solver limits it: inside it the rotation comes back as given,
+ * bit for bit; outside, each of the three angles ends at its own limit, a locked one at 0, and the others stay.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPoseRigClampRangeTest, "DictatorSandbox.Body.Pose.ClampToJointRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FPoseRigClampRangeTest::RunTest(const FString& Parameters)
+{
+	FSandboxJointLimits Limits;
+	Limits.bValid = true;
+	Limits.ParentFrame = FQuat(FVector(0.3, -1.0, 0.4).GetSafeNormal(), 0.5);
+	Limits.ChildFrame = FQuat(FVector(1.0, 0.2, -0.7).GetSafeNormal(), 1.1);
+	Limits.Swing1Deg = 60.0;
+	Limits.Swing2Deg = 25.0;
+	Limits.TwistDeg = 70.0;
+	const FQuat Parent = FQuat(FVector(-0.2, 0.5, 1.0).GetSafeNormal(), 0.9);
+	const auto ChildAt = [&](const FQuat& Relative) { return (Parent * Limits.ParentFrame * Relative * Limits.ChildFrame.Inverse()).GetNormalized(); };
+	const double Deg = UE_DOUBLE_PI / 180.0;
+
+	const FQuat Inside = ChildAt(FQuat(FVector::ZAxisVector, 40.0 * Deg) * FQuat(FVector::XAxisVector, -50.0 * Deg));
+	const FQuat Same = FSandboxPoseRig::ClampToRange(Parent, Inside, Limits);
+	TestTrue(TEXT("inside the range the rotation is given back exactly"), Same.X == Inside.X && Same.Y == Inside.Y && Same.Z == Inside.Z && Same.W == Inside.W);
+
+	// A hand turned over and bent back: a swing of 80 degrees about an axis between Y and Z, on a twist of 90.
+	const FQuat Outside = ChildAt(FQuat(FVector(0.0, 0.8, 0.6), 80.0 * Deg) * FQuat(FVector::XAxisVector, 90.0 * Deg));
+	FVector Before;
+	TestTrue(TEXT("the bone starts outside its range"), FSandboxPoseRig::LimitExcessDeg(Parent, Outside, Limits, &Before) > 20.0);
+	FVector After;
+	const double Left = FSandboxPoseRig::LimitExcessDeg(Parent, FSandboxPoseRig::ClampToRange(Parent, Outside, Limits), Limits, &After);
+	TestEqual(TEXT("and ends inside it"), Left, 0.0, 1.0e-6);
+	TestEqual(TEXT("the twist at its limit"), After.X, 70.0, 1.0e-6);
+	TestEqual(TEXT("the second swing at its limit"), FMath::Abs(After.Z), 25.0, 1.0e-6);
+	TestEqual(TEXT("the first swing, inside its own range, as it was"), After.Y, Before.Y, 1.0e-6);
+
+	Limits.Swing2Deg = 0.0;
+	Limits.TwistDeg = 0.0;
+	FVector Hinge;
+	FSandboxPoseRig::LimitExcessDeg(Parent, FSandboxPoseRig::ClampToRange(Parent, Outside, Limits), Limits, &Hinge);
+	TestEqual(TEXT("a locked twist ends at 0"), Hinge.X, 0.0, 1.0e-6);
+	TestEqual(TEXT("a locked swing ends at 0"), Hinge.Z, 0.0, 1.0e-6);
+	TestEqual(TEXT("and the hinge keeps its angle"), Hinge.Y, Before.Y, 1.0e-6);
+	return true;
+}
+
+/**
+ * A clip's bone carried over to the body: a bone the clip leaves in its reference pose leaves the body's in its own,
+ * whatever the two reference poses are; a turn of the clip's bone turns the body's by the same, in the space of the
+ * whole body; and a segment that the two skeletons hold differently ends up pointing where the clip's points.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FClipPoseCarryTest, "DictatorSandbox.Body.Pose.ClipTurnsCarryOver",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FClipPoseCarryTest::RunTest(const FString& Parameters)
+{
+	const double Deg = UE_DOUBLE_PI / 180.0;
+	// The two skeletons hold the bone differently: other axes, and 12 degrees apart in where the segment points.
+	const FQuat SourceReference = FQuat(FVector(0.2, 0.9, -0.3).GetSafeNormal(), 1.3);
+	const FQuat TargetReference = FQuat(FVector(-0.6, 0.1, 0.7).GetSafeNormal(), 0.4);
+	const FVector SourceWay = FVector(0.3, 0.1, -1.0).GetSafeNormal();
+	const FVector TargetWay = FQuat(FVector::YAxisVector, 12.0 * Deg).RotateVector(SourceWay);
+	const FQuat Align = FQuat::FindBetweenNormals(TargetWay, SourceWay);
+
+	TestTrue(TEXT("a bone in its reference pose leaves the body's bone in its own"),
+		FSandboxClipPose::Carry(SourceReference, SourceReference, FQuat::Identity, TargetReference).Equals(TargetReference, 1.0e-12));
+
+	const FQuat Turn(FVector(1.0, -2.0, 0.5).GetSafeNormal(), 70.0 * Deg);
+	const FQuat Carried = FSandboxClipPose::Carry(Turn * SourceReference, SourceReference, FQuat::Identity, TargetReference);
+	TestTrue(TEXT("a turn of the clip's bone turns the body's bone by the same"), (Carried * TargetReference.Inverse()).Equals(Turn, 1.0e-9));
+
+	// The segment's direction in each bone's own space, from the reference poses.
+	const FVector InTargetBone = TargetReference.UnrotateVector(TargetWay);
+	const FQuat Aligned = FSandboxClipPose::Carry(Turn * SourceReference, SourceReference, Align, TargetReference);
+	TestTrue(TEXT("an aligned segment points where the clip's points"), Aligned.RotateVector(InTargetBone).Equals(Turn.RotateVector(SourceWay), 1.0e-9));
+	TestFalse(TEXT("which it would not without the alignment"), Carried.RotateVector(InTargetBone).Equals(Turn.RotateVector(SourceWay), 1.0e-3));
 	return true;
 }
 

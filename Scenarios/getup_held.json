@@ -1,0 +1,134 @@
+{
+  "name": "getup_held",
+  "duration_s": 30.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active",
+    "get_up": true
+  },
+  "events": [
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 200,
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    },
+    {
+      "t": 7.5,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            -35,
+            -147,
+            160
+          ]
+        },
+        {
+          "t": 0.5,
+          "location_cm": [
+            -35,
+            -147,
+            5
+          ]
+        },
+        {
+          "t": 4.5,
+          "location_cm": [
+            -35,
+            -147,
+            5
+          ]
+        },
+        {
+          "t": 5.0,
+          "location_cm": [
+            -35,
+            -147,
+            200
+          ]
+        },
+        {
+          "t": 5.5,
+          "location_cm": [
+            115,
+            -147,
+            200
+          ]
+        }
+      ]
+    },
+    {
+      "t": 7.5,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            -11,
+            -147,
+            160
+          ]
+        },
+        {
+          "t": 0.5,
+          "location_cm": [
+            -11,
+            -147,
+            5
+          ]
+        },
+        {
+          "t": 4.5,
+          "location_cm": [
+            -11,
+            -147,
+            5
+          ]
+        },
+        {
+          "t": 5.0,
+          "location_cm": [
+            -11,
+            -147,
+            200
+          ]
+        },
+        {
+          "t": 5.5,
+          "location_cm": [
+            139,
+            -147,
+            200
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fell": true,
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "min_effector_impulse_ns": 100,
+    "max_effector_force_n": 1500,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_limit_violation_deg": 10
+  }
+}
