@@ -308,7 +308,9 @@ reported apart (`spawn_world_cm`, `spawn_self_cm`). Boxes, capsules and spheres 
 
 `series.csv` has all of this for every frame: time, state, feet standing, the floor's force on each foot,
 kinetic and gravitational energy, the body's speed as a whole, both margins, both penetrations, the
-assist's force share and the fastest joint of that frame with its speed. The joint speed is the relative
+assist's force share, the fastest joint of that frame with its speed, and last `decision_margin_cm`, the margin
+the controller decides on (the capture point against the whole sole of every foot the floor touches; the two
+margins before it are against the part of the soles that touches). The joint speed is the relative
 angular velocity of the two bodies at the end of the frame: a peak in one frame that is gone in the next is
 a snap of one substep, not a body that is flying apart.
 
@@ -451,6 +453,13 @@ it is down and nearly still it lies and lets its muscles go.
   other foot, the body rises on that leg, the foot comes over. `control.stance_error_cm` is how far the feet
   stand from their stance at the end of the run (1 to 5 cm after a regrouping step, 25 to 60 cm without one).
   A step that was asked for (`step`) is not followed by one: the feet stay where they were asked to be.
+- A staggering body that comes to rest with its centre of mass off its support steps once more
+  (`balance.rest_step_s`, 0.3 s). The allowance of `balance.recoverable_cm` is for a body in motion; at rest
+  nothing brings the centre of mass back, and the stagger's upright hold on the pelvis kept such a body up for
+  good: on crossed legs after two steps across, one foot before the other, 2.4 cm outside its whole soles (no
+  step) and 6 cm outside the edges it stood on (never "over its support", so never Standing).
+  `stagger_rest_off_support` holds it (soles made grippy in the run, which is what brings the stance about; with
+  `-Tune "balance.rest_step_s=0"` it ends in Stagger). The run's log says when the rule asked for a step.
 - Expectations: `max_recovery_steps` (steps for balance and asked for; regrouping steps are not counted),
   `max_landing_error_cm` (every step landed this near its target, and there was at least one) and
   `max_stance_error_cm` (the feet are back in their stance at the end).
@@ -458,6 +467,7 @@ it is down and nearly still it lies and lets its muscles go.
   `max_energy_gain_j` counts. The falling scenarios allow 40 J; a standing or stepping body is still held to 1 J.
 
 The scenarios: `push_chest_80_steps` and `push_pelvis_80_side_steps` (a step forward, steps across),
+`stagger_rest_off_support` (crossed legs after steps across: a third step out of them),
 `effector_push_chest_steps` (a hand pushes the chest 70 cm back: the body backs away and stands; it used to be
 `effector_push_chest_falls`), `push_thigh_200_stumbles` (200 N*s on a thigh is run off in four steps; it used to
 be `push_thigh_200_falls`), and three falls after 200 N*s on the chest: `hit_chest_200_falls` (backward),
@@ -495,7 +505,13 @@ It generates one scenario per push under `Saved\Matrix\push\scenarios`, runs the
 `Tools\scenario.ps1 -File`, names the outcome of each push and writes `Saved\Matrix\push\matrix.json`.
 
 An outcome is `stood` (no step, never needed one), `held` (no step although one was needed: the assist held
-the body), `stepped` (one or more steps, still up) or `fell`. They are judged by the owner's table of M3:
+the body), `stepped` (one or more steps, still up) or `fell`. A step is a foot that left the floor and stood
+again 10 cm or more away (`-StepMinCm`; owner's decision of 24 November 2026), less the steps that only brought
+the feet back together (`control.recovery_steps[].regroup`); a step the controller itself made for balance counts
+whatever its length. A foot that hops less far is a shuffle: each run's `shuffles`, summed for every row, printed
+and judged by nothing. (The run's own record, `control.steps`, starts at 5 cm; counted from there, one recovery
+step read as two wherever the other foot hopped 5 to 6 cm as the first landed: `-StepMinCm 5` gives that count
+back.) `matrix.json` has `step_min_cm`. The outcomes are judged by the owner's table of M3:
 10 N*s stood; 30 N*s never a fall, forward and sideways stood, backward (225, 270, 315 degrees) and any push
 on the head stood or one step; 80 N*s on the trunk (chest, pelvis) stepped, backward stepped or fell, on the
 head and the thighs stepped or fell, and at 80 N*s anywhere stood if no step was ever needed (owner's decision

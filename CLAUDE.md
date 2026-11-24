@@ -74,9 +74,15 @@ done and changed no value:** 64 solver iterations is the only count that passes 
 bound on the standing assist's share, 32 to 48 lose two cells of the push matrix; 32 would save 0.15 ms a frame),
 the legs' strength is held from both sides (at 400 the body does not step, at 1200 a blow of 200 N*s on the chest
 does not fell it), the other muscles and the dampings are on a plateau, and the body stands with no assist at all
-but then takes up to seven steps after 30 N*s on the head. Open for the owner: the cells lost at 32 iterations
-and with a weaker assist are a foot that shuffles 5 to 6 cm as the other lands, which the measure counts as a
-step (from 5 cm). Next: step 4, the clips and the criteria table.
+but then takes up to seven steps after 30 N*s on the head. **Before step 4 (owner's decisions of 24 November), both done:** the push matrix counts a
+step from 10 cm (`-StepMinCm`; a foot that hops less is a shuffle, counted and not judged: the cells lost at 32
+iterations and with a weaker assist were such hops of 5 to 6 cm), and the stance on crossed legs that Stagger did
+not leave is closed: a staggering body that has come to rest with its centre of mass off the support that touches
+steps once more (`balance.rest_step_s`; scenario `stagger_rest_off_support`), where it had neither stepped (the
+capture point within 4 cm of its whole soles) nor stood (the centre of mass not over the edges it stood on), kept
+up by the stagger's upright hold on the pelvis. **Step 4, the clips and the criteria table, is made and waits for
+the owner's review** (`Saved\Films\m3_*`, listed in `Saved\Films\m3_gate.txt`; the table is in the M3 section of
+`docs/PRD.md`).
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -101,7 +107,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | What a recorded clip asks of the body, as a sheet of pictures | `powershell -ExecutionPolicy Bypass -File Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60` (the body hangs by its welded pelvis and is asked for the clip's pose at each time; `-Carry` moves the pelvis as the clip does; several clips separated by commas; `Saved\Films\clip_<name>\sheet.png`) |
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
-| Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
+| Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate; a step is a foot carried 10 cm or more, `-StepMinCm`, and shorter hops are reported as shuffles); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
 | The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
 | The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-Seeds "1,2,3"`, `-PressN`, `-Only`; three engine processes a stand, nine in all; results in `Saved\Matrix\getup_seeds\<name>`) |
 | Friction between the lying body and the floor, by experiment | `powershell -ExecutionPolicy Bypass -File Tools\surface-friction.ps1` (knocks the body down and drags it by the pelvis with `-ForceN 800` for `-PushS 1.0`; the friction from its acceleration; `-Tune` to try values) |
@@ -116,7 +122,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (49 scenarios; 80 s with `-Long`),
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (62 scenarios; 85 s with `-Long`),
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s, the whole
@@ -623,7 +629,18 @@ touch must not be in that list, and the ones that are get explained in the part'
   shuffle is just over that.** As a stepping foot lands, the other one hops 5.0 to 6.1 cm, and the push matrix
   read one recovery step as two: the cells that 32 to 48 solver iterations and most weaker assists "lose" in the
   30 N*s row are that, by the controller's own log (`control.recovery_steps` against `control.steps`). Before a
-  failed cell is taken for behaviour, read both.
+  failed cell is taken for behaviour, read both. (The push matrix counts a step from 10 cm since the owner's
+  decision of 24 November; the run's own record still starts at 5 cm.)
+- **Two questions asked of two different supports leave a gap between their answers.** "A step is needed" was
+  asked of the whole soles with 4 cm allowed, "the body stands again" of the part of the soles that touches. A
+  body on the edges of its feet, 2.4 cm outside the one and 6 cm outside the other, did neither, for good, and
+  rested there because the stagger's upright hold on the pelvis (up to 150 N*m: 19 cm of an 80 kg body) carried
+  it. An allowance for what a body in motion brings back does not hold for a body at rest; a body at rest with
+  its centre of mass off its support is being held by the assist. When a state is never left, write down every
+  condition of every way out of it and look for the values that satisfy none (`series.csv` has the three
+  margins: `com_margin_cm`, `capture_margin_cm`, `decision_margin_cm`).
+- **A run that ends in Stagger is not always stuck:** a step that brings the feet back together is made in
+  Stagger, and one that lands a moment before the run's end leaves that state in the result.
 - **A push matrix of 160 of 160 can stand on a threshold.** The blow of 30 N*s on the head from behind and to a
   side leaves the capture point just under the 4 cm that call for a step; any small change to the body puts it
   at 4.4 cm, the body steps, and the cell is judged by how its feet shuffle.

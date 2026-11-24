@@ -1009,10 +1009,13 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 
 		if (Series.IsEmpty())
 		{
-			Series = TEXT("t,state,feet,foot_left_n,foot_right_n,kinetic_j,potential_j,rms_speed_mps,rms_angular_speed_rads,com_margin_cm,capture_margin_cm,penetration_world_cm,penetration_self_cm,assist_force_share,fastest_joint_rads,fastest_joint\n");
+			Series = TEXT("t,state,feet,foot_left_n,foot_right_n,kinetic_j,potential_j,rms_speed_mps,rms_angular_speed_rads,com_margin_cm,capture_margin_cm,penetration_world_cm,penetration_self_cm,assist_force_share,fastest_joint_rads,fastest_joint,decision_margin_cm\n");
 		}
 		const auto Optional = [](bool bHave, double Value, int32 Digits) { return bHave ? FString::Printf(TEXT("%.*f"), Digits, Value) : FString(); };
-		Series += FString::Printf(TEXT("%.4f,%s,%s,%s,%s,%.3f,%.3f,%.4f,%.4f,%s,%s,%.3f,%.3f,%s,%.2f,%s\n"),
+		// The last column is the margin the controller decides on (the whole sole of every foot the floor touches),
+		// beside the two measured on the part of the soles that touches: a body can be inside the one and outside the
+		// other, and what it then does is read off these three.
+		Series += FString::Printf(TEXT("%.4f,%s,%s,%s,%s,%.3f,%.3f,%.4f,%.4f,%s,%s,%.3f,%.3f,%s,%.2f,%s,%s\n"),
 			(FrameIndex + 1) * FixedDt,
 			Controller ? FSandboxBodyTuning::StateName(State) : TEXT("passive"),
 			*Optional(Balance.bValid, Balance.StandingFeet.Num(), 0),
@@ -1023,7 +1026,8 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			*Optional(Balance.bValid && Balance.IsSupported(), Balance.CaptureMarginCm, 2),
 			Penetration.WorldCm, Penetration.SelfCm,
 			*Optional(Controller != nullptr, Controller ? Controller->GetAssistLoad().ForceShare : 0.0, 4),
-			JointSpeed, FrameFastestJoint.IsNone() ? TEXT("") : *FrameFastestJoint.ToString());
+			JointSpeed, FrameFastestJoint.IsNone() ? TEXT("") : *FrameFastestJoint.ToString(),
+			*Optional(Controller != nullptr && Balance.bValid, Controller ? Controller->GetDecisionMarginCm() : 0.0, 2));
 	}
 
 	// A physics asset can be authored with joint anchors that do not coincide in the reference pose.

@@ -2867,6 +2867,28 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 		// lost, it let go at once and went over like a plank, without having moved a foot.)
 		const bool bCanStep = PlacedFeet.Num() == 0;
 		bStepNeeded = StepNeededS >= Limits.DecisionS - KINDA_SMALL_NUMBER || (bCanStep && LostS > 0.0);
+		// A staggering body that has come to rest off its support needs a step too. The allowance above
+		// (balance.recoverable_cm, measured to the whole soles) is for a body in motion, which the ankles and the hips
+		// bring back; at rest the capture point is the centre of mass, nothing brings it back, and a body whose centre
+		// of mass is not over what touches the floor is kept up by the stagger's upright hold on the pelvis alone. Such
+		// a body did not step (2.4 cm outside its whole soles, under the allowance) and did not stand (6 cm outside the
+		// edges of the soles it stood on, so never "over its support"): after two steps across it stayed on crossed
+		// legs, one foot before the other, in Stagger for good. In a recovery that goes well this lasts 0.09 s at most.
+		const bool bRestsOff = State == ESandboxBodyState::Stagger && bCanStep && !IsStepUnderWay() && Balance.bValid && Balance.IsSupported() &&
+			Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0 &&
+			Balance.Velocity.Size2D() <= Limits.RecoverSpeedMps * 100.0 &&
+			Balance.CenterOfMassMarginCm <= 0.0 && Balance.CaptureMarginCm <= 0.0;
+		const double RestedOffS = RestOffSupportS;
+		RestOffSupportS = bRestsOff ? RestOffSupportS + DeltaTime : 0.0;
+		if (Limits.RestStepS > 0.0 && RestOffSupportS >= Limits.RestStepS - KINDA_SMALL_NUMBER)
+		{
+			bStepNeeded = true;
+			if (RestedOffS < Limits.RestStepS - KINDA_SMALL_NUMBER)
+			{
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: at rest for %.2f s with the centre of mass %.1f cm outside the support (capture point %.1f cm %s the whole soles): a step is needed, at %.3f s"),
+					RestOffSupportS, -Balance.CenterOfMassMarginCm, FMath::Abs(LastDecisionMarginCm), LastDecisionMarginCm >= 0.0 ? TEXT("inside") : TEXT("outside"), ElapsedS);
+			}
+		}
 		if (LostS > 0.0 && !bCanStep)
 		{
 			bStepNeeded = false;
@@ -2889,6 +2911,7 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 		bStepNeeded = false;
 		StepNeededS = 0.0;
 		LostS = 0.0;
+		RestOffSupportS = 0.0;
 	}
 
 	if (bJudged && IsUpright())

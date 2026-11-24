@@ -821,7 +821,7 @@ Not done by the audit, in the order it would take them: **(1) the feet stayed wh
 
 The order of part 7 that follows from these: (1) the body: wrist, elbow, the arms' strength and the assist's caps in the get-up, two hands hold and one slows; (2) friction and restitution; (3) the sweeps: muscle strength, damping, assist, and solver iterations 8, 16, 32 and 64 against every criterion and the push matrix; (4) the clips for review, the three long runs and a strike with overlays among them, and the criteria table. Still with the owner from M2: trying the desktop session by hand and looking at a strike with the overlays.
 
-**Part 7 was started on 24 November 2026. Steps 1 to 3 of 4 are done.** Step 1, the body (`docs/testing.md`, "M3 part 7, step 1", two halves): the get-up's assist, a body pressed down, and the stance's elbow; the wrist is put off to M4 on the owner's decision. Step 2, friction and restitution, is below the figures of step 1.
+**Part 7 was started on 24 November 2026. Steps 1 to 3 of 4 are done, the two things the owner wanted before step 4 are done, and step 4 (the clips and the criteria table, further down) is made and waits for the owner's review.** Step 1, the body (`docs/testing.md`, "M3 part 7, step 1", two halves): the get-up's assist, a body pressed down, and the stance's elbow; the wrist is put off to M4 on the owner's decision. Step 2, friction and restitution, is below the figures of step 1.
 
 - **The assist of the get-up is 0.27 of body weight on average, from 0.51, with the stand unchanged:** 50, 48 and 49 of 50 falls end standing on three seeds, 39, 38 and 44 at the first attempt, 1.36 attempts a fall (1.41 before). The pull had not been lifting the body; it had been dragging it over the floor, back to where the clip was put when the get-up began. A body that turns into a clip's first pose moves 20 to 35 cm, and the clip waited for it there. The clip now follows the pelvis over the floor while the feet carry nothing (`getup.pelvis_follow_s`); with that, caps of 90 N on the pelvis and 30 N on a foot do what 250 N and 50 N did. The arms are stronger while getting up (1200 N*m/rad, cap 120 N*m, a shoulder's published peak), which is worth a tenth of an attempt a fall. Lower still the criterion is met (96% at a share of 0.14) with two to three times as many failed attempts, and a failed attempt is a body that flops back; 0.27 is taken. A get-up takes 3.7 to 5.5 s in the suite (3.3 to 4.1 before).
 - **The wrist was measured and not changed.** A variant asset with a wrist that bends back 85 degrees instead of 25 helps where the assist is weakest (at a share of 0.20 without the following: 45, 48 and 45 of 50 instead of 43, 41 and 39) and little with the following (at 0.19: 26, 26 and 30 at the first attempt instead of 21, 23 and 26, the same count standing). The decision of 24 November named the wrist as the first thing to correct; with this measured it was put to the owner again, and **the owner decided (24 November 2026) that the wrist's model is corrected in M4, with the grab by the hand**, where the NPC's wrist is loaded in any case and limits counted in the hand's own frame are needed. The asset is as it was, so the 51 scenarios without a get-up are bit for bit the baseline.
@@ -845,6 +845,66 @@ The order of part 7 that follows from these: (1) the body: wrist, elbow, the arm
 - **Muscles stay.** The legs are held from both sides: at half their stiffness the body does not make the steps it needs, at one and a half a blow of 200 N*s on the chest no longer fells it. Spine, arms, neck and every damping are on a plateau at half and at twice.
 - **The assist stays.** The body stands with none at all (pelvis drift 1.6 cm instead of 0.9), but then takes up to seven steps after a blow of 30 N*s on the head. At half, the standing share is 0.0037 instead of 0.0063, the stand is level, and `stand_foot_moved` falls. The cap on the pelvis's upright hold in Stagger stays at 150 N*m: at 100 three times as many pushes of 80 N*s end on the floor.
 - **Open, for the owner: what counts as a step.** The two cells that 32 to 48 iterations lose, and the single cell most assist candidates lose, are not a second step: as the stepping foot lands, the other leaves the floor for 0.12 s and stands again 5 to 6 cm away, and the measure counts a step from 5 cm. With a step counted from 10 cm none of them has a step too many. The measure was not changed.
+
+**Decided by the owner on 24 November 2026, after step 3** (nine open points; the recommendation was taken in all):
+
+- **A step in the push matrix is a foot carried 10 cm or more.** No value changes for it (64 solver iterations, the assist as it is). A foot that hops 5 to 10 cm is a shuffle, counted beside the steps and judged by nothing.
+- **The stance on crossed legs that Stagger does not leave is taken apart now,** before the clips.
+- **A body that ends kneeling, propped on its hands, and trembles around the rest threshold stays as it is** and is named in the criteria table.
+- **The criterion of the fall stays 200 N*s on the chest.** The 48 knockdowns with blows up to 320 N*s go into the criteria table as a stress test.
+- **Get-up attempts that are given up (51 of 202) are not touched.** One is shown among the clips and judged by its look.
+- **One hand (300 N) on a body getting up** is judged by the owner, by hand, in a session.
+- **FR-19 to FR-23 and M4b are in this document** (carried over by a parallel session, with the plan for M4, M4b and M5).
+- **Steps 2 and 3 are committed** (`fe44062`).
+- **What was deferred from M2** (the desktop session tried by hand, a strike seen with the overlays) is looked at together with the clips of step 4.
+
+**Before step 4, both done on 24 November 2026** (`docs/testing.md`, "M3 part 7, before step 4"):
+
+- **The push matrix counts a step from 10 cm** (`Tools\push-matrix.ps1 -StepMinCm`): 160 of 160 at the values as they are, every run ending as before; at 32 solver iterations the 30 N*s row passes, and with `-StepMinCm 5` it loses the same two cells as in step 3. Each row reports its shuffles (0, 3, 12 and 7).
+- **The crossed-leg stance had a cause, and it is closed.** The decision that a step is needed measures the capture point against the whole soles and allows 4 cm; Stagger ends when the centre of mass is over the part of the soles that touches. A body at rest between the two (here 2.4 cm outside the one and 6 cm outside the other, on the edges of its feet) neither stepped nor stood, and what kept it up was the stagger's upright hold on the pelvis: the assist holding a body that needs a step. Now a staggering body that has come to rest off its support for `balance.rest_step_s` (0.3 s; in the 160 runs of the push matrix the condition lasts 0.09 s at most) steps once more: the foot that was crossed under steps out, the body stands, and the feet come back together. `stagger_rest_off_support` holds it and fails without the rule. Nothing else moved: the 62 scenarios of the suite have the baseline's hashes, the push matrix, the knockdowns and the stand are as they were (suite 63 of 63 with `-Long`, matrix 160 of 160, knockdowns 8 of 8, the stand 50, 50 and 49 of 50 with 38, 44 and 45 at the first attempt, unit tests 31, session self-test 14 of 14). Seen on the way and left for the clips: a step whose target lies even 2 cm past the other foot's line becomes a step across, which is what put the feet in one line.
+
+**Step 4 of 4, the clips and the criteria table, was made on 24 November 2026 and waits for the owner's review.** With the review M3 is at its gate: the four measured criteria are met, the fifth is the owner's look.
+
+| Criterion | Measured on 24 November 2026 | Verdict |
+| --- | --- | --- |
+| 30 N*s pushes are absorbed without a fall; 80 N*s pushes produce a recovery step or a fall as the outcome table states | Push matrix 160 of 160 by the owner's table (a step from 10 cm). 10 N*s: 40 stood. 30 N*s: 36 stood, 4 made one step where one is allowed, none fell. 80 N*s: 35 stepped, 3 stood and never needed a step, 2 fell where a fall is allowed, none was held by the assist. 200 N*s: 28 fell, 12 ran the push off (pelvis and thighs) | met |
+| Get-up succeeds in 90% of 50 randomised falls | 50, 50 and 49 of 50 on three seeds (99%), 38, 44 and 45 at the first attempt, 1.33 attempts a fall; from all four sides in 4.1 to 5.7 s in the suite; the assist is 0.27 of body weight while getting up | met |
+| Standing assist share is at most half its M2 value (0.0093 of body weight) | 0.0063 over 10 s, 0.0062 over 10 minutes; pelvis drift 0.91 cm | met |
+| Every fall comes to rest within 3 s with no energy gain | Knockdowns from 8 directions, 200 N*s on the chest: 8 of 8, at rest after 1.26 to 2.21 s, no deeper than 1.23 cm in the floor. The energy "gained" is 5.6 to 25.5 J, the falling body's own muscles folding the legs and putting the arms out; the limit for that is 40 J by the owner's decision of 24 November, and 1 J for a body that is upright | met, with "no energy gain" read as "no more than the muscles' work" |
+| Human review of rendered clips: it reads as a person losing balance, not a puppet | 25 sheets of pictures, `Saved\Films\m3_*` (below) | the owner's |
+
+Beside the criteria: suite 63 of 63 with `-Long`, unit tests 31, session self-test 14 of 14, no joint stretched more than 0.33 cm in the push matrix, the physics step 0.58 ms a frame at 64 solver iterations.
+
+**Known limits at the gate** (each decided by the owner as named, or put to the review):
+
+- **The 30 N*s row stands on a threshold.** A blow on the head from behind and to a side leaves the capture point just under the 4 cm that call for a step; a small change to the body makes it 4.4 cm, a step is made, and the cell then depends on how the feet shuffle (a shuffle is no longer a step).
+- **A body that ends kneeling trembles.** One knockdown of 48 ends sitting on its calves, propped on its hands, and trembles at 4 to 6 cm/s around the rest threshold. Left as it is (owner, 24 November).
+- **Blows harder than the criterion's.** Of 48 knockdowns up to 320 N*s on the chest and the head 46 pass; one is at rest only after 5.6 s (260 N*s on the head), one has 50 J (320 N*s on the head, forward). At other settings 2 to 6 failed. A stress test, not the criterion.
+- **Furniture.** One fall of 150 does not end standing: the body lies over the chair's back and every attempt is given up at once (`m3_getup_on_chair`). At the table a fall takes 1.9 to 3.0 attempts. No crawl into open floor is built; furniture becomes movable in M4, and the NPC's own way round it is M4b (FR-21).
+- **Get-up attempts that are given up.** About one attempt in four (51 of 202 on three seeds at the end of step 2) ends with the body flopping back and trying again by another clip. Not touched; shown in `m3_getup_given_up_floor` and `m3_getup_given_up_table`, judged by the look.
+- **One hand on a body getting up.** Under 300 N two bodies of three get up and one stays down until the press ends; 600 N keeps all down. The owner judges it by hand in a session.
+- **A push of 200 N*s on the pelvis or a thigh is run off** in up to 8 steps over 1.2 to 1.9 m. Whether that reads as a person carried off by the blow, or needs a limit of steps, is for the three clips `m3_run_*`.
+- **A step across from a target barely past the other foot's line.** A target 2 cm past the line makes a step a crossing one and can put the feet in one line; the body now steps out of it (`stagger_rest_off_support`), but the step itself is as it was.
+- **The wrist's model** (a hand turned palm down bends back by 25 degrees only) waits for M4's grab by the hand.
+- **The stand's blows are 200 to 320 N*s,** more than a hand gives; falls made by hands come in M4.
+- **64 solver iterations** are kept: 32 would save 0.15 ms a frame and is the first thing to look at if M5 needs the time.
+
+**The clips** (`Tools\film.ps1`; each is `Saved\Films\<name>\sheet.png`, the list with one line each in `Saved\Films\m3_gate.txt`):
+
+| What | Sheets |
+| --- | --- |
+| Standing with the idle (the sway is 4 cm at the head and does not show on a sheet: for the session) | `m3_stand` |
+| Pushes of 30 N*s | `m3_push30_head`, `m3_push30_chest_back` |
+| Pushes of 80 N*s | `m3_push80_chest`, `m3_push80_pelvis_side`, `m3_push80_chest_back`, and with the overlays `m3_push80_overlay` |
+| A held push | `m3_hold_force` (40 N for 2 s: the lean), `m3_hold_hand` (a hand held against the chest), `m3_hand_pushes_back` (a hand pushes the chest 70 cm back) |
+| Falls from three sides | `m3_fall_back`, `m3_fall_forward`, `m3_fall_side` |
+| Get-ups from four sides | `m3_getup_back`, `m3_getup_front`, `m3_getup_left`, `m3_getup_right` |
+| Get-ups that are given up | `m3_getup_given_up_floor` (bare floor: the first attempt given up after 8.5 s, the second stands), `m3_getup_given_up_table` (two given up, the third stands), `m3_getup_on_chair` (the fall that never stands) |
+| The three longest runs after 200 N*s | `m3_run_push_thigh_r_045_200` (8 steps), `m3_run_push_pelvis_045_200` (7), `m3_run_push_thigh_l_135_200` (7) |
+| A strike with the overlays | `m3_strike_punch_torso_overlay`, `m3_strike_slap_head_overlay` |
+| Out of crossed legs | `stagger_rest_off_support` |
+
+For the owner's review, in a session (`Tools\play.ps1`): the sway of the standing body, one hand on a body that is getting up, and what was deferred from M2 (the desktop session by hand; a strike with the overlays, the V key).
 
 **To do before part 5 (owner's request, 23 November 2026): look at what exists before building the fall.** Unreal has no balance controller (standing, recovery steps, the decision to fall, get-up), and Euphoria, the one mature system of that kind, has not been licensed since 2017; parts 3 and 4 build that layer on Chaos and Physics Control. But Epic's Game Animation Sample, updated for UE 5.8 in August 2026, now has a character with a "powered ragdoll" (states for fall protection, injury, flailing and rolling, driven through Physics Control), which the decision at the start of M3 did not know of. Before part 5 starts: the owner downloads the sample (Fab or the Epic launcher; a manual download, against the M3 rule that no animation set has to be downloaded by a person, so it is the owner's call), and an evaluation of an hour or two answers whether its protective fall and its poses, and perhaps its get-up, can be taken over (C++ and text poses, no Blueprint logic) instead of written from scratch. Fab plugins that claim catch steps or get-up (Physical Impact Reaction, Z11) are looked at only if the owner is willing to relax the no-Blueprint rule or the fully simulated body.
 

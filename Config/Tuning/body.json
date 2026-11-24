@@ -63,6 +63,7 @@
     "lean_max_cm": 10,
     "recover_s": 0.05,
     "recover_speed_mps": 0.2,
+    "rest_step_s": 0.3,
     "step_margin_cm": 5,
     "step_margin_goal_cm": 8,
     "step_lift_cm": 8,

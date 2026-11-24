@@ -2156,6 +2156,118 @@ floor.
 Tooling: `Tools\suite.ps1 -Tune "<values>" -Label <name>` runs the whole suite against other values into
 `Saved\Suites\<name>` and leaves the files baselines are made of alone.
 
+### M3 part 7, before step 4 (what counts as a step; a body at rest off its support), 2026-11-24
+
+Two things the owner decided on 24 November to have done before the clips: the push matrix counts a step from
+10 cm, and the stance on crossed legs that Stagger did not leave is taken apart now.
+
+**A step in the push matrix is a foot carried 10 cm or more** (`Tools\push-matrix.ps1 -StepMinCm`, 10 by default).
+The flights of a foot are the run's own record (`control.steps`, from 5 cm); those of 10 cm or more are steps,
+less the controller's regrouping steps of that length, and never fewer than the controller's own steps for
+balance; the shorter ones are shuffles, counted in every cell and row and judged by nothing. No value of the body
+changed.
+
+| Check | Result |
+| --- | --- |
+| The values as they are | 160 of 160; against the matrix of `m3_part7_step2` 160 runs end the same way; shuffles 0, 3, 12 and 7 in the four rows |
+| 32 solver iterations, the 30 N*s row | 40 of 40 (5 shuffles) |
+| ...with `-StepMinCm 5` | 38 of 40: `push_neck_01_225_030` and `push_neck_01_315_030`, two steps where one is allowed, as in step 3 |
+| `Tools\baseline.ps1 -CompareMatrix` | reads the new file as before (it compares outcomes and state sequences) |
+
+**The crossed-leg stance.** `push_pelvis_80_side_steps` with `-Tune "surface.feet_friction=1.1"`: after two steps
+across (the second lands at 3.57 s) the body stands on crossed legs, one foot 35 cm before the other and 1.5 cm
+to its side, and is in Stagger at the end of the run with nothing in the controller's log after the second step.
+
+*What held it.* Two questions were asked of two different supports, and the answers left a gap. A step is needed
+when the capture point is more than `balance.recoverable_cm` (4 cm) outside the *whole soles* of the feet the
+floor touches; Stagger ends when the centre of mass is over the part of the soles that *touches*. The body stood
+on the edges of its feet. From 4.8 s to the end of the run, every frame:
+
+| | cm |
+| --- | --- |
+| Centre of mass against the support that touches | 6.0 to 7.0 outside |
+| Capture point against the same | 6.0 to 7.5 outside |
+| Capture point against the whole soles (what the decision is made on) | 2.3 to 3.2 outside |
+| Speed of the body, root mean square | 0.05 m/s, falling to 0.01 |
+
+So no step (under 4 cm) and no Standing (not over its support), for good. A body cannot rest with its centre of
+mass 6 cm off its support by itself: in Stagger the pelvis is held upright with up to 150 N*m, and 80 kg held
+6 cm off is 47 N*m. The stagger's torque share was 0.11 of body weight times the height of the centre of mass on
+average over the 5 s. The allowance of 4 cm is what ankles and hips bring back of a body in motion; at rest the
+capture point is the centre of mass and nothing brings it back. This is the assist holding a body that needs a
+step, which the owner's table calls a failure, in a place the table's check (`held`) does not see: the push
+matrix read the run as "stepped". `series.csv` now has the decision's margin beside the other two
+(`decision_margin_cm`, last column; all 62 hashes as before).
+
+*How often.* The condition (in Stagger, both feet down, no faster than `balance.recover_speed_mps`, centre of
+mass and capture point outside the support that touches) lasts at most 0.09 s in the 160 runs of the push matrix
+and in no run longer; in the stuck run it lasts from 3.71 s to the end.
+
+*The rule.* A staggering body in that condition for `balance.rest_step_s` (0.3 s: three times the longest
+passing case, and about a person's reaction time) needs a step. Which foot and where is the stagger's own
+planning: the feet take turns, so the foot that was crossed under steps out to its own side.
+
+| | Before | With the rule |
+| --- | --- | --- |
+| `stagger_rest_off_support` (new: the same push, the soles made grippy by a console event at 1 s) | ends in Stagger, feet 46 cm from their stance | a third step at 4.01 s, 37 cm out to the side; Standing at 4.37 s; two regrouping steps; feet in their stance at 7.3 s |
+| The same with `-Tune "balance.rest_step_s=0"` | | ends in Stagger: the scenario fails without the rule |
+| Suite with `-Long` against `m3_part7_crossed_start` | 62 of 62 | 63 of 63; the 62 have the same hashes, one new |
+| Push matrix | 160 of 160 | 160 of 160, every run ends the same way |
+| 80 runs (80 and 200 N*s) with the soles at 1.1 | 2 end in Stagger | 1, and that one is a regrouping step that landed 0.14 s before the run's end; the rule asked for a step in 2 runs |
+| Knockdowns | 8 of 8 | 8 of 8 (2.21 s, 25.5 J, 1.23 cm: the same) |
+| The stand, three seeds | 50, 50, 49; 38, 44, 45 at the first attempt | 50, 50, 49; 38, 44, 45; the rule asked for no step in 150 falls |
+| Unit tests, session self-test | 31; 14 of 14 | 31; 14 of 14 |
+
+How it looks (`Saved\Films\stagger_rest_off_support\sheet.png`, from the front): crossed legs at 3.6 to 4.05 s,
+the right foot out to the side at 4.15 to 4.25 s, a wide stance at 4.4 s, the feet together from 7.3 s.
+
+Not changed, and seen on the way: the second step of that run is itself a step across. The left foot is put
+before the right one because the capture point is heading 2 cm past the right foot's line, and a target past
+that line makes a step a crossing one whatever the distance. It is what puts the feet in one line; the third
+step now undoes it. Whether a target a few centimetres past the line should cross is a question of how the steps
+look, for the clips.
+
+Changed: `Tools\push-matrix.ps1`; `SandboxBodyController` (`UpdateState`: the rule), `SandboxBodyTuning`
+(`balance.rest_step_s`), `Config/Tuning/body.json` and its `README.md`, `ScenarioRunnerSubsystem` (the series'
+last column), `Scenarios\stagger_rest_off_support.json`, `Scenarios\README.md`.
+
+### M3 part 7, step 4 (the figures of the gate, the clips), 2026-11-24
+
+All on the build with the rule above; no value of the body changed in this step.
+
+| What | Figure |
+| --- | --- |
+| Suite with `-Long` | 63 of 63 in 85 s |
+| Unit tests; session self-test | 31; 14 of 14 |
+| Push matrix (a step from 10 cm) | 160 of 160; 10 N*s: 40 stood; 30: 36 stood, 4 stepped; 80: 3 stood, 35 stepped, 2 fell; 200: 12 stepped, 28 fell; shuffles 0, 3, 12, 7; worst joint stretch 0.33 cm |
+| Quiet-standing assist share (bound 0.0093) | 0.0063 over 10 s (0.0115 at most), 0.0062 over 10 minutes; pelvis drift 0.91 cm; the head travels 4.1 cm with the idle |
+| Knockdowns, 200 N*s on the chest from 8 directions | 8 of 8; at rest after 1.26 to 2.21 s; 5.6 to 25.5 J of muscle work; 1.23 cm into the floor at most, 0.45 cm into itself |
+| 48 knockdowns, 200, 260 and 320 N*s on the chest and the head | 46 pass; `neck_01` 315 degrees 260 N*s at rest after 5.62 s; `neck_01` 90 degrees 320 N*s gains 50.3 J |
+| The stand, seeds 1 to 3 | 50, 50, 49 of 50; 38, 44, 45 at the first attempt; 1.36, 1.26, 1.38 attempts a fall; assist share 0.28, 0.28, 0.27 |
+| The suite's get-ups from the back, the front, the left, the right | 5.4, 4.1, 5.7, 4.8 s, each at the first attempt, assist share 0.26 to 0.28 |
+| The longest runs after 200 N*s (pelvis and thighs; 12 of 24 cells stay up) | 8 steps and 1.70 m (`thigh_r` 45 degrees), 7 and 1.86 m (`pelvis` 45), 7 and 1.87 m (`thigh_l` 135); 2.5 to 3.3 s in Stagger |
+
+**The clips** are 25 sheets of pictures under `Saved\Films\m3_*` (listed in `Saved\Films\m3_gate.txt` and in the
+M3 section of `docs/PRD.md`), made by one script that calls `Tools\film.ps1` for each; the camera of a fall, a
+get-up and a run is put beside the way from where the body stood to where its pelvis ends. Runs of the push
+matrix and trials of the stand are filmed from their generated scenario files (`-File`).
+
+What the sheets show that the figures do not:
+
+- *The fall that never stands* (`m3_getup_on_chair`, seed 3, trial 45): the body goes over the chair's back and
+  hangs there bent double, its legs on one side and its trunk on the other. Each of 14 attempts is given up in
+  the frame it starts in: the pelvis is 40 cm from where a clip that begins on the floor has it. It is not
+  "under the table"; it is a body lying on a piece of furniture, for which there is no clip.
+- *A get-up given up on the bare floor* (`m3_getup_given_up_floor`): on its back, the body lifts its
+  legs and an arm and stays so for about 5 s before the attempt is given up (the clip waits for a pelvis 28 cm
+  away); it drops back, and stands by another clip in 4.3 s.
+- *The runs* read as a body carried off sideways with its arms out, stepping fast for a second and standing in a
+  wide stance, then bringing its feet together.
+
+Mistakes of mine in this part: the first cameras of the three runs stood 5.2 m away and the body was a fifth of
+a tile high (filmed again from 3.6 m); the overlay sheets were first made from the `quarter` view, too far for
+the text and the lines to be read (again from 3 m).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

@@ -9,6 +9,7 @@
 #   ... -Rules m2                                            the M2 gate instead: who fell, nothing else
 #   ... -Parallel 8                                          scenario processes at a time
 #   ... -Tune "name=value,..."                               tuning overrides for every run
+#   ... -StepMinCm 10                                        how far a foot has to travel in the air to count as a step
 #   ... -Out <dir>                                           output directory (default Saved\Matrix\push)
 #
 # A direction is the way the push moves the body, as an angle in the floor plane: 0 is toward the
@@ -17,8 +18,11 @@
 #
 # The outcome of a push, from the run's own result:
 #   fell     the body fell (metrics.fell)
-#   stepped  it stayed up and made at least one step (control.step_count, less the steps that only brought the
-#            feet back together afterwards, control.regroup_step_count)
+#   stepped  it stayed up and made at least one step: a foot that left the floor and stood again -StepMinCm (10 cm)
+#            or more away (control.steps), less the steps that only brought the feet back together afterwards
+#            (control.recovery_steps[].regroup); a step the controller made counts whatever its length. A foot that
+#            hops less than that is a shuffle: counted for each row, judged by nothing. With 5 cm, the run's own
+#            least, one recovery step read as two wherever the other foot hopped 5 or 6 cm as the first landed
 #   held     it stayed up without a step although its capture point needed one (control.balance.step_needed_frames):
 #            the balance assist held it. Until the recovery step exists (M3 part 4) this is where a step would be.
 #   stood    it stayed up without a step and never needed one
@@ -47,7 +51,8 @@ param(
     [int]$Parallel = 8,
     [string]$Tune,
     [string]$Out,
-    [double]$MaxJointStretchCm = 2.0
+    [double]$MaxJointStretchCm = 2.0,
+    [double]$StepMinCm = 10.0
 )
 . "$PSScriptRoot\common.ps1"
 
@@ -144,13 +149,19 @@ foreach ($trial in $trials) {
     if (-not $runMetrics -or -not $runMetrics.ok) { $missing += $trial.name; continue }
     $failedChecks = @($runMetrics.checks | Where-Object { -not $_.pass } | ForEach-Object { $_.name })
     $fell = [bool]$runMetrics.metrics.fell
-    $stepCount = 0
-    if ($null -ne $runMetrics.control.step_count) { $stepCount = [int]$runMetrics.control.step_count }
+    # Steps, measured from outside: a foot that left the floor and stood again -StepMinCm or more away. The run's
+    # own record starts at 5 cm, and a foot that hops 5 or 6 cm as the other one lands is a shuffle, not a step
+    # (owner's decision, 24 November 2026): shuffles are counted beside the steps and judged by nothing.
+    $flights = @($runMetrics.control.steps | Where-Object { $null -ne $_ })
+    $stepCount = @($flights | Where-Object { [double]$_.length_cm -ge $StepMinCm }).Count
+    $shuffleCount = $flights.Count - $stepCount
     # A step that only brought the feet back together after the body had its balance again is not a step the push
-    # cost (control.regroup_step_count).
-    $regroupCount = 0
-    if ($null -ne $runMetrics.control.regroup_step_count) { $regroupCount = [int]$runMetrics.control.regroup_step_count }
-    $stepCount = [Math]::Max($stepCount - $regroupCount, 0)
+    # cost: the controller's own record names those (control.recovery_steps[].regroup).
+    $own = @($runMetrics.control.recovery_steps | Where-Object { $null -ne $_ })
+    $regroupLong = @($own | Where-Object { $_.regroup -and [double]$_.landed_length_cm -ge $StepMinCm }).Count
+    $ownCount = @($own | Where-Object { -not $_.regroup }).Count
+    # A step the controller made counts whatever its length: a body that answered with a short step was not held.
+    $stepCount = [Math]::Max([Math]::Max($stepCount - $regroupLong, 0), $ownCount)
     $stepNeeded = 0
     if ($null -ne $runMetrics.control.balance.step_needed_frames) { $stepNeeded = [int]$runMetrics.control.balance.step_needed_frames }
     $outcome = 'stood'
@@ -165,6 +176,7 @@ foreach ($trial in $trials) {
         outcome               = $outcome
         fell                  = $fell
         steps                 = $stepCount
+        shuffles              = $shuffleCount
         step_needed_frames    = $stepNeeded
         fall_time_s           = $runMetrics.metrics.fall_time_s
         end_state             = $runMetrics.control.end_state
@@ -237,6 +249,7 @@ foreach ($impulse in $impulseList) {
         pass    = @($row | Where-Object { $_.verdict -eq 'pass' }).Count
         pending = @($row | Where-Object { $_.verdict -eq 'pending' }).Count
         fail    = @($row | Where-Object { $_.verdict -eq 'fail' }).Count
+        shuffles = ($row | ForEach-Object { [int]$_.shuffles } | Measure-Object -Sum).Sum
     }
 }
 
@@ -251,6 +264,7 @@ Write-JsonFile (Join-Path $Out 'matrix.json') ([ordered]@{
     directions   = $Directions
     push_seconds = $PushSeconds
     tune         = $Tune
+    step_min_cm  = $StepMinCm
     counts       = $counts
     broken_rules = $broken
     notes        = $notes
@@ -283,7 +297,7 @@ foreach ($impulse in $impulseList) {
     $c = $counts["$impulse"]
     $judgedText = 'reported only'
     if ($c.judged) { $judgedText = 'judged' }
-    Write-Output ("  {0,5} N*s ({1}): stood {2}, held {3}, stepped {4}, fell {5}; pass {6}, pending {7}, fail {8}" -f $impulse, $judgedText, $c.stood, $c.held, $c.stepped, $c.fell, $c.pass, $c.pending, $c.fail)
+    Write-Output ("  {0,5} N*s ({1}): stood {2}, held {3}, stepped {4}, fell {5}; pass {6}, pending {7}, fail {8}; shuffles under {10:N0} cm {9}" -f $impulse, $judgedText, $c.stood, $c.held, $c.stepped, $c.fell, $c.pass, $c.pending, $c.fail, $c.shuffles, $StepMinCm)
 }
 foreach ($line in $broken) { Write-Output "  BROKEN: $line" }
 Write-Output ("  mirror-image pairs that end differently: {0} (reported, not judged)" -f $mirrors.Count)

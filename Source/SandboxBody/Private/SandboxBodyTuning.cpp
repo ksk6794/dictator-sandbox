@@ -90,6 +90,7 @@ namespace
 		Visitor(FString(TEXT("balance.lean_max_cm")), Tuning.Balance.LeanMaxCm);
 		Visitor(FString(TEXT("balance.recover_s")), Tuning.Balance.RecoverS);
 		Visitor(FString(TEXT("balance.recover_speed_mps")), Tuning.Balance.RecoverSpeedMps);
+		Visitor(FString(TEXT("balance.rest_step_s")), Tuning.Balance.RestStepS);
 		Visitor(FString(TEXT("balance.step_margin_cm")), Tuning.Balance.StepMarginCm);
 		Visitor(FString(TEXT("balance.step_margin_goal_cm")), Tuning.Balance.StepMarginGoalCm);
 		Visitor(FString(TEXT("balance.step_lift_cm")), Tuning.Balance.StepLiftCm);
@@ -473,6 +474,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.LeanMaxCm, 50.0, TEXT("balance"), TEXT("lean_max_cm"), OutError) ||
 		!CheckRange(Balance.RecoverS, 10.0, TEXT("balance"), TEXT("recover_s"), OutError) ||
 		!CheckRange(Balance.RecoverSpeedMps, 5.0, TEXT("balance"), TEXT("recover_speed_mps"), OutError) ||
+		!CheckRange(Balance.RestStepS, 10.0, TEXT("balance"), TEXT("rest_step_s"), OutError) ||
 		!CheckRange(Balance.StepMarginCm, 50.0, TEXT("balance"), TEXT("step_margin_cm"), OutError) ||
 		!CheckRange(Balance.StepMarginGoalCm, 50.0, TEXT("balance"), TEXT("step_margin_goal_cm"), OutError) ||
 		!CheckRange(Balance.StepLiftCm, 50.0, TEXT("balance"), TEXT("step_lift_cm"), OutError) ||

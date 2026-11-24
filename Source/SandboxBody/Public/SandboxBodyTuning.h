@@ -250,6 +250,15 @@ struct FSandboxBalanceTuning
 	 * into the next stagger. m/s.
 	 */
 	double RecoverSpeedMps = 0.0;
+	/**
+	 * A staggering body that has come to rest (both feet down, no faster than balance.recover_speed_mps) with its
+	 * centre of mass and its capture point outside the part of its soles that touches the floor, for this long,
+	 * needs a step: at rest nothing brings the body back over its feet, and what keeps it up is the assist's torque
+	 * on the pelvis. Without this rule such a body neither stepped (its capture point was within
+	 * balance.recoverable_cm of its whole soles) nor stood (its centre of mass was not over its support), for good.
+	 * 0 switches the rule off. Seconds.
+	 */
+	double RestStepS = 0.0;
 
 	/**
 	 * The recovery step. The foot is put where the capture point will be when it lands (it runs away from the

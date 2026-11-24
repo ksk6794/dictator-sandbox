@@ -420,6 +420,8 @@ private:
 	double LastDecisionMarginCm = 0.0;
 	/** Stagger: how long the centre of mass has been over the support with the capture point within reach of the ankles. */
 	double RecoveredS = 0.0;
+	/** Stagger: how long the body has been at rest on both feet with its centre of mass and capture point off the support that touches. */
+	double RestOffSupportS = 0.0;
 	/** Whether the weakening of the last flinch has run its course (the muscles are back to full strength). */
 	bool bFlinchWeakeningOver = true;
 
