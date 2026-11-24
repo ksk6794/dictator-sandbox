@@ -29,3 +29,5 @@ Content/Generated/
 # Per-user editor scratch folders
 Content/Developers/
 Content/Collections/
+# Clips of Epic's Game Animation Sample, copied by Tools/fetch-sample-anims.ps1
+Content/Characters/UEFN_Mannequin/

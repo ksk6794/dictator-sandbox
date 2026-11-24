@@ -1428,8 +1428,22 @@ four with recovery steps, `effector_hold_chest` and `pose_foot_place`. The other
 were. Suite 50 of 50 with `-Long`, push matrix 160 of 160, knockdowns 8 of 8, unit tests 28, session self-test
 14 of 14; a second suite run and a second matrix run repeat the first in full. Baseline `m3_part5`.
 
-Not done: the look at Epic's Game Animation Sample (whether its fall poses and get-up are better than these),
-which needs the sample downloaded by the owner.
+**The look at Epic's Game Animation Sample** (downloaded by the owner; read by a script in the editor on the
+sample's own project, 24 s, nothing rendered). Its ragdoll is a kinematic character that goes limp when hit and
+is played back up by a montage; the logic is Blueprint and has no balance in it. Its clips, 34 sequences under
+`Characters/UEFN_Mannequin/Animations/Ragdoll` on a skeleton with the mannequin's bone names:
+
+| Clips | What they are | Length |
+| --- | --- | --- |
+| `M_ragdoll_getup_stand_B`, `_F`, `_L`, `_R` | From lying on the back, the front, a side to standing, in place (pelvis from 12 to 16 cm up to 92 cm, no travel) | 5.0 s |
+| `M_ragdoll_getup_crouch_*`, `_walk_*`, `_run_*` | The same into a crouch, a walk or a run; they travel 5 to 8.7 m | 3.0 to 4.5 s |
+| `M_ragdoll_getup_roll_L`, `_R` | Up out of a roll | 3.7 s |
+| `M_ragdoll_poses_OnGround`, `_rolling`, `_injured` | Poses for a body on the floor, by the way it lies; seven injured states | a few frames each |
+| `M_ragdoll_flail_armsFirst`, `_legsFirst`, `_armsDown` | Loops for a body in the air, chosen by the way it flies | 4.7 to 8.3 s |
+| `M_ragdoll_reach_*` (nine) | Reaching for the coming impact, aimed by a blend space over direction and pitch | 2.0 s |
+
+Not measured: how its poses look on this body next to the three fall poses written here. That needs a clip to
+be a source of the target pose, which part 6 builds if the owner takes the get-up clips.
 
 ## Known behaviour of the stock mannequin
 

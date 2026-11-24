@@ -131,6 +131,10 @@ touch must not be in that list, and the ones that are get explained in the part'
   stays off, does not tick and listens to nothing. A run must give the same hashes with overlays and without.
 - **Measuring changes nothing.** What the runner and the body's balance sense read (bodies, scene queries,
   contact events) must leave a run's hashes as they were. A new metric is checked that way before it is used.
+- **The body can be interacted with at every moment** (owner's requirement, FR-18). In every state, getting up
+  included, it is a simulated body whose muscles are asked for a pose: never kinematic, never played back, never
+  deaf to a contact. A recorded clip is a target for the muscles, not a motion of the body, and every state has
+  to say what a hit, a push and a grab do to it.
 - **A body under control never sleeps** (`USandboxBodyController::Start` sets its bodies to never sleep). It
   has to sense its balance and answer a touch at once; see the pitfall about the solver's sleep below.
 - **Time control never changes the physics step.** Pause, single step and slow motion decide on which
