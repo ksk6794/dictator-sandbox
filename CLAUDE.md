@@ -54,8 +54,10 @@ over the feet the body really stands on. It gets up from all four sides in 3.3 t
 stop it, a 200 N*s blow fells it and it tries again, two hands at their 300 N each only slow it, and a force it
 cannot lift (1500 N on the pelvis) is waited out for 3 s, given up and tried again (scenarios `getup_*`). A scenario's body gets up only with `"get_up": true`. **Step 3, the stand:** `Tools\getup-stand.ps1`
 knocks the body down 50 times from a seed, 24 of them near a wall, a table and a chair (static boxes of a room
-spec, `Specs/rooms/getup_room.json`), and counts the falls that end standing: 50, 49 and 48 of 50 over three seeds
-(the criterion is 90%), 42, 36 and 42 of them at the first attempt. Next is part 7, the gate.
+spec, `Specs/rooms/getup_room.json`: the table in the middle of the room, the chair drawn up to it, since the
+owner's request of 24 November), and counts the falls that end standing: 49, 50 and 50 of 50 over three seeds
+(the criterion is 90%), 39, 37 and 43 of them at the first attempt (50, 49 and 48 with the two pieces apart near
+the corners). Next is part 7, the gate.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -81,7 +83,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
-| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing) |
+| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; the places are worked out from where the room spec has the table and the chair) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
@@ -503,6 +505,18 @@ touch must not be in that list, and the ones that are get explained in the part'
   clip, five and six times. The next attempt takes another clip if one starts at all like the body lies.
 - **A body knocked into a wall often does not fall.** Three of eight blows toward a wall 45 to 90 cm away ended
   with the body on its feet against it. A stand of falls draws such a trial again and says how many it drew.
+- **A body appears in its reference pose, the arms out, and brings them down in half a second.** The fingertips
+  are 57 cm to either side of its axis, at the height of a chair's back. Put 45 cm from a thing at its side, a
+  finger appeared 0.12 cm inside the chair and 0.79 cm inside a wall, and no check said so. A thing beside a body
+  is 65 cm away or more; `Tools\getup-stand.ps1` refuses a place where the arms would touch
+  (`penetration.spawn_world_cm` of a run shows it: 0.034 is the soles on the floor).
+- **`body.bodies[].final_location_cm` is a body's centre of mass from where the character was spawned, not a place
+  in the world.** Read as world coordinates in a room, it put eleven bodies "standing inside the table". World
+  positions over a run are in `trace.json` (bone origins, every 0.5 s).
+- **A get-up that is given up moves the body.** Each failed attempt shifts it by half a metre; a body that fell at
+  a wall 166 cm from the table stood, at the fourth attempt, 30 cm from the table. A fall "at a wall" stays one
+  only by distance: the stand has those falls in the room's corner quarters and reports how near each came to
+  the furniture.
 - **A clip steps a foot that the body is standing on.** A recording brings a foot forward while its weight is on
   the hands or the other leg; the simulated body's weight is where its own feet, hands and friction put it. With
   the clip's time waiting only for the pelvis, the body stood up leaning like a plank from a foot 45 cm behind where

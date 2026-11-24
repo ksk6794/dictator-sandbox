@@ -8,18 +8,22 @@
 #   ... -MinShare 0.9           the share of falls that must end standing
 #   ... -Tune "name=value,..."  tuning overrides for every run
 #   ... -Film failed            also a sheet of pictures of every trial that did not end standing ("all": of every
-#                               trial; Saved\Films\getup_stand_<n>)
+#                               trial; "35,43": of these trials; Saved\Films\getup_stand_<n>)
 #   ... -Out <dir>              output directory (default Saved\Matrix\getup_stand)
 #
 # The kinds. "floor": on the bare floor, a blow or a shove of 200 to 320 N*s on the chest or the head from any
 # direction. "wall", "table", "chair": in the room of Specs\rooms\getup_room.json, the body standing 45 to 90 cm
-# from a wall, the table or the chair and knocked toward it, within 50 degrees. The furniture is static.
+# from a wall, the table or the chair (65 to 110 cm when that is at its side) and knocked toward it, within 50
+# degrees. The furniture is static: a table in the middle of the room and a chair drawn up to its +y side. Where
+# the furniture stands is read from the spec; a body is never put where its arms, out as it appears, would touch
+# a piece or a wall, and the falls at a wall are in the corners' quarters of the room, away from the furniture:
+# how near each of them came to it is measured and reported.
 # A direction is the way the blow moves the body, as in Tools\push-matrix.ps1: 0 toward the character's left
 # (+x), 90 forward (+y), 180 to its right, 270 backward.
 #
 # A trial counts as a fall when the body fell, and as a get-up when it stands at the end and got up at least once.
 # Prints one row per trial, writes <Out>\getup-stand.json. Exit code: 0 the share is met and every trial was a
-# fall, 1 not, 2 a run produced no result.
+# fall, 1 not, 2 a run produced no result or a trial was drawn inside the furniture.
 param(
     [int]$Seed = 1,
     [int]$Floor = 26,
@@ -43,33 +47,116 @@ $scenarioDir = Join-Path $Out 'scenarios'
 New-Item -ItemType Directory -Force $scenarioDir | Out-Null
 
 $base = Read-JsonFile (Join-Path $RepoRoot 'Scenarios\getup_back.json')
-$roomMap = '/Game/Generated/Maps/GetUpRoom'
 $hitTime = 3.0
 $dice = New-Object System.Random $Seed
 function Roll([double]$from, [double]$to) { return $from + ($to - $from) * $dice.NextDouble() }
 function Pick($items) { return $items[$dice.Next($items.Count)] }
 
-# Where the body stands and which way it is knocked, by kind. The room is 600 by 500 cm about the origin; the
-# table stands at (170, -120), 120 by 70 cm; the chair at (-170, 120), 42 by 42 cm, its back on the +y side.
+# The room and its furniture, from the spec. A piece's footprint is the rectangle of floor its boxes stand over.
+$roomSpec = Read-JsonFile (Join-Path $RepoRoot 'Specs\rooms\getup_room.json')
+$roomMap = $roomSpec.output
+$halfX = [double]$roomSpec.size_cm[0] / 2.0
+$halfY = [double]$roomSpec.size_cm[1] / 2.0
+$footprints = @{}
+foreach ($piece in @($roomSpec.furniture)) {
+    $turn = [double]$piece.yaw_deg * [Math]::PI / 180.0
+    $xs = @()
+    $ys = @()
+    $pieceBoxes = @()
+    foreach ($box in $piece.boxes) {
+        $pieceBoxes += @{ x = [double]$box.center_cm[0]; y = [double]$box.center_cm[1]; z = [double]$piece.location_cm[2] + [double]$box.center_cm[2]
+            halfX = [double]$box.size_cm[0] / 2.0; halfY = [double]$box.size_cm[1] / 2.0; halfZ = [double]$box.size_cm[2] / 2.0 }
+        foreach ($sideX in @(-0.5, 0.5)) {
+            foreach ($sideY in @(-0.5, 0.5)) {
+                $localX = [double]$box.center_cm[0] + $sideX * [double]$box.size_cm[0]
+                $localY = [double]$box.center_cm[1] + $sideY * [double]$box.size_cm[1]
+                $xs += [double]$piece.location_cm[0] + [Math]::Cos($turn) * $localX - [Math]::Sin($turn) * $localY
+                $ys += [double]$piece.location_cm[1] + [Math]::Sin($turn) * $localX + [Math]::Cos($turn) * $localY
+            }
+        }
+    }
+    $spanX = $xs | Measure-Object -Minimum -Maximum
+    $spanY = $ys | Measure-Object -Minimum -Maximum
+    $footprints[$piece.name] = @{ x0 = $spanX.Minimum; x1 = $spanX.Maximum; y0 = $spanY.Minimum; y1 = $spanY.Maximum
+        atX = [double]$piece.location_cm[0]; atY = [double]$piece.location_cm[1]; cos = [Math]::Cos($turn); sin = [Math]::Sin($turn); boxes = $pieceBoxes }
+}
+$tableAt = $footprints['table']
+$chairAt = $footprints['chair']
+if (-not $tableAt -or -not $chairAt) {
+    Write-Output 'GETUP STAND ERROR: Specs\rooms\getup_room.json has no furniture named "table" and "chair"'
+    exit 2
+}
+# How far a point is from the nearest box of the furniture, cm. Further than 60 cm over the floor from a piece
+# it is that distance over the floor (the boxes are no nearer); nearer, it is measured to the boxes themselves,
+# so an arm above the table top or a foot between its legs counts as what it is.
+function Get-FurnitureDistance([double]$x, [double]$y, [double]$z) {
+    $nearest = [double]::MaxValue
+    foreach ($at in $footprints.Values) {
+        $offX = [Math]::Max([Math]::Max($at.x0 - $x, $x - $at.x1), 0.0)
+        $offY = [Math]::Max([Math]::Max($at.y0 - $y, $y - $at.y1), 0.0)
+        $overFloor = [Math]::Sqrt($offX * $offX + $offY * $offY)
+        if ($overFloor -gt 60.0) {
+            $nearest = [Math]::Min($nearest, $overFloor)
+            continue
+        }
+        foreach ($box in $at.boxes) {
+            $inX = [Math]::Max([Math]::Abs($at.cos * ($x - $at.atX) + $at.sin * ($y - $at.atY) - $box.x) - $box.halfX, 0.0)
+            $inY = [Math]::Max([Math]::Abs(-$at.sin * ($x - $at.atX) + $at.cos * ($y - $at.atY) - $box.y) - $box.halfY, 0.0)
+            $inZ = [Math]::Max([Math]::Abs($z - $box.z) - $box.halfZ, 0.0)
+            $nearest = [Math]::Min($nearest, [Math]::Sqrt($inX * $inX + $inY * $inY + $inZ * $inZ))
+        }
+    }
+    return $nearest
+}
+
+# Where the body stands and which way it is knocked, by kind. The room is 600 by 500 cm about the origin. The
+# table (120 by 70 cm) stands in its middle and the chair (42 by 42 cm) at the table's +y side, its back away from
+# the table: so the table is met from its open long side (a fall forward) and from an end (to the left), the
+# chair from its side (to the right) and from behind (backward), and the walls in the room's four corner quarters,
+# 1.4 m and more from the furniture. The body faces +y.
+#
+# The body appears in its reference pose, the arms out (fingertips 57 cm to either side and 26 cm ahead, at the
+# height of a chair's back), and brings them down within half a second. That box, with 5 cm to spare, has to be
+# clear of the furniture and the walls. So a thing at the body's side is 20 cm further off than one before or
+# behind it: 65 to 110 cm instead of 45 to 90.
+$spawnBox = @{ side = 58.0; ahead = 28.0; behind = 12.0 }
+$spareCm = 5.0
+$besideCm = 20.0
+# How much room the box of a body appearing at a point has to the furniture and to the walls, cm (0: it touches).
+function Get-SpawnRoom([double]$x, [double]$y) {
+    $toFurniture = [double]::MaxValue
+    foreach ($at in $footprints.Values) {
+        $offX = [Math]::Max([Math]::Max($at.x0 - ($x + $spawnBox.side), ($x - $spawnBox.side) - $at.x1), 0.0)
+        $offY = [Math]::Max([Math]::Max($at.y0 - ($y + $spawnBox.ahead), ($y - $spawnBox.behind) - $at.y1), 0.0)
+        $toFurniture = [Math]::Min($toFurniture, [Math]::Sqrt($offX * $offX + $offY * $offY))
+    }
+    $toWall = [Math]::Min([Math]::Min($halfX - ($x + $spawnBox.side), $halfX + ($x - $spawnBox.side)),
+        [Math]::Min($halfY - ($y + $spawnBox.ahead), $halfY + ($y - $spawnBox.behind)))
+    return @{ furniture = $toFurniture; wall = $toWall }
+}
 function New-Place([string]$kind) {
     $reach = Roll 45 90
+    $beside = $reach + $besideCm
     switch ($kind) {
         'floor' { return @{ location = @(0, 0, 0); angle = (Roll 0 360); map = '' } }
         'wall' {
             switch ($dice.Next(4)) {
-                0 { return @{ location = @((Roll -50 100), (250 - $reach), 0); angle = (Roll 40 140); map = $roomMap } }
-                1 { return @{ location = @((-300 + $reach), (Roll -150 -50), 0); angle = (Roll 130 230); map = $roomMap } }
-                2 { return @{ location = @((300 - $reach), (Roll 50 150), 0); angle = (Roll -50 50); map = $roomMap } }
-                default { return @{ location = @((Roll -150 0), (-250 + $reach), 0); angle = (Roll 220 320); map = $roomMap } }
+                0 { return @{ location = @((Roll 140 220), ($halfY - $reach), 0); angle = (Roll 40 140); map = $roomMap } }
+                1 { return @{ location = @((-$halfX + $beside), (Roll 110 170), 0); angle = (Roll 130 230); map = $roomMap } }
+                2 { return @{ location = @(($halfX - $beside), (Roll -170 -110), 0); angle = (Roll -50 50); map = $roomMap } }
+                default { return @{ location = @((Roll -220 -140), (-$halfY + $reach), 0); angle = (Roll 220 320); map = $roomMap } }
             }
         }
         'table' {
-            if ($dice.Next(2) -eq 0) { return @{ location = @((110 - $reach), (Roll -140 -100), 0); angle = (Roll -40 40); map = $roomMap } }
-            return @{ location = @((Roll 130 210), (-85 + $reach), 0); angle = (Roll 230 310); map = $roomMap }
+            $middleX = ($tableAt.x0 + $tableAt.x1) / 2.0
+            if ($dice.Next(2) -eq 0) { return @{ location = @(($tableAt.x0 - $beside), (Roll ($tableAt.y0 + 10) ($tableAt.y1 - 10)), 0); angle = (Roll -40 40); map = $roomMap } }
+            return @{ location = @((Roll ($middleX - 40) ($middleX + 40)), ($tableAt.y0 - $reach), 0); angle = (Roll 50 130); map = $roomMap }
         }
         default {
-            if ($dice.Next(2) -eq 0) { return @{ location = @((-149 + $reach), (Roll 105 135), 0); angle = (Roll 140 220); map = $roomMap } }
-            return @{ location = @((Roll -180 -160), (99 - $reach), 0); angle = (Roll 50 130); map = $roomMap }
+            $middleX = ($chairAt.x0 + $chairAt.x1) / 2.0
+            $middleY = ($chairAt.y0 + $chairAt.y1) / 2.0
+            if ($dice.Next(2) -eq 0) { return @{ location = @(($chairAt.x1 + $beside), (Roll ($middleY + 5) ($middleY + 25)), 0); angle = (Roll 140 220); map = $roomMap } }
+            return @{ location = @((Roll ($middleX - 10) ($middleX + 10)), ($chairAt.y1 + $reach), 0); angle = (Roll 230 310); map = $roomMap }
         }
     }
 }
@@ -78,9 +165,17 @@ $counts = [ordered]@{ floor = $Floor; wall = $Wall; table = $Table; chair = $Cha
 $kinds = @($counts.Keys)
 if ($Only) { $kinds = @($Only.Split(',') | ForEach-Object { $_.Trim() }) }
 $script:drawn = 0
+$script:misplaced = @()
 function New-Trial([string]$kind, [int]$number) {
     $script:drawn++
     $place = New-Place $kind
+    if ($place.map) {
+        $room = Get-SpawnRoom $place.location[0] $place.location[1]
+        if ($room.furniture -lt $spareCm -or $room.wall -lt $spareCm) {
+            $script:misplaced += ('trial {0} ({1}) at {2:N0}, {3:N0}: its arms out, {4:N0} cm from the furniture and {5:N0} cm from a wall' -f `
+                $number, $kind, $place.location[0], $place.location[1], $room.furniture, $room.wall)
+        }
+    }
     $struck = Pick @('spine_04', 'spine_04', 'neck_01')
     $impulse = [Math]::Round((Roll 200 320))
     $push = Pick @(0.0, 0.0, 0.1, 0.2)
@@ -124,6 +219,10 @@ foreach ($kind in $kinds) {
 $started = Get-Date
 $pending = @($trials)
 for ($round = 0; $round -lt 6 -and $pending.Count -gt 0; $round++) {
+    if ($script:misplaced.Count -gt 0) {
+        Write-Output "GETUP STAND ERROR: a body would appear with less than $spareCm cm to the furniture or a wall: $($script:misplaced[0])"
+        exit 2
+    }
     $jobs = @()
     foreach ($trial in $pending) {
         if (Test-Path $trial.dir) { Remove-Item $trial.dir -Recurse -Force }
@@ -160,6 +259,22 @@ foreach ($trial in $trials) {
         $line = Get-Content $log | Where-Object { $_ -match 'Body controller: standing at ([\d\.]+) s \(got up' } | Select-Object -Last 1
         if ($line -and $line -match 'standing at ([\d\.]+) s') { $stoodAt = [double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture) }
     }
+    # A fall at a wall is to be a fall at a wall only: the nearest any of its bodies came to the furniture, over
+    # the run's checkpoints (every 0.5 s; a body's point is its bone, so a hand or the head reaches 25 cm further).
+    # A body that needs several attempts can cross the room before it stands, so the whole run is looked at.
+    $nearFurniture = $null
+    if ($trial.kind -eq 'wall') {
+        $trace = Read-JsonFile (Join-Path $trial.dir 'trace.json')
+        if ($trace) {
+            $nearFurniture = [double]::MaxValue
+            foreach ($checkpoint in $trace.checkpoints) {
+                foreach ($traced in $checkpoint.bodies) {
+                    $nearFurniture = [Math]::Min($nearFurniture, (Get-FurnitureDistance ([double]$traced.p[0]) ([double]$traced.p[1]) ([double]$traced.p[2])))
+                }
+            }
+            $nearFurniture = [Math]::Round($nearFurniture, 1)
+        }
+    }
     $results += [ordered]@{
         number              = $trial.number
         name                = $trial.name
@@ -183,6 +298,7 @@ foreach ($trial in $trials) {
         limit_joint         = $run.metrics.worst_limit_joint
         joint_speed_rads    = $run.metrics.max_joint_speed_rads
         penetration_cm      = $run.penetration.max_world_cm
+        furniture_clearance_cm = $nearFurniture
         hash                = $run.hashes.bodies
         file                = $trial.file
     }
@@ -205,6 +321,13 @@ foreach ($kind in $kinds) {
     $of = @($results | Where-Object { $_.kind -eq $kind })
     if ($of.Count -gt 0) {
         Write-Output ('  {0,-6} {1} of {2} stand' -f $kind, @($of | Where-Object { $_.got_up }).Count, $of.Count)
+    }
+}
+$atWall = @($results | Where-Object { $null -ne $_.furniture_clearance_cm } | Sort-Object { [double]$_.furniture_clearance_cm })
+if ($atWall.Count -gt 0) {
+    Write-Output ('  falls at a wall keep {0:N0} cm and more from the table and the chair (the nearest: trial {1})' -f [double]$atWall[0].furniture_clearance_cm, $atWall[0].number)
+    if ([double]$atWall[0].furniture_clearance_cm -lt 30.0) {
+        Write-Output ('  GETUP STAND WARNING: trial {0}, a fall at a wall, came within a hand''s reach (30 cm) of the furniture' -f $atWall[0].number)
     }
 }
 Write-Output ('  {0,3} {1,-6} {2,-9} {3,5} {4,4} {5,5} {6,-14} {7,8} {8,9} {9,7} {10,-22} {11}' -f `
@@ -235,11 +358,22 @@ Write-JsonFile (Join-Path $Out 'getup-stand.json') ([ordered]@{
 
 if ($Film) {
     $toFilm = $results
-    if ($Film -ne 'all') { $toFilm = @($results | Where-Object { $_.fell -and -not $_.got_up }) }
+    if ($Film -match '^[\d,\s]+$') {
+        $numbers = @($Film.Split(',') | ForEach-Object { [int]$_.Trim() })
+        $toFilm = @($results | Where-Object { $numbers -contains $_.number })
+    }
+    elseif ($Film -ne 'all') { $toFilm = @($results | Where-Object { $_.fell -and -not $_.got_up }) }
     foreach ($r in $toFilm) {
         $x = [double]$r.location_cm[0]
         $y = [double]$r.location_cm[1]
-        $camera = ('{0},{1},170;{2},{3},50' -f ($x + 260), ($y - 260), $x, $y)
+        $cameraX = $x + 260
+        $cameraY = $y - 260
+        if ($r.kind -ne 'floor') {
+            # In the room the camera has to stand inside the walls, or the pictures are black.
+            $cameraX = [Math]::Max(-$halfX + 25, [Math]::Min($halfX - 25, $cameraX))
+            $cameraY = [Math]::Max(-$halfY + 25, [Math]::Min($halfY - 25, $cameraY))
+        }
+        $camera = ('{0},{1},170;{2},{3},50' -f $cameraX, $cameraY, $x, $y)
         $filmArguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-File', $r.file, '-Tag', $r.name,
             '-Times', '3.2,4,5,6,7,8,9,10,11,12,13,14,16,18,20,24', '-Camera', $camera, '-Cols', 8)
         if ($Tune) { $filmArguments += @('-Tune', $Tune) }

@@ -467,8 +467,11 @@ statue: the arms held out, a fall like a plank and a body frozen in a lunge all 
 
 The stand of falls and get-ups, `Tools\getup-stand.ps1`, generates its scenarios the same way: 50 falls drawn
 from a seed (26 on the bare floor, 8 each near a wall, the table and the chair of `Specs\rooms\getup_room.json`),
-each with `"get_up": true` and 40 s to end standing in; a blow that did not fell the body is drawn again. It prints
-one row a fall and the share that stand (`-Film failed` for a sheet of pictures of each that does not).
+each with `"get_up": true` and 40 s to end standing in; a blow that did not fell the body is drawn again. The table
+and the chair stand together in the middle of the room; the script reads where from the spec, puts no body where
+its arms, out as it appears, would touch a piece or a wall, and has the falls at a wall in the room's corner
+quarters, reporting how near to the furniture each came. It prints one row a fall and the share that stand
+(`-Film failed` for a sheet of pictures of each that does not, `-Film "36,42"` of those trials).
 
 To look at what a recorded clip asks of the body, `Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes
 "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60`: the body hangs by its welded pelvis, is asked for the clip's pose

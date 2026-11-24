@@ -1672,6 +1672,90 @@ Against `m3_part6_step2`: the 51 scenarios without a get-up have the same hashes
 
 The stand is a step of `Tools\bootstrap.ps1` from now on.
 
+### The stand's furniture in the middle of the room, 2026-11-24
+
+On the owner's request the table and the chair stand in the middle of the stand's room, together, as a table and a
+chair do; in step 3 each stood by itself near a corner (the table at (170, -120), the chair at (-170, 120)). Now
+the table is at the origin of the room (600 by 500 cm) and the chair at (0, 50): drawn up to the table's +y long
+side, its back away from the table, the front of its seat 6 cm under the table top. Nothing of the body or its
+controller changed.
+
+**Where the bodies stand.** `Tools\getup-stand.ps1` no longer has the furniture's coordinates written into it: it
+reads where the pieces named `table` and `chair` stand from `Specs\rooms\getup_room.json` and places the bodies
+around them. The body faces +y.
+
+| Kind | Where the body stands | Knocked | The fall |
+| --- | --- | --- | --- |
+| table | 45 to 90 cm from the open long side (-y) | toward +y, within 40 degrees | forward onto the table |
+| table | 65 to 110 cm from the -x end | toward +x, within 40 degrees | to its left, along the table |
+| chair | 65 to 110 cm from the chair's +x side | toward -x, within 40 degrees | to its right, onto the chair and the table's corner |
+| chair | 45 to 90 cm behind the chair | toward -y, within 40 degrees | backward over the chair's back onto the table |
+| wall | 45 to 90 cm from a wall before or behind it, 65 to 110 cm from one at its side, in the four corner quarters of the room (140 to 220 cm from the middle along the long walls, 110 to 170 cm along the short ones) | toward the wall, within 50 degrees | as in step 3 |
+
+**The result**, with the tuning of step 3 unchanged:
+
+| Seed | Falls that end standing | Floor | Wall | Table | Chair | At the first attempt | Attempts a fall: floor, wall, table, chair | Blows drawn |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 49 of 50 | 26 | 8 | 7 | 8 | 39 | 1.04, 1.25, 3.00, 1.50 | 54 |
+| 2 | 50 of 50 | 26 | 8 | 8 | 8 | 37 | 1.12, 1.75, 2.25, 1.50 | 57 |
+| 3 | 50 of 50 | 26 | 8 | 8 | 8 | 43 | 1.08, 1.63, 1.88, 1.25 | 56 |
+
+With the pieces apart it was 50, 49 and 48 (42, 36 and 42 at the first attempt). The difference of one or two falls
+a seed is not a finding (a figure from one seed is luck, and so is one fall of 50); what three seeds do show is
+that the table costs attempts: two to three a fall there, against one on the bare floor. A body that falls forward
+onto the table lies across its top, or kneels at it with its trunk on the top, and the get-up in place has the
+table in its way until an attempt that is given up has moved the body off it. The assist's commanded force while
+getting up is 0.51, 0.51 and 0.50 of body weight on average, as before.
+
+**What was checked besides the count.**
+
+- *The 26 falls on the bare floor of each seed are bit for bit the falls of step 3* (78 of 78 hashes): the dice
+  are rolled in the same order, and only the places in the room are other.
+- *Every run repeats.* The three stands were run twice, the second time with films being rendered beside them:
+  150 of 150 hashes the same.
+- *No body ends on the furniture, and none in it.* The 47 falls at the table and the chair that end standing end
+  with both feet on the floor beside the furniture (world positions from `trace.json`), and no body is ever more
+  than 1.4 cm inside anything. One of them (seed 1, trial 36: 317 N*s on the head, forward) is thrown onto the
+  table top, tries to get up there on hands and knees, slides off and stands on the floor at the third attempt.
+- *The fall that does not end standing* (seed 1, trial 42: 245 N*s on the chest, forward onto the table's long
+  side) folds over the table, slides down to its knees and ends on the floor with its pelvis under the table top:
+  seven attempts, each given up with the pelvis 20 to 30 cm below the clip's. It is the failure of step 3, a body
+  that does not move out into open floor before it rises.
+
+**A body appeared with a finger in the furniture, before this change too.** A body is spawned in its reference
+pose, the arms out, and brings them down within half a second: the fingertips are 57 cm to either side of its
+axis and 26 cm ahead of it, 87 cm above the floor, below the top of the chair's back (93 cm). Step 3 put a body
+as near as 45 cm to a thing at its side. In its runs `penetration.spawn_world_cm` reads 0.12 cm for a trial at the
+chair (seed 1) and 0.79 cm for one at a wall (seed 2), where 0.034 cm is the soles on the floor; nothing looked
+at it. A thing at the body's side is now 20 cm further off (65 to 110 cm), and the script refuses a place where
+the box of the arms (58 cm to either side, 28 cm ahead, 12 cm behind), with 5 cm to spare, would touch a piece or
+a wall; the first places written for the new layout were refused by it (the body beside the chair stood 34 cm
+from the table's corner). Over the 72 room trials of the three seeds the figure is 0.034 cm.
+
+**Falls at a wall and the furniture.** The falls at a wall are to be falls at a wall only. They are in the corner
+quarters of the room, 130 cm and more from the furniture, and every run measures the nearest any body of such a
+trial comes to a box of the furniture (`furniture_clearance_cm`: bone origins at the run's checkpoints, every
+0.5 s; a hand reaches 25 cm further, so under 30 cm the script prints a warning). Nearest over the eight wall
+falls of each seed: 66, 103 and 36 cm. The 36 cm is not the fall: that body (seed 3, trial 30) fell against the
+wall 166 cm from the table and lay there; its first attempt was given up where it lay, the second and the third
+were given up at once with the pelvis thrown 40 cm off the clip, each moving the body 55 to 65 cm toward the
+middle of the room, and at the fourth it stood 30 cm from the table's end with its forearm 36 cm from the table
+top. So a get-up that is given up moves the body by half a metre, and three of them in a row cross the room: in
+a room of this size no place at a wall is out of reach of the furniture for good.
+
+**A figure misread on the way.** `body.bodies[].final_location_cm` of a run is a body's centre of mass from where
+the character was spawned, not a place in the world. Read as world coordinates it had eleven bodies "standing
+inside the table" with their feet on the floor. The deepest penetration of those runs, under 1 cm, did not fit
+that, and the trace, which is in world coordinates, had every one of them beside the furniture.
+
+Changed: `Specs\rooms\getup_room.json` (two locations), `Tools\getup-stand.ps1` (places from the spec, the guard,
+the clearance of wall falls, `-Film "<numbers>"`, and a film's camera kept inside the room's walls: placed 260 cm
+out from the body as on the bare floor, it stood outside them for most places in the room). The films:
+`Saved\Films\getup_stand_36`, `_38`, `_42` (table), `_43`, `_44` (chair).
+
+Against `m3_part6`: suite 59 of 59 with `-Long`, all 59 with the same hashes (no scenario of the suite uses the
+room; the physics asset, which the generator writes again on every run, is the same).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

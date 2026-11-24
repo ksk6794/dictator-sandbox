@@ -46,8 +46,8 @@
     {
       "name": "table",
       "location_cm": [
-        170,
-        -120,
+        0,
+        0,
         0
       ],
       "yaw_deg": 0,
@@ -117,8 +117,8 @@
     {
       "name": "chair",
       "location_cm": [
-        -170,
-        120,
+        0,
+        50,
         0
       ],
       "yaw_deg": 0,

@@ -204,11 +204,15 @@ throws the baked lighting away; `Tools\gen-assets.ps1 -Force` regenerates regard
 `furniture` is optional: pieces of static boxes, each with a `name`, the point of the floor it stands on
 (`location_cm`), a turn about the vertical (`yaw_deg`) and its `boxes` (`center_cm` from that point, `size_cm`).
 `getup_room.json` has a table (a top on four legs, 73 cm high) and a chair (seat, back, four legs) for the stand of
-falls and get-ups (`Tools\getup-stand.ps1`); it is not baked, its lights are stationary.
+falls and get-ups (`Tools\getup-stand.ps1`); it is not baked, its lights are stationary. They stand in the middle
+of the room as a table and a chair do: the table at the origin, the chair drawn up to its +y long side at (0, 50),
+its back away from the table and the front of its seat 6 cm under the table top. The stand reads where the pieces
+named `table` and `chair` stand from this file and places its bodies around them, so the pair can be moved; it
+takes the table's -y side and -x end and the chair's +x side and back to be open floor.
 
 ```json
 "furniture": [
-  {"name": "table", "location_cm": [170, -120, 0], "yaw_deg": 0,
+  {"name": "table", "location_cm": [0, 0, 0], "yaw_deg": 0,
    "boxes": [{"center_cm": [0, 0, 73], "size_cm": [120, 70, 4]}, {"center_cm": [-55, -30, 35.5], "size_cm": [5, 5, 71]}]}
 ]
 ```
