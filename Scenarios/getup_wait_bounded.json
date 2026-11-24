@@ -1,0 +1,27 @@
+{
+  "name": "getup_wait_bounded",
+  "duration_s": 20.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active",
+    "get_up": true
+  },
+  "events": [
+    {"t": 1.0, "type": "console", "command": "Sandbox.Tune getup.stall_s=30"},
+    {"t": 3.0, "type": "impulse", "body": "spine_04", "impulse_ns": 200, "direction": [0, -1, 0]},
+    {"t": 5.0, "type": "pin", "body": "pelvis"}
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": true,
+    "max_get_ups": 0,
+    "min_get_up_attempts": 2,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_limit_violation_deg": 10
+  }
+}

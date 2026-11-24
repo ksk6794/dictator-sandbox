@@ -599,6 +599,12 @@ struct FSandboxGetUpTuning
 	double HoldForceN = 0.0;
 	/** A get-up whose clip has waited this long without moving on is given up: the body lets go and lies, and tries again. Seconds. */
 	double StallS = 0.0;
+	/**
+	 * ...and so is one whose clip has waited this long in all, counting only the time in which nothing pressed on the
+	 * body. Seconds; 0: no such bound. A clip that moves on by a frame now and then never stands still for stall_s,
+	 * and the body held one pose for up to 13 s (under the table's edge, on the stand of 50 falls).
+	 */
+	double WaitS = 0.0;
 	/** A pelvis this far from where the clip has it has been thrown off: the get-up is given up at once. cm. */
 	double LostCm = 0.0;
 	/** The body stands again once the clip is through and its pelvis is within this of upright, with both feet on the floor. Degrees. */

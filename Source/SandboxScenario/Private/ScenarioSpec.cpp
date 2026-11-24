@@ -462,6 +462,7 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("min_get_ups"), &OutSpec.Expect.MinGetUps },
 			{ TEXT("max_get_ups"), &OutSpec.Expect.MaxGetUps },
 			{ TEXT("max_get_up_attempts"), &OutSpec.Expect.MaxGetUpAttempts },
+			{ TEXT("min_get_up_attempts"), &OutSpec.Expect.MinGetUpAttempts },
 			{ TEXT("min_pelvis_anchor_shift_cm"), &OutSpec.Expect.MinPelvisAnchorShiftCm },
 			{ TEXT("min_lean_cm"), &OutSpec.Expect.MinLeanCm } };
 

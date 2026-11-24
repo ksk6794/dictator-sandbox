@@ -139,6 +139,8 @@ struct FScenarioExpect
 	TOptional<double> MaxGetUps;
 	/** The body began to get up at most this many times (control.get_up.attempts). Active control only. */
 	TOptional<double> MaxGetUpAttempts;
+	/** The body began to get up at least this many times: 2 for an attempt that has to be given up and tried again. Active control only. */
+	TOptional<double> MinGetUpAttempts;
 	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */
 	TOptional<double> MinPelvisAnchorShiftCm;
 	/** The body leaned into a held push at least this far at some point (control.balance.lean_max_cm). cm. */

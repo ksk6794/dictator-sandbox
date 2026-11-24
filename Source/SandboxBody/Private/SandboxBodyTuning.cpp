@@ -170,6 +170,7 @@ namespace
 		Visitor(FString(TEXT("getup.pressed_lag_cm")), Tuning.GetUp.PressedLagCm);
 		Visitor(FString(TEXT("getup.hold_force_n")), Tuning.GetUp.HoldForceN);
 		Visitor(FString(TEXT("getup.stall_s")), Tuning.GetUp.StallS);
+		Visitor(FString(TEXT("getup.wait_s")), Tuning.GetUp.WaitS);
 		Visitor(FString(TEXT("getup.lost_cm")), Tuning.GetUp.LostCm);
 		Visitor(FString(TEXT("getup.upright_deg")), Tuning.GetUp.UprightDeg);
 	}
@@ -399,6 +400,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.PressedLagCm, 500.0, TEXT("getup"), TEXT("pressed_lag_cm"), OutError) ||
 		!CheckRange(GetUp.HoldForceN, 100000.0, TEXT("getup"), TEXT("hold_force_n"), OutError) ||
 		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
+		!CheckRange(GetUp.WaitS, 60.0, TEXT("getup"), TEXT("wait_s"), OutError) ||
 		!CheckRange(GetUp.LostCm, 1000.0, TEXT("getup"), TEXT("lost_cm"), OutError) ||
 		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError))
 	{

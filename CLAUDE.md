@@ -13,8 +13,11 @@ that mirror left to right, and passes the push matrix; the player has physical h
 with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
 test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
 on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
-tunnelling. **M3, balance and recovery, is in progress: parts 1 to 4 of 7 are done** (the plan and the parts are in
-the M3 section of `docs/PRD.md`). The body senses its own balance (standing feet, support polygon, capture
+tunnelling. **M3, balance and recovery, is done: closed on 24 November 2026 with its five criteria met, the fifth by a
+review of the clips that the owner handed to the agent; the owner's own look in a session is deferred with M2's
+and does not hold up M4** (the seven parts, the gate's table, the review and the known limits are in
+the M3 section of `docs/PRD.md`). **M4, full interaction and VR, is next** (its order of parts and what M3 hands
+over to it are in the M4 section). The body senses its own balance (standing feet, support polygon, capture
 point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
@@ -57,12 +60,13 @@ knocks the body down 50 times from a seed, 24 of them near a wall, a table and a
 spec, `Specs/rooms/getup_room.json`: the table in the middle of the room, the chair drawn up to it, since the
 owner's request of 24 November), and counts the falls that end standing: 49, 50 and 50 of 50 over three seeds
 (the criterion is 90%), 39, 37 and 43 of them at the first attempt (50, 49 and 48 with the two pieces apart near
-the corners). **Part 7, the gate, is in progress: steps 1 to 3 of 4 (the body; friction and restitution; the sweeps) are done.** The get-up's assist is
+the corners). **Part 7, the gate, is done (four steps and the review).** The get-up's assist is
 0.28 of body weight on average, from 0.51, with the stand unchanged (49, 50 and 49 of 50): the clip follows the
 body over the floor while the feet carry nothing (`getup.pelvis_follow_s`), the arms are stronger while getting
 up, and the assist's caps are 90 N on the pelvis and 30 N on a foot. A body getting up that is pressed with
-450 N or more does not push on (`getup.hold_force_n`): 600 N keeps every body of 150 down, under 300 N two of
-three get up (`Tools\getup-stand.ps1 -PressN`). The stance's elbows hang at 17 degrees of bend, not 37
+450 N or more does not push on (`getup.hold_force_n`): 600 N keeps every body of 150 down, under 300 N one of
+three gets up while it is pressed (`Tools\getup-stand.ps1 -PressN`; two of three before the body's friction on the
+floor went from 0.7 to 0.5, so "one hand slows" is set again in M4 with the grab). The stance's elbows hang at 17 degrees of bend, not 37
 (`poses.stance.lowerarm_*`). The wrist's model waits for M4's grab by the hand (owner's decision). **Step 2,
 friction and restitution, is done:** the body's surface is tuning (`surface.*`: on the floor a friction of 0.5 for
 skin and cloth and 0.7 for the soles, where both were the engine's 0.7; restitution 0.1, taken as the smaller of
@@ -80,9 +84,12 @@ iterations and with a weaker assist were such hops of 5 to 6 cm), and the stance
 not leave is closed: a staggering body that has come to rest with its centre of mass off the support that touches
 steps once more (`balance.rest_step_s`; scenario `stagger_rest_off_support`), where it had neither stepped (the
 capture point within 4 cm of its whole soles) nor stood (the centre of mass not over the edges it stood on), kept
-up by the stagger's upright hold on the pelvis. **Step 4, the clips and the criteria table, is made and waits for
-the owner's review** (`Saved\Films\m3_*`, listed in `Saved\Films\m3_gate.txt`; the table is in the M3 section of
-`docs/PRD.md`).
+up by the stagger's upright hold on the pelvis. **Step 4, the clips and the criteria table, is done, and so is the review**
+(`Saved\Films\m3_*`, listed in `Saved\Films\m3_gate.txt`; the table is in the M3 section of `docs/PRD.md`). The
+review left the runs after 200 N*s and the step across as they are, and changed one thing: a get-up attempt is
+given up once its clip has waited 5 s in all with nothing pressing on the body (`getup.wait_s`; a body had held
+one pose for 13 s under a table's edge; scenario `getup_wait_bounded`). The stand is 49, 50 and 49 of 50 with 38,
+44 and 44 at the first attempt, and no attempt lasts longer than 7.7 s.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -122,7 +129,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (62 scenarios; 85 s with `-Long`),
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (63 scenarios; 85 s with `-Long`),
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s, the whole
@@ -653,7 +660,19 @@ touch must not be in that list, and the ones that are get explained in the part'
   is over and the body has been Standing for that long without a break; checked against the full-length runs
   trial by trial before it became the default.
 - **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated
-  code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
+  code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.
+- **A count that starts again whenever there is progress does not bound a wait.** `getup.stall_s` (3 s) counts
+  while the clip's time stands still; a body that hovers at the lag lets the clip move on by a frame now and
+  then, and an attempt lasted 15.6 s, 13 of them in one pose. A wait is bounded by a total (`getup.wait_s`). When
+  a limit "cannot" have been passed, look at when its counter is set back.
+- **A gate's figure is measured at the gate.** "Under 300 N two bodies of three get up" was measured in step 1 of
+  part 7 and carried to the gate; step 2 changed the body's friction and nobody ran the pressed stand again: it
+  was one of three. A change to the body is followed by every measurement that a written claim rests on, not only
+  by the suite.
+- **A scripted force is felt as a press; a pin is not.** `impulse` with `duration_s` goes through what the body
+  feels (`SustainedN`), so a get-up under it is "pressed" or "held down". To keep a body from rising without
+  pressing on it, pin it (`getup_wait_bounded`).
+- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,
   Options; about 6 GB). Without it the log says "Optional Content folder not found", skin textures are not

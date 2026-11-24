@@ -1924,6 +1924,11 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxGetUpAttempts.GetValue();
 		AddCheck(TEXT("max_get_up_attempts"), Controller && Controller->GetGetUpView().Attempts <= Limit, Controller ? Number(Controller->GetGetUpView().Attempts) : Null(), Number(Limit));
 	}
+	if (Spec.Expect.MinGetUpAttempts.IsSet())
+	{
+		const double Limit = Spec.Expect.MinGetUpAttempts.GetValue();
+		AddCheck(TEXT("min_get_up_attempts"), Controller && Controller->GetGetUpView().Attempts >= Limit, Controller ? Number(Controller->GetGetUpView().Attempts) : Null(), Number(Limit));
+	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetBoolField(TEXT("ok"), true);

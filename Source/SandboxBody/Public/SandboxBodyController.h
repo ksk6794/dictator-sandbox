@@ -539,6 +539,8 @@ private:
 		/** How long the clip's time has stood still now, and how long it has waited in all. */
 		double StallS = 0.0;
 		double WaitedS = 0.0;
+		/** How long it has waited in all while nothing pressed on the body (getup.wait_s). */
+		double FreeWaitS = 0.0;
 		/** How long the clip has now waited for a foot in the air (getup.foot_wait_s). */
 		double FootWaitS = 0.0;
 		bool bEased = false;

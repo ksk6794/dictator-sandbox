@@ -1358,6 +1358,10 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		GetUpRun.StallS += DeltaTime;
 		GetUpRun.WaitedS += DeltaTime;
 		GetUpView.StallS = GetUpRun.WaitedS;
+		if (PressedN <= 0.0)
+		{
+			GetUpRun.FreeWaitS += DeltaTime;
+		}
 	}
 	else
 	{
@@ -1387,6 +1391,15 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		}
 		GiveUpGetUp(FString::Printf(TEXT("the clip stood at %.2f s for %.1f s waiting for the body (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
 			ClipHold.TimeS, GetUpRun.StallS, LagCm, FootLagCm[0], FootLagCm[1]));
+		return;
+	}
+	// A clip that moves on by a frame now and then never stands still that long, and the body holds one pose for as
+	// long as it does (13 s, with its back under a table's edge). All its waiting with nothing pressing on the body is
+	// bounded too (getup.wait_s); a body that a hand slows is not hurried by this.
+	if (Limits.WaitS > 0.0 && GetUpRun.FreeWaitS > Limits.WaitS)
+	{
+		GiveUpGetUp(FString::Printf(TEXT("the clip waited %.1f s in all for the body and is at %.2f s (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
+			GetUpRun.FreeWaitS, ClipHold.TimeS, LagCm, FootLagCm[0], FootLagCm[1]));
 	}
 }
 

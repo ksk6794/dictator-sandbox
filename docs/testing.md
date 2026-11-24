@@ -2268,6 +2268,93 @@ Mistakes of mine in this part: the first cameras of the three runs stood 5.2 m a
 a tile high (filmed again from 3.6 m); the overlay sheets were first made from the `quarter` view, too far for
 the text and the lines to be read (again from 3 m).
 
+### M3 gate: the review of the clips, a bound on a get-up's waiting, one hand measured again, 2026-11-24
+
+The owner handed the review of the clips and the open questions of the gate to the agent ("decide by the data and
+the plan, and go on"). All 26 sheets were looked at. What follows is what the look found, what was changed for it,
+and one figure of the gate that turned out to be stale.
+
+**What the sheets show.** Pushes of 30 and 80 N*s, the held push, the hand that pushes the body back, the three
+falls and the four get-ups read as a person: a head that gives way and comes back, one step and the feet brought
+together, a lean into a hand and a lunge away from it, a fall onto the seat with the knees up or onto the forearms,
+a roll onto hands and knees, a crouch, standing. The three runs after 200 N*s read as a body carried off sideways,
+arms out, that steps fast for a second and a half, stands wide and brings its feet together by 5 to 6 s; nothing in
+them calls for a limit of steps. Two things do not read as a person, both in get-ups that are given up:
+
+- *At the table* (`m3_getup_given_up_table`) the body held one pose, propped on its hands with its back under the
+  table's edge, from 10 s to 22.9 s: 13 s of an attempt of 15.6 s.
+- *On the bare floor* (`m3_getup_given_up_floor`) it lies on its back with its legs and an arm raised for about
+  4 s of an attempt of 8.5 s.
+
+**Why an attempt could last 15.6 s with `getup.stall_s` at 3.** The stall is counted while the clip's time stands
+still and is set back to 0 whenever the clip moves on. A body that hovers at the lag at which the clip waits lets
+it move on by a frame now and then, and the count never reaches 3 s. Of 199 attempts on three seeds, 18 were given
+up for a stall; they lasted 3.6 to 15.6 s, 6.6 s at the median, three of them over 10 s. Attempts that end
+standing last 4.9 s at the median, 6.6 s at the 95th percentile, and 2 of 151 over 8 s.
+
+**The rule.** An attempt is also given up when its clip has waited `getup.wait_s` in all, counting only the time in
+which nothing presses on the body (a body that a hand slows is not hurried). Chosen on three seeds:
+
+| `getup.wait_s` | End standing | At the first attempt | Attempts a fall | Longest attempt, standing / given up |
+| --- | --- | --- | --- | --- |
+| 0 (no bound) | 50, 50, 49 | 38, 44, 45 | 1.33 | 12.0 s / 15.6 s |
+| 5 | 49, 50, 49 | 38, 44, 44 | 1.36 | 7.7 s / 7.3 s |
+| 4 | 49, 50, 49 | 38, 44, 44 | 1.38 | 7.2 s / 6.8 s |
+| 3 | 50, 50, 49 | 35, 38, 43 | 1.43 | 6.0 s / 5.8 s |
+
+5 is taken: every attempt over 8 s is gone, the first attempts are as they were, and 3 costs eleven of them. The
+one fall it costs (seed 1, trial 36, at the table) stood before at the second attempt after a long wait in which
+the body backed out from under the table; with the bound it is at its fourth or fifth attempt when the 40 s end.
+That is the limit of the furniture that is already written down, not a new one, and one fall of 150 is not a
+finding by itself.
+
+| Check | Result |
+| --- | --- |
+| Suite with `-Long` against `m3_gate_wait_start`, the bound off (`wait_s` 0) | 63 of 63, the same hashes |
+| ...with `wait_s` 5 | 64 of 64; the 63 have the same hashes (no get-up of the suite waits 5 s), one new |
+| `getup_wait_bounded` (new: the pelvis of the lying body is pinned to the world, `stall_s` set to 30 by a console event) | given up at 12.56 s, "the clip waited 5.0 s in all", a second attempt at 14.78 s; with `-Tune "getup.wait_s=0"` one attempt and the scenario fails |
+| The pressed stand, 300 N, `wait_s` 0 and 5 | 13, 23 and 16 of 50 stand while pressed with both; 143 and 144 of 150 stand in the end |
+| Unit tests | 31 |
+
+A scripted force is felt as a press (it is what the stand's `-PressN` uses), so the first guard, a force of 1500 N
+on the pelvis, did not count as free waiting and passed with and without the rule; a pin is not felt. The
+expectation `min_get_up_attempts` is new for it.
+
+How it looks now: at the table the body tries, drops, tries by another clip, and stands at 36.0 s as before
+(36.5), with no pose held for more than 5 s; on the floor the first attempt ends at 13.8 s instead of 15.1 s and
+the raised legs are held for about 4 s still. The wait itself is as it was: a clip asks for a pose the body cannot
+reach from where it lies, and the body holds the nearest thing to it. That stays a known limit.
+
+**One hand on a body getting up: the gate's figure was stale.** The gate's table said that under 300 N two bodies
+of three get up. That was measured in step 1 and not again after step 2 changed the body's friction. Measured now
+(the stand with `-PressN 300`, three seeds, bodies that stand while they are pressed):
+
+| Surface | Stand while pressed, of 150 | Stand in the end |
+| --- | --- | --- |
+| As accepted in step 2 (`surface.friction` 0.3: 0.5 on the floor) | 52 (13, 23, 16) | 143 |
+| `surface.friction` 0.7 alone | 103 (33, 35, 35) | 145 |
+| Every value as before step 2 | 96 (30, 35, 31), the figure of step 1 | 139 |
+
+So it is the friction, not the restitution: on a floor that gives 0.5 a pressed body's hands and knees slide, and
+one hand keeps two bodies of three down for as long as it presses, where the owner's rule is that one hand slows
+a get-up. Not changed here: the friction is a measured property of the surface, the lying body's drag (400 N: one
+hand does not move it, two do) rests on it, and the hand itself, its force cap and its mass are tuned again in M4
+on recorded motions. It goes to M4 with the grab, to be met by the rule for a pressed body
+(`getup.hold_force_n`, `pressed_*`), not by the surface.
+
+Mistakes of mine here: the first guard scenario pressed with a scripted force and could not fail; the helper that
+ran the suite, the tests and a stand in a row was started in the background without a first run in the foreground
+(it worked). And a mistake of the earlier parts that this one found: a figure of the gate was carried over from a
+step before the body's surface changed. The figures of a gate are measured at the gate.
+
+Figures on the final build: suite 64 of 64 with `-Long`, unit tests 31, the stand 49, 50 and 49 of 50 with 38, 44
+and 44 at the first attempt and 1.36 attempts a fall; the push matrix, the knockdowns and the session's self-test
+are in the table of the M3 section of `docs/PRD.md`.
+
+Changed: `SandboxBodyController` (`UpdateGetUp`: the bound), `SandboxBodyTuning` (`getup.wait_s`),
+`Config/Tuning/body.json` and its `README.md`, `ScenarioSpec` and `ScenarioRunnerSubsystem`
+(`min_get_up_attempts`), `Scenarios\getup_wait_bounded.json`, `Scenarios\README.md`.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

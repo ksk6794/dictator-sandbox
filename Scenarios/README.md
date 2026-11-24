@@ -218,6 +218,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `min_get_ups` | The body got up at least this many times (`control.get_up.successes`). Active control only, with `"get_up": true` |
 | `max_get_ups` | The body got up at most this many times: 0 for a body that hands are to keep down for the whole run |
 | `max_get_up_attempts` | The body began to get up at most this many times (`control.get_up.attempts`): 1 for a get-up that a push must not end |
+| `min_get_up_attempts` | The body began to get up at least this many times: 2 for an attempt that has to be given up and tried again |
 | `min_pelvis_anchor_shift_cm` | The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the feet (`control.assist_targets`). Active control only |
 | `min_lean_cm` | The body leaned into a held push at least this far at some time (`control.balance.lean_max_cm`). Active control only |
 
