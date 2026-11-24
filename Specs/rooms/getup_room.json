@@ -1,0 +1,201 @@
+{
+  "name": "getup_room",
+  "output": "/Game/Generated/Maps/GetUpRoom",
+  "size_cm": [
+    600,
+    500,
+    270
+  ],
+  "wall_thickness_cm": 20,
+  "lightmap_resolution": 64,
+  "lights": [
+    {
+      "location_cm": [
+        -150,
+        -100,
+        240
+      ],
+      "intensity": 1800,
+      "color": [
+        1.0,
+        0.93,
+        0.82
+      ],
+      "attenuation_radius_cm": 1100,
+      "source_radius_cm": 12,
+      "mobility": "stationary"
+    },
+    {
+      "location_cm": [
+        170,
+        120,
+        240
+      ],
+      "intensity": 1800,
+      "color": [
+        1.0,
+        0.93,
+        0.82
+      ],
+      "attenuation_radius_cm": 1100,
+      "source_radius_cm": 12,
+      "mobility": "stationary"
+    }
+  ],
+  "furniture": [
+    {
+      "name": "table",
+      "location_cm": [
+        170,
+        -120,
+        0
+      ],
+      "yaw_deg": 0,
+      "boxes": [
+        {
+          "center_cm": [
+            0,
+            0,
+            73
+          ],
+          "size_cm": [
+            120,
+            70,
+            4
+          ]
+        },
+        {
+          "center_cm": [
+            -55.0,
+            -30.0,
+            35.5
+          ],
+          "size_cm": [
+            5,
+            5,
+            71
+          ]
+        },
+        {
+          "center_cm": [
+            -55.0,
+            30.0,
+            35.5
+          ],
+          "size_cm": [
+            5,
+            5,
+            71
+          ]
+        },
+        {
+          "center_cm": [
+            55.0,
+            -30.0,
+            35.5
+          ],
+          "size_cm": [
+            5,
+            5,
+            71
+          ]
+        },
+        {
+          "center_cm": [
+            55.0,
+            30.0,
+            35.5
+          ],
+          "size_cm": [
+            5,
+            5,
+            71
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chair",
+      "location_cm": [
+        -170,
+        120,
+        0
+      ],
+      "yaw_deg": 0,
+      "boxes": [
+        {
+          "center_cm": [
+            0,
+            0,
+            45
+          ],
+          "size_cm": [
+            42,
+            42,
+            4
+          ]
+        },
+        {
+          "center_cm": [
+            0,
+            19,
+            70
+          ],
+          "size_cm": [
+            42,
+            4,
+            46
+          ]
+        },
+        {
+          "center_cm": [
+            -18.0,
+            -18.0,
+            21.5
+          ],
+          "size_cm": [
+            4,
+            4,
+            43
+          ]
+        },
+        {
+          "center_cm": [
+            -18.0,
+            18.0,
+            21.5
+          ],
+          "size_cm": [
+            4,
+            4,
+            43
+          ]
+        },
+        {
+          "center_cm": [
+            18.0,
+            -18.0,
+            21.5
+          ],
+          "size_cm": [
+            4,
+            4,
+            43
+          ]
+        },
+        {
+          "center_cm": [
+            18.0,
+            18.0,
+            21.5
+          ],
+          "size_cm": [
+            4,
+            4,
+            43
+          ]
+        }
+      ]
+    }
+  ]
+}

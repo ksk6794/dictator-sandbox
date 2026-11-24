@@ -14,6 +14,23 @@ struct FRoomLightSpec
 	bool bStationary = false;
 };
 
+/** One box of a piece of furniture: its centre, from the piece's own place on the floor, and its size. cm. */
+struct FRoomBoxSpec
+{
+	FVector CenterCm = FVector::ZeroVector;
+	FVector SizeCm = FVector::ZeroVector;
+};
+
+/** A piece of furniture: static boxes that stand together (a table: its top and four legs). */
+struct FRoomFurnitureSpec
+{
+	FString Name;
+	/** Where it stands: the point on the floor its boxes are placed from, and its turn about the vertical. */
+	FVector LocationCm = FVector::ZeroVector;
+	double YawDeg = 0.0;
+	TArray<FRoomBoxSpec> Boxes;
+};
+
 /**
  * A box room described in Specs/rooms/*.json (format in Specs/README.md).
  * The floor's top face is at z = 0 and the room is centred on the origin, matching the scenarios.
@@ -28,12 +45,13 @@ struct SANDBOXEDITOR_API FRoomSpec
 	double WallThicknessCm = 20.0;
 	int32 LightmapResolution = 128;
 	TArray<FRoomLightSpec> Lights;
+	TArray<FRoomFurnitureSpec> Furniture;
 
 	static bool LoadFile(const FString& FilePath, FRoomSpec& OutSpec, FString& OutError);
 	static TArray<FString> FindSpecFiles();
 };
 
-/** Builds the room's map (static shell, lights, reflection capture, player start) and saves it unlit. */
+/** Builds the room's map (static shell, furniture, lights, reflection capture, player start) and saves it unlit. */
 struct SANDBOXEDITOR_API FRoomGenerator
 {
 	static bool Generate(const FRoomSpec& Spec, FString& OutError);

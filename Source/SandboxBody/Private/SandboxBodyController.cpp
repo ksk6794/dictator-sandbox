@@ -1141,25 +1141,35 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	const FSandboxClipPose* Best = nullptr;
 	FString BestPath;
 	double BestLikeness = -2.0;
-	for (const FString* Path : Paths)
+	// After an attempt that was given up the body goes another way, if another clip starts at all like it lies:
+	// the same clip from the same place fails the same way (six times in a row, on the stand).
+	constexpr double OtherWayLikeness = 0.0;
+	for (int32 Pass = 0; Pass < 2 && !Best; ++Pass)
 	{
-		if (Path->IsEmpty())
+		for (const FString* Path : Paths)
 		{
-			continue;
-		}
-		FString Kept;
-		const FSandboxClipPose* Clip = FindOrReadClip(*Path, Kept, OutError);
-		if (!Clip)
-		{
-			return false;
-		}
-		const FQuat Unturned = StartSpace.GetRotation() * Clip->PelvisAt(0.0).GetRotation();
-		const double Likeness = FVector::DotProduct(Unturned.UnrotateVector(FVector::UpVector), UpInPelvis);
-		if (Likeness > BestLikeness)
-		{
-			BestLikeness = Likeness;
-			Best = Clip;
-			BestPath = Kept;
+			if (Path->IsEmpty())
+			{
+				continue;
+			}
+			FString Kept;
+			const FSandboxClipPose* Clip = FindOrReadClip(*Path, Kept, OutError);
+			if (!Clip)
+			{
+				return false;
+			}
+			const FQuat Unturned = StartSpace.GetRotation() * Clip->PelvisAt(0.0).GetRotation();
+			const double Likeness = FVector::DotProduct(Unturned.UnrotateVector(FVector::UpVector), UpInPelvis);
+			if (Pass == 0 && (Kept == GivenUpClip || Likeness < OtherWayLikeness) && !GivenUpClip.IsEmpty())
+			{
+				continue;
+			}
+			if (Likeness > BestLikeness)
+			{
+				BestLikeness = Likeness;
+				Best = Clip;
+				BestPath = Kept;
+			}
 		}
 	}
 	if (!Best)
@@ -1206,6 +1216,7 @@ void USandboxBodyController::GiveUpGetUp(const FString& Reason)
 		return;
 	}
 	GetUpView.GivenUp = Reason;
+	GivenUpClip = GetUpRun.Path;
 	ReleaseClipPose();
 	EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("the get-up is given up: %s"), *Reason));
 }
@@ -1307,7 +1318,11 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 			Balance.bValid ? Balance.FootForceN[0] : 0.0, Balance.bValid ? Balance.FootForceN[1] : 0.0, AssistLoad.ForceShare);
 	}
 	// The clip's time waits for a body that does not keep up, and stops at the time by which the clip stands.
-	const bool bBehind = LagCm > Limits.LagCm || AirLagCm > Limits.FootLagCm;
+	// A foot in the air is waited for, but not without end (getup.foot_wait_s).
+	const FVector PelvisOff = Now.GetLocation() - Goal.GetLocation();
+	const bool bPelvisBehind = FMath::Abs(PelvisOff.Z) > Limits.LagCm || PelvisOff.Size2D() > Limits.SideLagCm;
+	GetUpRun.FootWaitS = AirLagCm > Limits.FootLagCm ? GetUpRun.FootWaitS + DeltaTime : 0.0;
+	const bool bBehind = bPelvisBehind || (AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS);
 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
 	ClipHold.Rate = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
 	if (Ease >= 1.0 && (bBehind || bThrough))
@@ -1329,6 +1344,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		{
 			++GetUpView.Successes;
 			GetUpView.DurationS = ElapsedS - GetUpView.StartedS;
+			GivenUpClip.Reset();
 			ReleaseClipPose();
 			EnterState(ESandboxBodyState::Standing, FString::Printf(TEXT("got up in %.2f s"), GetUpView.DurationS));
 			return;

@@ -510,10 +510,22 @@ struct FSandboxGetUpTuning
 	double Rate = 0.0;
 	/** The time in a clip by which its body stands; the rest of the clip is standing still. Seconds. */
 	double EndS = 0.0;
-	/** The clip's time waits while the pelvis is further than this from where the clip has it. cm. */
+	/** The clip's time waits while the pelvis is further than this below or above where the clip has it... cm. */
 	double LagCm = 0.0;
+	/**
+	 * ...or further than this from it over the floor. cm. Wider than the other: rising is what takes strength and
+	 * has to be waited for, while a get-up in place may as well happen a hand's width to the side, which is where a
+	 * table's leg or a chair leaves it room.
+	 */
+	double SideLagCm = 0.0;
 	/** ...or a foot that is off the floor is further than this from where the clip has it. cm. */
 	double FootLagCm = 0.0;
+	/**
+	 * ...but for a foot no longer than this at a time: a foot that does not come (a leg that lies across the other,
+	 * or against a chair) is left where it is and the clip goes on. Seconds. (Waited for without end, such a foot
+	 * kept the clip at its first key for six attempts.)
+	 */
+	double FootWaitS = 0.0;
 	/**
 	 * The clip is laid over the feet the body stands on: its root follows the feet that carry weight, to where they
 	 * are from where the clip has them, with this lag when they carry all of the body's weight and more slowly in

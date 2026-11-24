@@ -1598,6 +1598,80 @@ Seen and left for step 3: from a pose it did not fall into by itself (after the 
 attempts, and the clip for the back failed where the one for the side worked; the stand of 50 falls will say how
 often. The films: `Saved\Films\getup_back`, `_front`, `_left`, `_right`, `_hit_strong`, `_held`.
 
+### M3 part 6, step 3 (the stand of 50 falls), 2026-11-24
+
+`Tools\getup-stand.ps1`: 50 falls drawn from a seed, each a blow or a shove (0, 0.1 or 0.2 s) of 200 to 320 N*s on
+the chest or the head; 26 on the bare floor from any direction, and 8 each in the room of
+`Specs\rooms\getup_room.json` with the body 45 to 90 cm from a wall, the table or the chair, knocked toward it
+within 40 to 50 degrees. Table and chair are static boxes. A fall is a get-up when the body stands at the end of
+40 s. The whole stand takes 90 s.
+
+| | Falls that end standing | Floor | Wall | Table | Chair | At the first attempt |
+| --- | --- | --- | --- | --- | --- | --- |
+| First run | 35 of 47 (74%); 3 blows toward a wall were no falls | 23 of 26 | 4 of 5 | 4 of 8 | 4 of 8 | 18 |
+| A foot is waited for 0.7 s at most; another clip after a failure; non-falls drawn again | 43 of 50 (86%) | 26 | 8 | 4 | 5 | 28 |
+| The pelvis's lag judged by height (12 cm) and over the floor (12 cm) apart | 48 of 50 | 26 | 8 | 6 | 8 | 32 |
+| ...height 12, over the floor 20 | 47 | 26 | 8 | 6 | 7 | 36 |
+| ...height 12, over the floor 26 | 49 | 26 | 8 | 7 | 8 | 34 |
+| ...height 16, over the floor 20 | 49 (98%) | 26 | 8 | 7 | 8 | 39 |
+| ...and the body lost at 40 cm instead of 30 (taken) | 50 (100%) | 26 | 8 | 8 | 8 | 42 |
+
+The four last rows differ by one or two falls, and which falls they are changes from row to row: on one seed that
+is luck. On two more seeds:
+
+| Seed | Height 12, floor 12, lost at 30 | Height 16, floor 20, lost at 30 | Height 16, floor 20, lost at 40 (taken) |
+| --- | --- | --- | --- |
+| 1 | 48 of 50, 32 at the first attempt | 49 of 50, 39 | 50 of 50, 42 |
+| 2 | 45 of 50, 26 | 48 of 50, 36 | 49 of 50, 36 |
+| 3 | 45 of 50, 37 | 48 of 50, 42 | 48 of 50, 42 |
+
+With the values taken the body needs 1.28 attempts on average (seed 1) and stands 7 s after the blow at the median;
+the assist's commanded force while it gets up is 0.51 of body weight on average over the 50 falls.
+
+**The wider lags cost the weak push, and the suite said so.** With the clip allowed to run 16 and 20 cm ahead, the
+pelvis is 18 to 23 cm from the clip's while the body rises, and the 30 N*s push of `getup_push_weak` put it 31 cm
+off: lost at 30, the get-up was given up (the body got up again, but a weak push is to be ridden out). Lost at 35,
+40 or 45 the push is ridden out and the 200 N*s blow still fells the body; 40 is taken. The suite's get-ups with
+the final values:
+
+| Scenario | Attempts | Stood after, s | Assist force share, mean and most |
+| --- | --- | --- | --- |
+| `getup_back`, `_front`, `_left`, `_right` | 1 each | 4.1, 3.3, 3.9, 3.9 | 0.45 to 0.48, 0.65 to 0.73 |
+| `getup_push_weak` | 1 | 4.2 | 0.49, 0.73 |
+| `getup_hit_strong` | 2 | 4.2 (the second) | 0.48, 0.77 |
+| `getup_held` (two hands, 300 N each at most) | 1 | 5.4 | 0.51, 0.74 |
+| `getup_pressed` (1500 N down on the pelvis for 4 s; new) | 2 | 3.4 (the second) | |
+
+The two hands no longer hold the body down as they did in step 2: with the wider lags it rises under them, 1.3 s
+later than unhindered. What it cannot lift is `getup_pressed`: the clip stands at 0.91 s for 3 s, the attempt is
+given up with no joint more than 1.5 degrees past its range and the joints stretched by 0.06 cm, and the next
+attempt, by another clip, stands.
+
+**What the failures of the first run were** (from the logs of the runs):
+
+- *The clip stood at its first key for 3 s, a foot 27 to 29 cm from where the clip has it, six attempts in a row*
+  (three falls on the bare floor). The foot was off the floor, the leg across the other one: it does not come. The
+  wait for a foot is now 0.7 s at most (`getup.foot_wait_s`).
+- *The same clip, the same failure, five and six times.* The next attempt after one that was given up goes by
+  another clip, if another starts at all like the body lies.
+- *The clip stood at 1.2 s, the pelvis 13 to 15 cm from the clip's with a limit of 12, the body on its knees.* Part
+  of that distance is over the floor (4 to 11 cm) and not height. Height is waited for within 16 cm, the place on
+  the floor within 20.
+- *Three of eight blows toward a wall felled nobody:* the body ended on its feet against the wall. Not a failure of
+  the get-up, and not a fall: such a trial is drawn again (56 blows for 50 falls on seed 1).
+
+**The falls that still do not end standing** are at the furniture (seed 1: none; seed 2: one at the table; seed 3:
+one at the table and one at the chair). Other falls at the table do end standing, and the film of one
+(`Saved\Films\stand_table`) shows how: the body slides under the table, and as the clip rises it backs out on
+hands and knees and stands beside it. The body lies with its trunk under the table top or its legs through the
+chair's, and the get-up, which is in place, has nowhere to go: the pelvis stays 20 to 30 cm below the clip's and
+the attempt is given up, again and again. What would close them is the body moving out into open floor before it
+rises, which this part did not build.
+
+Against `m3_part6_step2`: the 51 scenarios without a get-up have the same hashes, the seven with one changed with the values of this step (all pass), and `getup_pressed` is new: suite 59 of 59 with `-Long`. Push matrix 160 of 160, knockdowns 8 of 8, unit tests 31, session self-test 14 of 14, the stand 50 of 50.
+
+The stand is a step of `Tools\bootstrap.ps1` from now on.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

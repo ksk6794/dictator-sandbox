@@ -68,6 +68,36 @@ bool FRoomSpec::LoadFile(const FString& FilePath, FRoomSpec& OutSpec, FString& O
 		}
 		OutSpec.Lights.Add(Light);
 	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Furniture = nullptr;
+	if (Json->TryGetArrayField(TEXT("furniture"), Furniture))
+	{
+		for (int32 Index = 0; Index < Furniture->Num(); ++Index)
+		{
+			const TSharedPtr<FJsonObject> PieceJson = (*Furniture)[Index].IsValid() ? (*Furniture)[Index]->AsObject() : nullptr;
+			const FString Context = FString::Printf(TEXT("furniture[%d]"), Index);
+			if (!PieceJson.IsValid()) { return Fail(Context + TEXT(" is not an object")); }
+
+			FRoomFurnitureSpec Piece;
+			if (!PieceJson->TryGetStringField(TEXT("name"), Piece.Name) || Piece.Name.IsEmpty()) { return Fail(Context + TEXT(".name is missing")); }
+			if (!SandboxJson::TryGetVector(PieceJson, TEXT("location_cm"), Piece.LocationCm)) { return Fail(Context + TEXT(".location_cm must be [x, y, z]")); }
+			if (PieceJson->HasField(TEXT("yaw_deg")) && !PieceJson->TryGetNumberField(TEXT("yaw_deg"), Piece.YawDeg)) { return Fail(Context + TEXT(".yaw_deg must be a number")); }
+			const TArray<TSharedPtr<FJsonValue>>* Boxes = nullptr;
+			if (!PieceJson->TryGetArrayField(TEXT("boxes"), Boxes) || Boxes->Num() == 0) { return Fail(Context + TEXT(".boxes must list at least one box")); }
+			for (int32 BoxIndex = 0; BoxIndex < Boxes->Num(); ++BoxIndex)
+			{
+				const TSharedPtr<FJsonObject> BoxJson = (*Boxes)[BoxIndex].IsValid() ? (*Boxes)[BoxIndex]->AsObject() : nullptr;
+				FRoomBoxSpec Box;
+				if (!BoxJson.IsValid() || !SandboxJson::TryGetVector(BoxJson, TEXT("center_cm"), Box.CenterCm) ||
+					!SandboxJson::TryGetVector(BoxJson, TEXT("size_cm"), Box.SizeCm) || Box.SizeCm.GetMin() <= 0.0)
+				{
+					return Fail(FString::Printf(TEXT("%s.boxes[%d] needs center_cm [x, y, z] and size_cm [x, y, z], all > 0"), *Context, BoxIndex));
+				}
+				Piece.Boxes.Add(Box);
+			}
+			OutSpec.Furniture.Add(Piece);
+		}
+	}
 	return true;
 }
 
@@ -126,6 +156,24 @@ bool FRoomGenerator::Generate(const FRoomSpec& Spec, FString& OutError)
 	SpawnBox(TEXT("Wall_NegX"), FVector(-X / 2 - T / 2, 0.0, Z / 2), FVector(T, Y + 2 * T, Z));
 	SpawnBox(TEXT("Wall_PosY"), FVector(0.0, Y / 2 + T / 2, Z / 2), FVector(X, T, Z));
 	SpawnBox(TEXT("Wall_NegY"), FVector(0.0, -Y / 2 - T / 2, Z / 2), FVector(X, T, Z));
+
+	// Furniture: static boxes, each piece turned about the vertical where it stands.
+	for (const FRoomFurnitureSpec& Piece : Spec.Furniture)
+	{
+		const FRotator Turn(0.0, Piece.YawDeg, 0.0);
+		for (int32 BoxIndex = 0; BoxIndex < Piece.Boxes.Num(); ++BoxIndex)
+		{
+			const FRoomBoxSpec& Box = Piece.Boxes[BoxIndex];
+			AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Piece.LocationCm + Turn.RotateVector(Box.CenterCm), Turn);
+			Actor->SetActorLabel(FString::Printf(TEXT("%s_%d"), *Piece.Name, BoxIndex));
+			UStaticMeshComponent* Component = Actor->GetStaticMeshComponent();
+			Component->SetStaticMesh(Cube);
+			Component->SetMobility(EComponentMobility::Static);
+			Component->bOverrideLightMapRes = true;
+			Component->OverriddenLightMapRes = FMath::Max(Spec.LightmapResolution / 4, 4);
+			Actor->SetActorScale3D(Box.SizeCm / 100.0);
+		}
+	}
 
 	for (int32 Index = 0; Index < Spec.Lights.Num(); ++Index)
 	{

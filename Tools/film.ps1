@@ -9,12 +9,14 @@
 #   ... -Tune "name=value,..."               tuning values for this run
 #   ... -Overlay all                         debug overlays in the pictures
 #   ... -CropW 0.6 -Cols 6 -TileH 400        share of each picture's width kept, pictures per row, height of one
+#   ... -File <path.json>                    a scenario file from anywhere instead of Scenarios\<Name>.json
 #   ... -Tag <name>                          output name (default: the scenario's)
 #   ... -Labels "0.0,0.5,1.0"                what to write on the pictures instead of their times, one for each
 # Writes Saved\Films\<tag>\sheet.png next to the run's own results. The scenario's expectations are dropped:
 # this is for looking, the suite does the judging. Exit code: 0 a sheet was written, 1 not.
 param(
-    [Parameter(Mandatory = $true)][string]$Name,
+    [string]$Name,
+    [string]$File,
     [string]$Tag,
     [string]$Times = '3.0,3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0',
     [string]$Camera = 'side',
@@ -29,12 +31,19 @@ param(
 )
 . "$PSScriptRoot\common.ps1"
 
+if ($File -and -not $Name) { $Name = [System.IO.Path]::GetFileNameWithoutExtension($File) }
+if (-not $Name) {
+    Write-Output 'FILM ERROR: give -Name <scenario> or -File <scenario file>'
+    exit 1
+}
 if (-not $Tag) { $Tag = $Name }
 $outDir = Join-Path $RepoRoot "Saved\Films\$Tag"
 New-Item -ItemType Directory -Force $outDir | Out-Null
-$film = Read-JsonFile (Join-Path $RepoRoot "Scenarios\$Name.json")
+$sourceFile = Join-Path $RepoRoot "Scenarios\$Name.json"
+if ($File) { $sourceFile = [System.IO.Path]::GetFullPath($File) }
+$film = Read-JsonFile $sourceFile
 if (-not $film) {
-    Write-Output "FILM ERROR: Scenarios\$Name.json does not exist"
+    Write-Output "FILM ERROR: $sourceFile does not exist"
     exit 1
 }
 $film.name = $Tag

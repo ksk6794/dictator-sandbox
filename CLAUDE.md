@@ -43,16 +43,19 @@ body carries the motion of the engine's `MM_Idle` on top of its stance (breathin
 directions pass (`Tools\knockdowns.ps1`), the muscles have torque caps from published strength figures, they
 let go after the body meets the floor, joint limits are written in the spec, and continuous collision detection
 stays off by measurement; whether the poses of Epic's Game Animation Sample are better than these is looked at
-once the owner has downloaded it (done: its get-up clips are taken, its logic is not). **Part 6, the get-up, is in
-progress: step 1 of 3 is done.** A recorded clip is a source of the target pose (`FSandboxClipPose`: the four
+once the owner has downloaded it (done: its get-up clips are taken, its logic is not). **Part 6, the get-up, is
+done (three steps).** A recorded clip is a source of the target pose (`FSandboxClipPose`: the four
 get-ups of Epic's Game Animation Sample, made for another skeleton, carried over to the body's 17 joints;
 `USandboxBodyController::SetClipPose`, scenario event `clip_pose`, `Tools\clip-film.ps1`). **Step 2 is done:** the
 state GetUp. A body that has lain still for `getup.rest_s` takes the clip whose pelvis lies most like its own and
 gets up by it under full simulation: the muscles are asked for the clip's pose, the clip's time waits for the body,
 the assist pulls the pelvis and the feet toward where the clip has them with capped forces, and the clip is laid
-over the feet the body really stands on. It gets up from all four sides in 4.0 to 5.2 s; a 30 N*s push does not
-stop it, a 200 N*s blow fells it and it tries again, and two hands that hold it down are waited out (scenarios
-`getup_*`). A scenario's body gets up only with `"get_up": true`. Next is step 3, the stand of 50 falls.
+over the feet the body really stands on. It gets up from all four sides in 3.3 to 4.1 s; a 30 N*s push does not
+stop it, a 200 N*s blow fells it and it tries again, two hands at their 300 N each only slow it, and a force it
+cannot lift (1500 N on the pelvis) is waited out for 3 s, given up and tried again (scenarios `getup_*`). A scenario's body gets up only with `"get_up": true`. **Step 3, the stand:** `Tools\getup-stand.ps1`
+knocks the body down 50 times from a seed, 24 of them near a wall, a table and a chair (static boxes of a room
+spec, `Specs/rooms/getup_room.json`), and counts the falls that end standing: 50, 49 and 48 of 50 over three seeds
+(the criterion is 90%), 42, 36 and 42 of them at the first attempt. Next is part 7, the gate.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -78,6 +81,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
+| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
@@ -90,7 +94,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
 (the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (49 scenarios; 80 s with `-Long`),
-the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, regenerating the physics asset 10 s, a film
+the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 90 s, regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s, the whole
 bootstrap about 5 minutes. Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
 processes; `SANDBOX_SEPARATE_PROCESSES=1` goes back to one process per run.
@@ -111,7 +115,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
-| `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
+| `Specs/` | Text specs for generated assets (physics assets, room maps with their furniture); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
@@ -484,6 +488,21 @@ touch must not be in that list, and the ones that are get explained in the part'
   read "its" file. About one job in a thousand was run by nobody. A job is taken by writing a marker while a
   lock file is held open for writing (`UScenarioBatchSubsystem::TakeJob`), and a job without a result now prints
   `QUEUE WARNING` and keeps the processes' logs under `Saved\Queue`.
+- **Letting a clip run further ahead of the body leaves less room before the body counts as lost.** With the
+  pelvis allowed 16 cm of height and 20 cm of floor behind the clip instead of 12, the stand went from 45 to 48 of
+  50, and a 30 N*s push that the get-up had ridden out now put the pelvis 31 cm off, past `getup.lost_cm` at 30:
+  the suite's `getup_push_weak` caught it. The two limits move together (lost is 40 now, and the 200 N*s blow still
+  fells the body at 45).
+- **A figure from one seed is luck.** With the clip waiting for a pelvis 12 cm off in any direction, the stand
+  gave 48 of 50 on seed 1, and 45 and 45 on seeds 2 and 3: on the criterion's edge. A setting is chosen on three
+  seeds (`Tools\getup-stand.ps1 -Seed`), and a single failed fall that changes with a setting is no finding.
+- **A clip must not wait without end for what will not come.** A foot that lay across the other leg was 29 cm
+  from where the clip's first key had it and off the floor; the clip waited for it through six attempts. The wait
+  for a foot is bounded (`getup.foot_wait_s`); the pelvis's height is what a get-up really has to wait for.
+- **The same clip from the same place fails the same way.** A body that gave a get-up up tried again by the same
+  clip, five and six times. The next attempt takes another clip if one starts at all like the body lies.
+- **A body knocked into a wall often does not fall.** Three of eight blows toward a wall 45 to 90 cm away ended
+  with the body on its feet against it. A stand of falls draws such a trial again and says how many it drew.
 - **A clip steps a foot that the body is standing on.** A recording brings a foot forward while its weight is on
   the hands or the other leg; the simulated body's weight is where its own feet, hands and friction put it. With
   the clip's time waiting only for the pelvis, the body stood up leaning like a plank from a foot 45 cm behind where

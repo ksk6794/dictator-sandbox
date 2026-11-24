@@ -155,7 +155,9 @@ namespace
 		Visitor(FString(TEXT("getup.rate")), Tuning.GetUp.Rate);
 		Visitor(FString(TEXT("getup.end_s")), Tuning.GetUp.EndS);
 		Visitor(FString(TEXT("getup.lag_cm")), Tuning.GetUp.LagCm);
+		Visitor(FString(TEXT("getup.side_lag_cm")), Tuning.GetUp.SideLagCm);
 		Visitor(FString(TEXT("getup.foot_lag_cm")), Tuning.GetUp.FootLagCm);
+		Visitor(FString(TEXT("getup.foot_wait_s")), Tuning.GetUp.FootWaitS);
 		Visitor(FString(TEXT("getup.frame_follow_s")), Tuning.GetUp.FrameFollowS);
 		Visitor(FString(TEXT("getup.stall_s")), Tuning.GetUp.StallS);
 		Visitor(FString(TEXT("getup.lost_cm")), Tuning.GetUp.LostCm);
@@ -378,7 +380,9 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.Rate, 4.0, TEXT("getup"), TEXT("rate"), OutError) ||
 		!CheckRange(GetUp.EndS, 60.0, TEXT("getup"), TEXT("end_s"), OutError) ||
 		!CheckRange(GetUp.LagCm, 500.0, TEXT("getup"), TEXT("lag_cm"), OutError) ||
+		!CheckRange(GetUp.SideLagCm, 500.0, TEXT("getup"), TEXT("side_lag_cm"), OutError) ||
 		!CheckRange(GetUp.FootLagCm, 500.0, TEXT("getup"), TEXT("foot_lag_cm"), OutError) ||
+		!CheckRange(GetUp.FootWaitS, 60.0, TEXT("getup"), TEXT("foot_wait_s"), OutError) ||
 		!CheckRange(GetUp.FrameFollowS, 60.0, TEXT("getup"), TEXT("frame_follow_s"), OutError) ||
 		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
 		!CheckRange(GetUp.LostCm, 1000.0, TEXT("getup"), TEXT("lost_cm"), OutError) ||

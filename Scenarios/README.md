@@ -465,6 +465,11 @@ To look at a motion rather than at its numbers, `Tools\film.ps1 -Name hit_chest_
 statue: the arms held out, a fall like a plank and a body frozen in a lunge all passed the suite.
 ## Push matrix
 
+The stand of falls and get-ups, `Tools\getup-stand.ps1`, generates its scenarios the same way: 50 falls drawn
+from a seed (26 on the bare floor, 8 each near a wall, the table and the chair of `Specs\rooms\getup_room.json`),
+each with `"get_up": true` and 40 s to end standing in; a blow that did not fell the body is drawn again. It prints
+one row a fall and the share that stand (`-Film failed` for a sheet of pictures of each that does not).
+
 To look at what a recorded clip asks of the body, `Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes
 "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60`: the body hangs by its welded pelvis, is asked for the clip's pose
 at each time in turn, and a picture is taken of each (`-Carry` turns and moves the pelvis as the clip does;

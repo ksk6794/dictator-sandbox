@@ -201,4 +201,16 @@ The generator saves the map unlit. `Tools\bake-lighting.ps1` then builds lightma
 with CPU Lightmass. A map is regenerated only when its spec file is newer than the map, because regenerating
 throws the baked lighting away; `Tools\gen-assets.ps1 -Force` regenerates regardless.
 
-Limitations: box shape only, engine grid material, no windows, doors or furniture yet.
+`furniture` is optional: pieces of static boxes, each with a `name`, the point of the floor it stands on
+(`location_cm`), a turn about the vertical (`yaw_deg`) and its `boxes` (`center_cm` from that point, `size_cm`).
+`getup_room.json` has a table (a top on four legs, 73 cm high) and a chair (seat, back, four legs) for the stand of
+falls and get-ups (`Tools\getup-stand.ps1`); it is not baked, its lights are stationary.
+
+```json
+"furniture": [
+  {"name": "table", "location_cm": [170, -120, 0], "yaw_deg": 0,
+   "boxes": [{"center_cm": [0, 0, 73], "size_cm": [120, 70, 4]}, {"center_cm": [-55, -30, 35.5], "size_cm": [5, 5, 71]}]}
+]
+```
+
+Limitations: box shape only, engine grid material, no windows or doors; furniture is static boxes.

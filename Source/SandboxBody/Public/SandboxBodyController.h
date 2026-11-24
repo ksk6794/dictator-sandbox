@@ -534,6 +534,8 @@ private:
 		/** How long the clip's time has stood still now, and how long it has waited in all. */
 		double StallS = 0.0;
 		double WaitedS = 0.0;
+		/** How long the clip has now waited for a foot in the air (getup.foot_wait_s). */
+		double FootWaitS = 0.0;
 		bool bEased = false;
 	};
 	FGetUpRun GetUpRun;
@@ -541,6 +543,8 @@ private:
 	bool bGetUpAllowed = true;
 	/** Set when a get-up could not begin (a clip is missing): it is not tried again. */
 	bool bGetUpBroken = false;
+	/** The clip of the attempt that was given up last: the next attempt goes another way if there is one. Empty after a get-up. */
+	FString GivenUpClip;
 	/** How long the body has lain still. */
 	double LyingS = 0.0;
 	/** The mesh's own space when the body was started: the space a clip's root is in for a body that stands as this one stood. */
