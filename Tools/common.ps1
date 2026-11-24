@@ -220,9 +220,14 @@ function Invoke-ScenarioQueue {
         }
     }
     foreach ($process in $processes) { $process.WaitForExit() }
-    # A queue that still holds jobs lost its processes (a crash); its logs are kept for a look.
+    # A job without a result was lost: its process took it and ended before writing one. The queue's logs are kept
+    # for a look (Saved\Queue\<id>\process_<n>.log), and so are those of a queue that still holds jobs.
+    $lost = @($Jobs | Where-Object { -not (Test-Path (Join-Path ([System.IO.Path]::GetFullPath($_.Out)) 'metrics.json')) })
     foreach ($queue in $queues) {
-        if (@(Get-ChildItem $queue -Filter '*.json' -File).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($lost.Count -eq 0 -and @(Get-ChildItem $queue -Filter '*.json' -File).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    if ($lost.Count -gt 0) {
+        Write-Output ("QUEUE WARNING: {0} job(s) of {1} ended without a result; logs kept in {2}" -f $lost.Count, @($Jobs).Count, ($queues -join ', '))
     }
 }
 

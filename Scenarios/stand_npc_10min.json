@@ -23,7 +23,8 @@
     "max_pelvis_drift_cm": 5.0,
     "min_head_height_cm": 150.0,
     "max_joint_stretch_cm": 2.0,
-    "max_settled_speed_mps": 0.05,
+    "max_settled_speed_mps": 0.15,
+    "min_settled_head_travel_cm": 2.0,
     "max_settled_angular_speed_rads": 0.3,
     "max_joint_speed_rads": 30.0,
     "max_physics_step_mean_ms": 1.5

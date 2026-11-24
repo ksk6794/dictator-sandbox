@@ -170,7 +170,8 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_joint_stretch_cm` | No rigid joint's anchors separate by more, measured from the sixth frame on. A body with `"simulate": false` has no stretch (`metrics.max_joint_stretch_cm` is null) and fails this expectation |
 | `max_pelvis_drift_cm` | The pelvis (the root body) never gets further from where it was spawned, over the whole run |
 | `min_head_height_cm` | The head body's centre of mass never drops below this height above the spawn point. Active control only |
-| `max_settled_speed_mps`, `max_settled_angular_speed_rads` | No body moves or turns faster after `settle_s`: the measure of jitter at rest |
+| `max_settled_speed_mps`, `max_settled_angular_speed_rads` | No body moves or turns faster after `settle_s`: the measure of jitter at rest. A standing body's idle moves its hands at up to 0.08 m/s, so the speed limit of a standing scenario is 0.15 |
+| `min_settled_head_travel_cm` | The head travels at least this far after `settle_s` (the diagonal of the box its centre of mass stays in, `metrics.settled_head_travel_cm`): a body that stands is not a statue. 4 cm with the idle, 0.5 without. Every body's own figure is `body.bodies[].settled_travel_cm` |
 | `min_settled_angular_speed_rads` | Some body does turn at least this fast after `settle_s`. For scenarios that make the body less steady on purpose and must show that the change took effect |
 | `fell` | `true`: the body fell during the run. `false`: it did not. Fallen means the pelvis (the root body) got below half the height above the spawn point that it started at; a body that sits down on the floor has fallen |
 | `min_fall_time_s` | The body did not fall before this time (not falling at all also passes; combine with `fell`) |

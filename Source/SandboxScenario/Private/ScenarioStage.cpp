@@ -12,6 +12,8 @@
 #include "IXRTrackingSystem.h"
 #include "Misc/App.h"
 #include "Misc/PackageName.h"
+#include "PBDRigidsSolver.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "SandboxCore.h"
 #include "SandboxParamStore.h"
@@ -24,8 +26,32 @@ bool FScenarioStage::IsStereo()
 	return GEngine && GEngine->XRSystem.IsValid() && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
 }
 
+void FScenarioStage::KeepSolverInStep(UWorld& World)
+{
+	FPhysScene* Scene = World.GetPhysicsScene();
+	Chaos::FPhysicsSolver* Solver = Scene ? Scene->GetSolver() : nullptr;
+	if (!Solver)
+	{
+		return;
+	}
+	// On the physics thread, before every substep. Each blocking call waits for the rebuild that is under way and
+	// takes its result in; the second starts no new one, so the step's own look at the task finds it done, every
+	// time, and nothing is left running that the next step could find either done or not.
+	Solver->AddPreAdvanceCallback(FSolverPreAdvance::FDelegate::CreateLambda([Solver](Chaos::FReal)
+	{
+		Chaos::FPBDRigidsEvolution* Evolution = Solver->GetEvolution();
+		Evolution->SetCanStartAsyncTasks(true);
+		Evolution->ComputeIntermediateSpatialAcceleration(/*bBlock*/ true);
+		Evolution->ComputeIntermediateSpatialAcceleration(/*bBlock*/ true);
+		Evolution->SetCanStartAsyncTasks(false);
+		Evolution->ComputeIntermediateSpatialAcceleration(/*bBlock*/ true);
+	}));
+}
+
 ACameraActor* FScenarioStage::SpawnEnvironment(UWorld& World, const FScenarioSpec& Spec, bool bSpawnCamera)
 {
+	KeepSolverInStep(World);
+
 	// A scenario map brings its own floor and lighting; only the camera is added.
 	const bool bOwnMap = !Spec.MapPath.IsEmpty();
 	if (bOwnMap && !World.GetOutermost()->GetName().EndsWith(FPackageName::GetShortName(Spec.MapPath)))

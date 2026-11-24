@@ -18,7 +18,7 @@
     "tuning_changes": 1,
     "fell": false,
     "state_sequence": "standing",
-    "min_pose_offset_deg": 29.9,
+    "min_pose_offset_deg": 27.0,
     "max_pose_error_mean_deg": 2.0,
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30.0,

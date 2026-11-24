@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyTuning.h"
+#include "SandboxIdleMotion.h"
 #include "SandboxPoseRig.h"
 #include "SandboxAnimInstance.h"
 #include "SandboxBodyController.generated.h"
@@ -425,6 +426,18 @@ private:
 	void UpdatePoseTurns();
 	/** Whether the animation instance holds turns from an earlier tick. */
 	bool bPoseTurnsSet = false;
+	/**
+	 * What a standing body does while nothing happens: the motion of the idle clip (poses.idle.*), added to the pose
+	 * as turns of trunk, neck and arms, and a lean of the whole body about its ankles by the clip's sway. Carried in
+	 * full only while Standing; eased out over poses.blend_s in any other state and in again after it, by its own
+	 * clock like every other offset of the pose. The legs are left to the balance.
+	 */
+	FSandboxIdleMotion IdleMotion;
+	void UpdateIdle(double DeltaTime);
+	/** How much of the idle the body carries now, 0 to 1, before easing. */
+	double IdleShare = 0.0;
+	/** The idle's sway now: the lean it asks of the whole body, cm (world x, y). */
+	FVector2D IdleSwayCm = FVector2D::ZeroVector;
 	/** The way the body goes down, chosen as it starts to fall: which of the fall's poses it takes (ApplyPose). */
 	enum class EFallWay : uint8 { Back, Forward, Left, Right };
 	EFallWay FallWay = EFallWay::Back;
@@ -522,6 +535,15 @@ private:
 	FVector2D StrategyErrorCm = FVector2D::ZeroVector;
 	/** Whether the strategies hold turns that the pose must carry. */
 	bool bStrategyActive = false;
+	/**
+	 * How much of each balance pose of the arms the body carries (poses.balance_*): going over backward, forward, to
+	 * its left and to its right, 0 to 1 each, after the lag (balance.arm_response_s). Worked out by UpdateStrategies
+	 * from the same capture-point error as the ankles.
+	 */
+	enum { ArmBack, ArmForward, ArmLeft, ArmRight, ArmWayCount };
+	double ArmShare[ArmWayCount] = { 0.0, 0.0, 0.0, 0.0 };
+	/** Adds the arms' balance poses to a set of pose turns, merged per bone. */
+	void AddArmTurns(TArray<FSandboxPoseTurn>& Turns) const;
 	/** The legs the strategies turn: foot and thigh bones, left and right (mesh bone indices and names). */
 	int32 FootBoneIndex[2] = { INDEX_NONE, INDEX_NONE };
 	int32 ThighBoneIndex[2] = { INDEX_NONE, INDEX_NONE };

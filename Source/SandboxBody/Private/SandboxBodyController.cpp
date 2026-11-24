@@ -2,6 +2,7 @@
 
 #include "SandboxAnimInstance.h"
 #include "SandboxBodyProbe.h"
+#include "Animation/AnimSequence.h"
 #include "AnimationRuntime.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
@@ -288,6 +289,43 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		}
 	}
 	ApplyPose();
+
+	// The idle's motion, for the bones the muscles of trunk, neck and arms take their targets from: each such
+	// joint's own bone and the bones between it and the body it hangs on.
+	IdleMotion = FSandboxIdleMotion();
+	if (!Tuning.Poses.IdleAnimation.IsEmpty())
+	{
+		const UAnimSequence* Clip = LoadObject<UAnimSequence>(nullptr, *Tuning.Poses.IdleAnimation);
+		if (!Clip)
+		{
+			OutError = FString::Printf(TEXT("poses.idle.animation: no animation at '%s' (the engine's mannequin comes with Tools\\fetch-stock-content.ps1)"),
+				*Tuning.Poses.IdleAnimation);
+			return false;
+		}
+		const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		TArray<int32> Bones;
+		for (const FMuscle& Muscle : Muscles)
+		{
+			if (Muscle.Group == ESandboxMuscleGroup::Legs)
+			{
+				continue;
+			}
+			const int32 Stop = Skeleton.FindBoneIndex(Muscle.ParentBone);
+			for (int32 Bone = Skeleton.FindBoneIndex(Muscle.ChildBone); Bone != INDEX_NONE && Bone != Stop; Bone = Skeleton.GetParentIndex(Bone))
+			{
+				Bones.AddUnique(Bone);
+			}
+		}
+		if (!IdleMotion.Load(Clip, Mesh, Bones, Tuning.Rig.Pelvis, OutError))
+		{
+			return false;
+		}
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: idle motion from '%s', %d bones, a loop of %.2f s"),
+			*Tuning.Poses.IdleAnimation, IdleMotion.GetBoneCount(), IdleMotion.GetPeriodS());
+	}
+	IdleShare = 0.0;
+	IdleSwayCm = FVector2D::ZeroVector;
+
 	// A foot the pose places is never turned beyond its ankle's range.
 	if (USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()))
 	{
@@ -520,6 +558,12 @@ void USandboxBodyController::UpdatePoseTurns()
 			}
 		}
 	}
+	// The idle's motion, as much of it as the body carries now (UpdateIdle).
+	if (IdleShare > 0.0)
+	{
+		IdleMotion.AddTurns(ElapsedS, FMath::SmoothStep(0.0, 1.0, IdleShare) * Tuning.Poses.IdleWeight, Turns);
+	}
+	AddArmTurns(Turns);
 	AddStrategyTurns(Turns);
 
 	// Nothing to hand over while there is no offset now and there was none before.
@@ -530,12 +574,36 @@ void USandboxBodyController::UpdatePoseTurns()
 	}
 }
 
+void USandboxBodyController::UpdateIdle(double DeltaTime)
+{
+	if (!IdleMotion.IsLoaded())
+	{
+		return;
+	}
+	const double Step = Tuning.Poses.BlendS > 0.0 ? DeltaTime / Tuning.Poses.BlendS : 1.0;
+	IdleShare = FMath::Clamp(IdleShare + (State == ESandboxBodyState::Standing ? Step : -Step), 0.0, 1.0);
+	const double Weight = FMath::SmoothStep(0.0, 1.0, IdleShare) * Tuning.Poses.IdleSwayWeight;
+	if (Weight <= 0.0)
+	{
+		IdleSwayCm = FVector2D::ZeroVector;
+		return;
+	}
+	// The clip's sway is in the body's own space; the body stands as its support does.
+	FVector SupportLocation;
+	FQuat SupportRotation;
+	SupportFrame(SupportLocation, SupportRotation);
+	const FVector2D Sway = IdleMotion.SwayCm(ElapsedS) * Weight;
+	const FVector World = SupportRotation.RotateVector(FVector(Sway.X, Sway.Y, 0.0));
+	IdleSwayCm = FVector2D(World.X, World.Y);
+}
+
 void USandboxBodyController::UpdateStrategies(double DeltaTime)
 {
 	const FSandboxBalanceTuning& Limits = Tuning.Balance;
 	const bool bUpright = IsUpright();
 	FVector2D LeanGoal = FVector2D::ZeroVector;
 	FVector2D HipGoal = FVector2D::ZeroVector;
+	double ArmGoal[ArmWayCount] = { 0.0, 0.0, 0.0, 0.0 };
 	StrategyErrorCm = FVector2D::ZeroVector;
 	const int32 Feet = Balance.bValid ? Balance.StandingFeet.Num() : 0;
 
@@ -559,12 +627,14 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 			LeanCm = FVector2D::ZeroVector;
 		}
 	}
+	// The idle's sway is a lean like the one into a push, and goes the same way: anchors, reference and ankles.
+	const FVector2D LeaningCm = IdleSwayCm.IsZero() ? LeanCm : LeanCm + IdleSwayCm;
 	// The assist leans with the body rather than holding it upright against the push.
 	for (FAssist& Assist : Assists)
 	{
-		if (Assist.Slot != EAssistSlot::Feet && Assist.AppliedLeanCm != LeanCm)
+		if (Assist.Slot != EAssistSlot::Feet && Assist.AppliedLeanCm != LeaningCm)
 		{
-			Assist.AppliedLeanCm = LeanCm;
+			Assist.AppliedLeanCm = LeaningCm;
 			SetAssistTarget(Assist);
 		}
 	}
@@ -580,7 +650,7 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 		// A weight shift moves the place the body is to stand over, like a lean. (Left out, the ankles brought the
 		// body back toward the middle of its feet while the legs' frames took it to the stance foot: of a shift of
 		// 19 cm forward out of a lunge the pelvis went 5.)
-		StrategyErrorCm = Balance.CapturePoint - (FVector2D(Reference.X, Reference.Y) + LeanCm + ShiftCm);
+		StrategyErrorCm = Balance.CapturePoint - (FVector2D(Reference.X, Reference.Y) + LeaningCm + ShiftCm);
 		// The error in the support's own axes: forward, sideways.
 		const FVector2D Error(
 			StrategyErrorCm.X * SupportForward.X + StrategyErrorCm.Y * SupportForward.Y,
@@ -628,11 +698,22 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 			// lean's angle, so that the muscles hold the lean instead of pulling the body back upright (the
 			// push's torque and the lean's weight cancel at the ankles). A lean forward turns the body away from
 			// a centre of pressure behind it, hence the sign.
-			const FVector2D Lean(LeanCm.X * SupportForward.X + LeanCm.Y * SupportForward.Y, LeanCm.X * SupportSide.X + LeanCm.Y * SupportSide.Y);
+			const FVector2D Lean(LeaningCm.X * SupportForward.X + LeaningCm.Y * SupportForward.Y, LeaningCm.X * SupportSide.X + LeaningCm.Y * SupportSide.Y);
 			const FVector2D TiltRad = -Lean / ComHeightCm;
 			const double MaxRad = FMath::DegreesToRadians(Limits.AnkleMaxDeg);
 			LeanGoal.X = FMath::Clamp(ShiftM.X * WeightN / StiffnessNmPerRad + TiltRad.X, -MaxRad, MaxRad);
 			LeanGoal.Y = FMath::Clamp(ShiftM.Y * WeightN / StiffnessNmPerRad + TiltRad.Y, -MaxRad, MaxRad);
+		}
+
+		// Arms: thrown the way the body tips, in proportion to how far the capture point has got from where the body
+		// stands (poses.balance_*). Nothing inside the dead zone, where quiet standing and the idle's sway stay.
+		if (Limits.ArmFullCm > Limits.ArmDeadCm)
+		{
+			const auto Share = [&Limits](double Cm) { return FMath::Clamp((Cm - Limits.ArmDeadCm) / (Limits.ArmFullCm - Limits.ArmDeadCm), 0.0, 1.0); };
+			ArmGoal[ArmForward] = Share(Error.X);
+			ArmGoal[ArmBack] = Share(-Error.X);
+			ArmGoal[ArmLeft] = Share(Error.Y);
+			ArmGoal[ArmRight] = Share(-Error.Y);
 		}
 
 		// Hips: once the capture point is outside the support, where the ankles cannot help, the trunk bends
@@ -665,6 +746,48 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 		HipBendRad = FVector2D::ZeroVector;
 	}
 	bStrategyActive = !AnkleLeanRad.IsZero() || !HipBendRad.IsZero();
+
+	// The arms follow the same way, with a lag of their own, and come down again as the balance comes back.
+	const double ArmFollow = Limits.ArmResponseS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Limits.ArmResponseS) : 1.0;
+	for (int32 Way = 0; Way < ArmWayCount; ++Way)
+	{
+		ArmShare[Way] += (ArmGoal[Way] - ArmShare[Way]) * ArmFollow;
+		if (ArmGoal[Way] == 0.0 && ArmShare[Way] < 1.0e-6)
+		{
+			ArmShare[Way] = 0.0;
+		}
+	}
+}
+
+void USandboxBodyController::AddArmTurns(TArray<FSandboxPoseTurn>& Turns) const
+{
+	if (ArmShare[ArmBack] == 0.0 && ArmShare[ArmForward] == 0.0 && ArmShare[ArmLeft] == 0.0 && ArmShare[ArmRight] == 0.0)
+	{
+		return;
+	}
+	const FSandboxPose ToRight = ArmShare[ArmRight] > 0.0 ? FSandboxPoseTuning::Mirrored(Tuning.Poses.BalanceSide) : FSandboxPose();
+	const FSandboxPose* const Poses[ArmWayCount] = { &Tuning.Poses.BalanceBack, &Tuning.Poses.BalanceForward, &Tuning.Poses.BalanceSide, &ToRight };
+	TArray<FSandboxPoseTurn> Added;
+	for (int32 Way = 0; Way < ArmWayCount; ++Way)
+	{
+		if (ArmShare[Way] <= 0.0)
+		{
+			continue;
+		}
+		PoseRig.BuildTurns(*Poses[Way], ArmShare[Way], Added);
+		for (const FSandboxPoseTurn& Turn : Added)
+		{
+			const int32 Bone = Turn.MeshBoneIndex;
+			if (FSandboxPoseTurn* Existing = Turns.FindByPredicate([Bone](const FSandboxPoseTurn& Each) { return Each.MeshBoneIndex == Bone; }))
+			{
+				Existing->Turn = (Existing->Turn * Turn.Turn).GetNormalized();
+			}
+			else
+			{
+				Turns.Add(Turn);
+			}
+		}
+	}
 }
 
 void USandboxBodyController::AddStrategyTurns(TArray<FSandboxPoseTurn>& Turns) const
@@ -2481,6 +2604,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateStep(DeltaTime);
 	UpdateShift(DeltaTime);
 	UpdateLowering(DeltaTime);
+	UpdateIdle(DeltaTime);
 	UpdateStrategies(DeltaTime);
 	UpdatePlacements(DeltaTime);
 	UpdatePoseTurns();

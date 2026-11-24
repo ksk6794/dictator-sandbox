@@ -89,7 +89,10 @@
     "regroup_shift_gain_per_s": 2,
     "regroup_lead_max_cm": 25,
     "regroup_margin_cm": 5,
-    "regroup_shift_max_s": 2
+    "regroup_shift_max_s": 2,
+    "arm_dead_cm": 4,
+    "arm_full_cm": 30,
+    "arm_response_s": 0.12
   },
   "reactions": {
     "flinch_weakening": 0.3,

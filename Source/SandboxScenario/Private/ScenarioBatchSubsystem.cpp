@@ -1,8 +1,11 @@
 #include "ScenarioBatchSubsystem.h"
 
 #include "Engine/World.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/FileHelper.h"
 #include "Misc/OutputDeviceHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
@@ -136,17 +139,41 @@ bool UScenarioBatchSubsystem::TakeJob(FJob& OutJob)
 	IFileManager::Get().FindFiles(Names, *FPaths::Combine(QueueDir, TEXT("*.json")), /*Files*/ true, /*Directories*/ false);
 	Names.Sort();
 	const FString TakenDir = FPaths::Combine(QueueDir, TEXT("taken"));
+	IPlatformFile& Platform = FPlatformFileManager::Get().GetPlatformFile();
 	for (const FString& Name : Names)
 	{
-		// Only one process can move the file: the others find it gone and try the next.
-		const FString Taken = FPaths::Combine(TakenDir, FString::Printf(TEXT("%s.%u"), *Name, FPlatformProcess::GetCurrentProcessId()));
-		if (!IFileManager::Get().Move(*Taken, *FPaths::Combine(QueueDir, Name), /*bReplace*/ false, /*bEvenIfReadOnly*/ false, /*bAttributes*/ false, /*bDoNotRetryOrError*/ true))
+		// A job belongs to the process that writes its marker, and the marker is looked for and written while a
+		// lock file is held open for writing, which only one process can do at a time. (Taking a job by moving
+		// its file does not work: Windows renames a file through a handle, two processes can each open one
+		// before either renames, and then both renames succeed, the second taking the file from under the
+		// first. With 16 processes on one queue about one job in a thousand was run by nobody.) A process that
+		// cannot get the lock leaves the job to the one that holds it, which either takes it or finds it taken.
+		const FString Marker = FPaths::Combine(TakenDir, Name + TEXT(".taken"));
+		if (Platform.FileExists(*Marker))
 		{
 			continue;
 		}
+		{
+			const TUniquePtr<IFileHandle> Lock(Platform.OpenWrite(*FPaths::Combine(TakenDir, Name + TEXT(".lock")), /*bAppend*/ true, /*bAllowRead*/ false));
+			if (!Lock || Platform.FileExists(*Marker))
+			{
+				continue;
+			}
+			if (!FFileHelper::SaveStringToFile(FString::FromInt(FPlatformProcess::GetCurrentProcessId()), *Marker))
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario batch: cannot write '%s'"), *Marker);
+				continue;
+			}
+		}
+		// The job is this process's alone from here on: nobody else opens or moves its file.
+		const FString Source = FPaths::Combine(QueueDir, Name);
 		TSharedPtr<FJsonObject> Json;
 		FString Error;
-		if (!SandboxJson::LoadObject(Taken, Json, Error))
+		const bool bRead = SandboxJson::LoadObject(Source, Json, Error);
+		// Out of the queue, so that the processes still looking have less to look through.
+		IFileManager::Get().Move(*FPaths::Combine(TakenDir, FString::Printf(TEXT("%s.%u"), *Name, FPlatformProcess::GetCurrentProcessId())), *Source,
+			/*bReplace*/ true, /*bEvenIfReadOnly*/ false, /*bAttributes*/ false, /*bDoNotRetryOrError*/ true);
+		if (!bRead)
 		{
 			UE_LOG(LogSandbox, Error, TEXT("Scenario batch: %s"), *Error);
 			continue;

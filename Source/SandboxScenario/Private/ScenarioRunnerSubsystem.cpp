@@ -617,6 +617,7 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			FVector2D& Fastest = SettledBodySpeeds.FindOrAdd(Body.Bone, FVector2D::ZeroVector);
 			Fastest.X = FMath::Max(Fastest.X, Speed);
 			Fastest.Y = FMath::Max(Fastest.Y, AngularSpeed);
+			SettledBodyBoxes.FindOrAdd(Body.Bone, FBox(ForceInit)) += Body.CenterOfMass;
 		}
 		if (Body.Bone == PelvisBone)
 		{
@@ -1519,6 +1520,13 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MinSettledAngularSpeedRadS.GetValue();
 		AddCheck(TEXT("min_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS >= Limit, Number(MaxSettledAngularSpeedRadS), Number(Limit));
 	}
+	if (Spec.Expect.MinSettledHeadTravelCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MinSettledHeadTravelCm.GetValue();
+		const FBox* Box = SettledBodyBoxes.Find(HeadBone);
+		const double TravelCm = Box ? Box->GetSize().Size() : 0.0;
+		AddCheck(TEXT("min_settled_head_travel_cm"), Box && TravelCm >= Limit, Box ? Number(TravelCm) : Null(), Number(Limit));
+	}
 	if (Spec.Expect.MaxJointSpeedRadS.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxJointSpeedRadS.GetValue();
@@ -1856,6 +1864,11 @@ void UScenarioRunnerSubsystem::Finish()
 				Entry->SetNumberField(TEXT("max_settled_speed_mps"), Fastest->X * 0.01);
 				Entry->SetNumberField(TEXT("max_settled_angular_speed_rads"), Fastest->Y);
 			}
+			if (const FBox* Box = SettledBodyBoxes.Find(Mesh->GetBoneName(Instance->InstanceBoneIndex)))
+			{
+				// How far its centre of mass travelled after the settle time: what a standing body's idle moves.
+				Entry->SetNumberField(TEXT("settled_travel_cm"), Box->GetSize().Size());
+			}
 			BodyList.Add(MakeShared<FJsonValueObject>(Entry));
 		}
 		for (const FConstraintInstance* Constraint : Mesh->Constraints)
@@ -1922,6 +1935,10 @@ void UScenarioRunnerSubsystem::Finish()
 	Metrics->SetField(TEXT("fall_time_s"), bFell ? Number(FallTimeS) : Null());
 	Metrics->SetNumberField(TEXT("max_settled_speed_mps"), MaxSettledSpeedCmS * 0.01);
 	Metrics->SetNumberField(TEXT("max_settled_angular_speed_rads"), MaxSettledAngularSpeedRadS);
+	if (const FBox* HeadBox = SettledBodyBoxes.Find(HeadBone))
+	{
+		Metrics->SetNumberField(TEXT("settled_head_travel_cm"), HeadBox->GetSize().Size());
+	}
 	Metrics->SetNumberField(TEXT("max_joint_speed_rads"), MaxJointSpeedRadS);
 	Metrics->SetStringField(TEXT("fastest_joint"), FastestJoint.IsNone() ? FString() : FastestJoint.ToString());
 	Metrics->SetNumberField(TEXT("max_joint_limit_violation_deg"), MaxJointLimitViolationDeg);

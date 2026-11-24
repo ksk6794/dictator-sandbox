@@ -358,6 +358,7 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_settled_speed_mps"), &OutSpec.Expect.MaxSettledSpeedMps },
 			{ TEXT("max_settled_angular_speed_rads"), &OutSpec.Expect.MaxSettledAngularSpeedRadS },
 			{ TEXT("min_settled_angular_speed_rads"), &OutSpec.Expect.MinSettledAngularSpeedRadS },
+			{ TEXT("min_settled_head_travel_cm"), &OutSpec.Expect.MinSettledHeadTravelCm },
 			{ TEXT("max_joint_speed_rads"), &OutSpec.Expect.MaxJointSpeedRadS },
 			{ TEXT("max_physics_step_mean_ms"), &OutSpec.Expect.MaxPhysicsStepMeanMs },
 			{ TEXT("min_fall_time_s"), &OutSpec.Expect.MinFallTimeS },

@@ -367,6 +367,14 @@ struct FSandboxBalanceTuning
 	double RegroupMarginCm = 0.0;
 	/** A regrouping step whose weight shift has not got that far by then is given up. Seconds. */
 	double RegroupShiftMaxS = 0.0;
+	/**
+	 * The arms join the fight for balance (poses.balance_*) once the capture point is further than ArmDeadCm from where
+	 * the body stands, in full at ArmFullCm; what is asked of them follows with a lag of ArmResponseS. Quiet standing
+	 * and the idle's sway stay inside the dead zone. ArmFullCm at or below ArmDeadCm: the arms take no part.
+	 */
+	double ArmDeadCm = 0.0;
+	double ArmFullCm = 0.0;
+	double ArmResponseS = 0.0;
 };
 
 /** How the body reacts to a hit. */
@@ -448,6 +456,26 @@ struct FSandboxPoseTuning
 	FSandboxPose FallSide;
 	/** Time over which the target goes from the pose held to the pose of the fall. Seconds. */
 	double FallBlendS = 0.0;
+	/**
+	 * What the arms do while the body fights for its balance, added on top of the pose in proportion to how far the
+	 * capture point is from where the body stands (balance.arm_*): going over backward the arms come forward and up,
+	 * going over forward they go back and out, going over to the left (written for the left; to the right uses the
+	 * mirror image) the far arm goes up and out. An arm thrown the way the body tips turns the trunk back the other
+	 * way, and its weight ends up on the side the body has to come back to.
+	 */
+	FSandboxPose BalanceBack;
+	FSandboxPose BalanceForward;
+	FSandboxPose BalanceSide;
+	/**
+	 * The clip whose motion a standing body carries on top of its stance: breathing, the shoulders, a slow sway
+	 * (FSandboxIdleMotion; "poses.idle.animation", an asset path, empty for none). Read when the body starts; a
+	 * change while it runs is not followed.
+	 */
+	FString IdleAnimation;
+	/** How much of the clip's turns of trunk, neck and arms the body carries: 1 as recorded, 0 none ("poses.idle.weight"). */
+	double IdleWeight = 0.0;
+	/** How much of the clip's sway of the pelvis the whole body leans by, about its ankles ("poses.idle.sway_weight"). */
+	double IdleSwayWeight = 0.0;
 
 	/** The mirror image of a pose: left and right joints change places, the trunk's sideways bend and twist change sign. */
 	static FSandboxPose Mirrored(const FSandboxPose& Pose);

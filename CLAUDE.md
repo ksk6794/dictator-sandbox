@@ -26,7 +26,7 @@ punch on the forearm does not snap the wrist. Steps 1 to 3 gave the body a nativ
 source of its target pose, poses written as joint angles in `Config/Tuning/poses.json`, and the flinch's
 pose offset (the struck part gives way, shoulders up, head in); step 4 two-bone leg placement
 (`USandboxBodyController::SetFootTarget`, scenario event `foot_target`). The idle from `MM_Idle` moved to
-part 7. Part 3, standing balance: the capture point decides whether the body stands, needs a step (held by
+part 7 then, and was done in the audit after part 4. Part 3, standing balance: the capture point decides whether the body stands, needs a step (held by
 the assist until part 4, reported as `step_needed_frames`) or falls; ankle and hip strategies are turns of the
 leg targets; the assist's anchors follow the feet; a held push is leant into and makes the body flinch only as
 it lands; quiet-standing assist share 0.0052 (bound 0.0093); the push matrix names each outcome (stood, held,
@@ -36,8 +36,10 @@ when the foot lands, across the other foot if it must, again if one step is not 
 step (`RequestStep`, scenario event `step`). An audit of how the body moves (November 2026, on the owner's
 request) followed it: the stance has the arms down, arms and neck are soft, the body always tries to step and
 falls only when its posture gives way, a falling body takes a protective pose and a lying one lets go
-(`poses.fall_*`), and after recovery steps the body brings its feet back together (`balance.regroup_*`); the
-fall work planned for part 5 is partly done by it. Next is part 5, falling and lying.
+(`poses.fall_*`), after recovery steps the body brings its feet back together (`balance.regroup_*`), a standing
+body carries the motion of the engine's `MM_Idle` on top of its stance (breathing, the shoulders, a slow sway;
+`poses.idle.*`, the idle planned for part 7), and its arms join the fight for balance (`poses.balance_*`,
+`balance.arm_*`); the fall work planned for part 5 is partly done by it. Next is part 5, falling and lying.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -89,7 +91,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
@@ -129,7 +131,9 @@ touch must not be in that list, and the ones that are get explained in the part'
   frames the world steps; a step is always 1/90 s in 2 substeps. No time dilation.
 - **Physics timing is fixed.** Synchronous physics, 90 Hz frame, 2 substeps (180 Hz). Scenarios force a
   fixed engine timestep. Do not read wall-clock time in simulation code. The solver's determinism mode is
-  on (`p.Chaos.Solver.Deterministic=1` in `Config/DefaultEngine.ini`); every scenario run checks it.
+  on (`p.Chaos.Solver.Deterministic=1` in `Config/DefaultEngine.ini`); every scenario run checks it. Every
+  scene a scenario or a session builds also keeps the solver's background rebuild in step with the simulation
+  (`FScenarioStage::KeepSolverInStep`), without which a fall depends on how busy the machine is.
 - **Units.** Unreal units in code (cm, kg, cm/s). Scenario files and metrics use the unit in the field
   name (`_cm`, `_s`, `_ns` for newton-seconds, `_mps`).
 - **Tests are named `DictatorSandbox.*`.** The filter is a substring match, and engine plugins already use
@@ -416,6 +420,29 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **A foot on its toes has a sole polygon of its toes only** (`FSandboxBodyProbe::SupportPolygon` takes what lies
   within `sole_tolerance_cm` of its lowest point). Its middle is 12 cm ahead of the whole sole's: where a foot
   will stand, or the place over a foot, is taken with a tolerance that takes in the whole sole.
+- **A motion of a few centimetres does not show on a sheet of pictures.** The idle moves the hands by 4 to 7 cm
+  and the head by 4; the film's tiles of a standing body with and without it look the same. Such a motion is
+  measured (`body.bodies[].settled_travel_cm`, `metrics.settled_head_travel_cm`) and held by a check
+  (`min_settled_head_travel_cm`); the look of it is for the owner in a session.
+- **A body that moves by design needs limits that say so.** With the idle, `stand_npc` broke its limit on the
+  fastest body after settling (0.05 m/s, written for a statue; the hands go at 0.08) and `pose_lean` its
+  `min_pose_offset_deg` of 29.9 for an elbow asked for 30 (the idle turns it by up to 3). Jitter is still
+  watched by the angular speed and the joint speed.
+- **The idle clip is read from its keys, not from its compressed data** (`FSandboxIdleMotion::Load`): the editor
+  builds the compressed data in the background, and a run must not depend on whether that has finished. The
+  clip is Epic's content, fetched and not committed, and so is nothing derived from it.
+- **The solver's determinism mode does not make a falling body repeat on a busy machine.** Chaos rebuilds the
+  structure it finds colliding pairs with in a background task and takes it in on whichever step the task is
+  done by; a pair, and with it a contact, then comes a step earlier or later. With 16 processes side by side
+  3 to 18 runs of 100 of a scenario with a fall differed (always the same few other hashes), none in a single
+  process, and no standing body ever did. `FScenarioStage::KeepSolverInStep` waits for the rebuild before every
+  substep and lets none run during it. A run that differs "once" is a defect to measure, not to rerun: the same
+  scenario 160 times side by side tells in a minute.
+- **Moving a file is not a way to take a job from a shared queue.** Windows renames through a handle; two
+  processes can each open the file before either renames, both renames succeed, and neither process can then
+  read "its" file. About one job in a thousand was run by nobody. A job is taken by writing a marker while a
+  lock file is held open for writing (`UScenarioBatchSubsystem::TakeJob`), and a job without a result now prints
+  `QUEUE WARNING` and keeps the processes' logs under `Saved\Queue`.
 - **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated
   code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

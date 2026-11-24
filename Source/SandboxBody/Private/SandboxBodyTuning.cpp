@@ -118,6 +118,9 @@ namespace
 		Visitor(FString(TEXT("balance.regroup_lead_max_cm")), Tuning.Balance.RegroupLeadMaxCm);
 		Visitor(FString(TEXT("balance.regroup_margin_cm")), Tuning.Balance.RegroupMarginCm);
 		Visitor(FString(TEXT("balance.regroup_shift_max_s")), Tuning.Balance.RegroupShiftMaxS);
+		Visitor(FString(TEXT("balance.arm_dead_cm")), Tuning.Balance.ArmDeadCm);
+		Visitor(FString(TEXT("balance.arm_full_cm")), Tuning.Balance.ArmFullCm);
+		Visitor(FString(TEXT("balance.arm_response_s")), Tuning.Balance.ArmResponseS);
 		Visitor(FString(TEXT("reactions.flinch_weakening")), Tuning.Reactions.FlinchWeakening);
 		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
 		Visitor(FString(TEXT("reactions.flinch_pose_full_ns")), Tuning.Reactions.FlinchPoseFullNs);
@@ -140,7 +143,14 @@ namespace
 		Pose(TEXT("fall_back"), Tuning.Poses.FallBack);
 		Pose(TEXT("fall_forward"), Tuning.Poses.FallForward);
 		Pose(TEXT("fall_side"), Tuning.Poses.FallSide);
+		Pose(TEXT("balance_back"), Tuning.Poses.BalanceBack);
+		Pose(TEXT("balance_forward"), Tuning.Poses.BalanceForward);
+		Pose(TEXT("balance_side"), Tuning.Poses.BalanceSide);
+		Visitor(FString(TEXT("poses.idle.weight")), Tuning.Poses.IdleWeight);
+		Visitor(FString(TEXT("poses.idle.sway_weight")), Tuning.Poses.IdleSwayWeight);
 	}
+
+	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
 }
 
 FSandboxPose FSandboxPoseTuning::Mirrored(const FSandboxPose& Pose)
@@ -222,6 +232,7 @@ void FSandboxBodyTuning::DeclareParams(FSandboxParamStore& Params)
 	FSandboxBodyTuning Names;
 	VisitValues(Names, [&Params](const FString& Key, double&) { Params.DeclareNumber(Key); });
 	VisitRig(Names.Rig, [&Params](const TCHAR* Key, FName&) { Params.DeclareString(Key); });
+	Params.DeclareString(IdleAnimationKey);
 	for (const TCHAR* State : StateNames)
 	{
 		Params.DeclareState(State);
@@ -272,6 +283,10 @@ bool FSandboxBodyTuning::FromParams(const FSandboxParamStore& Params, const FStr
 			Missing = Key;
 		}
 	});
+	if (!Params.FindString(IdleAnimationKey, OutTuning.Poses.IdleAnimation) && Missing.IsEmpty())
+	{
+		Missing = IdleAnimationKey;
+	}
 	if (!Missing.IsEmpty())
 	{
 		OutError = FString::Printf(TEXT("'%s' is missing from the tuning files"), *Missing);
@@ -415,6 +430,9 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.RegroupLeadMaxCm, 100.0, TEXT("balance"), TEXT("regroup_lead_max_cm"), OutError) ||
 		!CheckRange(Balance.RegroupMarginCm, 50.0, TEXT("balance"), TEXT("regroup_margin_cm"), OutError) ||
 		!CheckRange(Balance.RegroupShiftMaxS, 10.0, TEXT("balance"), TEXT("regroup_shift_max_s"), OutError) ||
+		!CheckRange(Balance.ArmDeadCm, 100.0, TEXT("balance"), TEXT("arm_dead_cm"), OutError) ||
+		!CheckRange(Balance.ArmFullCm, 300.0, TEXT("balance"), TEXT("arm_full_cm"), OutError) ||
+		!CheckRange(Balance.ArmResponseS, 2.0, TEXT("balance"), TEXT("arm_response_s"), OutError) ||
 		!CheckRange(Reactions.PressureS, 5.0, TEXT("reactions"), TEXT("pressure_s"), OutError) ||
 		!CheckRange(Reactions.HeldPushS, 5.0, TEXT("reactions"), TEXT("held_push_s"), OutError) ||
 		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
@@ -423,12 +441,15 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		return false;
 	}
 	if (!CheckRange(Poses.BlendS, 10.0, TEXT("poses"), TEXT("blend_s"), OutError) ||
-		!CheckRange(Poses.FallBlendS, 10.0, TEXT("poses"), TEXT("fall_blend_s"), OutError))
+		!CheckRange(Poses.FallBlendS, 10.0, TEXT("poses"), TEXT("fall_blend_s"), OutError) ||
+		!CheckRange(Poses.IdleWeight, 5.0, TEXT("poses.idle"), TEXT("weight"), OutError) ||
+		!CheckRange(Poses.IdleSwayWeight, 5.0, TEXT("poses.idle"), TEXT("sway_weight"), OutError))
 	{
 		return false;
 	}
 	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch },
-		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide } };
+		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide },
+		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide } };
 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
 	{
 		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)

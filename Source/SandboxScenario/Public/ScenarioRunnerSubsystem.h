@@ -197,6 +197,8 @@ private:
 	double MaxSettledAngularSpeedRadS = 0.0;
 	/** Per body, by bone: fastest linear (X, cm/s) and angular (Y, rad/s) speed after the settle time. */
 	TMap<FName, FVector2D> SettledBodySpeeds;
+	/** Per body, by bone: the box its centre of mass has stayed in after the settle time. How far a body that stands moves. */
+	TMap<FName, FBox> SettledBodyBoxes;
 	double MaxJointSpeedRadS = 0.0;
 	FName FastestJoint;
 	double MaxJointLimitViolationDeg = 0.0;

@@ -51,6 +51,8 @@ struct FScenarioExpect
 	/** Fastest any body may move or turn once the settle time has passed: no jitter at rest. */
 	TOptional<double> MaxSettledSpeedMps;
 	TOptional<double> MaxSettledAngularSpeedRadS;
+	/** The head must travel at least this far once the settle time has passed: a body that stands is not a statue. */
+	TOptional<double> MinSettledHeadTravelCm;
 	/**
 	 * Some body must turn at least this fast once the settle time has passed. For scenarios that make the
 	 * body less steady on purpose and have to show that the change took effect.

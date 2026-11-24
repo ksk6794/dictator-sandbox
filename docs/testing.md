@@ -1234,7 +1234,115 @@ three later suite runs it gave the baseline's. Not explained; the determinism mo
 comparison names a scenario a change cannot have touched, run it again, and count how often this happens.
 One push-matrix run gave no result for one of its 160 runs (`push_spine_04_000_080`, no output folder at all);
 the same matrix run again was complete. Both happened in the first queue run after a build, which is the one
-thing they share; not looked into further.
+thing they share; not looked into further. (Both were found and fixed later the same day: "Runs that did not
+repeat, and jobs nobody ran" below. The build had nothing to do with either.)
+
+### The idle and the arms, 2026-11-24
+
+Two things of the audit's list of what still looked unnatural: a standing body was a statue (0.3 to 0.5 cm of
+travel per body in ten seconds, the solver's own noise), and its arms hung while it fought for its balance.
+
+**The idle** is the motion of the engine's `MM_Idle` (a loop of 7.57 s, 228 keys), as planned for part 7. The
+clip was measured first (a script in the editor): spine 0.5 to 0.9 degrees per bone, neck and head 2,
+collarbones 3 to 5, upper arms 2, the pelvis travels 0.8 cm, the head 2.5, the hands 2 to 6; the feet stand.
+The bones of the mannequin and of the MetaHuman body have the same axes (their reference poses agree to about
+0.01 in every quaternion component, hands aside), so what a bone does in the clip relative to the clip's first
+frame is added to the same bone of the body as it is, with no retargeting; the clip's own pose (one foot
+forward) and its legs are not used. The pelvis's travel leans the whole body about its ankles, by the way a
+lean into a held push goes.
+
+| `stand_npc`, after 2 s of settling | without | with the idle |
+| --- | --- | --- |
+| Travel of the pelvis, cm | 0.3 | 1.3 |
+| Travel of the chest, cm | 0.4 | 2.1 |
+| Travel of the head, cm | 0.5 | 4.1 |
+| Travel of the hands, cm | 0.3 and 0.3 | 6.6 and 4.1 |
+| Travel of a foot, cm | 0.0 | 0.0 |
+| Fastest body, m/s | 0.008 | 0.083 (a hand) |
+| Fastest turning body, rad/s | 0.146 | 0.193 |
+| Assist share, 10 s | 0.0048 | 0.0067 |
+| Assist share, 10 min | 0.0038 | 0.0066 |
+
+The assist's share rises by the sway (0.0052 with the turns alone): its anchors move and the body follows them.
+It stays under the bound of 0.0093. With both weights 0 the six scenarios tried gave the baseline's hashes bit
+for bit.
+
+**The arms** take one of three poses on top of the stance (`poses.balance_*`), in proportion to how far the
+capture point is from where the body stands (nothing under 4 cm, in full at 30, with a lag of 0.12 s). In
+`stand_npc` they do nothing: its hashes are the same with and without them. In the films a push backward brings
+the arms forward with bent elbows by 0.2 s and they are down again when the feet are back together; a push
+sideways spreads them, the far one higher; an asked step leaves them down; a body knocked over backward
+throws them forward as it goes.
+
+| Push matrix | before | with the idle | with the idle and the arms |
+| --- | --- | --- | --- |
+| Verdict | 160 of 160 | 160 of 160 | 160 of 160 |
+| Steps at 80 N*s (40 pushes), sum and most | 87, 7 | 88, 9 | 81, 6 |
+| Stepped and fell at 200 N*s | 8 and 32 | 10 and 30 | 8 and 32 |
+| Steps of those that stood at 200 N*s, sum and most | 62, 11 | 84, 13 | 59, 13 |
+| Mirror pairs that end differently | 2 | 3 | 3 |
+
+Thirteen pushes ended differently with the idle than before (all among the outcomes the table allows): the body
+is at another phase of its sway when the push comes, and the cells near an edge go either way.
+
+Against `m3_audit2_end` all 40 scenarios with a controlled body have other hashes, as they must with a body
+that moves from its first second; the 10 without one are unchanged. Three limits were moved, each for the
+reason given in `CLAUDE.md`: `max_settled_speed_mps` of the two standing scenarios from 0.05 to 0.15, and
+`min_pose_offset_deg` of `pose_lean` from 29.9 to 27. New check `min_settled_head_travel_cm` (2 cm) in the two
+standing scenarios; the suite passes 50 of 50 with `-Long`. Baseline `m3_audit3_end`.
+
+Seen and left: of the 8 pushes of 200 N*s the body stands through, 7 take more than four steps (up to 13), as
+before; a person would have fallen or stopped sooner.
+
+(The figures of this section were taken before the solver was kept in step, below. With it the matrix is 160 of
+160 with 81 steps at 80 N*s, 6 at most, and 9 stepped and 31 fell at 200 N*s; the standing figures are the same.)
+
+### Runs that did not repeat, and jobs nobody ran, 2026-11-24
+
+Checking the baseline of the section above, the suite named `tune_live_file` as changed in two runs of five, with
+no change made. Two defects of the tooling were behind what had been written off as one-off flakes.
+
+**A body that falls came out differently on a busy machine.** Measured by running one scenario 160 times with
+16 engine processes side by side (in one process, one run after another, 47 of 47 were the same):
+
+| Scenario | Runs of 160 that differed, before | after |
+| --- | --- | --- |
+| `drop_npc` | 29 (six other hashes) | 0 |
+| `tune_live_file` | 5 to 15 (three other hashes) | 0 |
+| `hit_chest_200_falls` | 4 | 0 |
+| `tune_live_override` | 3 | not run |
+| `drop_passive` | not run | 0 |
+
+The other hashes came back again and again, so this was no noise in the last digit but a choice between a few
+ways for a run to go. Each run that differed was the same as the usual one, to the printed digit, until a body
+met the floor or slid off another (5.41, 5.49 or 6.87 s in `tune_live_file`), and from there a contact came a
+frame earlier or later. Ruled out by measurement: the scenario run before it in the same process (47 of 47 the
+same), the millisecond budget of the tree's build (`p.aabbtree.UseTimeSliceMillisecondBudget=0`: 14 of 320
+differed), the threads of collision detection (13 of 319), all of the physics on one thread (17 of 320). What it
+was: Chaos rebuilds the structure it finds colliding pairs with in a background task, and every step takes the
+new one in if the task is done by then and carries on with the old one if not
+(`FPBDRigidsEvolutionBase::ComputeIntermediateSpatialAcceleration`). The boxes of the moving bodies in it are
+padded from when each was last put in, so the two structures do not give the same pairs, and a pair found a
+step later is a contact a step later. The solver's determinism mode sorts constraints; it does not touch this.
+Waiting for the task before each step alone made it worse (a third hash in 28 runs of 160: the task started by
+the wait is itself done or not when the step looks). `FScenarioStage::KeepSolverInStep` waits for the rebuild
+before every substep, twice, and lets none run during the step: 640 runs of four scenarios, no two different.
+It costs nothing that shows (mean physics step of `stand_npc` 0.742 ms before, 0.739 after). It changes every
+run's hashes, the passive bodies' too, since every step now uses a freshly built structure; the suite passes
+50 of 50 and the push matrix 160 of 160 with it, two suite runs and a matrix run repeat the baseline in full.
+Baseline `m3_audit3_end` was taken again with it.
+
+**A job of the queue was sometimes run by nobody.** One job in about a thousand ended without a result when 16
+processes shared a queue (twice in 1900 runs; once in the push matrix the day before, with 8). A process took a
+job by moving its file, on the understanding that only one move can succeed. On Windows a move opens the file
+and renames it through the handle; two processes can each open it before either renames, and then both renames
+succeed, the second taking the file from under the first. Each then failed to read "its" file (gone, or still
+held by the other), logged an error nobody read, and went on to the next job. The logs showed it once the queue
+kept them: `Cannot read file '...taken/00099.json.10740'` in one process and the same job under another number
+in a second. A job is now taken by writing a marker while a lock file is held open for writing, which one
+process at a time can do (`UScenarioBatchSubsystem::TakeJob`): 1600 jobs with 16 processes, none lost. And a job
+that ends without a result is no longer silent: `Invoke-ScenarioQueue` prints `QUEUE WARNING` and keeps the
+processes' logs.
 
 ## Known behaviour of the stock mannequin
 
