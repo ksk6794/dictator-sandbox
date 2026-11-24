@@ -118,6 +118,13 @@ struct FSandboxThresholdTuning
 	double HeldTimeS = 0.0;
 	/** ...where coming down is the centre of mass this far below the lowest it has been. cm. */
 	double HeldDescentCm = 0.0;
+	/**
+	 * A falling body lets its muscles go (the lying state's) this long after its trunk or head first met the floor,
+	 * whether it has come to rest or not: the fall's pose is for meeting the floor, and held after that it keeps the
+	 * body a stiff shape that rolls and balances (a body knocked over by the head stood on it, legs up, for a second).
+	 * 0: only once it is at rest. Seconds.
+	 */
+	double ImpactLetGoS = 0.0;
 };
 
 /** How the body senses its own balance: what counts as a foot that stands, and what part of it is its sole. */

@@ -292,6 +292,7 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 
 		Body->DefaultInstance.SetMassOverride(static_cast<float>(BodySpec.MassFraction * Spec.TotalMassKg), true);
 		Body->DefaultInstance.InertiaTensorScale = FVector(BodySpec.InertiaScale);
+		Body->DefaultInstance.bUseCCD = BodySpec.bCcd;
 	}
 
 	// ---- Joints: axes and limits from the spec; softness and projection settings from the template's joint.
@@ -354,6 +355,19 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		Instance.SetAngularSwing1Limit(Frames.Swing1.Motion, static_cast<float>(Frames.Swing1.HalfRangeDeg()));
 		Instance.SetAngularSwing2Limit(Frames.Swing2.Motion, static_cast<float>(Frames.Swing2.HalfRangeDeg()));
 		Instance.SetAngularTwistLimit(Frames.Twist.Motion, static_cast<float>(Frames.Twist.HalfRangeDeg()));
+
+		// What the joint does at the end of its range is the spec's, not the template's. (The stock MetaHuman
+		// asset has every limit soft, stiffness 50: a limp wrist bent 40 degrees past its range, a relaxed hip
+		// 23, a neck 15.)
+		{
+			const FPhysicsJointSpec* JointSpec = Spec.FindJoint(BodySpec.Bone);
+			for (FConstraintBaseParams* Limit : { static_cast<FConstraintBaseParams*>(&Instance.ProfileInstance.ConeLimit), static_cast<FConstraintBaseParams*>(&Instance.ProfileInstance.TwistLimit) })
+			{
+				Limit->bSoftConstraint = JointSpec->bSoftLimit;
+				Limit->Stiffness = static_cast<float>(JointSpec->bSoftLimit ? JointSpec->LimitStiffness : 0.0);
+				Limit->Damping = static_cast<float>(JointSpec->bSoftLimit ? JointSpec->LimitDamping : 0.0);
+			}
+		}
 		Joint->SetDefaultProfile(Instance);
 
 		JointedPairs.Add(FRigidBodyIndexPair(Asset->FindBodyIndex(BodySpec.Bone), Asset->FindBodyIndex(ParentBone)));

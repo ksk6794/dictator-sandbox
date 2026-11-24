@@ -86,6 +86,45 @@ bool FSandboxPoseRig::ReadJointLimits(const USkeletalMeshComponent* Mesh, FName 
 	return false;
 }
 
+double FSandboxPoseRig::LimitExcessDeg(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits, FVector* OutAnglesDeg)
+{
+	if (OutAnglesDeg)
+	{
+		*OutAnglesDeg = FVector::ZeroVector;
+	}
+	if (!Limits.bValid)
+	{
+		return 0.0;
+	}
+	// The engine's joint solver (the linear one, which every joint uses unless told otherwise) takes the child's
+	// frame relative to the parent's apart into a twist about X and a swing, and limits three angles each by
+	// itself: the twist, and the swing's two angles 4 atan2(z, 1 + w) and 4 atan2(y, 1 + w)
+	// (FPBDJointCachedSolver::InitPyramidSwingConstraint). A box, not an ellipse.
+	const FQuat Parent = ParentBone * Limits.ParentFrame;
+	const FQuat Relative = (Parent.Inverse() * (ChildBone * Limits.ChildFrame)).GetNormalized();
+	FQuat Swing, Twist;
+	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
+	if (Swing.W < 0.0)
+	{
+		Swing = FQuat(-Swing.X, -Swing.Y, -Swing.Z, -Swing.W);
+	}
+	const double TwistRad = Twist.GetTwistAngle(FVector::XAxisVector);
+	const double Swing1Rad = 4.0 * FMath::Atan2(Swing.Z, 1.0 + Swing.W);
+	const double Swing2Rad = 4.0 * FMath::Atan2(Swing.Y, 1.0 + Swing.W);
+	if (OutAnglesDeg)
+	{
+		*OutAnglesDeg = FVector(FMath::RadiansToDegrees(TwistRad), FMath::RadiansToDegrees(Swing1Rad), FMath::RadiansToDegrees(Swing2Rad));
+	}
+	const auto Excess = [](bool bFree, double AngleRad, double LimitDeg)
+	{
+		return bFree ? 0.0 : FMath::Max(FMath::Abs(AngleRad) - FMath::DegreesToRadians(LimitDeg), 0.0);
+	};
+	return FMath::RadiansToDegrees(FMath::Max3(
+		Excess(Limits.bTwistFree, TwistRad, Limits.TwistDeg),
+		Excess(Limits.bSwing1Free, Swing1Rad, Limits.Swing1Deg),
+		Excess(Limits.bSwing2Free, Swing2Rad, Limits.Swing2Deg)));
+}
+
 FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits)
 {
 	if (!Limits.bValid)

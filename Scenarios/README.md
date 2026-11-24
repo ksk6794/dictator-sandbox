@@ -176,7 +176,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `fell` | `true`: the body fell during the run. `false`: it did not. Fallen means the pelvis (the root body) got below half the height above the spawn point that it started at; a body that sits down on the floor has fallen |
 | `min_fall_time_s` | The body did not fall before this time (not falling at all also passes; combine with `fell`) |
 | `tuning_changes` | The running body took new tuning values exactly this many times. 0 in a scenario that changes nothing shows that watching the tuning files left the run alone |
-| `max_joint_limit_violation_deg` | No joint is found further outside its limits, from the sixth frame on |
+| `max_joint_limit_violation_deg` | No joint is found further outside its limits, from the sixth frame on. Measured as the solver limits a joint (`FSandboxPoseRig::LimitExcessDeg`); until M3 part 5 it compared angles the solver does not use and overstated joints that swing and twist at once |
 | `end_state` | The body's state at the end: `"standing"`, `"flinch"`, `"falling"` or `"lying"`. Active control only |
 | `state_sequence` | Every state the body went through, in order, joined by `>`: `"standing>flinch>standing"`. Active control only |
 | `max_joint_speed_rads` | No joint's two bodies rotate faster relative to each other, over the whole run |
@@ -463,8 +463,8 @@ for the compositor, so use `gpu_ms` against the frame budget.
 
 - `metrics`: peak speeds, stretch, time to rest, drift of the pelvis and of the centre of mass, lowest head
   height, peak speeds after `settle_s`, the fastest joint, how far a joint got outside its limits
-  (`max_joint_limit_violation_deg`; measured axis by axis, while the engine limits the two swings together,
-  so it can read 0 for a joint slightly outside), and whether and when the body fell (`fell`,
+  (`max_joint_limit_violation_deg`, with the joint, its three angles, their half-ranges and the time in
+  `worst_limit_joint`, `worst_limit_angles_deg`, `worst_limit_ranges_deg` and `worst_limit_t`; measured as the engine's solver limits a joint, the twist and each swing against its own range), and whether and when the body fell (`fell`,
   `fall_time_s`, with the pelvis height that counts as fallen in `fall_pelvis_height_cm`).
 - `body`: every body's mass and its peak speeds after `settle_s` (which body jitters), and every joint's
   parent and limits as instanced. Each joint also reports where the spawn pose sits against those limits

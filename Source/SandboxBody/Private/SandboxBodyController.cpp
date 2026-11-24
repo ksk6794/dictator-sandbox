@@ -2210,6 +2210,9 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	if (!OtherComponent->IsSimulatingPhysics(Hit.BoneName))
 	{
 		bWorldTouched = true;
+		// The trunk or the head on the floor: what a fall ends with (UpdateState lets the muscles go after it).
+		const ESandboxMuscleGroup Group = FSandboxBodyTuning::GroupOfBone(Hit.MyBoneName);
+		bTrunkTouched = bTrunkTouched || Group == ESandboxMuscleGroup::Spine || Group == ESandboxMuscleGroup::Neck;
 		const FBodyInstance* Body = Mesh->GetBodyInstance(Hit.MyBoneName);
 		if (Body && SupportImpulseNs.IsValidIndex(Body->InstanceBodyIndex))
 		{
@@ -2443,11 +2446,30 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 			FMath::Sqrt(LinearSquared / MassKg) <= Tuning.Thresholds.RestSpeedMps &&
 			FMath::Sqrt(AngularSquared / MassKg) <= Tuning.Thresholds.RestAngularSpeedRadS;
 		RestS = bAtRest ? RestS + DeltaTime : 0.0;
+		// Or the fall is over because the trunk or the head has met the floor: the pose of the fall was for that
+		// moment, and the muscles let go a little after it (thresholds.impact_let_go_s), at rest or not. (Held until
+		// the body was at rest, the pose made a stiff shape of it: knocked over by the head, it stood on its head
+		// with its legs in the air for a second.) A body that is held up has not fallen.
+		if (bTrunkTouched && TrunkTouchedS < 0.0)
+		{
+			TrunkTouchedS = ElapsedS;
+		}
+		const bool bLetGo = Tuning.Thresholds.ImpactLetGoS > 0.0 && TrunkTouchedS >= 0.0 && !bHeldUp &&
+			ElapsedS - TrunkTouchedS >= Tuning.Thresholds.ImpactLetGoS - KINDA_SMALL_NUMBER;
 		if (bAtRest && RestS >= Tuning.Thresholds.RestTimeS)
 		{
 			EnterState(ESandboxBodyState::Lying, FString::Printf(TEXT("at rest for %.2f s"), RestS));
 		}
+		else if (bLetGo)
+		{
+			EnterState(ESandboxBodyState::Lying, FString::Printf(TEXT("the trunk met the floor %.2f s ago"), ElapsedS - TrunkTouchedS));
+		}
 	}
+	else
+	{
+		TrunkTouchedS = -1.0;
+	}
+	bTrunkTouched = false;
 }
 
 void USandboxBodyController::FollowParams()

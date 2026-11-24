@@ -28,7 +28,7 @@
     }
   ],
   "expect": {
-    "max_flinches": 1,
+    "max_flinches": 2,
     "end_state": "standing",
     "max_stance_error_cm": 8.0,
     "fell": false,

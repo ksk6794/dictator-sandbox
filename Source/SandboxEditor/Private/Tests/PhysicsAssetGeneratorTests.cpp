@@ -98,6 +98,7 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			TestTrue(BodyLabel + TEXT(" overrides its mass"), Body->DefaultInstance.bOverrideMass);
 			TestEqual(BodyLabel + TEXT(" mass"), static_cast<double>(Body->DefaultInstance.GetMassOverride()), BodySpec.MassFraction * Spec.TotalMassKg, 1.0e-3);
 			TestEqual(BodyLabel + TEXT(" inertia scale"), FVector(Body->DefaultInstance.InertiaTensorScale), FVector(BodySpec.InertiaScale), 1.0e-6f);
+			TestEqual(BodyLabel + TEXT(" continuous collision detection"), Body->DefaultInstance.bUseCCD != 0, BodySpec.bCcd);
 			TestTrue(BodyLabel + TEXT(" has collision shapes"), Body->AggGeom.GetElementCount() > 0);
 			TestTrue(BodyLabel + TEXT(" has every box written out in the spec"), Body->AggGeom.BoxElems.Num() >= BodySpec.Shapes.Num());
 			if (BodySpec.ShapesFrom.Num() == 0)
@@ -137,6 +138,20 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			if (Frames.Swing1.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing1 limit"), static_cast<double>(Instance.GetAngularSwing1Limit()), Frames.Swing1.HalfRangeDeg(), 1.0e-3); }
 			if (Frames.Swing2.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing2 limit"), static_cast<double>(Instance.GetAngularSwing2Limit()), Frames.Swing2.HalfRangeDeg(), 1.0e-3); }
 			if (Frames.Twist.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" twist limit"), static_cast<double>(Instance.GetAngularTwistLimit()), Frames.Twist.HalfRangeDeg(), 1.0e-3); }
+
+			// What the joint does at the end of its range is the spec's: hard, or soft with its stiffness and damping.
+			if (const FPhysicsJointSpec* JointSpec = Spec.FindJoint(ChildName))
+			{
+				for (const FConstraintBaseParams* Limit : { static_cast<const FConstraintBaseParams*>(&Instance.ProfileInstance.ConeLimit), static_cast<const FConstraintBaseParams*>(&Instance.ProfileInstance.TwistLimit) })
+				{
+					TestEqual(JointLabel + TEXT(" limit softness"), Limit->bSoftConstraint != 0, JointSpec->bSoftLimit);
+					if (JointSpec->bSoftLimit)
+					{
+						TestEqual(JointLabel + TEXT(" limit stiffness"), static_cast<double>(Limit->Stiffness), JointSpec->LimitStiffness, 1.0e-3);
+						TestEqual(JointLabel + TEXT(" limit damping"), static_cast<double>(Limit->Damping), JointSpec->LimitDamping, 1.0e-3);
+					}
+				}
+			}
 
 			// No motors in the asset: a drive copied from the template would pull the joint away from the
 			// reference pose. Muscles are created at run time.

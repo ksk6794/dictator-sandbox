@@ -1344,6 +1344,93 @@ process at a time can do (`UScenarioBatchSubsystem::TakeJob`): 1600 jobs with 16
 that ends without a result is no longer silent: `Invoke-ScenarioQueue` prints `QUEUE WARNING` and keeps the
 processes' logs.
 
+### M3 part 5 (the fall), 2026-11-24
+
+What the audit had left of the part: knockdowns from 8 directions, the muscles' torque caps, the softness of
+the joint limits, and continuous collision detection decided by measurement. `Tools\knockdowns.ps1` knocks the
+standing body down with a blow of 200 N*s on the chest from each of 8 directions and judges every fall: it
+falls, rests within 3 s of starting to, gains no more than 40 J (its muscles' own work), goes no deeper than
+2 cm into the floor or into itself, and no joint stretches by 2 cm.
+
+| 8 knockdowns, chest, 200 N*s | before the part | after it |
+| --- | --- | --- |
+| Pass | 8 | 8 |
+| Rest after the fall began, s | 1.26 to 2.78 | 1.20 to 1.94 |
+| Energy gained, J | 5.0 to 25.7 | 5.4 to 25.9 |
+| Deepest in the floor, cm | 0.65 | 1.22 |
+| Deepest in itself, cm | 0.28 | 0.42 |
+| A joint past its range, degrees | up to 2.5 | up to 3.4 |
+
+With the head as well and 300 N*s (32 falls) 29 passed before and 31 after; the one left is a head knocked
+back with 300 N*s that rests after 3.89 s. Those blows are beyond anything a hand gives (200 N*s on the head
+turns the body over in the air) and are run to see what breaks, not judged.
+
+**A figure that was wrong since M2.** `max_joint_limit_violation_deg` compared the engine's
+`GetCurrentSwing1`, `GetCurrentSwing2` and `GetCurrentTwist` with the limits. Those are not the angles the
+solver limits (each is the twist of the whole turn about one axis): a limp wrist read 40 degrees outside its
+range, a relaxed hip 23, and making every limit hard changed none of it, which is what gave it away. Reading
+the engine then showed a second error of the project's own: the solver does not limit the two swings together
+as an ellipse but each by itself (`FPBDJointCachedSolver::InitPyramidSwingConstraint`; the linear solver is
+the default for every joint). Measured as the solver limits a joint (`FSandboxPoseRig::LimitExcessDeg`), the
+same runs read:
+
+| Furthest a joint got past its range, degrees | old figure | as the solver measures |
+| --- | --- | --- |
+| `drop_npc` (a passive body dropped) | 40.6 | 4.2 |
+| 16 knockdowns | 13.6 | 2.5 |
+| `push_thigh_200_stumbles` (steps) | 8.5 | 5.8 |
+| `stand_npc` | 0.0 | 0.0 |
+
+**Joint limits.** Every limit of the generated asset was the stock asset's soft one (stiffness 50, damping 5),
+copied from the template in silence. It is now written in the spec per joint (`"limit"`). With the spec saying
+what the template had, the suite's 49 scenarios came out bit for bit as before. All hard instead: joints no
+better held (1.5 degrees against 2.5 in the knockdowns, 5.2 against 4.6 at the ankle in a step), and the falls
+worse: 46 J gained in one against at most 26, rest after 4.0 s against 3.6, `hit_chest_200_falls` failing. The
+soft limits stay.
+
+**After the impact the muscles let go.** Seen on the sheets of pictures, not in a figure: a body knocked over
+by the head went over in the air, landed on its head and shoulders and stood there, legs up, from 3.5 to 4.5 s,
+held in the shape of its fall's pose; a body on its back kept its forearms in the air. The fall's pose was kept,
+with the falling state's muscles, until the body was at rest. Now the muscles go over to the lying state's
+`thresholds.impact_let_go_s` (0.5 s) after the trunk or the head first meets the floor. The body on its head
+folds by 4.1 s and lies sprawled at 5.0; the one on its back lies flat with its arms on the floor by 5.5 s.
+The value was chosen by the pictures. By the rest time it could not be: of the 32 falls, 0 to 4 take more than
+3 s at every value tried from 0.15 to 1.0 s, a different few each time (0.45 and 0.5: none; 0.4 and 0.55: two
+and three). What takes the time is a limb or the whole body rolling over slowly from where it came to lie, at
+0.2 to 0.35 rad/s as a whole against the runner's 0.2: a body balanced on its side. Softer or more damped lying
+muscles (legs' damping 0.3 to 2 s, all stiffness near 0) moved which falls were slow, not how many.
+
+**Torque caps.** `muscles.*.max_torque_nm` were 0, no cap. They are now 250 N*m for the legs, 300 for the
+spine, 80 for the arms and 50 for the neck, from published peak torques of an adult man (knee and hip
+extension, trunk extension, shoulder and elbow, neck extension), one figure a group. Push matrix with them:
+160 of 160; at 80 N*s 36 stepped, 2 stood and 2 fell (37, 3 and 0 without), 72 steps in all against 81; at
+200 N*s 12 stepped and 28 fell (9 and 31). `effector_hold_chest` now flinches twice: the body steps back from
+the hand, the hand meets it again on the collarbone with 5.3 N*s against a threshold of 5. A second touch is a
+second flinch; its limit went from 1 to 2 (the defect it guards against was a flinch every 0.35 s).
+
+**Continuous collision detection** stays off for the body. The owner's rule switches it on where a knockdown
+sinks more than 2 cm into the floor; in 32 knockdowns the deepest was 1.5 cm. A passive body dropped from
+1.5 m (`drop_npc`) does sink 8.3 cm and is thrown back out with 149 J, and that is not what the sweep cures:
+
+| `drop_npc` | Deepest in the floor, cm | Energy gained, J |
+| --- | --- | --- |
+| As it is (8 solver iterations, no sweep) | 8.31 | 149 |
+| Feet swept | 8.31 | 144 |
+| Feet and head swept | 8.31 | 144 |
+| 32 iterations | 3.18 | 13 |
+| 64 iterations (what a body under control has) | 1.49 | 119 |
+
+The spec can switch the sweep on per body (`"ccd"`); no body has it.
+
+Against `m3_audit3_end`, 12 scenarios have other hashes, the ones in which a muscle asks for more than its cap
+or a body falls: the three `hit_chest_200_*`, `tune_live_file`, `tune_live_override`, `hang_npc_hand`, the
+four with recovery steps, `effector_hold_chest` and `pose_foot_place`. The other 38 are bit for bit as they
+were. Suite 50 of 50 with `-Long`, push matrix 160 of 160, knockdowns 8 of 8, unit tests 28, session self-test
+14 of 14; a second suite run and a second matrix run repeat the first in full. Baseline `m3_part5`.
+
+Not done: the look at Epic's Game Animation Sample (whether its fall poses and get-up are better than these),
+which needs the sample downloaded by the owner.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

@@ -63,6 +63,7 @@ namespace
 		Visitor(FString(TEXT("thresholds.rest_time_s")), Tuning.Thresholds.RestTimeS);
 		Visitor(FString(TEXT("thresholds.held_time_s")), Tuning.Thresholds.HeldTimeS);
 		Visitor(FString(TEXT("thresholds.held_descent_cm")), Tuning.Thresholds.HeldDescentCm);
+		Visitor(FString(TEXT("thresholds.impact_let_go_s")), Tuning.Thresholds.ImpactLetGoS);
 		Visitor(FString(TEXT("balance.foot_contact_min_n")), Tuning.Balance.FootContactMinN);
 		Visitor(FString(TEXT("balance.sole_tolerance_cm")), Tuning.Balance.SoleToleranceCm);
 		Visitor(FString(TEXT("balance.recoverable_cm")), Tuning.Balance.RecoverableCm);
@@ -375,6 +376,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Thresholds.RestTimeS, 60.0, TEXT("thresholds"), TEXT("rest_time_s"), OutError) ||
 		!CheckRange(Thresholds.HeldTimeS, 60.0, TEXT("thresholds"), TEXT("held_time_s"), OutError) ||
 		!CheckRange(Thresholds.HeldDescentCm, 100.0, TEXT("thresholds"), TEXT("held_descent_cm"), OutError) ||
+		!CheckRange(Thresholds.ImpactLetGoS, 10.0, TEXT("thresholds"), TEXT("impact_let_go_s"), OutError) ||
 		!CheckRange(Balance.FootContactMinN, 5000.0, TEXT("balance"), TEXT("foot_contact_min_n"), OutError) ||
 		!CheckRange(Balance.SoleToleranceCm, 20.0, TEXT("balance"), TEXT("sole_tolerance_cm"), OutError) ||
 		!CheckRange(Balance.RecoverableCm, 100.0, TEXT("balance"), TEXT("recoverable_cm"), OutError) ||

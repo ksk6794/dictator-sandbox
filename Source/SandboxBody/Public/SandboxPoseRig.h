@@ -77,10 +77,23 @@ public:
 
 	/**
 	 * A child bone's rotation (component space) brought into its joint's range, the parent's rotation given: the
-	 * twist clamped to its half-range, the swing scaled back onto the ellipse of the two swing half-ranges, as
-	 * the solver limits them. Inside the range the rotation comes back exactly as it was given.
+	 * twist clamped to its half-range, the swing scaled back onto the ellipse of the two swing half-ranges. Inside
+	 * that the rotation comes back exactly as it was given. The ellipse lies inside what the solver allows, which
+	 * is each swing up to its own half-range (LimitExcessDeg): a target clamped here is never asked beyond the
+	 * joint's range, and is kept out of the corners of it. (It was written when the solver was believed to limit by
+	 * the ellipse, and left as it is: the feet it is used for step and stand as they were tuned with it.)
 	 */
 	static FQuat ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits);
+
+	/**
+	 * How far a joint is outside its range, degrees: the largest of what the twist and each of the two swings is
+	 * beyond its own half-range. Measured as the engine's joint solver limits a joint, each angle by itself (a box;
+	 * see the function), so 0 inside the range. The engine's own FConstraintInstance::GetCurrentSwing1 is not the
+	 * solver's angle: it is the twist of the whole turn about the swing axis, and reads a joint that swings and
+	 * twists at once as far outside a range it is inside of. OutAnglesDeg takes the joint's angles as measured
+	 * here: twist (X), swing1 (Y), swing2 (Z).
+	 */
+	static double LimitExcessDeg(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits, FVector* OutAnglesDeg = nullptr);
 
 private:
 	struct FJoint

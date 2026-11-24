@@ -25,16 +25,16 @@
     {"bone": "foot_r", "mass_fraction": 0.0137, "shapes": [{"type": "box", "center_cm": [-14.9, 7.0, 3.25], "size_cm": [9.5, 26.0, 6.5], "yaw_deg": 8.5}]}
   ],
   "joints": [
-    {"child": "spine_02", "along": "spine_04", "swing1_axis": [1, 0, 0], "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15]},
-    {"child": "spine_04", "along": "neck_01", "swing1_axis": [1, 0, 0], "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15]},
-    {"child": "neck_01", "along": "head", "swing1_axis": [1, 0, 0], "swing1": [-60, 75], "swing2": [-45, 45], "twist": [-80, 80]},
-    {"child": "clavicle_l", "mirror": "clavicle_r", "along": "upperarm_l", "swing1_axis": [0, -1, 0], "swing1": [-10, 40], "swing2": [-25, 20], "twist": [-30, 30]},
-    {"child": "upperarm_l", "mirror": "upperarm_r", "along": "lowerarm_l", "swing1_axis": [0, -1, 0], "swing1": [-50, 160], "swing2": [-60, 150], "twist": [-80, 80]},
-    {"child": "lowerarm_l", "mirror": "lowerarm_r", "along": "hand_l", "swing1_axis": "bend", "swing1": [0, 140], "swing2": "locked", "twist": "locked"},
-    {"child": "hand_l", "mirror": "hand_r", "along": "middle_01_l", "swing1_axis": {"from": "pinky_01_l", "to": "index_01_l"}, "swing1": [-60, 60], "swing2": [-25, 25], "twist": [-70, 70]},
-    {"child": "thigh_l", "mirror": "thigh_r", "along": "calf_l", "swing1_axis": [1, 0, 0], "swing1": [-30, 100], "swing2": [-40, 20], "twist": [-40, 50]},
-    {"child": "calf_l", "mirror": "calf_r", "along": "foot_l", "swing1_axis": [-1, 0, 0], "swing1": [-2, 150], "swing2": "locked", "twist": "locked"},
-    {"child": "foot_l", "mirror": "foot_r", "along": "ball_l", "swing1_axis": [1, 0, 0], "swing1": [-20, 30], "swing2": [-10, 10], "twist": [-15, 15]}
+    {"child": "spine_02", "along": "spine_04", "swing1_axis": [1, 0, 0], "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "spine_04", "along": "neck_01", "swing1_axis": [1, 0, 0], "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "neck_01", "along": "head", "swing1_axis": [1, 0, 0], "swing1": [-60, 75], "swing2": [-45, 45], "twist": [-80, 80], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "clavicle_l", "mirror": "clavicle_r", "along": "upperarm_l", "swing1_axis": [0, -1, 0], "swing1": [-10, 40], "swing2": [-25, 20], "twist": [-30, 30], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "upperarm_l", "mirror": "upperarm_r", "along": "lowerarm_l", "swing1_axis": [0, -1, 0], "swing1": [-50, 160], "swing2": [-60, 150], "twist": [-80, 80], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "lowerarm_l", "mirror": "lowerarm_r", "along": "hand_l", "swing1_axis": "bend", "swing1": [0, 140], "swing2": "locked", "twist": "locked", "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "hand_l", "mirror": "hand_r", "along": "middle_01_l", "swing1_axis": {"from": "pinky_01_l", "to": "index_01_l"}, "swing1": [-60, 60], "swing2": [-25, 25], "twist": [-70, 70], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "thigh_l", "mirror": "thigh_r", "along": "calf_l", "swing1_axis": [1, 0, 0], "swing1": [-30, 100], "swing2": [-40, 20], "twist": [-40, 50], "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "calf_l", "mirror": "calf_r", "along": "foot_l", "swing1_axis": [-1, 0, 0], "swing1": [-2, 150], "swing2": "locked", "twist": "locked", "limit": {"stiffness": 50, "damping": 5}},
+    {"child": "foot_l", "mirror": "foot_r", "along": "ball_l", "swing1_axis": [1, 0, 0], "swing1": [-20, 30], "swing2": [-10, 10], "twist": [-15, 15], "limit": {"stiffness": 50, "damping": 5}}
   ],
   "collision": {"disable": [["pelvis", "spine_04"], ["spine_02", "thigh_l"], ["spine_02", "thigh_r"], ["thigh_l", "thigh_r"], ["neck_01", "clavicle_l"], ["neck_01", "clavicle_r"], ["clavicle_l", "clavicle_r"], ["spine_04", "upperarm_l"], ["spine_04", "upperarm_r"]]}
 }

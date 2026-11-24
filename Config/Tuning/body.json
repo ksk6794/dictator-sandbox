@@ -7,10 +7,10 @@
     "foot_right": "foot_r"
   },
   "muscles": {
-    "spine": { "stiffness_nm_per_rad": 600, "damping_s": 0.06, "max_torque_nm": 0, "pose_velocity_share": 0 },
-    "neck": { "stiffness_nm_per_rad": 40, "damping_s": 0.1, "max_torque_nm": 0, "pose_velocity_share": 0 },
-    "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.15, "max_torque_nm": 0, "pose_velocity_share": 0 },
-    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 0, "pose_velocity_share": 0 }
+    "spine": { "stiffness_nm_per_rad": 600, "damping_s": 0.06, "max_torque_nm": 300, "pose_velocity_share": 0 },
+    "neck": { "stiffness_nm_per_rad": 40, "damping_s": 0.1, "max_torque_nm": 50, "pose_velocity_share": 0 },
+    "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.15, "max_torque_nm": 80, "pose_velocity_share": 0 },
+    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0 }
   },
   "assist": {
     "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0 },
@@ -32,7 +32,8 @@
     "rest_angular_speed_rads": 1,
     "rest_time_s": 0.2,
     "held_time_s": 0.4,
-    "held_descent_cm": 5
+    "held_descent_cm": 5,
+    "impact_let_go_s": 0.5
   },
   "balance": {
     "foot_contact_min_n": 20,

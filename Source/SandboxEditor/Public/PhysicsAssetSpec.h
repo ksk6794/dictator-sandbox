@@ -43,6 +43,8 @@ struct FPhysicsBodySpec
 	TArray<FPhysicsShapeSpec> Shapes;
 	/** Factor on the inertia the engine works out from the mass and the shapes (FBodyInstance::InertiaTensorScale). */
 	double InertiaScale = 1.0;
+	/** Continuous collision detection for this body ("ccd"): swept against the world when it moves fast, so that it does not pass into it between two steps. */
+	bool bCcd = false;
 };
 
 /** How a joint's swing1 axis (the one its main bending turns about) is found. */
@@ -86,6 +88,15 @@ struct FPhysicsJointSpec
 	FPhysicsAxisSpec Swing1;
 	FPhysicsAxisSpec Swing2;
 	FPhysicsAxisSpec Twist;
+
+	/**
+	 * What the joint does at the end of its range ("limit"). Hard: it stops there, as a hinge of bone does. Soft:
+	 * it gives, held back by a spring and a damper (the engine's stiffness and damping of a soft limit, the same
+	 * for the cone of the two swings and for the twist), as where ligaments and muscle hold a joint.
+	 */
+	bool bSoftLimit = false;
+	double LimitStiffness = 0.0;
+	double LimitDamping = 0.0;
 };
 
 /**

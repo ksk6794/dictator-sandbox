@@ -190,6 +190,10 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 		{
 			return Fail(Context + TEXT(".inertia_scale must be a number from 1 to 20"));
 		}
+		if (BodyJson->HasField(TEXT("ccd")) && (BodyJson->Values[TEXT("ccd")]->Type != EJson::Boolean || !BodyJson->TryGetBoolField(TEXT("ccd"), Body.bCcd)))
+		{
+			return Fail(Context + TEXT(".ccd must be true or false"));
+		}
 		OutSpec.Bodies.Add(MoveTemp(Body));
 	}
 	if (FMath::Abs(FractionSum - 1.0) > 1.0e-3)
@@ -231,6 +235,32 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 			!ParseAxis(JointJson, TEXT("twist"), Context, Joint.Twist, AxisError))
 		{
 			return Fail(AxisError);
+		}
+
+		// "limit": "hard", or {"stiffness": n, "damping": n} for a soft one. Written out for every joint: what a
+		// joint does at the end of its range is not something to inherit from a template without knowing.
+		const TSharedPtr<FJsonValue> Limit = JointJson->TryGetField(TEXT("limit"));
+		FString LimitText;
+		const TSharedPtr<FJsonObject>* LimitObject = nullptr;
+		if (Limit.IsValid() && Limit->Type == EJson::String && Limit->TryGetString(LimitText) && LimitText == TEXT("hard"))
+		{
+			Joint.bSoftLimit = false;
+		}
+		else if (Limit.IsValid() && Limit->TryGetObject(LimitObject) &&
+			(*LimitObject)->HasTypedField<EJson::Number>(TEXT("stiffness")) && (*LimitObject)->HasTypedField<EJson::Number>(TEXT("damping")) &&
+			(*LimitObject)->Values.Num() == 2)
+		{
+			Joint.bSoftLimit = true;
+			Joint.LimitStiffness = (*LimitObject)->GetNumberField(TEXT("stiffness"));
+			Joint.LimitDamping = (*LimitObject)->GetNumberField(TEXT("damping"));
+			if (Joint.LimitStiffness <= 0.0 || Joint.LimitStiffness > 100000.0 || Joint.LimitDamping < 0.0 || Joint.LimitDamping > 100000.0)
+			{
+				return Fail(Context + TEXT(".limit: stiffness must be above 0 and damping not below it, both at most 100000"));
+			}
+		}
+		else
+		{
+			return Fail(Context + TEXT(".limit must be \"hard\" or {\"stiffness\": number, \"damping\": number}"));
 		}
 		OutSpec.Joints.Add(Joint);
 	}

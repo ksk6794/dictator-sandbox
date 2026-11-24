@@ -21,11 +21,11 @@ generated asset matches its spec.
   ],
   "joints": [
     {"child": "spine_04", "along": "neck_01", "swing1_axis": [1, 0, 0],
-     "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15]},
+     "swing1": [-22.5, 12.5], "swing2": [-12.5, 12.5], "twist": [-15, 15], "limit": {"stiffness": 50, "damping": 5}},
     {"child": "calf_l", "mirror": "calf_r", "along": "foot_l", "swing1_axis": [-1, 0, 0],
-     "swing1": [-2, 150], "swing2": "locked", "twist": "locked"},
+     "swing1": [-2, 150], "swing2": "locked", "twist": "locked", "limit": {"stiffness": 50, "damping": 5}},
     {"child": "lowerarm_l", "mirror": "lowerarm_r", "along": "hand_l", "swing1_axis": "bend",
-     "swing1": [0, 140], "swing2": "locked", "twist": "locked"}
+     "swing1": [0, 140], "swing2": "locked", "twist": "locked", "limit": {"stiffness": 50, "damping": 5}}
   ],
   "collision": {"disable": [["thigh_l", "thigh_r"], ["pelvis", "spine_04"]]}
 }
@@ -34,17 +34,19 @@ generated asset matches its spec.
 | Field | Meaning |
 | --- | --- |
 | `output` | Package path of the generated asset |
-| `template` | Existing physics asset that supplies collision shapes, and the softness and projection settings of the joints |
+| `template` | Existing physics asset that supplies collision shapes, and the projection settings of the joints |
 | `total_mass_kg` | Body mass; each body gets `mass_fraction` of it. Fractions must sum to 1 |
 | `bodies[].bone` | Bone the body is attached to. Bones without a body follow their parent rigidly |
 | `bodies[].shapes_from` | Template bodies whose shapes this body takes over. Listing several merges them |
 | `bodies[].inertia_scale` | Optional factor (1 to 20) on the inertia the engine works out from the body's mass and shapes. See "Inertia of the hands" |
+| `bodies[].ccd` | Optional, `true` or `false` (the default): continuous collision detection for this body. Off for every body of `npc_body.json`, by measurement: see "Limits and continuous collision detection" |
 | `bodies[].shapes` | Boxes written out in the spec: `center_cm` and `yaw_deg` (rotation about the vertical) in the mesh's reference-pose space, where the floor is z = 0, and `size_cm` along the box's own axes. A body needs `shapes_from`, `shapes` or both |
 | `joints[].child` | Child body. Its parent is the nearest ancestor bone that has a body. One joint per non-root body, written out or mirrored |
 | `joints[].mirror` | Child body of the same joint on the other side. It is generated as the exact mirror image, with the same ranges, so left and right cannot differ |
 | `joints[].along` | Bone the limb runs toward from the joint. The twist axis points from the child bone to this bone |
 | `joints[].swing1_axis` | The axis the joint's main bending turns about: a direction `[x, y, z]` in the mesh's reference-pose space, `{"from": bone, "to": bone}`, or `"bend"` (see below). It is made perpendicular to the twist axis |
 | `joints[].swing1`, `swing2`, `twist` | `[min, max]` in degrees, `"locked"` or `"free"`. A range need not be symmetric |
+| `joints[].limit` | What the joint does at the end of its range: `"hard"`, or `{"stiffness": n, "damping": n}` for a soft limit (the engine's figures of a soft limit, the same for the two swings and the twist). Written for every joint; a mirrored joint has its twin's |
 | `collision.disable` | `[boneA, boneB]` pairs that do not collide with each other. Jointed bodies never collide; every other pair of bodies does, unless it is listed here. See "Self-collision" |
 
 ### Joints
@@ -102,8 +104,9 @@ Until M3 the generated asset had no self-collision at all: the engine call that 
 unless told otherwise, and the generator only ever took pairs away. An arm went through the chest. The test
 `DictatorSandbox.Generated.PhysicsAsset.MatchesSpec` now counts the pairs that can collide.
 
-What comes from the template and what from the spec: shapes (unless written out) and the joints' softness
-and projection settings are the template's; the set of bodies, masses, joint axes, joint limits and
+What comes from the template and what from the spec: shapes (unless written out) and the joints'
+projection settings are the template's; the set of bodies, masses, joint axes, joint limits and what a
+joint does at its limit, and
 collision pairs are the spec's. Three things differ from the stock MetaHuman asset on purpose, because its
 values break a fully simulated body:
 
@@ -125,7 +128,7 @@ the reference pose. Bounding boxes overstate capsules, so a small overlap can be
 The ranges in `npc_body.json` are the starting limits of `docs/PRD.md`, with these choices where the table
 or the engine leaves room:
 
-- **Shoulder: two links since M3.** The engine limits the two swings of a joint together, as an elliptical
+- **Shoulder: two links since M3.** The engine was believed to limit the two swings of a joint together, as an elliptical
   cone around one direction, so one joint cannot give 180 degrees of flexion and 180 of abduction. The
   shoulder joint's cone is 105 degrees wide around a direction forward and to the side: the arm hangs at
   the side and reaches straight up, both with 15 degrees to spare, but reaches back by only about 20 degrees
@@ -143,7 +146,23 @@ or the engine leaves room:
   against the leg muscles in every solver step and the feet rock almost twice as fast (0.13 rad/s against
   0.08). Two degrees of slack remove that; five and ten change nothing further.
 
-Still the template's: limit softness (stiffness 50, damping 5 on every cone and twist limit).
+### Limits and continuous collision detection
+
+Measured in M3 part 5 (`docs/testing.md`), not assumed:
+
+- **The engine limits each swing by itself.** Its joint solver takes the turn of a joint apart into a twist
+  and a swing and holds the twist and the swing's two angles each within its own range: a box. (The shoulder
+  paragraph above was written when it was believed to be an ellipse; with a box one joint could have given
+  the arm its range. The collarbones stay: they are anatomy, and the poses are written for them.)
+- **Every joint has the soft limit of the stock asset, stiffness 50 and damping 5,** now written in the spec
+  instead of copied from the template in silence. It is not soft in effect: a joint stays within 1 to 2.5
+  degrees of its range in a knockdown and within 6 at the ankle in a hard step. Hard limits hold no better and
+  bounce: a fall gained 46 J against 26 and took 4.0 s to rest against 3.6.
+- **No body has continuous collision detection.** In 32 knockdowns nothing went deeper than 1.5 cm into the
+  floor, under the 2 cm at which the owner's rule switches it on. A passive body dropped from 1.5 m does go
+  8.3 cm in, and gains 149 J on the way out; sweeping the feet, or the feet and the head, changes neither
+  figure. It is the solver not converging in the engine's 8 iterations (3.2 cm with 32, 1.5 cm with 64, which
+  is what a body under control has).
 
 ### Inertia of the hands
 

@@ -39,7 +39,11 @@ falls only when its posture gives way, a falling body takes a protective pose an
 (`poses.fall_*`), after recovery steps the body brings its feet back together (`balance.regroup_*`), a standing
 body carries the motion of the engine's `MM_Idle` on top of its stance (breathing, the shoulders, a slow sway;
 `poses.idle.*`, the idle planned for part 7), and its arms join the fight for balance (`poses.balance_*`,
-`balance.arm_*`); the fall work planned for part 5 is partly done by it. Next is part 5, falling and lying.
+`balance.arm_*`). **Part 5, the fall, is done but for one look that waits for the owner:** knockdowns from 8
+directions pass (`Tools\knockdowns.ps1`), the muscles have torque caps from published strength figures, they
+let go after the body meets the floor, joint limits are written in the spec, and continuous collision detection
+stays off by measurement; whether the poses of Epic's Game Animation Sample are better than these is looked at
+once the owner has downloaded it. Next is part 6, the get-up.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -64,6 +68,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
+| Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
 | Self-test of the session, no window | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Smoke` (`-Smoke -Shot` renders it and saves `final.png`) |
@@ -75,7 +80,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
 (the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (49 scenarios; 80 s with `-Long`),
-the push matrix 50 s (one row of 40: 15 s), a film of 12 pictures 15 s, the session's self-test 10 s, the whole
+the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, regenerating the physics asset 10 s, a film
+of 12 pictures 15 s, the session's self-test 10 s, the whole
 bootstrap about 5 minutes. Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
 processes; `SANDBOX_SEPARATE_PROCESSES=1` goes back to one process per run.
 
@@ -240,8 +246,29 @@ touch must not be in that list, and the ones that are get explained in the part'
   2.9 cm at 8 iterations and 0.5 cm at 64 (`-CVars "p.Chaos.Solver.Iterations.Position=64"` to compare).
 - **The engine's joint axes: twist is the frame's X, swing1 its Z, swing2 its Y, and limits are symmetric
   around the parent-side frame.** An asymmetric range needs that frame turned to the middle of the range;
-  `FPhysicsAssetGenerator::ComputeJointFrames` does it. The two swings are limited together as an ellipse,
-  so a shoulder cannot have 180 degrees in two planes.
+  `FPhysicsAssetGenerator::ComputeJointFrames` does it. The two swings are limited each by itself, as a box,
+  not together as an ellipse: the engine's joint solver (the linear one, which every joint uses unless told
+  otherwise) takes the turn apart into a twist and a swing and limits the swing's two angles separately
+  (`FPBDJointCachedSolver::InitPyramidSwingConstraint`). The project believed in the ellipse from M2 to M3
+  part 5, and added the collarbones for it.
+- **`FConstraintInstance::GetCurrentSwing1`, `GetCurrentSwing2` and `GetCurrentTwist` are not the angles the
+  solver limits.** They are the twist of the whole turn about each axis. Compared with the limits they read a
+  wrist that swings and twists at once as 40 degrees outside a range it was inside of, and that made hard
+  limits look as soft as soft ones. `FSandboxPoseRig::LimitExcessDeg` measures as the solver does; a run's
+  `metrics.worst_limit_angles_deg` and `worst_limit_ranges_deg` show the joint that was furthest out. When a
+  figure does not move with the setting that should move it, suspect the figure.
+- **A soft joint limit of the stock asset is not soft.** Stiffness 50 and damping 5 in the engine's
+  acceleration mode hold a joint within 1 to 2.5 degrees of its range in a knockdown; a hard limit holds it
+  no better and bounces (46 J gained against 26, rest after 4.0 s against 3.6). What a joint does at the end
+  of its range is written in the spec (`"limit"`), not taken from a template without knowing.
+- **The pose of a fall is for meeting the floor, not for lying on it.** Held until the body was at rest it
+  made a stiff shape of the body: knocked over by the head, it stood on its head with its legs in the air for
+  a second, and on its back it kept its forearms up. The muscles let go `thresholds.impact_let_go_s` after the
+  trunk or the head first meets the floor.
+- **Continuous collision detection does not keep a heavy body on light feet out of the floor.** A passive
+  body dropped from 1.5 m sinks 8.3 cm in and is thrown back out with 149 J, with the feet swept or not; with
+  64 solver iterations instead of the engine's 8 it sinks 1.5 cm. It is the solver not converging, not a body
+  passing between two steps. A body under control has the 64.
 - **Do not judge "at rest" by the fastest body.** A hand trembling against the floor (0.5 kg) kept a lying
   character "falling" for good. The controller uses the mass-weighted root mean square over all bodies.
 - **Scenario time and controller time differ by one frame:** the controller's first tick comes one frame

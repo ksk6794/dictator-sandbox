@@ -203,6 +203,9 @@ private:
 	FName FastestJoint;
 	double MaxJointLimitViolationDeg = 0.0;
 	FName WorstLimitJoint;
+	FVector WorstLimitAnglesDeg = FVector::ZeroVector;
+	FVector WorstLimitLimitsDeg = FVector::ZeroVector;
+	double WorstLimitTimeS = 0.0;
 	/** How many entries of the controller's state log have been seen, and the timeline built from them. */
 	int32 SeenStateChanges = 0;
 	TArray<TSharedPtr<FJsonValue>> StateTimeline;

@@ -22,7 +22,7 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `rig.pelvis`, `rig.chest`, `rig.head`, `rig.foot_left`, `rig.foot_right` | bone name | Bodies the balance assist holds. Text, read when the body starts; cannot change in a running body |
 | `muscles.<group>.stiffness_nm_per_rad` | N·m/rad | Spring of every joint in the group toward the target pose. 0 switches the muscles off |
 | `muscles.<group>.damping_s` | s | Damping as a time: damping torque = stiffness × this × angular velocity |
-| `muscles.<group>.max_torque_nm` | N·m | Largest torque of a muscle. 0 = no cap, which is where all groups stand for now |
+| `muscles.<group>.max_torque_nm` | N·m | Largest torque of a muscle; 0 = no cap. From published peak torques of an adult man: legs 250 (knee and hip extension), spine 300 (trunk extension), arms 80 (shoulder and elbow), neck 50. One figure for a group, so a wrist may ask what an elbow can give. With the caps the push matrix passes as without (160 of 160); they only act in a stagger, a step or a fall |
 | `muscles.<group>.pose_velocity_share` | 0..1 | How much of the target pose's own turning speed the damping works against. 0: the damping resists all motion, and a pose that jumps is not a blow (at Physics Control's default of 1 a jump of the leg's target cost 600 J) |
 | `assist.<body>.horizontal_n_per_m`, `vertical_n_per_m` | N/m | Pull of the body toward its standing position |
 | `assist.<body>.angular_nm_per_rad` | N·m/rad | Turn of the body toward its standing orientation |
@@ -35,6 +35,7 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `thresholds.fall_tilt_deg` | degrees | ...or tilted this far from its standing orientation |
 | `thresholds.rest_speed_mps`, `rest_angular_speed_rads` | m/s, rad/s | A fallen body lies (and lets its muscles go, `states.lying`) once it moves and turns no faster than this as a whole (root mean square over its bodies, weighted by mass). Not "motionless": held until it was, the fall's protective pose kept the body curled on the floor and it took 3.5 s to come to rest instead of 1.7 |
 | `thresholds.rest_time_s` | s | ...for this long |
+| `thresholds.impact_let_go_s` | s | A falling body lets its muscles go (`states.lying`) this long after its trunk or head first met the floor, at rest or not: the pose of a fall is for meeting the floor. Held until the body was at rest, the pose kept it a stiff shape (knocked over by the head, it stood on its head with its legs up for a second; on its back its forearms stayed in the air). 0: only once it is at rest |
 | `thresholds.held_time_s`, `held_descent_cm` | s, cm | A body that is not upright, has touched nothing of the world for the first and has not come down by the second (its centre of mass below the lowest it has been) is held up, by a hand or a hook: it lets go of its fall's pose and hangs in its stance's, with the falling body's muscles, until it touches something or comes down again. 0 s: never |
 | `balance.foot_contact_min_n` | N | A foot stands when the floor pushes up on it with at least this force, averaged over a frame. In quiet standing each foot carries about 390 N |
 | `balance.sole_tolerance_cm` | cm | The sole of a standing foot is the part of its shapes within this of its lowest point: what the support polygon is the hull of |
@@ -194,7 +195,7 @@ so far; `stagger` and `get_up` come in M3.
 | --- | --- | --- |
 | `standing` | Upright on the base values | A hit reaches `thresholds.flinch_impulse_ns`; or the capture point is beyond a step's reach (`balance.step_reach_cm`, `step_time_s`); or the pelvis sinks or tilts past `thresholds.fall_pelvis_drop_cm`, `fall_tilt_deg` |
 | `flinch` | Upright, the muscles of the hit region (spine, neck, arms or legs) weakened and recovering | `reactions.flinch_recovery_s` has passed; or, as from `standing`, balance or posture is lost |
-| `falling` | Let go: no balance assist, weak muscles with strong damping | It has been at rest for `thresholds.rest_time_s` |
+| `falling` | Let go: no balance assist, weak muscles with strong damping | Its trunk or head met the floor `thresholds.impact_let_go_s` ago, or it has been at rest for `thresholds.rest_time_s` |
 | `lying` | Down and limp | Not yet (getting up is M3) |
 
 A state does not inherit from another state, only from the base values: `lying` has to switch the assist

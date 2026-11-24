@@ -454,6 +454,13 @@ private:
 	bool bWorldTouched = false;
 	double HeldWatchS = 0.0;
 	double HeldLowestCm = 0.0;
+	/**
+	 * The end of a fall: the trunk or the head on the floor (a contact with the world of a body of the spine's or the
+	 * neck's group, since the last tick), and when that first happened in this fall; below 0 before it has. The
+	 * muscles let go thresholds.impact_let_go_s after it (UpdateState).
+	 */
+	bool bTrunkTouched = false;
+	double TrunkTouchedS = -1.0;
 	/** Flinch: the body that was hit and the hit's impulse, N*s. */
 	FName FlinchBone;
 	FVector FlinchImpulseNs = FVector::ZeroVector;

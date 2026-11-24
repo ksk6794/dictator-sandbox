@@ -87,20 +87,35 @@ namespace
 	constexpr double StepMinAirS = 0.1;
 
 	/**
-	 * How far a joint is outside its limits, in degrees, axis by axis. The engine limits the two swings
-	 * together, as an ellipse, so this box test can read 0 for a joint that is slightly outside; what it
-	 * does report is real.
+	 * How far a joint of a body is outside its limits, in degrees, measured as the solver limits it: the twist
+	 * and each of the two swings against its own range (FSandboxPoseRig::LimitExcessDeg).
+	 * (Until M3 part 5 this compared the engine's GetCurrentSwing1, GetCurrentSwing2 and GetCurrentTwist with the
+	 * limits. Those are not the solver's angles: a wrist that swings and twists at once read 40 degrees outside a
+	 * range it was inside of, and hard limits "gave" as much as soft ones.)
 	 */
-	double JointLimitViolationDeg(const FConstraintInstance& Constraint)
+	double JointLimitViolationDeg(const USkeletalMeshComponent* Mesh, const FConstraintInstance& Constraint, FVector* OutAnglesDeg = nullptr, FVector* OutLimitsDeg = nullptr)
 	{
-		const auto Excess = [](EAngularConstraintMotion Motion, double AngleRad, double LimitDeg)
+		const FBodyInstance* Child = Mesh ? Mesh->GetBodyInstance(Constraint.GetChildBoneName()) : nullptr;
+		const FBodyInstance* Parent = Mesh ? Mesh->GetBodyInstance(Constraint.GetParentBoneName()) : nullptr;
+		if (!Child || !Parent || !Child->IsValidBodyInstance() || !Parent->IsValidBodyInstance())
 		{
-			return Motion == ACM_Free ? 0.0 : FMath::Max(FMath::Abs(FMath::RadiansToDegrees(AngleRad)) - (Motion == ACM_Limited ? LimitDeg : 0.0), 0.0);
-		};
-		return FMath::Max3(
-			Excess(Constraint.GetAngularTwistMotion(), Constraint.GetCurrentTwist(), Constraint.GetAngularTwistLimit()),
-			Excess(Constraint.GetAngularSwing1Motion(), Constraint.GetCurrentSwing1(), Constraint.GetAngularSwing1Limit()),
-			Excess(Constraint.GetAngularSwing2Motion(), Constraint.GetCurrentSwing2(), Constraint.GetAngularSwing2Limit()));
+			return 0.0;
+		}
+		FSandboxJointLimits Limits;
+		Limits.bValid = true;
+		Limits.ChildFrame = Constraint.GetRefFrame(EConstraintFrame::Frame1).GetRotation();
+		Limits.ParentFrame = Constraint.GetRefFrame(EConstraintFrame::Frame2).GetRotation();
+		Limits.Swing1Deg = Constraint.GetAngularSwing1Motion() == ACM_Locked ? 0.0 : Constraint.GetAngularSwing1Limit();
+		Limits.Swing2Deg = Constraint.GetAngularSwing2Motion() == ACM_Locked ? 0.0 : Constraint.GetAngularSwing2Limit();
+		Limits.TwistDeg = Constraint.GetAngularTwistMotion() == ACM_Locked ? 0.0 : Constraint.GetAngularTwistLimit();
+		Limits.bSwing1Free = Constraint.GetAngularSwing1Motion() == ACM_Free;
+		Limits.bSwing2Free = Constraint.GetAngularSwing2Motion() == ACM_Free;
+		Limits.bTwistFree = Constraint.GetAngularTwistMotion() == ACM_Free;
+		if (OutLimitsDeg)
+		{
+			*OutLimitsDeg = FVector(Limits.bTwistFree ? -1.0 : Limits.TwistDeg, Limits.bSwing1Free ? -1.0 : Limits.Swing1Deg, Limits.bSwing2Free ? -1.0 : Limits.Swing2Deg);
+		}
+		return FSandboxPoseRig::LimitExcessDeg(Parent->GetUnrealWorldTransform().GetRotation(), Child->GetUnrealWorldTransform().GetRotation(), Limits, OutAnglesDeg);
 	}
 
 	uint32 HashDoubles(const double* Values, int32 Count, uint32 Previous)
@@ -459,14 +474,7 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 		SpawnJointAnglesDeg.Add(Constraint->JointName, Angles);
 		SpawnJointOffsetCm.Add(Constraint->JointName, FSandboxBodyProbe::JointStretchCm(BodyMesh, *Constraint));
 
-		const auto Excess = [](EAngularConstraintMotion Motion, double Angle, double Limit)
-		{
-			return Motion == ACM_Free ? 0.0 : FMath::Max(FMath::Abs(Angle) - (Motion == ACM_Limited ? Limit : 0.0), 0.0);
-		};
-		const double Violation = FMath::Max3(
-			Excess(Constraint->GetAngularTwistMotion(), Angles.X, Constraint->GetAngularTwistLimit()),
-			Excess(Constraint->GetAngularSwing1Motion(), Angles.Y, Constraint->GetAngularSwing1Limit()),
-			Excess(Constraint->GetAngularSwing2Motion(), Angles.Z, Constraint->GetAngularSwing2Limit()));
+		const double Violation = JointLimitViolationDeg(BodyMesh, *Constraint);
 		if (Violation > SpawnLimitViolationDeg)
 		{
 			SpawnLimitViolationDeg = Violation;
@@ -687,11 +695,16 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 	{
 		for (const FConstraintInstance* Constraint : Mesh->Constraints)
 		{
-			const double Violation = Constraint ? JointLimitViolationDeg(*Constraint) : 0.0;
+			FVector Angles = FVector::ZeroVector;
+			FVector Ranges = FVector::ZeroVector;
+			const double Violation = Constraint ? JointLimitViolationDeg(Mesh, *Constraint, &Angles, &Ranges) : 0.0;
 			if (Violation > MaxJointLimitViolationDeg)
 			{
 				MaxJointLimitViolationDeg = Violation;
 				WorstLimitJoint = Constraint->JointName;
+				WorstLimitAnglesDeg = Angles;
+				WorstLimitLimitsDeg = Ranges;
+				WorstLimitTimeS = (FrameIndex + 1) * FixedDt;
 			}
 		}
 	}
@@ -1943,6 +1956,10 @@ void UScenarioRunnerSubsystem::Finish()
 	Metrics->SetStringField(TEXT("fastest_joint"), FastestJoint.IsNone() ? FString() : FastestJoint.ToString());
 	Metrics->SetNumberField(TEXT("max_joint_limit_violation_deg"), MaxJointLimitViolationDeg);
 	Metrics->SetStringField(TEXT("worst_limit_joint"), WorstLimitJoint.IsNone() ? FString() : WorstLimitJoint.ToString());
+	// The joint's angles when it was furthest outside (twist, swing1, swing2) and their half-ranges (-1: free), and when.
+	Metrics->SetArrayField(TEXT("worst_limit_angles_deg"), TArray<TSharedPtr<FJsonValue>>{ Number(WorstLimitAnglesDeg.X), Number(WorstLimitAnglesDeg.Y), Number(WorstLimitAnglesDeg.Z) });
+	Metrics->SetArrayField(TEXT("worst_limit_ranges_deg"), TArray<TSharedPtr<FJsonValue>>{ Number(WorstLimitLimitsDeg.X), Number(WorstLimitLimitsDeg.Y), Number(WorstLimitLimitsDeg.Z) });
+	Metrics->SetNumberField(TEXT("worst_limit_t"), WorstLimitTimeS);
 	Root->SetObjectField(TEXT("metrics"), Metrics);
 
 	const TSharedRef<FJsonObject> ControlJson = MakeShared<FJsonObject>();
