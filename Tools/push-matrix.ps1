@@ -17,7 +17,8 @@
 #
 # The outcome of a push, from the run's own result:
 #   fell     the body fell (metrics.fell)
-#   stepped  it stayed up and made at least one step (control.step_count)
+#   stepped  it stayed up and made at least one step (control.step_count, less the steps that only brought the
+#            feet back together afterwards, control.regroup_step_count)
 #   held     it stayed up without a step although its capture point needed one (control.balance.step_needed_frames):
 #            the balance assist held it. Until the recovery step exists (M3 part 4) this is where a step would be.
 #   stood    it stayed up without a step and never needed one
@@ -27,7 +28,7 @@
 #   30 N*s   never a fall; forward and sideways: stood; backward, and any push on the head: stood or one step
 #   80 N*s   trunk (spine_04, pelvis): stepped, and backward also fell; head and thighs: stepped or fell; anywhere
 #            stood if a step was never needed (the capture point stayed within reach of the ankles)
-#   200 N*s  fell
+#   200 N*s  chest and head: fell; pelvis and thighs: fell or stepped (the body runs the push off)
 # "held" is a failure in every cell: the assist held a body that needed a step.
 # Mirror-image pushes (left thigh from the left against right thigh from the right) that end differently are listed
 # and counted, not judged (owner's decision during part 4): where the table allows one outcome a difference breaks the
@@ -87,6 +88,9 @@ function Get-Allowed([string]$Body, [double]$Angle, [double]$Impulse) {
         if ($isTrunk -and -not $backward) { return @{ classes = @('stood', 'stepped'); max_steps = 99 } }
         return @{ classes = @('stood', 'stepped', 'fell'); max_steps = 99 }
     }
+    # A push near the centre of mass sends the body off without turning it over: it may run the push off (owner's
+    # go-ahead for the audit of November 2026: the body always tries to step). On the chest or the head it falls.
+    if ($Body -eq 'pelvis' -or $Body -like 'thigh_*') { return @{ classes = @('stepped', 'fell'); max_steps = 99 } }
     return @{ classes = @('fell'); max_steps = 0 }
 }
 
@@ -142,6 +146,11 @@ foreach ($trial in $trials) {
     $fell = [bool]$runMetrics.metrics.fell
     $stepCount = 0
     if ($null -ne $runMetrics.control.step_count) { $stepCount = [int]$runMetrics.control.step_count }
+    # A step that only brought the feet back together after the body had its balance again is not a step the push
+    # cost (control.regroup_step_count).
+    $regroupCount = 0
+    if ($null -ne $runMetrics.control.regroup_step_count) { $regroupCount = [int]$runMetrics.control.regroup_step_count }
+    $stepCount = [Math]::Max($stepCount - $regroupCount, 0)
     $stepNeeded = 0
     if ($null -ne $runMetrics.control.balance.step_needed_frames) { $stepNeeded = [int]$runMetrics.control.balance.step_needed_frames }
     $outcome = 'stood'

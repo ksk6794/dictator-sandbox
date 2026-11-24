@@ -15,7 +15,8 @@
 #   ... -TuningDir <dir> read the tuning files from this directory instead of Config\Tuning
 #   ... -Out <dir>       output directory (default Saved\Scenarios\<name>)
 # Prints a one-line verdict plus the checks and writes <Out>\metrics.json, <Out>\trace.json and, for a
-# simulated body, <Out>\series.csv (energy, balance and penetration of every frame).
+# simulated body, <Out>\series.csv (energy, balance and penetration of every frame); the run's log lines go to
+# <Out>\run.log, the engine process's whole log to <Out>\process.log.
 # Exit code: 0 pass, 1 a check failed, 2 the scenario could not run.
 param(
     [string]$Name,
@@ -56,17 +57,18 @@ $Out = [System.IO.Path]::GetFullPath($Out)
 New-Item -ItemType Directory -Force $Out | Out-Null
 $metricsFile = Join-Path $Out 'metrics.json'
 $logFile = Join-Path $Out 'run.log'
-# Remove stale results so an old pass can never be mistaken for this run.
-foreach ($stale in @('metrics.json', 'trace.json', 'series.csv', 'final.png')) {
-    $path = Join-Path $Out $stale
-    if (Test-Path $path) { Remove-Item $path -Force }
-}
-Get-ChildItem $Out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
 
-$arguments = "-game -Scenario=`"$scenarioFile`" -Out=`"$Out`" -UseFixedTimeStep -FPS=$fps"
-# A scenario may name a map; it goes first, as the URL the engine opens.
-if ($spec.map) { $arguments = "$($spec.map) $arguments" }
+# The run goes through a queue of one job, as the suite's runs do (Get-QueueArguments): the engine runs a short
+# warm-up first, so that this run gives the same hashes as the same scenario in a suite, a matrix or a sweep. The
+# queue removes stale results, so an old pass can never be mistaken for this run. The engine's whole log goes to
+# process.log next to the job's run.log.
 if ($Shot) { $Rendered = $true }
+$job = @{ File = $scenarioFile; Out = $Out; Tune = $Tune; TuningDir = $TuningDir }
+if ($Shot) { $job.Shot = Join-Path $Out 'final.png' }
+if ($Shot -and $ShotAt) { $job.ShotAt = $ShotAt }
+$queue = New-ScenarioQueue -Jobs @($job)
+$processLog = Join-Path $Out 'process.log'
+$arguments = Get-QueueArguments -Queue $queue -Fps $fps
 if ($VR) {
     $arguments += ' -vr -windowed -ResX=1280 -ResY=720'
 } elseif ($Rendered) {
@@ -75,22 +77,19 @@ if ($VR) {
     $arguments += ' -nullrhi'
 }
 if ($CVars) { $arguments += " -dpcvars=`"$CVars`"" }
-if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
-if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }
-if ($Shot) { $arguments += " -Shot=`"$(Join-Path $Out 'final.png')`"" }
-if ($Shot -and $ShotAt) { $arguments += " -ShotAt=`"$ShotAt`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 
-$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -VR:$VR
+$run = Invoke-Editor -ArgumentString $arguments -LogFile $processLog -TimeoutSec $TimeoutSec -VR:$VR
 $metrics = Read-JsonFile $metricsFile
+if (@(Get-ChildItem $queue -Filter '*.json' -File -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
 
 if ($run.TimedOut) {
-    Write-Output "SCENARIO ERROR: $Name timed out after $TimeoutSec s. Log: $logFile"
+    Write-Output "SCENARIO ERROR: $Name timed out after $TimeoutSec s. Log: $processLog"
     exit 2
 }
 if (-not $metrics) {
-    Write-Output "SCENARIO ERROR: $Name wrote no metrics.json (process exit code $($run.ExitCode)). Log: $logFile"
-    Get-LogErrors $logFile | ForEach-Object { Write-Output "  $_" }
+    Write-Output "SCENARIO ERROR: $Name wrote no metrics.json (process exit code $($run.ExitCode)). Log: $processLog"
+    Get-LogErrors $processLog | ForEach-Object { Write-Output "  $_" }
     exit 2
 }
 if (-not $metrics.ok) {
@@ -103,7 +102,7 @@ if (-not $metrics.ok) {
 if ($CVars) {
     foreach ($assignment in $CVars.Split(',')) {
         $variable = $assignment.Split('=')[0].Trim()
-        if ($variable -and (Select-String -Path $logFile -SimpleMatch "CVar [[${variable}:" | Where-Object { $_.Line -match 'dummy variable created' })) {
+        if ($variable -and (Select-String -Path $processLog -SimpleMatch "CVar [[${variable}:" | Where-Object { $_.Line -match 'dummy variable created' })) {
             Write-Output "SCENARIO WARNING: the engine knows no console variable '$variable'; -CVars set nothing by that name"
         }
     }

@@ -34,9 +34,6 @@ namespace
 	constexpr double TorqueToUnreal = 1.0e4;
 	constexpr double ChaosAngularDriveScale = 1.5;
 	// 1 N/m = 1 kg/s^2 in Unreal units as well (force in kg*cm/s^2 per cm), and Chaos does not scale it.
-
-	// TEMPORARY (part 4 diagnosis): per-tick trace of a step.
-	TAutoConsoleVariable<int32> CVarStepTrace(TEXT("Sandbox.StepTrace"), 0, TEXT("Logs the body's step every tick (diagnosis)."));
 }
 
 USandboxBodyController::USandboxBodyController()
@@ -44,6 +41,10 @@ USandboxBodyController::USandboxBodyController()
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 }
+
+/** A regrouping step's weight shift is asked for at most this many times the way to the stance foot. */
+// A tolerance that takes in every corner of a sole, however the foot is tilted (FSandboxBodyProbe::SupportPolygon).
+static constexpr double WholeSoleToleranceCm = 30.0;
 
 void USandboxBodyController::OnUnregister()
 {
@@ -197,6 +198,18 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		FSandboxBodyProbe::SampleBodies(Mesh, Bodies);
 		const FVector CenterOfMass = FSandboxBodyProbe::CenterOfMass(Bodies);
 		ComSupportLocation = SupportRotation.UnrotateVector(CenterOfMass - SupportLocation);
+
+		// Where the feet stand from each other: what a regrouping step brings them back to.
+		FVector FootAt[2] = { SupportLocation, SupportLocation };
+		for (const FAssist& Assist : Assists)
+		{
+			if (Assist.Slot == EAssistSlot::Feet && Assist.Side >= 0)
+			{
+				FootAt[Assist.Side] = Assist.Target.GetLocation();
+			}
+		}
+		const FVector Apart = SupportRotation.UnrotateVector(FootAt[1] - FootAt[0]);
+		StanceRightFromLeft = FVector2D(Apart.X, Apart.Y);
 
 		// A lean about the ankles moves each body in proportion to its height.
 		ComHeightCm = FMath::Max(CenterOfMass.Z - SupportLocation.Z, 1.0);
@@ -361,14 +374,107 @@ void USandboxBodyController::ApplyPose()
 		// A mesh without the sandbox animation instance holds its reference pose; that is all it can do.
 		return;
 	}
+	// Upright the body holds its stance. Going down, and lying, it holds the pose of its fall, unless the fall does
+	// not happen because something holds the body up (UpdateHeld): then it hangs, in its stance's pose again and
+	// with the falling body's soft muscles.
+	const bool bDown = (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying) && !bHeldUp;
+	FSandboxPose Mirror;
+	const FSandboxPose* Pose = &Tuning.Poses.Stance;
+	if (bDown)
+	{
+		switch (FallWay)
+		{
+		case EFallWay::Back: Pose = &Tuning.Poses.FallBack; break;
+		case EFallWay::Forward: Pose = &Tuning.Poses.FallForward; break;
+		case EFallWay::Left: Pose = &Tuning.Poses.FallSide; break;
+		case EFallWay::Right: Mirror = FSandboxPoseTuning::Mirrored(Tuning.Poses.FallSide); Pose = &Mirror; break;
+		}
+	}
 	TArray<FSandboxPoseBone> Bones;
 	FString Error;
-	if (!PoseRig.Build(Tuning.Poses.Stance, Bones, Error))
+	if (!PoseRig.Build(*Pose, Bones, Error))
 	{
 		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its pose: %s"), *Error);
 		return;
 	}
-	Animation->SetTargetPose(Bones, Tuning.Poses.BlendS);
+	Animation->SetTargetPose(Bones, bDown ? Tuning.Poses.FallBlendS : Tuning.Poses.BlendS);
+}
+
+void USandboxBodyController::ChooseFallWay()
+{
+	// Where the body goes: the way its pelvis leans, and the way it moves. Either alone can mislead (a body that
+	// sinks straight down leans nowhere; one knocked back while it leant forward still leans forward for a moment).
+	const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+	if (!Body || !Body->IsValidBodyInstance())
+	{
+		return;
+	}
+	const FQuat Turned = Body->GetUnrealWorldTransform().GetRotation() * Pelvis->Target.GetRotation().Inverse();
+	FVector SupportLocation;
+	FQuat SupportRotation;
+	SupportFrame(SupportLocation, SupportRotation);
+	// The body's own forward and left on the floor (it faces +y and its left is +x when it stands unturned).
+	FVector Forward = Turned.RotateVector(SupportRotation.RotateVector(FVector(0.0, 1.0, 0.0)));
+	Forward.Z = 0.0;
+	if (!Forward.Normalize())
+	{
+		return;
+	}
+	const FVector Left(Forward.Y, -Forward.X, 0.0);
+	const FVector Up = Turned.RotateVector(FVector::UpVector);
+	// A lean of 30 degrees counts as much as 1 m/s.
+	constexpr double LeanPerMps = 0.5;
+	const FVector Way = FVector(Up.X, Up.Y, 0.0) / LeanPerMps + FVector(Balance.Velocity.X, Balance.Velocity.Y, 0.0) * 0.01;
+	const double Ahead = FVector::DotProduct(Way, Forward);
+	const double ToLeft = FVector::DotProduct(Way, Left);
+	FallWay = FMath::Abs(Ahead) >= FMath::Abs(ToLeft) ? (Ahead >= 0.0 ? EFallWay::Forward : EFallWay::Back) : (ToLeft >= 0.0 ? EFallWay::Left : EFallWay::Right);
+}
+
+void USandboxBodyController::UpdateHeld(double DeltaTime)
+{
+	const bool bTouched = bWorldTouched;
+	bWorldTouched = false;
+	const bool bWasHeld = bHeldUp;
+	if (IsUpright() || !Balance.bValid)
+	{
+		bHeldUp = false;
+		HeldWatchS = 0.0;
+		HeldLowestCm = Balance.CenterOfMass.Z;
+		// A body that stands again takes its stance by the state's own change of pose (EnterState).
+		return;
+	}
+	// The floor under any part of the body, or the centre of mass lower than it has been: the fall goes on, or is
+	// over on the floor. A body that swings from a hand goes up and down, but not below the lowest it has been.
+	const double HeightCm = Balance.CenterOfMass.Z;
+	const bool bComesDown = HeightCm < HeldLowestCm - Tuning.Thresholds.HeldDescentCm;
+	HeldLowestCm = FMath::Min(HeldLowestCm, HeightCm);
+	if (bTouched || bComesDown)
+	{
+		HeldWatchS = 0.0;
+		bHeldUp = false;
+		if (bComesDown)
+		{
+			HeldLowestCm = HeightCm;
+		}
+	}
+	else
+	{
+		HeldWatchS += DeltaTime;
+		bHeldUp = bHeldUp || (Tuning.Thresholds.HeldTimeS > 0.0 && HeldWatchS >= Tuning.Thresholds.HeldTimeS - KINDA_SMALL_NUMBER);
+	}
+	if (bHeldUp != bWasHeld)
+	{
+		if (!bHeldUp)
+		{
+			ChooseFallWay();
+		}
+		ApplyPose();
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: %s at %.3f s"),
+			bHeldUp ? TEXT("held up (nothing touched and no way down): the fall's pose is let go and the body hangs")
+				: bTouched ? TEXT("no longer held up (the body touches the world): the fall's pose again") : TEXT("no longer held up (the body comes down): the fall's pose again"),
+			ElapsedS);
+	}
 }
 
 void USandboxBodyController::UpdatePoseTurns()
@@ -471,7 +577,10 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 		SupportForward = SupportRotation.RotateVector(FVector(0.0, 1.0, 0.0));
 		SupportSide = SupportRotation.RotateVector(FVector(1.0, 0.0, 0.0));
 		const FVector Reference = SupportLocation + SupportRotation.RotateVector(ComSupportLocation);
-		StrategyErrorCm = Balance.CapturePoint - (FVector2D(Reference.X, Reference.Y) + LeanCm);
+		// A weight shift moves the place the body is to stand over, like a lean. (Left out, the ankles brought the
+		// body back toward the middle of its feet while the legs' frames took it to the stance foot: of a shift of
+		// 19 cm forward out of a lunge the pelvis went 5.)
+		StrategyErrorCm = Balance.CapturePoint - (FVector2D(Reference.X, Reference.Y) + LeanCm + ShiftCm);
 		// The error in the support's own axes: forward, sideways.
 		const FVector2D Error(
 			StrategyErrorCm.X * SupportForward.X + StrategyErrorCm.Y * SupportForward.Y,
@@ -676,6 +785,13 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	RestS = 0.0;
 	StateLog.Add(FSandboxStateChange{ ElapsedS, NewState, Reason });
 	UE_LOG(LogSandbox, Display, TEXT("Body controller: %s at %.3f s (%s)"), FSandboxBodyTuning::StateName(NewState), ElapsedS, *Reason);
+	if (NewState == ESandboxBodyState::Falling)
+	{
+		// The pose of the fall is chosen once, as the fall starts (ApplyTuning below asks for it).
+		ChooseFallWay();
+		static const TCHAR* const WayNames[] = { TEXT("backward"), TEXT("forward"), TEXT("to the left"), TEXT("to the right") };
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: going down %s"), WayNames[static_cast<int32>(FallWay)]);
+	}
 
 	// Each state has its own values. The store has checked every state that sets any, so this reads.
 	FSandboxBodyTuning NewTuning;
@@ -760,8 +876,7 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 			// down, a foot that had slid 15 cm on its edge after a step across was pulled back toward it by its leg,
 			// which pushed the body off its support and into the next stagger; moved there at once, the leg's reach
 			// jumped past its length and the knee straightened in one step.
-			const FVector Was = Foot.GlideS > 0.0 && Foot.GlideElapsedS < Foot.GlideS
-				? FMath::Lerp(Foot.GlideFrom, Foot.Point, FMath::SmoothStep(0.0, 1.0, Foot.GlideElapsedS / Foot.GlideS)) : Foot.Point;
+			const FVector Was = Foot.GlidedPoint();
 			FVector Now = Was;
 			for (const FAssist& Assist : Assists)
 			{
@@ -822,17 +937,18 @@ void USandboxBodyController::ReleaseFootTargets()
 	USandboxAnimInstance* Animation = Mesh ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
 	if (Animation)
 	{
-		// Eased out like any placement: a leg let go in one step would snap back.
+		// Eased out like any placement: a leg let go in one step would snap back. As fast as the fall's pose comes in:
+		// let go more slowly, the legs of a body that fell after a step were still straight when it met the floor.
 		for (const TPair<int32, FVector>& Placed : PlacedFeet)
 		{
-			Animation->SetLimbTarget(Placed.Key, Placed.Value, 0.0, Tuning.Poses.BlendS);
+			Animation->SetLimbTarget(Placed.Key, Placed.Value, 0.0, Tuning.Poses.FallBlendS);
 		}
 	}
 	PlacedFeet.Reset();
 	// The controller's own placements too, and a step under way ends where it is.
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
-		ReleaseFoot(Side, Tuning.Poses.BlendS);
+		ReleaseFoot(Side, Tuning.Poses.FallBlendS);
 	}
 	Swing.bActive = false;
 	Pending.bActive = false;
@@ -944,7 +1060,16 @@ void USandboxBodyController::UpdateLowering(double DeltaTime)
 	{
 		if (Placement[Leg].Mode == EPlacement::Planted)
 		{
-			GoalCm = FMath::Max(GoalCm, LoweringFor(FrameTransform(Placement[Leg].Frame, Leg, false), Leg, Placement[Leg].Point));
+			double NeedCm = LoweringFor(FrameTransform(Placement[Leg].Frame, Leg, false), Leg, Placement[Leg].Point);
+			// The foot a regrouping step is about to lift holds the pelvis down only by the share of the weight it still
+			// carries: as the weight goes over to the stance foot the body rises on that leg, as a person comes up out
+			// of a lunge. (Held down for a leg that carried nothing, the body sat 15 cm low on the bent stance leg with
+			// its centre of mass over that foot's heel, and could not come further forward.)
+			if (Pending.bActive && Pending.Plan.bRegroup && Leg == Pending.Plan.Side && WeightN > 0.0)
+			{
+				NeedCm *= FMath::Clamp(Balance.FootForceN[Leg] / (0.5 * WeightN), 0.0, 1.0);
+			}
+			GoalCm = FMath::Max(GoalCm, NeedCm);
 		}
 	}
 	if (Swing.bActive)
@@ -1398,7 +1523,30 @@ void USandboxBodyController::UpdateShift(double DeltaTime)
 			};
 			const int32 Stance = 1 - Pending.Plan.Side;
 			ShiftGoalCm = (Middle(Soles[Stance]) - Middle(Soles[Pending.Plan.Side])) * (0.5 * Tuning.Balance.StepShiftShare);
+			if (Pending.Plan.bRegroup && Pending.TargetSole.Num() > 0)
+			{
+				// A regrouping step starts from wherever the recovery steps left the feet (a lunge of 50 cm), and ends
+				// with the feet side by side. The body goes to the stance foot, short of its middle on the side the other
+				// foot will come down on (balance.regroup_inside_share of the way to that foot's place): on one leg it
+				// then leans toward the foot that is coming, as in a walking step, not away from it. The goal is moved
+				// further for as long as the capture point is not there (RegroupLead).
+				// The whole sole of the stance foot, also the part a raised heel has lifted off the floor.
+				TArray<FVector2D> WholeSole;
+				FSandboxBodyProbe::SupportPolygon(Mesh, TArray<FName>{ FootBoneName[Stance] }, WholeSoleToleranceCm, WholeSole);
+				const FVector2D StanceMiddle = WholeSole.Num() > 0 ? Middle(WholeSole) : Middle(Soles[Stance]);
+				const FVector2D Between = (StanceMiddle + Middle(Soles[Pending.Plan.Side])) * 0.5;
+				RegroupPoint = FMath::Lerp(StanceMiddle, Middle(Pending.TargetSole), Tuning.Balance.RegroupInsideShare);
+				RegroupBaseCm = RegroupPoint - Between;
+				ShiftGoalCm = RegroupBaseCm + RegroupLead(DeltaTime);
+			}
 		}
+	}
+	else if (Swing.bActive && bShiftHeld && StepLog.Num() > 0 && StepLog.Last().bRegroup)
+	{
+		// A regrouping step ends with the feet side by side under the body: the body is held where the shift took it
+		// while the foot swings, the same way. (Let go along the step like any other shift, the goal went back toward
+		// the place the foot had left.)
+		ShiftGoalCm = RegroupBaseCm + RegroupLead(DeltaTime);
 	}
 	else if (Swing.bActive && bShiftHeld)
 	{
@@ -1423,6 +1571,27 @@ void USandboxBodyController::UpdateShift(double DeltaTime)
 	}
 }
 
+FVector2D USandboxBodyController::RegroupLead(double DeltaTime)
+{
+	// The pelvis's goal is moved for as long as the capture point is not where the body is to stand: the legs' frames
+	// follow the body, and the leg left behind in a lunge holds it back, so a goal set once is not reached.
+	// By the distance still to go, plus a part that grows while it stays (balance.regroup_shift_gain_per_s), no
+	// further than balance.regroup_lead_max_cm: a goal far beyond the stance foot folds the leg under it.
+	const FSandboxBalanceTuning& Limits = Tuning.Balance;
+	const FVector2D ErrorCm = RegroupPoint - Balance.CapturePoint;
+	RegroupIntegralCm += ErrorCm * (Limits.RegroupShiftGainPerS * DeltaTime);
+	if (RegroupIntegralCm.Size() > Limits.RegroupLeadMaxCm)
+	{
+		RegroupIntegralCm = RegroupIntegralCm.GetSafeNormal() * Limits.RegroupLeadMaxCm;
+	}
+	FVector2D LeadCm = ErrorCm * Limits.RegroupLeadGain + RegroupIntegralCm;
+	if (LeadCm.Size() > Limits.RegroupLeadMaxCm)
+	{
+		LeadCm = LeadCm.GetSafeNormal() * Limits.RegroupLeadMaxCm;
+	}
+	return LeadCm;
+}
+
 void USandboxBodyController::StartSwing(const FSandboxStepRecord& Plan, const TArray<FVector2D>& TargetSole, double DurationS, bool bReaim)
 {
 	const FSandboxBalanceTuning& Limits = Tuning.Balance;
@@ -1436,7 +1605,11 @@ void USandboxBodyController::StartSwing(const FSandboxStepRecord& Plan, const TA
 	Swing.ElapsedS = 0.0;
 	Swing.From = Record.From;
 	Swing.Target = Record.Target;
-	Swing.Point = Record.From;
+	// Where the leg was solved for until now. (Started from where the foot was, the target of a leg whose foot had been
+	// carried 20 cm from its point while the body was off the floor jumped by that much, and the stiffened swing leg
+	// snapped its calf at 31 to 48 rad/s.)
+	Swing.StartOffset = Placement[Side].Mode != EPlacement::None ? Placement[Side].SettledPoint() - Record.From : FVector::ZeroVector;
+	Swing.Point = Record.From + Swing.StartOffset;
 	Swing.VelocityCmS = FVector::ZeroVector;
 	Swing.Across = 0.0;
 	Swing.Descent = 0.0;
@@ -1520,6 +1693,87 @@ bool USandboxBodyController::RequestStep(FName Foot, const FVector& WorldTarget,
 	return true;
 }
 
+FVector USandboxBodyController::StanceError(FVector OutFootAt[2], FVector& OutStance) const
+{
+	FVector SupportLocation;
+	FQuat SupportRotation;
+	SupportFrame(SupportLocation, SupportRotation);
+	OutFootAt[0] = SupportLocation;
+	OutFootAt[1] = SupportLocation;
+	for (const FAssist& Assist : Assists)
+	{
+		if (Assist.Slot == EAssistSlot::Feet && Assist.Side >= 0)
+		{
+			OutFootAt[Assist.Side] = Assist.Target.GetLocation();
+		}
+	}
+	OutStance = SupportRotation.RotateVector(FVector(StanceRightFromLeft, 0.0));
+	return (OutFootAt[1] - OutFootAt[0]) - OutStance;
+}
+
+double USandboxBodyController::GetStanceErrorCm() const
+{
+	FVector FootAt[2];
+	FVector Stance;
+	return bStarted ? StanceError(FootAt, Stance).Size2D() : 0.0;
+}
+
+void USandboxBodyController::UpdateRegroup(double DeltaTime)
+{
+	const FSandboxBalanceTuning& Limits = Tuning.Balance;
+	// Only a body that stands quietly after steps of its own brings its feet together: both feet on the floor, at
+	// rest, the capture point inside the support, and nothing pushing it (a body braced against a held push keeps
+	// the stance it braced in).
+	constexpr double BracedCm = 1.0;
+	const bool bQuiet = State == ESandboxBodyState::Standing && RegroupLeft > 0 && Limits.RegroupWaitS > 0.0 && PlacedFeet.Num() == 0 &&
+		LeanCm.Size() < BracedCm &&
+		!IsStepUnderWay() && Balance.bValid && Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0 &&
+		Balance.Velocity.Size2D() <= Limits.RecoverSpeedMps * 100.0 && LastDecisionMarginCm > 0.0;
+	RegroupQuietS = bQuiet ? RegroupQuietS + DeltaTime : 0.0;
+	if (!bQuiet || RegroupQuietS < Limits.RegroupWaitS - KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+	RegroupQuietS = 0.0;
+	FVector FootAt[2];
+	FVector Stance;
+	const FVector Off = StanceError(FootAt, Stance);
+	if (Off.Size2D() <= Limits.RegroupToleranceCm)
+	{
+		RegroupLeft = 0;
+		return;
+	}
+	// Either foot can close the stance. The one to move is the one whose move leaves the feet under the body: the
+	// middle of the stance it would make is nearer the centre of mass.
+	const FVector Targets[2] = { FootAt[1] - Stance, FootAt[0] + Stance };
+	const FVector Middle[2] = { FootAt[1] - Stance * 0.5, FootAt[0] + Stance * 0.5 };
+	const int32 Side = FVector::DistSquared2D(Middle[0], Balance.CenterOfMass) <= FVector::DistSquared2D(Middle[1], Balance.CenterOfMass) ? 0 : 1;
+	--RegroupLeft;
+	FString Error;
+	if (RequestStep(FootBoneName[Side], Targets[Side], Error))
+	{
+		Pending.Plan.bRegroup = true;
+		RegroupIntegralCm = FVector2D::ZeroVector;
+		// The whole sole where it will stand: a foot left behind in a lunge stands on its toes, and the part of its
+		// sole that touches the floor is not what it will stand on.
+		TArray<FVector2D> WholeSole;
+		FSandboxBodyProbe::SupportPolygon(Mesh, TArray<FName>{ FootBoneName[Side] }, WholeSoleToleranceCm, WholeSole);
+		const FBodyInstance* Foot = Mesh->GetBodyInstance(FootBoneName[Side]);
+		if (WholeSole.Num() > 0 && Foot && Foot->IsValidBodyInstance())
+		{
+			const FVector At = Foot->GetUnrealWorldTransform().GetLocation();
+			const FVector2D Move(Targets[Side].X - At.X, Targets[Side].Y - At.Y);
+			for (FVector2D& Corner : WholeSole)
+			{
+				Corner += Move;
+			}
+			Pending.TargetSole = WholeSole;
+		}
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: the feet stand %.1f cm from their stance; %s steps back to its place"),
+			Off.Size2D(), *FootBoneName[Side].ToString());
+	}
+}
+
 void USandboxBodyController::UpdateStep(double DeltaTime)
 {
 	const FSandboxBalanceTuning& Limits = Tuning.Balance;
@@ -1546,7 +1800,28 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
 		TArray<FVector2D> StanceSole;
 		FSandboxBodyProbe::SupportPolygon(Mesh, TArray<FName>{ FootBoneName[1 - Pending.Plan.Side] }, Limits.SoleToleranceCm, StanceSole);
 		const FVector2D Point = Balance.CapturePoint + (WeightN > 0.0 ? SustainedMomentNCm / WeightN : FVector2D::ZeroVector);
-		const bool bOver = StanceSole.Num() > 0 && FSandboxBodyProbe::MarginInsidePolygon(StanceSole, Point) >= -Limits.StepShiftReadyCm;
+		bool bOver = StanceSole.Num() > 0 && FSandboxBodyProbe::MarginInsidePolygon(StanceSole, Point) >= -Limits.StepShiftReadyCm;
+		if (Pending.Plan.bRegroup)
+		{
+			// A regrouping step is not needed for balance, so its foot lifts only when the step will hold: the capture
+			// point, where it will be when the foot lands, inside the support the step gives by balance.regroup_margin_cm.
+			// That is a body on its way onto the stance foot, as a person pushes off the foot left behind, not one that
+			// has come to rest over it. (Waiting for the centre of mass to stand over the stance sole took 0.5 to 1.2 s
+			// and a pelvis's goal far beyond that foot; out of a deep lunge the body did not get there at all.) A body
+			// that does not get that far keeps its feet where they are.
+			bOver = MarginCm >= Limits.RegroupMarginCm;
+			if (!bOver)
+			{
+				if (Pending.ElapsedS >= Limits.RegroupShiftMaxS - KINDA_SMALL_NUMBER)
+				{
+					Pending.bActive = false;
+					RegroupLeft = 0;
+					UE_LOG(LogSandbox, Display, TEXT("Body controller: the weight did not come over the stance foot in %.2f s; the feet stay where they are (capture point (%.1f, %.1f), wanted at (%.1f, %.1f); at landing (%.1f, %.1f), %.1f cm inside the support to come; swing foot carries %.0f N; pelvis lowered %.1f cm)"),
+						Pending.ElapsedS, Point.X, Point.Y, RegroupPoint.X, RegroupPoint.Y, Landing.X, Landing.Y, MarginCm, Balance.FootForceN[Pending.Plan.Side], LowerCm);
+				}
+				return;
+			}
+		}
 		if (bOver || Pending.ElapsedS >= Limits.StepShiftMaxS - KINDA_SMALL_NUMBER)
 		{
 			Pending.bActive = false;
@@ -1669,7 +1944,11 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
 		}
 	}
 	const double Across =FMath::SmoothStep(0.0, 1.0, FMath::Min(Progress / Over, 1.0));
-	const double Descent = Progress > Over ? FMath::SmoothStep(0.0, 1.0, (Progress - Over) / (1.0 - Over)) : 0.0;
+	// Down from balance.step_descent_share of the swing, which may begin before the foot is over its target: down only
+	// after it (in the last 20% of a 0.25 s swing), the foot met the floor at 1.7 m/s with 1400 N, the slanted leg threw
+	// the pelvis back, and a 30 N*s push caught with 10 cm to spare took a second step out of the other side.
+	const double DescentFrom = FMath::Clamp(Limits.StepDescentShare, KINDA_SMALL_NUMBER, 1.0 - KINDA_SMALL_NUMBER);
+	const double Descent = Progress > DescentFrom ? FMath::SmoothStep(0.0, 1.0, (Progress - DescentFrom) / (1.0 - DescentFrom)) : 0.0;
 	// The foot leaves the floor at rest and speeds up. (Raised along a sine, it started at its fastest, 1.8 m/s, and the
 	// leg drove its toe into the floor as it lifted: up to 3800 N, the stance foot thrown off the floor.)
 	const double Rise = FMath::SmoothStep(0.0, 1.0, FMath::Min(Progress / (0.5 * Over), 1.0));
@@ -1694,6 +1973,7 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
 		Swing.Point.X = Curve.X;
 		Swing.Point.Y = Curve.Y;
 	}
+	Swing.Point += Swing.StartOffset * (1.0 - Across);
 	Swing.VelocityCmS = DeltaTime > 0.0 ? (Swing.Point - LastPoint) / DeltaTime : FVector::ZeroVector;
 	Placement[Swing.Side].Point = Swing.Point;
 	// The assist's foot-planting control carries the foot along: its target is the swing's point, moving.
@@ -1714,12 +1994,18 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
 	// time. A toe that brushes the floor on the way across is not a landing. Waiting for the swing's end instead,
 	// a foot that touched early with its toe (a step back) or its edge (a step to the side) was driven on into the
 	// floor by the stiffened swing leg: 2900 N, both feet off the floor, the foot thrown off again.
-	const bool bTouched = Progress >= Over && Balance.FootForceN[Swing.Side] > 0.0;
+	const bool bTouched = Progress >= FMath::Min(Over, DescentFrom) && Balance.FootForceN[Swing.Side] > 0.0;
 	if (bTouched || Swing.ElapsedS >= 2.0 * DurationS)
 	{
 		Swing.bActive = false;
 		bShiftHeld = false;
 		FSandboxStepRecord& Record = StepLog.Last();
+		if (Record.bRegroup)
+		{
+			// The anchors glide to the new support from where the body is (FollowSupport), which is where the shift
+			// took it: what is left of the shift would be counted twice.
+			ShiftCm = FVector2D::ZeroVector;
+		}
 		const FBodyInstance* Landed = Mesh->GetBodyInstance(FootBoneName[Swing.Side]);
 		Record.LandS = ElapsedS;
 		Record.bTouched = bTouched;
@@ -1737,11 +2023,35 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
 		// Where the other foot stands now: it may have turned or slid under the body while this one swung.
 		const FBodyInstance* OtherFoot = Mesh->GetBodyInstance(FootBoneName[Other]);
 		const FVector OtherAt = OtherFoot ? OtherFoot->GetUnrealWorldTransform().GetLocation() : Placement[Other].Point;
-		PlaceFoot(Swing.Side, EPlacement::Planted, FVector(Record.Landed.X, Record.Landed.Y, Swing.Target.Z), Planted, Limits.AnchorFollowS);
+		// Both points go over from where the legs were solved for to where the feet are, over AnchorFollowS as the frames
+		// do. (Moved at once, a stance foot that had been carried 20 cm off its point while the body was off the floor
+		// had its leg's target jump by that much, and the next step lifted that leg from there.)
+		const FVector WasPoint[2] = { Placement[0].GlidedPoint(), Placement[1].GlidedPoint() };
+		const bool bWasPlaced[2] = { Placement[0].Mode != EPlacement::None, Placement[1].Mode != EPlacement::None };
+		PlaceFoot(Swing.Side, EPlacement::Planted, FVector(Record.Landed.X, Record.Landed.Y, Swing.Target.Z), Planted, Limits.AnchorFollowS, nullptr, true);
 		// From the height the bone touched at down to the planted one: the sole comes down onto the floor.
 		Placement[Swing.Side].SettleCm = FMath::Max(Record.Landed.Z - Swing.Target.Z, 0.0);
 		Placement[Swing.Side].SettleS = Limits.StepSettleS;
-		PlaceFoot(Other, EPlacement::Planted, FVector(OtherAt.X, OtherAt.Y, FlatFootPoint(Other).Z), Planted, Limits.AnchorFollowS);
+		// The planned sole where the foot landed: what the decisions count as its support while it settles.
+		LandedSole = Swing.TargetSole;
+		for (FVector2D& Corner : LandedSole)
+		{
+			Corner += FVector2D(Record.Landed.X - Swing.Target.X, Record.Landed.Y - Swing.Target.Y);
+		}
+		LandedSoleSide = Swing.Side;
+		LandedSoleUntilS = ElapsedS + Limits.StepSettleS;
+		PlaceFoot(Other, EPlacement::Planted, FVector(OtherAt.X, OtherAt.Y, FlatFootPoint(Other).Z), Planted, Limits.AnchorFollowS, nullptr, true);
+		for (int32 Each = 0; Each < 2; ++Each)
+		{
+			if (bWasPlaced[Each])
+			{
+				// The landed foot glides only across: its height is the settling's.
+				FFootPlacement& Foot = Placement[Each];
+				Foot.GlideFrom = Each == Swing.Side ? FVector(WasPoint[Each].X, WasPoint[Each].Y, Foot.Point.Z) : WasPoint[Each];
+				Foot.GlideElapsedS = 0.0;
+				Foot.GlideS = Limits.AnchorFollowS;
+			}
+		}
 		// The assist's control of the landed foot was led along the swing, with the swing's velocity: it is planted
 		// where the foot is now (FollowSupport may have done so as the foot touched, before the swing's last
 		// guidance in the same tick overwrote it).
@@ -1776,6 +2086,7 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	// the body stands on, and is kept for the sense of balance.
 	if (!OtherComponent->IsSimulatingPhysics(Hit.BoneName))
 	{
+		bWorldTouched = true;
 		const FBodyInstance* Body = Mesh->GetBodyInstance(Hit.MyBoneName);
 		if (Body && SupportImpulseNs.IsValidIndex(Body->InstanceBodyIndex))
 		{
@@ -1891,17 +2202,25 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 		// the assist take back what the body could not.
 		StepNeededS = LastDecisionMarginCm < -Limits.RecoverableCm ? StepNeededS + DeltaTime : 0.0;
 		LostS = AtLandingCm > Limits.StepReachCm ? LostS + DeltaTime : 0.0;
-		bStepNeeded = StepNeededS >= Limits.DecisionS - KINDA_SMALL_NUMBER;
-		if (LostS > 0.0)
+		// Beyond one step's reach the body does not wait either, and it does not give up: it steps as far as it can,
+		// and again, and falls when its posture gives way (below), as a person does. (Deciding here that balance was
+		// lost, it let go at once and went over like a plank, without having moved a foot.)
+		const bool bCanStep = PlacedFeet.Num() == 0;
+		bStepNeeded = StepNeededS >= Limits.DecisionS - KINDA_SMALL_NUMBER || (bCanStep && LostS > 0.0);
+		if (LostS > 0.0 && !bCanStep)
 		{
 			bStepNeeded = false;
 			EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("capture point %.1f cm outside the support, %.0f cm by the time a step lands: beyond a step"),
 				-LastDecisionMarginCm, AtLandingCm));
 		}
-		else if (bStepNeeded && State != ESandboxBodyState::Stagger)
+		else if (bStepNeeded && State != ESandboxBodyState::Stagger && PlacedFeet.Num() == 0)
 		{
+			// A body whose legs are placed from outside (a scenario's foot_target) cannot step: a step it needs is held
+			// by the assist and reported, as before the stagger existed. (Staggering, it lost the assist's pull and fell
+			// over the foot it had been told to hold up.)
 			RecoveredS = 0.0;
 			StaggerSteps = 0;
+			RegroupLeft = FMath::RoundToInt32(Limits.RegroupMaxSteps);
 			EnterState(ESandboxBodyState::Stagger, FString::Printf(TEXT("capture point %.1f cm outside the support: a step is needed"), -LastDecisionMarginCm));
 		}
 	}
@@ -2072,6 +2391,8 @@ void USandboxBodyController::PushTuningToControls()
 		Data.AngularDampingRatio = 0.0f;
 		Data.AngularExtraDamping = static_cast<float>(Spring * Group.DampingS * SwingDampingScale);
 		Data.MaxTorque = static_cast<float>(Group.MaxTorqueNm * TorqueToUnreal);
+		Data.AngularTargetVelocityMultiplier = static_cast<float>(bSwingLeg
+			? FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingEase) : Group.PoseVelocityShare);
 		Data.bUseSkeletalAnimation = true;
 		// The two bodies are jointed and must never collide, whatever this extra constraint says.
 		Data.bDisableCollision = true;
@@ -2155,6 +2476,8 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	Control->UpdateTargetCaches(DeltaTime);
 	UpdateState(DeltaTime);
+	UpdateHeld(DeltaTime);
+	UpdateRegroup(DeltaTime);
 	UpdateStep(DeltaTime);
 	UpdateShift(DeltaTime);
 	UpdateLowering(DeltaTime);
@@ -2163,137 +2486,6 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdatePoseTurns();
 	UpdateAssistLoad();
 	Control->UpdateControls(DeltaTime);
-
-	if (CVarStepTrace.GetValueOnGameThread() > 1 || (CVarStepTrace.GetValueOnGameThread() > 0 && (Placement[0].Mode != EPlacement::None || Placement[1].Mode != EPlacement::None)))
-	{
-		const USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
-		const FBodyInstance* PelvisBody = Mesh->GetBodyInstance(TEXT("pelvis"));
-		const FVector P = PelvisBody ? PelvisBody->GetUnrealWorldTransform().GetLocation() : FVector::ZeroVector;
-		const FVector V = PelvisBody ? PelvisBody->GetUnrealWorldVelocity() : FVector::ZeroVector;
-		const FAssist* PelvisAssist = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
-		const FQuat Turn = PelvisBody && PelvisAssist ? PelvisBody->GetUnrealWorldTransform().GetRotation() * PelvisAssist->Target.GetRotation().Inverse() : FQuat::Identity;
-		const FVector Goal = PelvisAssist ? AssistGoal(*PelvisAssist).GetLocation() : FVector::ZeroVector;
-		const FRotator R = Turn.Rotator();
-		FString Line = FString::Printf(TEXT("TRACE t=%.3f %s pelvis (%.1f %.1f %.1f) rot p%.0f y%.0f r%.0f v (%.0f %.0f %.0f) com (%.1f %.1f %.1f) cp (%.1f %.1f)"),
-			ElapsedS, FSandboxBodyTuning::StateName(State), P.X, P.Y, P.Z, R.Pitch, R.Yaw, R.Roll, V.X, V.Y, V.Z,
-			Balance.CenterOfMass.X, Balance.CenterOfMass.Y, Balance.CenterOfMass.Z, Balance.CapturePoint.X, Balance.CapturePoint.Y);
-		if (PelvisBody)
-		{
-			const FTransform PelvisT = PelvisBody->GetUnrealWorldTransform();
-			const FBodyInstance* Calf = Mesh->GetBodyInstance(CalfBoneName[0]);
-			const FBodyInstance* Thigh = Mesh->GetBodyInstance(ThighBoneName[0]);
-			const FBodyInstance* FootL = Mesh->GetBodyInstance(FootBoneName[0]);
-			const FTransform Comp = Mesh->GetComponentTransform();
-			if (Calf && Thigh && FootL)
-			{
-				// In the component's frame: hip, knee, ankle of the left leg.
-				const FVector H = Comp.InverseTransformPosition(Thigh->GetUnrealWorldTransform().GetLocation());
-				const FVector K = Comp.InverseTransformPosition(Calf->GetUnrealWorldTransform().GetLocation());
-				const FVector A = Comp.InverseTransformPosition(FootL->GetUnrealWorldTransform().GetLocation());
-				const FVector Pd = Comp.InverseTransformPosition(PelvisT.GetLocation());
-				const FVector Tg = Comp.InverseTransformPosition(Placement[0].Point);
-				Line += FString::Printf(TEXT(" CS pel(%.1f %.1f %.1f) hip(%.1f %.1f %.1f) knee(%.1f %.1f %.1f) ank(%.1f %.1f %.1f) tgt(%.1f %.1f %.1f)"),
-					Pd.X, Pd.Y, Pd.Z, H.X, H.Y, H.Z, K.X, K.Y, K.Z, A.X, A.Y, A.Z, Tg.X, Tg.Y, Tg.Z);
-				// The animation's pose of the left ankle (what the muscles are asked for), component space.
-				const TArray<FTransform>& Local = Mesh->GetBoneSpaceTransforms();
-				const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
-				if (FootBoneIndex[0] != INDEX_NONE && Local.IsValidIndex(FootBoneIndex[0]))
-				{
-					FTransform Acc = Local[FootBoneIndex[0]];
-					for (int32 Parent = Skeleton.GetParentIndex(FootBoneIndex[0]); Parent != INDEX_NONE && Local.IsValidIndex(Parent); Parent = Skeleton.GetParentIndex(Parent))
-					{
-						Acc = Acc * Local[Parent];
-					}
-					const FVector AnimAnkle = Acc.GetLocation();
-					Line += FString::Printf(TEXT(" anim(%.1f %.1f %.1f)"), AnimAnkle.X, AnimAnkle.Y, AnimAnkle.Z);
-				}
-				// Twist about the bone (deg) of each left-leg bone relative to its parent, from the reference pose:
-				// the animation's (a) and the bodies' (b).
-				{
-					const auto AnimCs = [&](int32 Bone)
-					{
-						FTransform T = Local[Bone];
-						for (int32 Parent = Skeleton.GetParentIndex(Bone); Parent != INDEX_NONE && Local.IsValidIndex(Parent); Parent = Skeleton.GetParentIndex(Parent))
-						{
-							T = T * Local[Parent];
-						}
-						return T.GetRotation();
-					};
-					const auto BodyCs = [&](int32 Bone)
-					{
-						const FBodyInstance* B = Mesh->GetBodyInstance(Skeleton.GetBoneName(Bone));
-						return B ? (Comp.GetRotation().Inverse() * B->GetUnrealWorldTransform().GetRotation()) : FQuat::Identity;
-					};
-					const int32 Ball = Skeleton.FindBoneIndex(TEXT("ball_l"));
-					const int32 Chain[4] = { ThighBoneIndex[0], Skeleton.GetParentIndex(FootBoneIndex[0]), FootBoneIndex[0], Ball };
-					for (int32 Link = 0; Link < 3; ++Link)
-					{
-						const int32 Bone = Chain[Link];
-						const int32 Next = Chain[Link + 1];
-						const int32 Parent = Skeleton.GetParentIndex(Bone);
-						if (Bone == INDEX_NONE || Next == INDEX_NONE || Parent == INDEX_NONE || !Local.IsValidIndex(Bone))
-						{
-							continue;
-						}
-						const FTransform RefParent = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Parent);
-						const FTransform RefBone = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Bone);
-						const FTransform RefNext = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Next);
-						const FQuat RefRel = RefParent.GetRotation().Inverse() * RefBone.GetRotation();
-						const FVector Axis = RefParent.GetRotation().Inverse().RotateVector((RefNext.GetLocation() - RefBone.GetLocation()).GetSafeNormal());
-						double Out[2];
-						const FQuat Rel[2] = { AnimCs(Parent).Inverse() * AnimCs(Bone), BodyCs(Parent).Inverse() * BodyCs(Bone) };
-						for (int32 Which = 0; Which < 2; ++Which)
-						{
-							FQuat SwingPart, TwistPart;
-							(Rel[Which] * RefRel.Inverse()).GetNormalized().ToSwingTwist(Axis, SwingPart, TwistPart);
-							Out[Which] = FMath::RadiansToDegrees(TwistPart.GetTwistAngle(Axis));
-						}
-						Line += FString::Printf(TEXT(" T%s(a%.0f b%.0f)"), *Skeleton.GetBoneName(Bone).ToString().Left(2), Out[0], Out[1]);
-					}
-				}
-				// The left leg's joints: swing1, swing2, twist (deg, from the middle of the range) and how far into the
-				// swing cone (1 at its edge) and the twist range.
-				for (const FName Child : { ThighBoneName[0], CalfBoneName[0], FootBoneName[0] })
-				{
-					for (FConstraintInstance* Joint : Mesh->Constraints)
-					{
-						if (Joint && Joint->ConstraintBone1 == Child)
-						{
-							const double S1 = FMath::RadiansToDegrees(Joint->GetCurrentSwing1());
-							const double S2 = FMath::RadiansToDegrees(Joint->GetCurrentSwing2());
-							const double Tw = FMath::RadiansToDegrees(Joint->GetCurrentTwist());
-							const double L1 = Joint->GetAngularSwing1Limit();
-							const double L2 = Joint->GetAngularSwing2Limit();
-							const double Lt = Joint->GetAngularTwistLimit();
-							const double Cone = (L1 > 0.0 ? FMath::Square(S1 / L1) : 0.0) + (L2 > 0.0 ? FMath::Square(S2 / L2) : 0.0);
-							Line += FString::Printf(TEXT(" J%s(%.0f/%.0f %.0f/%.0f %.0f/%.0f c%.2f)"), *Child.ToString().Left(2),
-								S1, L1, S2, L2, Tw, Lt, Cone);
-						}
-					}
-				}
-			}
-		}
-		Line += FString::Printf(TEXT(" goal (%.1f %.1f %.1f) low %.1f shift (%.1f %.1f) %s"), Goal.X, Goal.Y, Goal.Z, LowerCm, ShiftCm.X, ShiftCm.Y, Pending.bActive ? TEXT("PEND") : Swing.bActive ? TEXT("SWING") : TEXT("-"));
-		for (int32 Side = 0; Side < 2; ++Side)
-		{
-			const FBodyInstance* FootBody = Mesh->GetBodyInstance(FootBoneName[Side]);
-			const FVector F = FootBody ? FootBody->GetUnrealWorldTransform().GetLocation() : FVector::ZeroVector;
-			const FVector FV = FootBody ? FootBody->GetUnrealWorldVelocity() : FVector::ZeroVector;
-			const FTransform Frame = Placement[Side].Mode != EPlacement::None ? FrameTransform(Placement[Side].Frame, Side) : Mesh->GetComponentTransform();
-			const FVector Hip = Frame.TransformPosition(HipReferenceCs[Side]);
-			const FVector Pt = Placement[Side].Point;
-			// The foot's turn from its planted orientation (the assist's target for it).
-			const FQuat FootRot = FootBody ? FootBody->GetUnrealWorldTransform().GetRotation() : FQuat::Identity;
-			const FAssist* FootAssist = Assists.FindByPredicate([Side](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Feet && Assist.Side == Side; });
-			const FRotator FootTurn = FootAssist ? (FootRot * FootAssist->Target.GetRotation().Inverse()).Rotator() : FRotator::ZeroRotator;
-			Line += FString::Printf(TEXT(" | %s m%d f%d w%.2f N%.0f foot (%.1f %.1f %.1f) v (%.0f %.0f %.0f) ang p%.0f y%.0f r%.0f pt (%.1f %.1f %.1f) frameZ %.1f hip-pt %.1f/%.1f"),
-				Side == 0 ? TEXT("L") : TEXT("R"), static_cast<int32>(Placement[Side].Mode), static_cast<int32>(Placement[Side].Frame),
-				Animation ? Animation->GetLimbWeight(FootBoneIndex[Side]) : -1.0, Balance.FootForceN[Side], F.X, F.Y, F.Z, FV.X, FV.Y, FV.Z,
-				FootTurn.Pitch, FootTurn.Yaw, FootTurn.Roll,
-				Pt.X, Pt.Y, Pt.Z, Frame.GetLocation().Z, FVector::Dist(Hip, Pt), LegLengthCm[Side]);
-		}
-		UE_LOG(LogSandbox, Display, TEXT("%s"), *Line);
-	}
 
 	// Advanced last: during a tick this is the time at which the coming physics step begins.
 	ElapsedS += DeltaTime;
@@ -2336,14 +2528,35 @@ double USandboxBodyController::DecisionMarginCm() const
 			return FSandboxBodyProbe::MarginInsidePolygon(Planned, Point);
 		}
 	}
-	if (Shift.IsZero() && Planted.Num() == Balance.StandingFeet.Num() && Balance.IsSupported())
+	// A foot just set down is support with its whole sole, flat where it landed, while it settles (balance.step_settle_s):
+	// it comes down on its heel or edge, and the few centimetres of sole that touch at first put a capture point that the
+	// step had caught with 10 cm to spare 4 cm outside, and a second step followed.
+	if (LandedSoleUntilS > ElapsedS && LandedSole.Num() > 0 && LandedSoleSide >= 0)
 	{
-		return Balance.CaptureMarginCm;
+		TArray<FVector2D> Points = LandedSole;
+		TArray<FName, TInlineAllocator<2>> Others = Planted;
+		Others.Remove(FootBoneName[LandedSoleSide]);
+		if (Others.Num() > 0)
+		{
+			TArray<FVector2D> OtherSoles;
+			FSandboxBodyProbe::SupportPolygon(Mesh, Others, Tuning.Balance.SoleToleranceCm, OtherSoles);
+			Points.Append(OtherSoles);
+		}
+		TArray<FVector2D> Hull;
+		FSandboxBodyProbe::ConvexHull2D(Points, Hull);
+		if (Hull.Num() > 0)
+		{
+			return FSandboxBodyProbe::MarginInsidePolygon(Hull, Point);
+		}
 	}
+	// The whole sole of every such foot, also the part that is off the floor: a body that rises on its toes or rocks
+	// back on its heels still has its feet under it, and the rest of the sole comes down the moment the body goes
+	// that way. (Judged against the part that touched, a body thrown onto its toes by a blow on the back of the head
+	// had its capture point "4.7 cm outside the support", under its own raised heels, and stepped back twice.)
 	if (Planted.Num() > 0)
 	{
 		TArray<FVector2D> Polygon;
-		FSandboxBodyProbe::SupportPolygon(Mesh, Planted, Tuning.Balance.SoleToleranceCm, Polygon);
+		FSandboxBodyProbe::SupportPolygon(Mesh, Planted, WholeSoleToleranceCm, Polygon);
 		if (Polygon.Num() > 0)
 		{
 			return FSandboxBodyProbe::MarginInsidePolygon(Polygon, Point);
@@ -2449,6 +2662,16 @@ void USandboxBodyController::FollowSupport(double DeltaTime)
 			}
 			Assist.FollowFrom = Assist.Target;
 			Assist.FollowTo = FTransform((SupportRotation * Assist.SupportRotation).GetNormalized(), SupportLocation + SupportRotation.RotateVector(Assist.SupportLocation));
+			// In a stagger the anchors set the legs' frames only, and a step has just carried the body: the glide starts
+			// over the body, not at the old support. (From the old support, the planted legs pulled the body back
+			// toward it, 40% of the way, and a 30 N*s push caught by a step with 10 cm to spare rebounded out of the
+			// other side of the new support and took a second step.) The legs' frames go over smoothly (UpdateStep).
+			const FBodyInstance* Body = State == ESandboxBodyState::Stagger ? Mesh->GetBodyInstance(Assist.Bone) : nullptr;
+			if (Body && Body->IsValidBodyInstance())
+			{
+				const FVector At = Body->GetUnrealWorldTransform().GetLocation() - FVector(Assist.AppliedLeanCm * Assist.LeanFactor, 0.0);
+				Assist.FollowFrom.SetLocation(FVector(At.X, At.Y, Assist.FollowTo.GetLocation().Z));
+			}
 			Assist.FollowElapsedS = 0.0;
 			Assist.FollowS = GlideSeconds(Assist.FollowFrom.GetLocation(), Assist.FollowTo.GetLocation());
 		}

@@ -1,7 +1,10 @@
 #include "ScenarioRunnerSubsystem.h"
 
+#include "ScenarioBatchSubsystem.h"
+
 #include "Camera/CameraActor.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
@@ -186,7 +189,14 @@ namespace
 bool UScenarioRunnerSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
 	FString Unused;
-	return FParse::Value(FCommandLine::Get(), TEXT("Scenario="), Unused) && Super::ShouldCreateSubsystem(Outer);
+	return (FParse::Value(FCommandLine::Get(), TEXT("Scenario="), Unused) || UScenarioBatchSubsystem::IsBatch()) && Super::ShouldCreateSubsystem(Outer);
+}
+
+UScenarioBatchSubsystem* UScenarioRunnerSubsystem::GetBatch() const
+{
+	const UWorld* World = GetWorld();
+	const UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+	return UScenarioBatchSubsystem::IsBatch() && GameInstance ? GameInstance->GetSubsystem<UScenarioBatchSubsystem>() : nullptr;
 }
 
 bool UScenarioRunnerSubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
@@ -222,7 +232,24 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	Super::OnWorldBeginPlay(InWorld);
 
 	FString ScenarioArg;
-	FParse::Value(FCommandLine::Get(), TEXT("Scenario="), ScenarioArg);
+	UScenarioBatchSubsystem* Batch = GetBatch();
+	if (Batch)
+	{
+		// A queue of scenarios in one process: this world is a job's, or only the way to the next one.
+		const UScenarioBatchSubsystem::FJob* Job = Batch->BeginWorld(InWorld);
+		if (!Job)
+		{
+			return;
+		}
+		ScenarioArg = Job->Scenario;
+		OutDir = Job->Out;
+		ShotPath = Job->Shot.IsEmpty() ? FString() : FPaths::ConvertRelativePathToFull(Job->Shot);
+		JobShotAt = Job->ShotAt;
+	}
+	else
+	{
+		FParse::Value(FCommandLine::Get(), TEXT("Scenario="), ScenarioArg);
+	}
 
 	// Accept a bare name ("drop_passive"), a project-relative path or an absolute path.
 	ScenarioFile = ScenarioArg;
@@ -236,13 +263,13 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	}
 	ScenarioFile = FPaths::ConvertRelativePathToFull(ScenarioFile);
 
-	if (!FParse::Value(FCommandLine::Get(), TEXT("Out="), OutDir))
+	if (!Batch && !FParse::Value(FCommandLine::Get(), TEXT("Out="), OutDir))
 	{
 		OutDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Scenarios"), FPaths::GetBaseFilename(ScenarioFile));
 	}
 	OutDir = FPaths::ConvertRelativePathToFull(OutDir);
 
-	if (FParse::Value(FCommandLine::Get(), TEXT("Shot="), ShotPath))
+	if (!Batch && FParse::Value(FCommandLine::Get(), TEXT("Shot="), ShotPath))
 	{
 		ShotPath = FPaths::ConvertRelativePathToFull(ShotPath);
 	}
@@ -260,8 +287,8 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 	// Screenshots at moments of the run, next to the final one. A comma separates the times, so the value
 	// is read whole.
-	FString Moments;
-	if (!ShotPath.IsEmpty() && FParse::Value(FCommandLine::Get(), TEXT("ShotAt="), Moments, /*bShouldStopOnSeparator*/ false))
+	FString Moments = JobShotAt;
+	if (!ShotPath.IsEmpty() && (Batch ? !Moments.IsEmpty() : FParse::Value(FCommandLine::Get(), TEXT("ShotAt="), Moments, /*bShouldStopOnSeparator*/ false)))
 	{
 		TArray<FString> Times;
 		Moments.ParseIntoArray(Times, TEXT(","), /*bCullEmpty*/ true);
@@ -1708,8 +1735,22 @@ void UScenarioRunnerSubsystem::Finish()
 	if (Spec.Expect.MaxRecoverySteps.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxRecoverySteps.GetValue();
-		const int32 Count = Controller ? Controller->GetStepLog().Num() : 0;
+		// Steps made for balance or asked for; a step that only brought the feet back together afterwards is not one.
+		int32 Count = 0;
+		if (Controller)
+		{
+			for (const FSandboxStepRecord& Record : Controller->GetStepLog())
+			{
+				Count += Record.bRegroup ? 0 : 1;
+			}
+		}
 		AddCheck(TEXT("max_recovery_steps"), Controller && Count <= Limit, Controller ? Number(Count) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MaxStanceErrorCm.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxStanceErrorCm.GetValue();
+		const double Error = Controller ? Controller->GetStanceErrorCm() : 0.0;
+		AddCheck(TEXT("max_stance_error_cm"), Controller && Error <= Limit, Controller ? Number(Error) : Null(), Number(Limit));
 	}
 
 	// The states the body went through, as names joined by '>'.
@@ -1937,6 +1978,7 @@ void UScenarioRunnerSubsystem::Finish()
 				return Values;
 			};
 			TArray<TSharedPtr<FJsonValue>> RecoveryJson;
+			int32 RegroupSteps = 0;
 			for (const FSandboxStepRecord& Record : Controller->GetStepLog())
 			{
 				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
@@ -1958,10 +2000,16 @@ void UScenarioRunnerSubsystem::Finish()
 				Entry->SetStringField(TEXT("cross"), Record.Cross > 0 ? TEXT("front") : Record.Cross < 0 ? TEXT("behind") : TEXT("none"));
 				Entry->SetStringField(TEXT("pass"), Record.Pass > 0 ? TEXT("front") : Record.Pass < 0 ? TEXT("behind") : TEXT("none"));
 				Entry->SetBoolField(TEXT("touched"), Record.bTouched);
+				Entry->SetBoolField(TEXT("regroup"), Record.bRegroup);
+				RegroupSteps += Record.bRegroup ? 1 : 0;
 				RecoveryJson.Add(MakeShared<FJsonValueObject>(Entry));
 			}
 			ControlJson->SetArrayField(TEXT("recovery_steps"), RecoveryJson);
 			ControlJson->SetNumberField(TEXT("recovery_step_count"), Controller->GetStepLog().Num());
+			// Steps that only brought the feet back to their stance after the body had its balance again.
+			ControlJson->SetNumberField(TEXT("regroup_step_count"), RegroupSteps);
+			// How far the feet stand from their stance at the end of the run.
+			ControlJson->SetNumberField(TEXT("stance_error_cm"), Controller->GetStanceErrorCm());
 		}
 
 		// The target pose and how well the muscles hold it while the body stands.
@@ -2343,5 +2391,10 @@ void UScenarioRunnerSubsystem::RequestExit(uint8 Code)
 	}
 	Pins.Reset();
 	Phase = EPhase::Idle;
+	if (UScenarioBatchSubsystem* Batch = GetBatch())
+	{
+		Batch->JobDone(GetWorldRef(), Code);
+		return;
+	}
 	FPlatformMisc::RequestExitWithStatus(/*Force*/ false, Code);
 }

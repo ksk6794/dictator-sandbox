@@ -1131,6 +1131,111 @@ Pictures looked at: `push_hold_chest` at 4.8 s (leaning 6.2 cm into 40 N, ankles
 at 389 and 396 N), `effector_hold_chest`
 at 5.0 s (the trunk bent toward the hand, 117 N, "needs a step"), `hit_head_30_stands` 0.15 s after the blow.
 
+### M3 part 4 (stagger and steps) and the audit of the body's movement, 2026-11-24
+
+**Runs share engine processes.** A run was 14 s of engine start-up for 1 s of physics. A job queue
+(`-ScenarioQueue`, `UScenarioBatchSubsystem`) now lets one process run many scenarios, each in a fresh world.
+The first scenario a process runs differs bit for bit from the same scenario run later in it (35 of 48 suite
+scenarios had other hashes than in separate processes), and later runs do not depend on what ran before them
+(three different chains gave the same hashes). So every process runs `Tools\batch_warmup.json` first, and a
+single run is a queue of one job: with that, 48 of 48 scenarios have the same hashes run alone, eight processes
+at a time and twelve. Suite 110 s to 25 s (80 s with `-Long`), push matrix 213 s to 47 s.
+
+**Part 4, figures before the audit** (baseline `m3_part4_s4_end`): suite 47 of 48 (`effector_push_chest_falls`
+stood, backing away from the hand), push matrix 159 of 160, 80 N*s row 38 stepped and 2 fell, steps per push
+median 1 and at most 4, no joint over 30 rad/s outside the 200 N*s row, energy gain at most 1.2 J, quiet-standing
+assist share 0.0051.
+
+**The audit** looked at the motion itself, on sheets of pictures over time (`Tools\film.ps1`), since every
+check passed while the body stood with its arms out, fell like a plank and stayed in a lunge. Measured on the way:
+
+| What | Before | After |
+| --- | --- | --- |
+| 80 N*s on the chest, backward | fell at 3.03 s without a step ("61 cm by the time a step lands: beyond a step") | two steps, stands |
+| 120 N*s on the chest, backward | fell | three steps, stands |
+| 200 N*s on the chest, backward | plank, lies straight | one stumble, sits down and curls, lands on its back |
+| 200 N*s row of the matrix | 40 fell | 32 fell, 8 stepped (pelvis and thighs, 3 to 15 steps) |
+| Rest after a fall (back, forward, side) | 2.6 s (back) | 1.7, 2.6, 1.6 s; 3.5, 3.9, 3.3 s while "lying" still waited for a motionless body |
+| Energy gain in a fall | 0 to 1.2 J | 28, 21, 11 J: the work of folding the legs and putting the arms out |
+| Collarbone under a soft arm (40 N*m/rad) | | sagged 10.2 degrees in the arms' group; pose error mean 2.0 to 1.0 degrees once in the trunk's |
+| Quiet-standing assist share (10 s, 10 min) | 0.0051, 0.0041 | 0.0048, 0.0038 |
+| A punch on the forearm (8.5 m/s) | moved it 10 cm (arm held out) | 1.8 cm: the arm hangs at the hip and is pressed against it |
+
+After the audit (baseline `m3_audit_end`): suite 50 of 50 with `-Long`, push matrix 159 of 160 (the same cell,
+`push_neck_01_090_030`, two steps where one is allowed), unit tests 28, session self-test 14 of 14. Against
+`m3_part4_s4_end` 36 scenarios have other hashes: every one with an actively controlled body, as the stance, the
+arms and the neck changed for all of them; the 10 with a passive body or none are bit for bit as they were.
+Renamed: `effector_push_chest_falls` to `effector_push_chest_steps`, `push_thigh_200_falls` to
+`push_thigh_200_stumbles`; new: `hit_chest_200_forward_falls`, `hit_chest_200_side_falls`.
+
+Seen and not solved in the audit itself (solved the same day, below): `hang_npc_hand` (a body hanging by one
+hand) took the pose of a fall backward and swung for the whole run, 119 J of muscle work where there were 5.5:
+the fall's pose asked only whether the posture gave way, not whether the floor was coming. `hit_head_30_stands` sits on an edge: the same blow needs a
+step or not (capture margin -8.7 or -4.9 cm) with the arms 3 degrees further in or out; its check is now "stands,
+one step at most".
+
+### The regrouping step, 2026-11-24
+
+After recovery steps the body stood wherever they had left its feet: 25 to 60 cm from its stance, in a lunge.
+A step that brings a foot back beside the other was written in the audit and left off, because out of a lunge
+it ended in another loss of balance. What stood in its way, each measured:
+
+| What | Seen | Now |
+| --- | --- | --- |
+| The ankle strategy holds the capture point over the middle of the feet | of a weight shift of 19 cm forward the pelvis went 5 | a shift moves the strategy's reference with it |
+| The foot left behind lowers the pelvis so that its leg can reach | pelvis 15 cm down although that foot carried 0 N; centre of mass over the stance heel, 17 cm short, for 2 s | a foot about to lift lowers the pelvis by the share of the weight it carries: the body rises on the stance leg |
+| The foot lifted once the centre of mass stood inside the stance sole | 0.5 to 1.2 s of shift with the pelvis's goal up to three times too far; the body went on past the foot, or the legs folded (pelvis 35 cm down, "falling") | lifts when the capture point at landing is 5 cm inside the support to come; the goal is led by the distance the capture point still has to go, 25 cm at most |
+| What was left of the shift after landing | the anchors glide from where the body is, so the shift counted twice: a 54 cm step to the side to catch it | dropped as the foot lands |
+| A foot on its toes has a sole polygon of its toes only | target sole and stance middle 12 cm too far forward | the whole sole is taken for both |
+
+With it (`balance.regroup_wait_s` 0.6): weight shift 0.15 to 0.2 s out of a short stance, 0.7 to 1.3 s out of a
+lunge of 50 to 60 cm; the feet end 0.7 to 5.0 cm from their stance (`control.stance_error_cm`, checked by
+`max_stance_error_cm` 8 in the five scenarios that step). In the push matrix 48 of 160 pushes end with a
+regrouping step: none gives up, none falls, one (`push_thigh_l_045_200`) needs one more step for its balance.
+The matrix's outcomes are as before (159 of 160, the same cell); it does not count regrouping steps as steps the
+push cost, and neither does `max_recovery_steps`.
+
+Suite 50 of 50 with `-Long`, unit tests 28, session self-test 14 of 14, assist share 0.0048 and 0.0038. Against
+`m3_audit_end` 11 scenarios have other hashes: the five that make recovery steps (they now regroup), and the six
+asked steps (`step_*`), whose weight shift now moves the ankle strategy's reference (landing errors, lift times
+and joint speeds as they were to the digit shown: 1.1, 1.6, 2.0 cm; 3.41 s). The other 39 are bit for bit as they
+were. New baseline: `m3_regroup`.
+
+### A body held up does not fall, 2026-11-24
+
+`hang_npc_hand` (pinned by the right hand, dropped 60 cm onto that arm) took the pose of a fall backward, knees
+to the chest, and kept it for the whole run: 119 J of muscle work. A body that is not upright, has touched
+nothing of the world for 0.4 s and whose centre of mass is not 5 cm below the lowest it has been is now held up
+(`thresholds.held_*`): it lets go of the fall's pose and hangs straight. Held up at 0.74 s, 34 J (the curl of the
+first 0.4 s, before the body can know), checked by `max_energy_gain_j` 60. It still swings for the whole run:
+that is the drop onto one arm, not the muscles. In the 160 runs of the push matrix and the other 49 scenarios
+nothing is ever taken for held up: their hashes are those of `m3_regroup`.
+
+### The last cell of the push matrix: a body on its toes, 2026-11-24
+
+`push_neck_01_090_030` (30 N*s on the back of the head) made two steps where the table allows one, since part 4.
+On the pictures the body bows its head, rises on its toes, and then steps *back* twice, away from the way it was
+pushed. Rising on the toes is the ankle strategy doing its work (the centre of pressure goes forward to the
+capture point); with the heels 1.5 cm off the floor the support polygon was the toes alone, and the capture
+point, under the raised heels, was "4.7 cm outside the support" behind it. A decision now counts the whole sole
+of every foot that touches the floor. The cell stands without a step, and the matrix passes for the first time:
+160 of 160 (10 N*s: 40 stood; 30: 36 stood, 4 one step; 80: 2 stood, 38 stepped; 200: 32 fell, 8 stepped), 42
+regrouping steps, none given up, none in a fall.
+
+Against `m3_regroup` 11 more scenarios have other hashes: those in which a foot is tilted at some time while the
+capture point is near the edge of what touches (`effector_hold_chest`, `effector_push_chest_steps`,
+`push_hold_chest`, `push_thigh_200_stumbles`, `stand_foot_moved`, `step_forward` and its mirror,
+`strike_punch_head`, `strike_punch_torso`, `tune_live_file`, `tune_live_override`); all pass. The other 38
+(quiet standing, the light hits, the falls, the passive bodies) are bit for bit as they were. New baseline:
+`m3_audit2_end`.
+
+One suite run in the course of this gave `drop_npc` other hashes (1200d5db instead of c8bde50f); alone and in
+three later suite runs it gave the baseline's. Not explained; the determinism mode was on. If a baseline
+comparison names a scenario a change cannot have touched, run it again, and count how often this happens.
+One push-matrix run gave no result for one of its 160 runs (`push_spine_04_000_080`, no output folder at all);
+the same matrix run again was complete. Both happened in the first queue run after a build, which is the one
+thing they share; not looked into further.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

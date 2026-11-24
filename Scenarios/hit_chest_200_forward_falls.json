@@ -1,0 +1,26 @@
+{
+  "name": "hit_chest_200_forward_falls",
+  "duration_s": 10.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "events": [
+    {"t": 3.0, "type": "impulse", "body": "spine_04", "impulse_ns": 200, "direction": [0, 1, 0]}
+  ],
+  "expect": {
+    "max_rest_after_fall_s": 3.0,
+    "max_energy_gain_j": 40.0,
+    "max_body_penetration_cm": 2.0,
+    "max_self_penetration_cm": 2.0,
+    "state_sequence": "standing>flinch>stagger>falling>lying",
+    "fell": true,
+    "min_fall_time_s": 3.0,
+    "max_joint_stretch_cm": 2.0
+  }
+}

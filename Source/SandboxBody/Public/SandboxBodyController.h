@@ -141,6 +141,8 @@ struct FSandboxStepRecord
 	FVector2D AimOffsetCm = FVector2D::ZeroVector;
 	/** False when the swing ran out of time without the foot finding the floor. */
 	bool bTouched = false;
+	/** A step that brings the feet back to their stance once balance is back, not one that catches the body. */
+	bool bRegroup = false;
 };
 
 /** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */
@@ -285,6 +287,11 @@ public:
 
 	/** Every recovery step so far, the one under way last (LandS below 0 while its foot is in the air). */
 	const TArray<FSandboxStepRecord>& GetStepLog() const { return StepLog; }
+	/**
+	 * How far the feet stand from their stance: the right foot from where it would be beside the left one, as the
+	 * two stood at Start (the places the feet are planted at, in the support's frame). cm.
+	 */
+	double GetStanceErrorCm() const;
 	/** Whether a step is under way, and where its foot is meant to be now (the point the swing has reached). */
 	bool IsStepping() const { return Swing.bActive; }
 	FVector GetSwingPoint() const { return Swing.Point; }
@@ -418,6 +425,22 @@ private:
 	void UpdatePoseTurns();
 	/** Whether the animation instance holds turns from an earlier tick. */
 	bool bPoseTurnsSet = false;
+	/** The way the body goes down, chosen as it starts to fall: which of the fall's poses it takes (ApplyPose). */
+	enum class EFallWay : uint8 { Back, Forward, Left, Right };
+	EFallWay FallWay = EFallWay::Back;
+	/** Chooses FallWay from where the pelvis leans and where the body moves. */
+	void ChooseFallWay();
+	/**
+	 * A fall that does not happen: the body is not upright, touches nothing of the world and does not come down
+	 * (thresholds.held_*). It is held up, by a hand or a hook, and hangs in its stance's pose instead of the pose of
+	 * a fall, until it touches something or comes down again. bWorldTouched is set by contact events with anything
+	 * that does not move under physics, since the last tick.
+	 */
+	void UpdateHeld(double DeltaTime);
+	bool bHeldUp = false;
+	bool bWorldTouched = false;
+	double HeldWatchS = 0.0;
+	double HeldLowestCm = 0.0;
 	/** Flinch: the body that was hit and the hit's impulse, N*s. */
 	FName FlinchBone;
 	FVector FlinchImpulseNs = FVector::ZeroVector;
@@ -583,11 +606,15 @@ private:
 		FVector GlideFrom = FVector::ZeroVector;
 		double GlideElapsedS = 0.0;
 		double GlideS = 0.0;
+		/** Point, or where the glide to it has got to. */
+		FVector GlidedPoint() const
+		{
+			return GlideS > 0.0 && GlideElapsedS < GlideS ? FMath::Lerp(GlideFrom, Point, FMath::SmoothStep(0.0, 1.0, GlideElapsedS / GlideS)) : Point;
+		}
 		/** The point the leg is solved for now: Point (or on its way there), raised by what is left of the settling. */
 		FVector SettledPoint() const
 		{
-			const FVector At = GlideS > 0.0 && GlideElapsedS < GlideS ? FMath::Lerp(GlideFrom, Point, FMath::SmoothStep(0.0, 1.0, GlideElapsedS / GlideS)) : Point;
-			return At + FVector(0.0, 0.0, SettleCm * SettleLeft());
+			return GlidedPoint() + FVector(0.0, 0.0, SettleCm * SettleLeft());
 		}
 	};
 	FFootPlacement Placement[2];
@@ -653,15 +680,50 @@ private:
 		int32 Cross = 0;
 		int32 Pass = 0;
 		FVector2D PassPoint = FVector2D::ZeroVector;
+		/**
+		 * The leg's point at the lift less where the foot is (From): the swing starts from the point the leg was solved for
+		 * and lets the difference go as the foot travels across, so that the leg's target does not jump. cm.
+		 */
+		FVector StartOffset = FVector::ZeroVector;
 	};
 	/** Whether an assist control is the one on the foot of a step under way. */
 	bool IsSwingFoot(const FAssist& Assist) const { return Swing.bActive && Assist.Slot == EAssistSlot::Feet && Assist.Side == Swing.Side; }
 	/** Whether a step is under way or waiting for its weight shift. */
 	bool IsStepUnderWay() const { return Swing.bActive || Pending.bActive; }
 	FSwing Swing;
+	/**
+	 * The sole of the foot a step has just set down, flat where it landed (the planned sole moved by the landing's
+	 * error): the decisions' support for that foot until LandedSoleUntilS (balance.step_settle_s after the landing).
+	 */
+	TArray<FVector2D> LandedSole;
+	int32 LandedSoleSide = -1;
+	double LandedSoleUntilS = -1.0;
 	TArray<FSandboxStepRecord> StepLog;
 	/** Steps made in the current stagger. */
 	int32 StaggerSteps = 0;
+	/**
+	 * Regrouping: after recovery steps the feet stand wherever those put them (a lunge, crossed legs). Once the body
+	 * has stood still for balance.regroup_wait_s, a foot steps back to its place beside the other, as a person does:
+	 * the one whose move leaves the stance nearer under the body. The weight goes onto the other foot first
+	 * (UpdateShift, RegroupLead), the body rises on that leg as the foot to lift unloads (UpdateLowering), and the
+	 * foot lifts when the step will hold (UpdateStep). RegroupLeft is how many such steps the last loss of balance
+	 * still allows.
+	 */
+	void UpdateRegroup(double DeltaTime);
+	/** The right foot's place from where the stance would have it beside the left one; the feet's places and the stance's vector with it (world, cm). */
+	FVector StanceError(FVector OutFootAt[2], FVector& OutStance) const;
+	int32 RegroupLeft = 0;
+	double RegroupQuietS = 0.0;
+	bool bRegroupAsked = false;
+	/** Where the right foot stood from the left one at the start, in the support's frame, cm. */
+	FVector2D StanceRightFromLeft = FVector2D::ZeroVector;
+	/** A regrouping step: the point the capture point is brought to before the foot lifts and held at while it swings (world x, y, cm). */
+	FVector2D RegroupPoint = FVector2D::ZeroVector;
+	/** ...the weight shift that puts the pelvis's goal there, and what is added to it while the capture point is not there yet. */
+	FVector2D RegroupBaseCm = FVector2D::ZeroVector;
+	FVector2D RegroupIntegralCm = FVector2D::ZeroVector;
+	/** The addition to a regrouping step's weight shift for this tick (advances RegroupIntegralCm). */
+	FVector2D RegroupLead(double DeltaTime);
 	/** Starts, carries on and ends recovery steps while the body staggers (M3 part 4). */
 	void UpdateStep(double DeltaTime);
 	/** Sets a planned step going: the log entry, the swing, the legs' placements, the swing leg's muscles. */

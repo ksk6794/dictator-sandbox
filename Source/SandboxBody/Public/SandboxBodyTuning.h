@@ -26,6 +26,14 @@ struct FSandboxMuscleTuning
 	double DampingS = 0.0;
 	/** Largest torque the muscle can produce, N*m. 0 = no cap. */
 	double MaxTorqueNm = 0.0;
+	/**
+	 * How much of the target pose's own turning speed the damping works against, 0..1. At 1 (Physics Control's
+	 * default) the damping holds the joint to the pose's speed as well as to its angle, so the muscle keeps up with a
+	 * moving pose; but a pose that jumps in one frame asks for the jump divided by the frame's time, and the damping
+	 * turns that into a blow (a leg's target that jumped as the body fell gave it 600 J in one frame). At 0 the damping
+	 * only resists the joint's own turning.
+	 */
+	double PoseVelocityShare = 0.0;
 };
 
 /**
@@ -74,9 +82,9 @@ enum class ESandboxBodyState : uint8
 	Flinch,
 	/** The capture point has left what the ankles and hips can bring back: the body has to step. */
 	Stagger,
-	/** Balance is lost: the assist is off and the body goes down. */
+	/** The posture has given way: the assist is off, the body goes down and takes the pose of its fall (poses.fall_*). */
 	Falling,
-	/** Down and at rest. */
+	/** Down and nearly still: the muscles let go. */
 	Lying
 };
 
@@ -95,13 +103,21 @@ struct FSandboxThresholdTuning
 	/** ...or tilted this far from its standing orientation. Degrees. */
 	double FallTiltDeg = 0.0;
 	/**
-	 * A fallen body is at rest when it moves and turns no faster than this as a whole (root mean square
-	 * over its bodies, weighted by mass)... m/s, rad/s.
+	 * A fallen body lies, and lets its muscles go, once it moves and turns no faster than this as a whole (root
+	 * mean square over its bodies, weighted by mass)... m/s, rad/s. Not motionless: held until it was, the fall's
+	 * pose kept the body curled up on the floor, and it took 3.5 s to come to rest instead of 1.7.
 	 */
 	double RestSpeedMps = 0.0;
 	double RestAngularSpeedRadS = 0.0;
 	/** ...for this long. Seconds. */
 	double RestTimeS = 0.0;
+	/**
+	 * A falling body that has touched nothing of the world and has not come down for this long is held up (by a
+	 * hand, a hook): it lets go of its fall's pose and hangs. Seconds.
+	 */
+	double HeldTimeS = 0.0;
+	/** ...where coming down is the centre of mass this far below the lowest it has been. cm. */
+	double HeldDescentCm = 0.0;
 };
 
 /** How the body senses its own balance: what counts as a foot that stands, and what part of it is its sole. */
@@ -122,12 +138,14 @@ struct FSandboxBalanceTuning
 	/**
 	 * How far beyond the edge of the support a step can put a foot... cm. The capture point runs away from the
 	 * support while the step is under way (by e^(omega t), omega = sqrt(g / centre-of-mass height)), so a step
-	 * can catch it only if it is now no further out than this divided by that growth over StepTimeS.
+	 * can catch it only if it is now no further out than this divided by that growth over StepTimeS. A body further
+	 * out than that steps at once, as far as this, and goes on stepping; it falls when its posture gives way
+	 * (thresholds.fall_*). Only a body whose legs are placed from outside is counted as fallen there.
 	 */
 	double StepReachCm = 0.0;
 	/** ...and how long a step takes, from the decision to the foot on the floor. Seconds. */
 	double StepTimeS = 0.0;
-	/** A step is needed only once the capture point has been past balance.recoverable_cm this long (losing balance needs no wait). Seconds. */
+	/** A step is needed only once the capture point has been past balance.recoverable_cm this long (a capture point beyond one step's reach needs no wait). Seconds. */
 	double DecisionS = 0.0;
 	/** Time over which the assist's anchors of pelvis, chest and head follow a new support, eased in and out. Seconds. */
 	double AnchorFollowS = 0.0;
@@ -206,11 +224,17 @@ struct FSandboxBalanceTuning
 	/** How high the swinging foot is lifted at the top of its arc. cm. */
 	double StepLiftCm = 0.0;
 	/**
-	 * Share of the swing (0 to 1) by which the foot's point is over its target; it comes down only after that. The
-	 * leg lags behind its point, and a point that came down along the whole way set the foot on the floor short of
-	 * the target (40% short at 0.25 s for 30 to 50 cm).
+	 * Share of the swing (0 to 1) by which the foot's point is over its target. The leg lags behind its point, and a
+	 * point that came down along the whole way set the foot on the floor short of the target (40% short at 0.25 s for
+	 * 30 to 50 cm).
 	 */
 	double StepOverShare = 0.0;
+	/**
+	 * Share of the swing (0 to 1) from which the foot's point comes down; it may be less than step_over_share, so that
+	 * the foot comes down on a slant while it still travels. Coming down in the last fifth of a 0.25 s swing only, the
+	 * foot met the floor at 1.7 m/s. A touch of the floor ends the swing from the earlier of the two.
+	 */
+	double StepDescentShare = 0.0;
 	/**
 	 * The swinging leg's muscles (hip, knee, ankle of that side) are this many times as stiff as the legs' group
 	 * while the foot is in the air: at the group's stiffness the leg lagged its point by 10 to 20 cm. The swing
@@ -223,6 +247,11 @@ struct FSandboxBalanceTuning
 	 * foot overshot its point by 4 to 5 cm. Factor.
 	 */
 	double SwingDampingScale = 0.0;
+	/**
+	 * The swinging leg's muscles' pose_velocity_share (see FSandboxMuscleTuning), eased in with the stiffness: its
+	 * target is the swing's own smooth path, which the leg has to keep up with. 0..1.
+	 */
+	double SwingPoseVelocityShare = 0.0;
 	/**
 	 * The balance assist's spring on the swinging foot (horizontal and vertical), pulling it along its swing,
 	 * the target moving with it: the "foot-planting control" of the assist (docs/PRD.md, "Control stack"),
@@ -249,7 +278,8 @@ struct FSandboxBalanceTuning
 	 * least this far ahead of the other foot's bone, or behind it for a step that goes back, and its swing passes the
 	 * other foot that far in front or behind: calves and feet collide. cm.
 	 */
-	double CrossOffsetCm = 0.0;	/** Time over which a step's placement of the legs eases in, and a swinging leg's frame changes. Seconds. */
+	double CrossOffsetCm = 0.0;
+	/** Time over which a step's placement of the legs eases in, and a swinging leg's frame changes. Seconds. */
 	double StepEaseS = 0.0;
 	/**
 	 * While a foot swings, the leg that carries the body is solved with the pelvis upright and at its standing
@@ -307,6 +337,36 @@ struct FSandboxBalanceTuning
 	 * from its anchor to where it is) by the body's speed times this: they brake it in proportion to its speed. s.
 	 */
 	double StaggerDampingS = 0.0;
+	/**
+	 * After recovery steps, once the body has stood still this long, a foot steps back to its place beside the other
+	 * (0: the feet stay where the steps put them). Seconds.
+	 */
+	double RegroupWaitS = 0.0;
+	/** Feet within this of their stance are left alone. cm. */
+	double RegroupToleranceCm = 0.0;
+	/** At most this many regrouping steps after one loss of balance. */
+	double RegroupMaxSteps = 0.0;
+	/**
+	 * Before a regrouping step the body goes to the stance foot: to the middle of its sole, less this share of the way
+	 * from there to the middle of the sole the other foot will stand on (0 the middle of the stance sole, 0.5 the
+	 * middle of the stance to come).
+	 */
+	double RegroupInsideShare = 0.0;
+	/**
+	 * The pelvis's goal is moved beyond that point by the distance the capture point still has to go times this...
+	 */
+	double RegroupLeadGain = 0.0;
+	/** ...plus that distance times this for every second it stays, per second... */
+	double RegroupShiftGainPerS = 0.0;
+	/** ...by no more than this. cm. */
+	double RegroupLeadMaxCm = 0.0;
+	/**
+	 * The foot of a regrouping step lifts when the capture point, where it will be as the foot lands, is this far
+	 * inside the support the step gives. cm.
+	 */
+	double RegroupMarginCm = 0.0;
+	/** A regrouping step whose weight shift has not got that far by then is given up. Seconds. */
+	double RegroupShiftMaxS = 0.0;
 };
 
 /** How the body reacts to a hit. */
@@ -376,6 +436,21 @@ struct FSandboxPoseTuning
 	 * reactions.flinch_pose_full_ns: the shoulders rise and the head draws in.
 	 */
 	FSandboxPose Flinch;
+	/**
+	 * What a body that falls does with itself, by the way it goes down: backward it sits down and curls up with the
+	 * chin on the chest and the hands behind it; forward the hands go out in front and the knees bend; sideways
+	 * (written for a fall to the left; a fall to the right uses the mirror image) the arm of that side reaches for
+	 * the floor. Held with the falling state's muscles, and kept, with the lying state's, once the body lies.
+	 * (Without them the falling body kept the standing pose and went over like a plank.)
+	 */
+	FSandboxPose FallBack;
+	FSandboxPose FallForward;
+	FSandboxPose FallSide;
+	/** Time over which the target goes from the pose held to the pose of the fall. Seconds. */
+	double FallBlendS = 0.0;
+
+	/** The mirror image of a pose: left and right joints change places, the trunk's sideways bend and twist change sign. */
+	static FSandboxPose Mirrored(const FSandboxPose& Pose);
 };
 
 /** Which bones the balance assist holds ("rig.pelvis" and so on). Each must have a body in the physics asset. */

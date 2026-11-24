@@ -13,7 +13,7 @@ that mirror left to right, and passes the push matrix; the player has physical h
 with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
 test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
 on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
-tunnelling. **M3, balance and recovery, is in progress: parts 1 to 3 of 7 are done** (the plan and the parts are in
+tunnelling. **M3, balance and recovery, is in progress: parts 1 to 4 of 7 are done** (the plan and the parts are in
 the M3 section of `docs/PRD.md`). The body senses its own balance (standing feet, support polygon, capture
 point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
@@ -30,8 +30,14 @@ part 7. Part 3, standing balance: the capture point decides whether the body sta
 the assist until part 4, reported as `step_needed_frames`) or falls; ankle and hip strategies are turns of the
 leg targets; the assist's anchors follow the feet; a held push is leant into and makes the body flinch only as
 it lands; quiet-standing assist share 0.0052 (bound 0.0093); the push matrix names each outcome (stood, held,
-stepped, fell) and judges it by the owner's table (the 80 N*s row from part 4). `push_thigh_200_falls` carries
-loosened limits (4 s, 4 J) until part 5. Next is part 4, Stagger and the recovery step.
+stepped, fell) and judges it by the owner's table (the 80 N*s row from part 4). Part 4, Stagger and the recovery step: a body whose
+capture point leaves what the ankles and hips bring back staggers and steps (to where the capture point will be
+when the foot lands, across the other foot if it must, again if one step is not enough), and can be asked for a
+step (`RequestStep`, scenario event `step`). An audit of how the body moves (November 2026, on the owner's
+request) followed it: the stance has the arms down, arms and neck are soft, the body always tries to step and
+falls only when its posture gives way, a falling body takes a protective pose and a lying one lets go
+(`poses.fall_*`), and after recovery steps the body brings its feet back together (`balance.regroup_*`); the
+fall work planned for part 5 is partly done by it. Next is part 5, falling and lying.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -51,7 +57,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Debug overlays in the pictures | add `-Overlay all` to a `-Shot` run or to `play.ps1` (or layers: `com,support,capture,joints,assist,contacts,state,hands`); in a session the V key, in any console `Sandbox.Overlay all\|off\|toggle\|<layers>` |
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
-| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight at a time; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Parallel 1` for physics step times nothing disturbed) |
+| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight engine processes take the scenarios from one queue; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Long` adds the scenarios over 60 s, `stand_npc_10min`; `-Parallel 1` for physics step times nothing disturbed) |
+| A motion as a sheet of pictures over time | `powershell -ExecutionPolicy Bypass -File Tools\film.ps1 -Name hit_chest_200_falls -Times "3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0"` (`-Camera side\|front\|back\|quarter`, `-Events <file>`, `-Tune`; `Saved\Films\<name>\sheet.png`) |
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
@@ -65,9 +72,10 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 110 s (40 scenarios, eight at a time;
-7 minutes one after another), the push matrix 3.5 minutes (one row of 40: 1 minute), a sweep of 7 runs 17 s, the session's self-test
-10 s, the whole bootstrap about 5 minutes.
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (49 scenarios; 80 s with `-Long`),
+the push matrix 50 s (one row of 40: 15 s), a film of 12 pictures 15 s, the session's self-test 10 s, the whole
+bootstrap about 5 minutes. Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
+processes; `SANDBOX_SEPARATE_PROCESSES=1` goes back to one process per run.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
 scenarios pass, not when the code compiles. For anything visual, run a scenario with `-Shot` and look at the PNG.
@@ -83,11 +91,11 @@ touch must not be in that list, and the ones that are get explained in the part'
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
 | `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
-| `Source/SandboxScenario` | `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
+| `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
-| `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` runs scenario processes side by side for the suite, the push matrix and sweeps). |
+| `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
 | `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
 | `docs/` | `PRD.md` (plan), `testing.md` (repeatability policy and measurements). |
@@ -354,7 +362,62 @@ touch must not be in that list, and the ones that are get explained in the part'
   feet go (eased) when it falls.
 - **`Sandbox.Tune` with a value out of range changes nothing, and the run goes on.** A scenario's console
   event did that (`step_reach_cm=500`, range 300): check `control.tuning_changes` after such an event.
-- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
+- **Physics Control damps a muscle against the target pose's own turning speed** (`AngularTargetVelocityMultiplier`,
+  1 by default). A target that jumps in one frame is then a blow: a leg's target that moved 20 cm at lift-off put
+  600 J into the body and snapped the calf at 84 rad/s. The muscles' `pose_velocity_share` is 0; only the swinging
+  leg, whose target is a smooth path, follows its target's speed (`balance.swing_pose_velocity_share`).
+- **A leg's target must never jump, whatever changes under it.** Every change of a foot's point or of the frame
+  its leg is solved in glides from what the leg was solved for last (`FFootPlacement::GlidedPoint`,
+  `FSwing::StartOffset`), not from where the foot happens to be.
+- **The first scenario an engine process runs differs bit for bit from every later one,** and later ones do not
+  depend on what ran before them. The job queue (`-ScenarioQueue`, `UScenarioBatchSubsystem`) therefore runs
+  `Tools\batch_warmup.json` first in every process, and a single `scenario.ps1` run is a queue of one job; with
+  that, 48 scenarios gave the same hashes in one process, in eight and in twelve.
+- **A foot that has just landed stands on an edge.** The decision took the edge for the whole support and ordered
+  a second step after a good one; while the foot settles (`balance.step_settle_s`) its whole sole counts.
+- **Braking a stagger through the planted legs lifts the near foot** when it is strong (`balance.stagger_damping_s`
+  0.2 against 0.15): the body rebounded off the new support and stepped again.
+- **A body that decides it cannot be saved goes over like a plank.** Until the audit of November 2026 a capture
+  point beyond one step's reach meant Falling at once: the muscles let go and the body tipped over its heels
+  without having moved a foot, also after an 80 N*s push backward that two steps catch. It now always steps, and
+  falls when the pelvis tilts or sinks (`thresholds.fall_*`).
+- **Passing every check is not moving like a person.** The suite and the push matrix were green while the body
+  stood with its arms held out, fell like a plank and stayed frozen in a lunge. Look at the motion
+  (`Tools\film.ps1`: one sheet of pictures over time) before calling a behaviour done.
+- **A falling body needs a pose of its own and legs that are let go in time.** Holding the stance, it fell
+  straight; with a fall pose but its placed feet released over `poses.blend_s` (0.4 s), a body that fell after a
+  step met the floor with straight legs. Placements are released over `poses.fall_blend_s`.
+- **"Lying" must not wait for "motionless".** With the old rest thresholds (0.05 m/s for 0.5 s) the fall's pose
+  kept the body curled up on its back, rocking, and it came to rest after 3.5 s; lying as soon as it is down and
+  nearly still (0.3 m/s, 1 rad/s, 0.2 s) it rests after 1.7 s.
+- **The collarbones are trunk, not arm.** In the arms' group, with arms soft enough to give way to a hit
+  (40 N*m/rad), each collarbone sagged 10 degrees under its arm and laid the arm against the body.
+  `FSandboxBodyTuning::GroupOfBone` puts them with the spine.
+- **The muscles of a falling body do work** (10 to 30 J to fold the legs and put the arms out), so
+  `max_energy_gain_j` of a fall is no longer near 0; the falling scenarios allow 40 J. Upright it is still 1 J.
+- **A step that brings the feet back together after a lunge is not an asked step from a stance**
+  (`UpdateRegroup`). Four things kept it from working, each found by reading what else acts on the body, none by
+  tuning. The ankle strategy's reference was the middle of the feet: it brought the body back while the weight
+  shift took it forward (5 cm of 19), so a shift is now part of that reference. The foot left behind held the
+  pelvis 15 cm down for a reach it no longer needed: the body sat on the bent stance leg with its centre of mass
+  over the heel; a leg lowers the pelvis only by the share of the weight it carries. Waiting for the body to
+  stand over the stance foot took a goal far beyond it (the body went on past the foot): the foot lifts when the
+  step will hold, the capture point at landing inside the support to come. And once the foot has landed the
+  anchors glide from where the body is, so what was left of the shift counted twice and threw the body off the
+  far side.
+- **"Not upright" is not "falling to the floor".** A body hung up by one hand took the pose of a fall backward
+  and held it for good (119 J of muscle work, a pendulum with its knees at its chest). A body that touches
+  nothing of the world and does not come down is held up (`UpdateHeld`, `thresholds.held_*`) and hangs in its
+  stance's pose; the state is still called Falling, or Lying once it is still.
+- **A body on its toes still has its feet under it.** The support polygon is what touches the floor; with the
+  heels 1.5 cm up it is the toes alone, and a capture point under the raised heels counted as outside the
+  support: a body hit on the back of the head stepped back twice (the one open cell of the push matrix from part 4
+  to the audit). Decisions (`DecisionMarginCm`) take the whole sole of every foot the floor touches.
+- **A foot on its toes has a sole polygon of its toes only** (`FSandboxBodyProbe::SupportPolygon` takes what lies
+  within `sole_tolerance_cm` of its lowest point). Its middle is 12 cm ahead of the whole sole's: where a foot
+  will stand, or the place over a foot, is taken with a tolerance that takes in the whole sole.
+- **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated
+  code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,
   Options; about 6 GB). Without it the log says "Optional Content folder not found", skin textures are not

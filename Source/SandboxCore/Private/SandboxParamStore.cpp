@@ -151,6 +151,17 @@ void FSandboxParamStore::SetDirectory(const FString& InDirectory)
 	SeenStamps.Reset();
 }
 
+void FSandboxParamStore::ResetForRun(const FString& InDirectory, const FString& InOverrides)
+{
+	SetDirectory(InDirectory.IsEmpty() ? FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("Tuning")) : InDirectory);
+	Overrides.Reset();
+	StartupOverrides = InOverrides;
+	bAutoPoll = true;
+	AutoPollCounter = 0;
+	// Whoever follows the revision reads the values again.
+	++Revision;
+}
+
 void FSandboxParamStore::StatDirectory(TMap<FString, FFileStamp>& OutStamps) const
 {
 	OutStamps.Reset();

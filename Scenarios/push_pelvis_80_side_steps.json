@@ -20,6 +20,7 @@
   "expect": {
     "fell": false,
     "end_state": "standing",
+    "max_stance_error_cm": 8.0,
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30.0
   }

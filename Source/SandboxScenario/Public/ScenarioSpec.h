@@ -109,8 +109,10 @@ struct FScenarioExpect
 	TOptional<double> MaxSteps;
 	/** Every step the controller made (control.recovery_steps) landed at most this far from its target; there was at least one. cm. */
 	TOptional<double> MaxLandingErrorCm;
-	/** The controller made at most this many steps of its own and asked for (control.recovery_steps). */
+	/** The controller made at most this many steps for its balance or asked for (control.recovery_steps without the regrouping ones). */
 	TOptional<double> MaxRecoverySteps;
+	/** At the end the feet stand at most this far from their stance (control.stance_error_cm). cm. Active control only. */
+	TOptional<double> MaxStanceErrorCm;
 	/** The body went into Flinch at most this many times. Active control only. */
 	TOptional<double> MaxFlinches;
 	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */

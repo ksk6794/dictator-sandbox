@@ -388,10 +388,50 @@ name, a value out of range or a tuning file that cannot be used stops the run wi
 The run keeps watching the tuning files, every 30 frames, and takes over an edit made while it runs. With
 files that do not change this has no effect on the result.
 
+## Steps and falls
+
+A body that loses its balance staggers and steps (M3 part 4); it never decides to fall. Its capture point
+further out than the ankles and hips bring back makes it step, beyond one step's reach it steps at once and
+goes on stepping, and it falls when its posture gives way: the pelvis tilted by `thresholds.fall_tilt_deg` or
+sunk by `fall_pelvis_drop_cm`. As it falls it takes the pose of its fall (`poses.fall_back`, `fall_forward`,
+`fall_side`: it sits down and curls up, or puts its hands out, or reaches for the floor with one arm), and once
+it is down and nearly still it lies and lets its muscles go.
+
+- A `step` event asks a standing body to put a foot (`body`) `offset_cm` from where it stands: the weight goes
+  onto the other foot first, then the foot swings (`step_forward`, `step_side`, `step_back` and their mirror
+  images).
+- `control.recovery_steps` lists every step the controller made, asked for or its own: when it started and
+  landed, how long it was planned and came out, the capture point it was planned on, `planned_margin_cm`,
+  whether it was cut to the reach or kept to its side, whether it crossed or passed the other foot, and
+  `regroup` for a step that only brought the feet back to their stance (`control.regroup_step_count`).
+  `control.steps` is the same seen from outside: every foot that left the floor and stood again elsewhere.
+- After recovery steps the feet stand wherever those put them, a lunge or crossed legs. A body that has stood
+  still for `balance.regroup_wait_s` (0.6 s) brings a foot back beside the other: the weight goes onto the
+  other foot, the body rises on that leg, the foot comes over. `control.stance_error_cm` is how far the feet
+  stand from their stance at the end of the run (1 to 5 cm after a regrouping step, 25 to 60 cm without one).
+  A step that was asked for (`step`) is not followed by one: the feet stay where they were asked to be.
+- Expectations: `max_recovery_steps` (steps for balance and asked for; regrouping steps are not counted),
+  `max_landing_error_cm` (every step landed this near its target, and there was at least one) and
+  `max_stance_error_cm` (the feet are back in their stance at the end).
+- The muscles of a falling body do work: folding the legs and putting the arms out costs 10 to 30 J, which
+  `max_energy_gain_j` counts. The falling scenarios allow 40 J; a standing or stepping body is still held to 1 J.
+
+The scenarios: `push_chest_80_steps` and `push_pelvis_80_side_steps` (a step forward, steps across),
+`effector_push_chest_steps` (a hand pushes the chest 70 cm back: the body backs away and stands; it used to be
+`effector_push_chest_falls`), `push_thigh_200_stumbles` (200 N*s on a thigh is run off in four steps; it used to
+be `push_thigh_200_falls`), and three falls after 200 N*s on the chest: `hit_chest_200_falls` (backward),
+`hit_chest_200_forward_falls` and `hit_chest_200_side_falls`.
+
+To look at a motion rather than at its numbers, `Tools\film.ps1 -Name hit_chest_200_falls -Times
+"3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0"` renders the run with a picture at each of those times and joins them into
+`Saved\Films\<name>\sheet.png` (`-Camera side|front|back|quarter` or a location and a point to look at,
+`-Events <file>` for other events, `-Tune`, `-Overlay`). A body that passes every check can still move like a
+statue: the arms held out, a fall like a plank and a body frozen in a lunge all passed the suite.
 ## Push matrix
 
 `Tools\push-matrix.ps1` pushes the standing NPC with every combination of impulse (10, 30, 80, 200 N*s),
-body (head, chest, pelvis, both thighs) and direction (8), 160 runs, eight at a time, in about 3.5 minutes.
+body (head, chest, pelvis, both thighs) and direction (8), 160 runs, eight engine processes that take the
+runs from one queue, in about 50 seconds.
 It generates one scenario per push under `Saved\Matrix\push\scenarios`, runs them with
 `Tools\scenario.ps1 -File`, names the outcome of each push and writes `Saved\Matrix\push\matrix.json`.
 
@@ -400,8 +440,11 @@ the body), `stepped` (one or more steps, still up) or `fell`. They are judged by
 10 N*s stood; 30 N*s never a fall, forward and sideways stood, backward (225, 270, 315 degrees) and any push
 on the head stood or one step; 80 N*s on the trunk (chest, pelvis) stepped, backward stepped or fell, on the
 head and the thighs stepped or fell, and at 80 N*s anywhere stood if no step was ever needed (owner's decision
-in part 4: standing is a failure only when the assist held a body that needed a step); 200 N*s fell. `held` is
-a failure everywhere. Mirror-image pushes must end the same way. The table prints `s`, `h`, `S<n>`, `F`, with
+in part 4: standing is a failure only when the assist held a body that needed a step); 200 N*s on the chest
+and the head fell, on the pelvis and the thighs fell or stepped (a push near the centre of mass does not turn
+the body over, and it may run the push off: decided in the audit of November 2026, since the body always tries
+to step). `held` is a failure everywhere. Mirror-image pushes that end differently are listed and counted,
+not judged. The table prints `s`, `h`, `S<n>`, `F`, with
 `!` for a failure. `-Enforce` names the impulses whose rows are judged (all four by default), and
 `-Rules m2` checks only the M2 gate (the smallest impulse never fells, the largest always does). By default
 each impulse is a single blow; `-PushSeconds 0.1` delivers it as a push. `-Tune` passes tuning overrides

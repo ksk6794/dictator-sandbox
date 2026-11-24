@@ -18,7 +18,9 @@ class AGameModeBase;
 class FSandboxScriptedTargetSource;
 
 /**
- * Runs one scenario and exits. Exists only when the process was started with -Scenario=.
+ * Runs one scenario and exits. Exists only when the process was started with -Scenario=, or with -ScenarioQueue=
+ * (UScenarioBatchSubsystem: many scenarios in one process, each in a world of its own; the options below then come
+ * from each job, and -Shot is not available).
  *
  *   -Scenario=<file or name>   Scenarios/<name>.json, or a path (relative paths resolve against the project dir)
  *   -Out=<dir>                 output directory (default Saved/Scenarios/<name>)
@@ -98,12 +100,17 @@ private:
 	bool EditTuningFiles(const FScenarioEvent& Event, FString& OutError);
 	void Finish();
 	void FailAndExit(const FString& Message);
+	/** Ends the run: the process exits, or in a batch (UScenarioBatchSubsystem) the next job begins. */
 	void RequestExit(uint8 Code);
+	/** The batch this run is a job of; null for a process started with -Scenario=. */
+	class UScenarioBatchSubsystem* GetBatch() const;
 
 	FScenarioSpec Spec;
 	FString ScenarioFile;
 	FString OutDir;
 	FString ShotPath;
+	/** In a batch, the job's shot_at (-ShotAt= otherwise). */
+	FString JobShotAt;
 
 	EPhase Phase = EPhase::Idle;
 	int32 FrameIndex = 0;

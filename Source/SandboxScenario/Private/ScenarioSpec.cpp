@@ -384,6 +384,7 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_steps"), &OutSpec.Expect.MaxSteps },
 			{ TEXT("max_landing_error_cm"), &OutSpec.Expect.MaxLandingErrorCm },
 			{ TEXT("max_recovery_steps"), &OutSpec.Expect.MaxRecoverySteps },
+			{ TEXT("max_stance_error_cm"), &OutSpec.Expect.MaxStanceErrorCm },
 			{ TEXT("max_flinches"), &OutSpec.Expect.MaxFlinches },
 			{ TEXT("min_pelvis_anchor_shift_cm"), &OutSpec.Expect.MinPelvisAnchorShiftCm },
 			{ TEXT("min_lean_cm"), &OutSpec.Expect.MinLeanCm } };

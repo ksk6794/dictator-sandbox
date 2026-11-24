@@ -105,13 +105,20 @@ function Invoke-Editor {
 }
 
 function Invoke-ScenarioBatch {
-    # Runs Tools\scenario.ps1 once per job, $Parallel processes at a time, and returns when all have ended.
+    # Runs the jobs, $Parallel engine processes at a time, and returns when all have ended.
     # A job is a hashtable: Name or File, Out, and optionally Tune, TuningDir and CVars. Results are read by
-    # the caller from each job's <Out>\metrics.json.
-    # Every scenario process is independent and uses a fixed timestep, so running side by side changes no
-    # result. It does change the wall-clock figures: a physics step measured while other runs compete for the
-    # processor reads longer than it is.
+    # the caller from each job's <Out>\metrics.json (and <Out>\run.log).
+    # Each engine process works through a shared queue of jobs (-ScenarioQueue=, UScenarioBatchSubsystem): engine
+    # start-up, about 90% of a single headless run, is paid once per process, and every job still runs in a world
+    # of its own with its own tuning. Jobs with other console variables go to a queue of their own. Set
+    # SANDBOX_SEPARATE_PROCESSES=1 to run every job in a process of its own instead (Tools\scenario.ps1).
+    # Runs side by side change no result, as every run uses a fixed timestep. They do change the wall-clock
+    # figures: a physics step measured while other runs compete for the processor reads longer than it is.
     param([array]$Jobs, [int]$Parallel = 8)
+    if ($env:SANDBOX_SEPARATE_PROCESSES -ne '1') {
+        Invoke-ScenarioQueue -Jobs $Jobs -Parallel $Parallel
+        return
+    }
     $scenarioScript = Join-Path $PSScriptRoot 'scenario.ps1'
     $queue = New-Object System.Collections.Queue
     foreach ($job in $Jobs) { $queue.Enqueue($job) }
@@ -128,6 +135,94 @@ function Invoke-ScenarioBatch {
         }
         Start-Sleep -Milliseconds 200
         $running = @($running | Where-Object { -not $_.HasExited })
+    }
+}
+
+function New-ScenarioQueue {
+    # Writes the jobs as a queue directory under Saved\Queue (format in UScenarioBatchSubsystem) and returns its path.
+    # Each job's stale results are removed first, so that they can never be mistaken for this run's.
+    # A job: Name or File, Out, and optionally Tune, TuningDir, Shot, ShotAt.
+    param([array]$Jobs)
+    $queueRoot = Join-Path $RepoRoot 'Saved\Queue'
+    $queue = Join-Path $queueRoot ([guid]::NewGuid().ToString('N').Substring(0, 12))
+    New-Item -ItemType Directory -Force (Join-Path $queue 'taken') | Out-Null
+    # The longest runs first, so that a long one does not start last and keep every other process waiting for it.
+    $ordered = @($Jobs | ForEach-Object {
+        if ($_.File) { $file = $_.File } else { $file = Join-Path $RepoRoot "Scenarios\$($_.Name).json" }
+        $seconds = 0.0
+        try { $seconds = [double](Get-Content $file -Raw | ConvertFrom-Json).duration_s } catch {}
+        [pscustomobject]@{ Job = $_; Seconds = $seconds }
+    } | Sort-Object -Property Seconds -Descending | ForEach-Object { $_.Job })
+    $number = 0
+    foreach ($job in $ordered) {
+        $out = [System.IO.Path]::GetFullPath($job.Out)
+        New-Item -ItemType Directory -Force $out | Out-Null
+        foreach ($stale in @('metrics.json', 'trace.json', 'series.csv', 'run.log', 'final.png')) {
+            $path = Join-Path $out $stale
+            if (Test-Path $path) { Remove-Item $path -Force }
+        }
+        Get-ChildItem $out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
+        if ($job.File) { $scenario = [System.IO.Path]::GetFullPath($job.File) } else { $scenario = Join-Path $RepoRoot "Scenarios\$($job.Name).json" }
+        $entry = [ordered]@{ scenario = $scenario; out = $out }
+        if ($job.Tune) { $entry.tune = [string]$job.Tune }
+        if ($job.TuningDir) { $entry.tuning_dir = [System.IO.Path]::GetFullPath($job.TuningDir) }
+        if ($job.Shot) { $entry.shot = [System.IO.Path]::GetFullPath($job.Shot) }
+        if ($job.ShotAt) { $entry.shot_at = [string]$job.ShotAt }
+        $text = $entry | ConvertTo-Json -Compress
+        [System.IO.File]::WriteAllText((Join-Path $queue ('{0:D5}.json' -f $number)), $text, (New-Object System.Text.UTF8Encoding($false)))
+        $number++
+    }
+    return $queue
+}
+
+function Get-QueueArguments {
+    # Engine arguments of a process that works through a queue. The first run of a process differs bit for bit from
+    # every later one (UScenarioBatchSubsystem), so every process runs a short warm-up first: every job then starts
+    # from the same state, alone or in a batch, in any process and any order.
+    param([string]$Queue, [int]$Fps = 90)
+    $warmup = Join-Path $PSScriptRoot 'batch_warmup.json'
+    return "-game -ScenarioQueue=`"$Queue`" -ScenarioWarmup=`"$warmup`" -UseFixedTimeStep -FPS=$Fps"
+}
+
+function Invoke-ScenarioQueue {
+    # The jobs of Invoke-ScenarioBatch through job queues: one queue directory per set of console variables, and
+    # up to $Parallel engine processes on each, which take jobs from it until it is empty.
+    param([array]$Jobs, [int]$Parallel = 8)
+    $queueRoot = Join-Path $RepoRoot 'Saved\Queue'
+    New-Item -ItemType Directory -Force $queueRoot | Out-Null
+    # Queues of earlier calls that are an hour old are left-overs.
+    Get-ChildItem $queueRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-1) } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    $groups = [ordered]@{}
+    foreach ($job in $Jobs) {
+        $key = [string]$job.CVars
+        if (-not $groups.Contains($key)) { $groups[$key] = New-Object System.Collections.ArrayList }
+        [void]$groups[$key].Add($job)
+    }
+    $processes = @()
+    $queues = @()
+    $groupIndex = 0
+    foreach ($key in $groups.Keys) {
+        $groupJobs = $groups[$key]
+        $queue = New-ScenarioQueue -Jobs $groupJobs
+        $queues += $queue
+        $count = [Math]::Min([Math]::Max($Parallel, 1), $groupJobs.Count)
+        for ($i = 0; $i -lt $count; $i++) {
+            $arguments = "`"$ProjectFile`" $(Get-QueueArguments $queue) -nullrhi -nohmd -DisablePlugins=OpenXR -unattended -nopause -nosplash -nosound -abslog=`"$(Join-Path $queue "process_$i.log")`""
+            if ($key) { $arguments += " -dpcvars=`"$key`"" }
+            $info = New-Object System.Diagnostics.ProcessStartInfo
+            $info.FileName = Get-EditorCmd
+            $info.Arguments = $arguments
+            $info.WorkingDirectory = $RepoRoot
+            $info.UseShellExecute = $false
+            $info.CreateNoWindow = $true
+            $processes += [System.Diagnostics.Process]::Start($info)
+        }
+    }
+    foreach ($process in $processes) { $process.WaitForExit() }
+    # A queue that still holds jobs lost its processes (a crash); its logs are kept for a look.
+    foreach ($queue in $queues) {
+        if (@(Get-ChildItem $queue -Filter '*.json' -File).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
 

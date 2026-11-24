@@ -33,6 +33,7 @@ namespace
 			Visitor(FString::Printf(TEXT("muscles.%s.stiffness_nm_per_rad"), Group), Values.StiffnessNmPerRad);
 			Visitor(FString::Printf(TEXT("muscles.%s.damping_s"), Group), Values.DampingS);
 			Visitor(FString::Printf(TEXT("muscles.%s.max_torque_nm"), Group), Values.MaxTorqueNm);
+			Visitor(FString::Printf(TEXT("muscles.%s.pose_velocity_share"), Group), Values.PoseVelocityShare);
 		};
 		const auto Assist = [&Visitor](const TCHAR* Group, auto& Values)
 		{
@@ -60,6 +61,8 @@ namespace
 		Visitor(FString(TEXT("thresholds.rest_speed_mps")), Tuning.Thresholds.RestSpeedMps);
 		Visitor(FString(TEXT("thresholds.rest_angular_speed_rads")), Tuning.Thresholds.RestAngularSpeedRadS);
 		Visitor(FString(TEXT("thresholds.rest_time_s")), Tuning.Thresholds.RestTimeS);
+		Visitor(FString(TEXT("thresholds.held_time_s")), Tuning.Thresholds.HeldTimeS);
+		Visitor(FString(TEXT("thresholds.held_descent_cm")), Tuning.Thresholds.HeldDescentCm);
 		Visitor(FString(TEXT("balance.foot_contact_min_n")), Tuning.Balance.FootContactMinN);
 		Visitor(FString(TEXT("balance.sole_tolerance_cm")), Tuning.Balance.SoleToleranceCm);
 		Visitor(FString(TEXT("balance.recoverable_cm")), Tuning.Balance.RecoverableCm);
@@ -86,8 +89,10 @@ namespace
 		Visitor(FString(TEXT("balance.step_press_cm")), Tuning.Balance.StepPressCm);
 		Visitor(FString(TEXT("balance.step_settle_s")), Tuning.Balance.StepSettleS);
 		Visitor(FString(TEXT("balance.step_over_share")), Tuning.Balance.StepOverShare);
+		Visitor(FString(TEXT("balance.step_descent_share")), Tuning.Balance.StepDescentShare);
 		Visitor(FString(TEXT("balance.swing_stiffness_scale")), Tuning.Balance.SwingStiffnessScale);
 		Visitor(FString(TEXT("balance.swing_damping_scale")), Tuning.Balance.SwingDampingScale);
+		Visitor(FString(TEXT("balance.swing_pose_velocity_share")), Tuning.Balance.SwingPoseVelocityShare);
 		Visitor(FString(TEXT("balance.swing_foot_n_per_m")), Tuning.Balance.SwingFootNPerM);
 		Visitor(FString(TEXT("balance.step_width_min_cm")), Tuning.Balance.StepWidthMinCm);
 		Visitor(FString(TEXT("balance.cross_offset_cm")), Tuning.Balance.CrossOffsetCm);
@@ -104,6 +109,15 @@ namespace
 		Visitor(FString(TEXT("balance.lower_max_cm")), Tuning.Balance.LowerMaxCm);
 		Visitor(FString(TEXT("balance.cross_past_cm")), Tuning.Balance.CrossPastCm);
 		Visitor(FString(TEXT("balance.stagger_damping_s")), Tuning.Balance.StaggerDampingS);
+		Visitor(FString(TEXT("balance.regroup_wait_s")), Tuning.Balance.RegroupWaitS);
+		Visitor(FString(TEXT("balance.regroup_tolerance_cm")), Tuning.Balance.RegroupToleranceCm);
+		Visitor(FString(TEXT("balance.regroup_max_steps")), Tuning.Balance.RegroupMaxSteps);
+		Visitor(FString(TEXT("balance.regroup_inside_share")), Tuning.Balance.RegroupInsideShare);
+		Visitor(FString(TEXT("balance.regroup_lead_gain")), Tuning.Balance.RegroupLeadGain);
+		Visitor(FString(TEXT("balance.regroup_shift_gain_per_s")), Tuning.Balance.RegroupShiftGainPerS);
+		Visitor(FString(TEXT("balance.regroup_lead_max_cm")), Tuning.Balance.RegroupLeadMaxCm);
+		Visitor(FString(TEXT("balance.regroup_margin_cm")), Tuning.Balance.RegroupMarginCm);
+		Visitor(FString(TEXT("balance.regroup_shift_max_s")), Tuning.Balance.RegroupShiftMaxS);
 		Visitor(FString(TEXT("reactions.flinch_weakening")), Tuning.Reactions.FlinchWeakening);
 		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
 		Visitor(FString(TEXT("reactions.flinch_pose_full_ns")), Tuning.Reactions.FlinchPoseFullNs);
@@ -122,7 +136,40 @@ namespace
 		};
 		Pose(TEXT("stance"), Tuning.Poses.Stance);
 		Pose(TEXT("flinch"), Tuning.Poses.Flinch);
+		Visitor(FString(TEXT("poses.fall_blend_s")), Tuning.Poses.FallBlendS);
+		Pose(TEXT("fall_back"), Tuning.Poses.FallBack);
+		Pose(TEXT("fall_forward"), Tuning.Poses.FallForward);
+		Pose(TEXT("fall_side"), Tuning.Poses.FallSide);
 	}
+}
+
+FSandboxPose FSandboxPoseTuning::Mirrored(const FSandboxPose& Pose)
+{
+	FSandboxPose Result;
+	for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+	{
+		const FString Name(SandboxPoseJoints[Index]);
+		const bool bLeft = Name.EndsWith(TEXT("_l"));
+		const bool bRight = Name.EndsWith(TEXT("_r"));
+		if (!bLeft && !bRight)
+		{
+			// A joint of the trunk: bending forward and back stays, bending sideways and twisting turn round.
+			Result.Joints[Index] = Pose.Joints[Index];
+			Result.Joints[Index].Swing2Deg = -Pose.Joints[Index].Swing2Deg;
+			Result.Joints[Index].TwistDeg = -Pose.Joints[Index].TwistDeg;
+			continue;
+		}
+		// The same angles on the joint of the other side give the mirror-image motion.
+		const FString Other = Name.LeftChop(1) + (bLeft ? TEXT("r") : TEXT("l"));
+		for (int32 From = 0; From < SandboxPoseJointCount; ++From)
+		{
+			if (Other == SandboxPoseJoints[From])
+			{
+				Result.Joints[Index] = Pose.Joints[From];
+			}
+		}
+	}
+	return Result;
 }
 
 const TCHAR* const SandboxPoseJoints[SandboxPoseJointCount] = {
@@ -260,7 +307,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	{
 		if (!CheckRange(Entry.Value->StiffnessNmPerRad, MaxAngularStiffness, Entry.Key, TEXT("stiffness_nm_per_rad"), OutError) ||
 			!CheckRange(Entry.Value->DampingS, MaxDampingS, Entry.Key, TEXT("damping_s"), OutError) ||
-			!CheckRange(Entry.Value->MaxTorqueNm, MaxTorque, Entry.Key, TEXT("max_torque_nm"), OutError))
+			!CheckRange(Entry.Value->MaxTorqueNm, MaxTorque, Entry.Key, TEXT("max_torque_nm"), OutError) ||
+			!CheckRange(Entry.Value->PoseVelocityShare, 1.0, Entry.Key, TEXT("pose_velocity_share"), OutError))
 		{
 			return false;
 		}
@@ -310,6 +358,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Thresholds.RestSpeedMps, 10.0, TEXT("thresholds"), TEXT("rest_speed_mps"), OutError) ||
 		!CheckRange(Thresholds.RestAngularSpeedRadS, 100.0, TEXT("thresholds"), TEXT("rest_angular_speed_rads"), OutError) ||
 		!CheckRange(Thresholds.RestTimeS, 60.0, TEXT("thresholds"), TEXT("rest_time_s"), OutError) ||
+		!CheckRange(Thresholds.HeldTimeS, 60.0, TEXT("thresholds"), TEXT("held_time_s"), OutError) ||
+		!CheckRange(Thresholds.HeldDescentCm, 100.0, TEXT("thresholds"), TEXT("held_descent_cm"), OutError) ||
 		!CheckRange(Balance.FootContactMinN, 5000.0, TEXT("balance"), TEXT("foot_contact_min_n"), OutError) ||
 		!CheckRange(Balance.SoleToleranceCm, 20.0, TEXT("balance"), TEXT("sole_tolerance_cm"), OutError) ||
 		!CheckRange(Balance.RecoverableCm, 100.0, TEXT("balance"), TEXT("recoverable_cm"), OutError) ||
@@ -336,8 +386,10 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.StepPressCm, 20.0, TEXT("balance"), TEXT("step_press_cm"), OutError) ||
 		!CheckRange(Balance.StepSettleS, 2.0, TEXT("balance"), TEXT("step_settle_s"), OutError) ||
 		!CheckRange(Balance.StepOverShare, 1.0, TEXT("balance"), TEXT("step_over_share"), OutError) ||
+		!CheckRange(Balance.StepDescentShare, 1.0, TEXT("balance"), TEXT("step_descent_share"), OutError) ||
 		!CheckRange(Balance.SwingStiffnessScale, 10.0, TEXT("balance"), TEXT("swing_stiffness_scale"), OutError) ||
 		!CheckRange(Balance.SwingDampingScale, 10.0, TEXT("balance"), TEXT("swing_damping_scale"), OutError) ||
+		!CheckRange(Balance.SwingPoseVelocityShare, 1.0, TEXT("balance"), TEXT("swing_pose_velocity_share"), OutError) ||
 		!CheckRange(Balance.SwingFootNPerM, MaxLinearStiffness, TEXT("balance"), TEXT("swing_foot_n_per_m"), OutError) ||
 		!CheckRange(Balance.StepWidthMinCm, 100.0, TEXT("balance"), TEXT("step_width_min_cm"), OutError) ||
 		!CheckRange(Balance.CrossOffsetCm, 100.0, TEXT("balance"), TEXT("cross_offset_cm"), OutError) ||
@@ -354,6 +406,15 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.LowerMaxCm, 60.0, TEXT("balance"), TEXT("lower_max_cm"), OutError) ||
 		!CheckRange(Balance.CrossPastCm, 300.0, TEXT("balance"), TEXT("cross_past_cm"), OutError) ||
 		!CheckRange(Balance.StaggerDampingS, 2.0, TEXT("balance"), TEXT("stagger_damping_s"), OutError) ||
+		!CheckRange(Balance.RegroupWaitS, 10.0, TEXT("balance"), TEXT("regroup_wait_s"), OutError) ||
+		!CheckRange(Balance.RegroupToleranceCm, 100.0, TEXT("balance"), TEXT("regroup_tolerance_cm"), OutError) ||
+		!CheckRange(Balance.RegroupMaxSteps, 10.0, TEXT("balance"), TEXT("regroup_max_steps"), OutError) ||
+		!CheckRange(Balance.RegroupInsideShare, 0.5, TEXT("balance"), TEXT("regroup_inside_share"), OutError) ||
+		!CheckRange(Balance.RegroupLeadGain, 10.0, TEXT("balance"), TEXT("regroup_lead_gain"), OutError) ||
+		!CheckRange(Balance.RegroupShiftGainPerS, 20.0, TEXT("balance"), TEXT("regroup_shift_gain_per_s"), OutError) ||
+		!CheckRange(Balance.RegroupLeadMaxCm, 100.0, TEXT("balance"), TEXT("regroup_lead_max_cm"), OutError) ||
+		!CheckRange(Balance.RegroupMarginCm, 50.0, TEXT("balance"), TEXT("regroup_margin_cm"), OutError) ||
+		!CheckRange(Balance.RegroupShiftMaxS, 10.0, TEXT("balance"), TEXT("regroup_shift_max_s"), OutError) ||
 		!CheckRange(Reactions.PressureS, 5.0, TEXT("reactions"), TEXT("pressure_s"), OutError) ||
 		!CheckRange(Reactions.HeldPushS, 5.0, TEXT("reactions"), TEXT("held_push_s"), OutError) ||
 		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
@@ -361,11 +422,13 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	{
 		return false;
 	}
-	if (!CheckRange(Poses.BlendS, 10.0, TEXT("poses"), TEXT("blend_s"), OutError))
+	if (!CheckRange(Poses.BlendS, 10.0, TEXT("poses"), TEXT("blend_s"), OutError) ||
+		!CheckRange(Poses.FallBlendS, 10.0, TEXT("poses"), TEXT("fall_blend_s"), OutError))
 	{
 		return false;
 	}
-	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch } };
+	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch },
+		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide } };
 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
 	{
 		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
@@ -433,7 +496,9 @@ ESandboxMuscleGroup FSandboxBodyTuning::GroupOfBone(FName ChildBone)
 	{
 		return ESandboxMuscleGroup::Neck;
 	}
-	if (StartsWithAny({ TEXT("clavicle"), TEXT("upperarm"), TEXT("lowerarm"), TEXT("hand") }))
+	// The collarbones belong to the trunk: the shoulder girdle is held by the muscles of the back, whatever the arm
+	// does. (With the arms' soft muscles each collarbone sagged 10 degrees under its arm and laid the arm against the body.)
+	if (StartsWithAny({ TEXT("upperarm"), TEXT("lowerarm"), TEXT("hand") }))
 	{
 		return ESandboxMuscleGroup::Arms;
 	}

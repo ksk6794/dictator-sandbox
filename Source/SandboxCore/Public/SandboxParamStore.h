@@ -69,6 +69,12 @@ public:
 
 	/** Points the store at another directory and forgets the values read so far. Overrides are kept. */
 	void SetDirectory(const FString& InDirectory);
+
+	/**
+	 * Starts over for another run in the same process (a scenario batch): the given directory (empty: Config/Tuning),
+	 * no overrides except InOverrides ("name=value,...", applied by the next load, as -Tune= is), polling on.
+	 */
+	void ResetForRun(const FString& InDirectory, const FString& InOverrides);
 	const FString& GetDirectory() const { return Directory; }
 
 	/** Reads every *.json of the directory. False with a reason if anything is wrong; nothing changes then. */

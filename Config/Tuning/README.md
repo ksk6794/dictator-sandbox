@@ -23,21 +23,24 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `muscles.<group>.stiffness_nm_per_rad` | N·m/rad | Spring of every joint in the group toward the target pose. 0 switches the muscles off |
 | `muscles.<group>.damping_s` | s | Damping as a time: damping torque = stiffness × this × angular velocity |
 | `muscles.<group>.max_torque_nm` | N·m | Largest torque of a muscle. 0 = no cap, which is where all groups stand for now |
+| `muscles.<group>.pose_velocity_share` | 0..1 | How much of the target pose's own turning speed the damping works against. 0: the damping resists all motion, and a pose that jumps is not a blow (at Physics Control's default of 1 a jump of the leg's target cost 600 J) |
 | `assist.<body>.horizontal_n_per_m`, `vertical_n_per_m` | N/m | Pull of the body toward its standing position |
 | `assist.<body>.angular_nm_per_rad` | N·m/rad | Turn of the body toward its standing orientation |
 | `assist.<body>.damping_s` | s | Damping of the three assist springs, as a time |
+| `assist.<body>.max_torque_nm` | N·m | Largest torque of the assist's turn. 0 = no cap |
 | `solver.position_iterations`, `velocity_iterations`, `projection_iterations` | count | Solver effort on the character's bodies. Whole numbers, at most 255 |
 | `thresholds.flinch_impulse_ns` | N·s | A hit of at least this impulse makes a standing body flinch |
 | `thresholds.flinch_window_s` | s | Impulses that arrive within this time of each other count as one hit (a push delivered over several frames) |
 | `thresholds.fall_pelvis_drop_cm` | cm | The posture is lost, whatever the capture point says, once the pelvis is this far below its standing height (the legs gave way) |
 | `thresholds.fall_tilt_deg` | degrees | ...or tilted this far from its standing orientation |
-| `thresholds.rest_speed_mps`, `rest_angular_speed_rads` | m/s, rad/s | A fallen body is at rest when it moves and turns no faster than this as a whole (root mean square over its bodies, weighted by mass) |
+| `thresholds.rest_speed_mps`, `rest_angular_speed_rads` | m/s, rad/s | A fallen body lies (and lets its muscles go, `states.lying`) once it moves and turns no faster than this as a whole (root mean square over its bodies, weighted by mass). Not "motionless": held until it was, the fall's protective pose kept the body curled on the floor and it took 3.5 s to come to rest instead of 1.7 |
 | `thresholds.rest_time_s` | s | ...for this long |
+| `thresholds.held_time_s`, `held_descent_cm` | s, cm | A body that is not upright, has touched nothing of the world for the first and has not come down by the second (its centre of mass below the lowest it has been) is held up, by a hand or a hook: it lets go of its fall's pose and hangs in its stance's, with the falling body's muscles, until it touches something or comes down again. 0 s: never |
 | `balance.foot_contact_min_n` | N | A foot stands when the floor pushes up on it with at least this force, averaged over a frame. In quiet standing each foot carries about 390 N |
 | `balance.sole_tolerance_cm` | cm | The sole of a standing foot is the part of its shapes within this of its lowest point: what the support polygon is the hull of |
 | `balance.recoverable_cm` | cm | How far outside the support the capture point may be and still be brought back by the ankles and hips. Further out, a step is needed |
 | `balance.step_reach_cm` | cm | How far beyond the support's edge a step can put a foot... |
-| `balance.step_time_s` | s | ...and how long a step takes. Balance is lost, at once, when the capture point would be further out than the reach by the time a step lands: it runs away by e^(omega t), omega = sqrt(g / centre-of-mass height) (2.2 times over 0.25 s) |
+| `balance.step_time_s` | s | ...and how long a step takes. The capture point runs away by e^(omega t), omega = sqrt(g / centre-of-mass height) (2.2 times over 0.25 s). A body whose capture point would be beyond the reach by the time a step lands does not give up: it steps at once, as far as it can, and again, and falls when its posture gives way (`thresholds.fall_*`). Only a body whose legs are placed from outside (`foot_target`) is counted as fallen there |
 | `balance.decision_s` | s | A step is needed only once the capture point has been past `recoverable_cm` this long |
 | `balance.replant_air_s` | s | A foot that the floor has not touched for this long is planted anew where it lands: its assist anchor goes there, and the anchors of pelvis, chest and head follow the new support |
 | `balance.lift_grace_s` | s | A foot knocked off the floor still counts as support, where it is, for this long: it comes back down by itself, which is not a step |
@@ -51,6 +54,31 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `balance.hip_max_deg` | degrees | ...up to this |
 | `balance.response_s` | s | Time constant with which the strategies' turns and the lean follow what they are asked for, also on the way out when the body falls: no target jumps |
 | `balance.lean_max_cm` | cm | Under a held push (a force felt in every frame of `reactions.pressure_s`) the centre of mass leans F h / (m g) toward the force, the assist's anchors with it: at most this far. The capture point a decision is made on moves the other way by the same amount |
+| `balance.recover_s`, `recover_speed_mps` | s, m/s | A staggering body stands again once its centre of mass has been over the support, the capture point within `recoverable_cm`, both feet down and the body slower than `recover_speed_mps`, for `recover_s` |
+| `balance.step_margin_cm` | cm | A recovery step puts the foot where the capture point will be when it lands, this much further along its way |
+| `balance.step_margin_goal_cm` | cm | ...and where that would leave the capture point less than this far inside the new support, at the nearest point that does (up to 15 cm away). 0 aims at the point alone |
+| `balance.step_lift_cm`, `step_press_cm` | cm | How high the swinging foot is lifted, and how far below the planted height its swing ends (so that the leg puts the foot on the floor, not next to it in the air) |
+| `balance.step_over_share`, `step_descent_share` | 0..1 | Share of the swing by which the foot's point is over its target, and the share from which it comes down. A touch of the floor ends the swing from the earlier of the two |
+| `balance.step_settle_s` | s | A foot that landed on its toe or an edge is let down onto its sole over this long; while it settles, a decision counts its whole sole as support |
+| `balance.swing_stiffness_scale`, `swing_damping_scale` | factor | The swinging leg's muscles against the legs' group (eased in over `step_ease_s`), so that the foot keeps up with its point |
+| `balance.swing_pose_velocity_share` | 0..1 | The swinging leg's `pose_velocity_share`: its target is the swing's own smooth path |
+| `balance.swing_foot_n_per_m` | N/m | An assist spring on the swinging foot along its swing. 0 leaves the swing to the muscles |
+| `balance.step_width_min_cm` | cm | A step that keeps to its own side lands at least this far to that side of the other foot |
+| `balance.cross_offset_cm`, `cross_past_cm` | cm | A step across the other foot passes and lands this far ahead of it (or behind), and no further past it sideways than `cross_past_cm` |
+| `balance.step_ease_s` | s | Time over which a step's placement of the legs eases in |
+| `balance.stance_follow` | 0..1 | While a foot swings, the standing leg is solved for a pelvis this far from its anchor toward where the body is: 0 holds the body back, 1 lets it travel |
+| `balance.stagger_damping_s` | s | ...and behind that by the body's speed times this, so that the planted legs brake the body |
+| `balance.leg_extension_max` | 0..1 | Planted legs are solved with the pelvis low enough for each leg to reach its foot at this share of its length |
+| `balance.lower_s`, `lower_max_cm` | s, cm | Lag of that lowering, and its limit: a pelvis further down than this is a fall, not a wide stance |
+| `balance.anchor_room_share` | 0..1 | The anchors glide to a new support no faster than keeps the capture point within this share of the way to the support's edge. 0: no limit |
+| `balance.step_shift_share`, `step_shift_ready_cm`, `step_shift_s`, `step_shift_max_s` | 0..1, cm, s, s | A step that was asked for (not a recovery step) first moves the weight onto the other foot: how far the pelvis's goal goes toward it, how near the capture point has to be to that sole for the foot to lift, the lag, and after how long it lifts anyway |
+| `balance.step_asked_time_s` | s | How long the swing of an asked step takes |
+| `balance.regroup_wait_s` | s | After recovery steps, a body that has stood still this long brings a foot back to its place beside the other (0: the feet stay where the steps put them) |
+| `balance.regroup_tolerance_cm`, `regroup_max_steps` | cm, count | Feet this near their stance are left alone; at most this many regrouping steps after one loss of balance |
+| `balance.regroup_inside_share` | share | Before the foot lifts the body goes to the other foot: to the middle of its sole, less this share of the way to where the lifted foot will stand (0 the middle of the stance sole, 0.5 the middle of the stance to come). On one leg the body then leans toward the foot that is coming, not away from it |
+| `balance.regroup_lead_gain`, `regroup_shift_gain_per_s`, `regroup_lead_max_cm` | -, 1/s, cm | The pelvis's goal is moved beyond that point while the capture point is not there: by the distance still to go times the gain, plus that distance times the second value for every second it stays, by no more than the third. The legs' frames follow the body, so a goal set once is not reached |
+| `balance.regroup_margin_cm` | cm | The foot lifts when the capture point, where it will be as the foot lands (`step_asked_time_s`), is this far inside the support the step gives |
+| `balance.regroup_shift_max_s` | s | A regrouping step whose weight shift has not got that far by then is given up; the feet stay where they are |
 | `reactions.flinch_weakening` | fraction | Stiffness of the hit region's muscles at the moment of a hit, as a fraction of normal |
 | `reactions.flinch_recovery_s` | s | Time over which they return to full strength, in a straight line; also how long a flinch lasts |
 | `reactions.flinch_pose_full_ns` | N·s | A hit of this impulse puts the flinch's pose offset on at full weight, a smaller one in proportion. The offset fades over `flinch_recovery_s` from the hit, whatever state the body is in by then, and is gone once it lies |
@@ -67,7 +95,9 @@ by the body's animation instance (`USandboxAnimInstance`, no Animation Blueprint
 | --- | --- | --- |
 | `poses.blend_s` | s | Time over which the target goes from one pose to the next, eased in and out |
 | `poses.<pose>.<joint>.swing1_deg`, `swing2_deg`, `twist_deg` | degrees | How far the joint is turned from the reference pose, about its own axes |
-| `poses.stance.*` | | The standing pose. All zeros is the reference pose, which is what the body held before it had poses: with it every run is the same as without an animation instance |
+| `poses.stance.*` | | The standing pose: the reference pose with the arms let down to the sides (upper arms -27 and -5). All zeros is the reference pose itself (arms held out), which is what the body held before it had poses |
+| `poses.fall_blend_s` | s | Time over which the target goes over to the pose of a fall; placed feet are let go over the same time |
+| `poses.fall_back.*`, `poses.fall_forward.*`, `poses.fall_side.*` | | What a falling body does with itself, chosen as the fall starts from the way the pelvis leans and the body moves: backward it sits down and curls up, chin on the chest, hands behind; forward the hands go out in front and the knees bend; sideways (written for a fall to the left, mirrored for the right) the arm of that side reaches for the floor. Kept as the target while the body lies, with the lying state's weak muscles |
 | `poses.flinch.*` | | Added on top of the pose during a flinch, at full weight for a hit of `reactions.flinch_pose_full_ns`: the shoulders rise (collarbones +12), the head draws in (neck -10), the chest bends a little (-4) and the elbows close (+15) |
 
 Joints are named by their child bone: `spine_02`, `spine_04`, `neck_01`, `clavicle_<side>`, `upperarm_<side>`,
@@ -90,10 +120,11 @@ the capture point; `Scenarios/README.md`, "Balance, energy and penetration") and
 hips bring it back, the assist's anchors follow the feet, and a held push is leant into. The support a
 decision is made on is every foot the floor touches at all (or touched within `lift_grace_s`), not only
 those that carry `foot_contact_min_n`: a foot resting lightly on the floor takes weight the moment the
-body sways onto it. Until the recovery step exists (part 4), a body that needs a step is held by the
-assist and its result file says so (`control.balance.step_needed_frames`).
+body sways onto it. A body that needs a step staggers and steps (M3 part 4); only one whose legs are
+placed from outside is held by the assist, and its result file says so (`control.balance.step_needed_frames`).
 
-Groups are `spine`, `neck`, `arms`, `legs`; assist bodies are `pelvis`, `chest`, `head`, `feet`. The ranges
+Groups are `spine`, `neck`, `arms`, `legs`; the collarbones belong to `spine` (the shoulder girdle is held by the
+back: with the arms' soft muscles they sagged 10 degrees under the arms). Assist bodies are `pelvis`, `chest`, `head`, `feet`. The ranges
 that are accepted are in `FSandboxBodyTuning::Validate`; they catch a slipped decimal point, not physics.
 The conversion from N·m/rad to engine units is taken from the engine source and has not been calibrated by
 measurement (see `docs/testing.md`).

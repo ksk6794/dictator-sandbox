@@ -4,6 +4,9 @@
 #                              to get physics step times that nothing else disturbed
 #   ... -SaveBaseline <name>   afterwards keep the results as Saved\Baselines\<name> (Tools\baseline.ps1 -Save)
 #   ... -Baseline <name>       afterwards say which scenarios differ from that baseline (Tools\baseline.ps1 -Compare)
+#   ... -Long                  also the scenarios that simulate more than a minute (stand_npc_10min: drift over ten
+#                              minutes of standing). Left out by default: one of them took 60 of the suite's 80 s.
+#                              Run them at the end of a part and at a milestone's gate
 # Besides each scenario's own expectations it holds the whole set to the limits that are stated for "any
 # scenario": no simulated body's joints stretch by more than -MaxJointStretchCm, and no scenario's physics
 # step takes more than -MaxPhysicsStepMeanMs on average. The worst scenario of each is printed.
@@ -19,11 +22,17 @@ param(
     [double]$MaxJointStretchCm = 2.0,
     [double]$MaxPhysicsStepMeanMs = 1.5,
     [string]$SaveBaseline,
-    [string]$Baseline
+    [string]$Baseline,
+    [switch]$Long
 )
 . "$PSScriptRoot\common.ps1"
 
 $files = @(Get-ChildItem (Join-Path $RepoRoot 'Scenarios') -Filter '*.json' | Where-Object { $_.BaseName -like $Filter } | Sort-Object Name)
+if (-not $Long) {
+    $longFiles = @($files | Where-Object { [double](Read-JsonFile $_.FullName).duration_s -gt 60 })
+    foreach ($file in $longFiles) { Write-Output ("SCENARIO SKIPPED: {0} ({1} s simulated; -Long runs it)" -f $file.BaseName, (Read-JsonFile $file.FullName).duration_s) }
+    $files = @($files | Where-Object { $longFiles.FullName -notcontains $_.FullName })
+}
 if ($files.Count -eq 0) {
     Write-Output "SUITE FAILED: no scenario matches '$Filter'"
     exit 1

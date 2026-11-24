@@ -171,7 +171,7 @@ bool FBodyTuningGroupsTest::RunTest(const FString& Parameters)
 	const TPair<const TCHAR*, ESandboxMuscleGroup> Expected[] = {
 		{ TEXT("spine_02"), ESandboxMuscleGroup::Spine }, { TEXT("spine_04"), ESandboxMuscleGroup::Spine },
 		{ TEXT("neck_01"), ESandboxMuscleGroup::Neck }, { TEXT("head"), ESandboxMuscleGroup::Neck },
-		{ TEXT("clavicle_l"), ESandboxMuscleGroup::Arms }, { TEXT("upperarm_r"), ESandboxMuscleGroup::Arms },
+		{ TEXT("clavicle_l"), ESandboxMuscleGroup::Spine }, { TEXT("upperarm_r"), ESandboxMuscleGroup::Arms },
 		{ TEXT("lowerarm_l"), ESandboxMuscleGroup::Arms }, { TEXT("hand_r"), ESandboxMuscleGroup::Arms },
 		{ TEXT("thigh_l"), ESandboxMuscleGroup::Legs }, { TEXT("calf_r"), ESandboxMuscleGroup::Legs },
 		{ TEXT("foot_l"), ESandboxMuscleGroup::Legs }, { TEXT("ball_r"), ESandboxMuscleGroup::Legs } };
