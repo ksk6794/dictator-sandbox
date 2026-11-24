@@ -1882,6 +1882,11 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MinGetUps.GetValue();
 		AddCheck(TEXT("min_get_ups"), Controller && Controller->GetGetUpView().Successes >= Limit, Controller ? Number(Controller->GetGetUpView().Successes) : Null(), Number(Limit));
 	}
+	if (Spec.Expect.MaxGetUps.IsSet())
+	{
+		const double Limit = Spec.Expect.MaxGetUps.GetValue();
+		AddCheck(TEXT("max_get_ups"), Controller && Controller->GetGetUpView().Successes <= Limit, Controller ? Number(Controller->GetGetUpView().Successes) : Null(), Number(Limit));
+	}
 	if (Spec.Expect.MaxGetUpAttempts.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxGetUpAttempts.GetValue();
@@ -2169,6 +2174,7 @@ void UScenarioRunnerSubsystem::Finish()
 			GetUpJson->SetNumberField(TEXT("stall_s"), GetUps.StallS);
 			GetUpJson->SetStringField(TEXT("given_up"), GetUps.GivenUp);
 			GetUpJson->SetNumberField(TEXT("hits"), GetUps.Hits);
+			GetUpJson->SetNumberField(TEXT("pressed_max_n"), GetUps.PressedMaxN);
 			GetUpJson->SetNumberField(TEXT("seconds"), GetUpFrames * FixedDt);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_mean"), GetUpFrames > 0 ? GetUpAssistShareSum / GetUpFrames : 0.0);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_max"), GetUpAssistShareMax);

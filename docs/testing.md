@@ -1756,6 +1756,172 @@ out from the body as on the bare floor, it stood outside them for most places in
 Against `m3_part6`: suite 59 of 59 with `-Long`, all 59 with the same hashes (no scenario of the suite uses the
 room; the physics asset, which the generator writes again on every run, is the same).
 
+### M3 part 7, step 1, first half (the get-up's assist; a body pressed down), 2026-11-24
+
+The owner's decisions before part 7: cut the assist of the get-up (a mean share of body weight of at most 0.3,
+from 0.51), by correcting the wrist's model and giving the arms more strength; two hands hold a body down, one
+slows it. What was measured turned the plan round: the assist's force went into something else, and the wrist is
+a small part of it.
+
+**The assist always pulls at its caps.** Swept down on the suite's get-ups, the mean share is 78% of what the caps
+allow, whatever they are: the share measures the caps. So the question is what the body cannot do without the
+pull. From its front it gets up with almost none (30 N on the pelvis, 20 N a foot: share 0.14); from its back and
+its sides it does not.
+
+**Where the pull went: dragging the body over the floor.** The log of the attempts that failed with a weak
+assist, on the stand: the clip stood at its first key, the pelvis 21 to 35 cm from where the clip had it *over the
+floor* and 4 cm in height, no weight on the feet. The clip's root is put where the pelvis is when the get-up
+begins, and stays there unless feet carry weight. A body that turns into the clip's first pose, rolls onto its side
+or comes onto hands and knees moves over the floor, and the clip then waited for the assist to drag the pelvis
+back to a place that matters to nothing. `getup.pelvis_follow_s`: the clip's root follows the pelvis over the
+floor, by the share of the weight that is not on the feet (the feet's share goes on following the feet, as since
+part 6). With it at 0 a run is bit for bit what it was (59 of 59 hashes).
+
+**The stand of 50 falls, three seeds each** (seeds 1, 2, 3; attempts are per fall):
+
+| Arms while getting up | Assist caps: pelvis, feet (N an axis) | Clip follows the pelvis | Share | Falls that end standing | At the first attempt | Attempts |
+| --- | --- | --- | --- | --- | --- | --- |
+| 200 N*m/rad, cap 80 N*m (part 6) | 250, 50 | no | 0.51 | 49, 50, 50 | 39, 37, 43 | 1.46, 1.46, 1.32 |
+| 1200, cap 120 | 250, 50 | no | 0.51 | 49, 49, 50 | 41, 39, 43 | 1.40, 1.44, 1.20 |
+| 1200, cap 120 | 150, 50 | no | 0.43 | 47, 49, 49 | 34, 36, 35 | 1.70, 1.52, 1.48 |
+| 1200, cap 120 | 90, 30 | no | 0.29 | 48, 49, 49 | 27, 25, 33 | 1.96, 1.90, 1.64 |
+| 1200, cap 160 | 60, 20 | no | 0.20 | 43, 41, 39 | 13, 16, 21 | 3.12, 3.02, 2.46 |
+| **1200, cap 120** | **90, 30** | **0.3 s (taken)** | **0.27** | **50, 48, 49** | **39, 38, 44** | **1.40, 1.48, 1.20** |
+| 1200, cap 120 | 90, 30 | 0.6 s | 0.28 | 50, 49, 49 | 34, 36, 41 | 1.44, 1.42, 1.24 |
+| 200, cap 80 | 90, 30 | 0.3 s | 0.27 | 48, 48, 50 | 34, 35, 39 | 1.68, 1.46, 1.30 |
+| 1200, cap 120 | 60, 20 | 0.3 s | 0.19 | 50, 48, 49 | 21, 23, 26 | 1.90, 1.70, 1.58 |
+| 1200, cap 120 | 30, 20 | 0.3 s | 0.14 | 46, 46, 48 | 19, 16, 15 | 2.24, 2.28, 2.04 |
+
+With the clip following the body, an assist of 0.27 of body weight does what 0.51 did: as many falls end standing,
+as many at the first attempt, as many attempts. Without the following the same caps cost half an attempt a fall.
+Stronger arms are worth a tenth of an attempt a fall. Further down the body still passes the criterion (96% at
+0.14), with more failed attempts, and a failed attempt is a body that flops back to the floor, which is not what a
+person looks like: 0.27 is taken, and it meets the owner's aim. The four get-ups of the suite take 3.7 to 5.5 s
+(3.3 to 4.1 with the stronger assist), and on the stand the body stands 8 s after the blow at the median (7 s).
+
+**The wrist** (a variant spec with the wrist's second swing at 85 degrees instead of 25, the asset regenerated,
+the spec then put back):
+
+| Clip follows the pelvis | Caps | Falls that end standing, wrist as it is | ...wide | At the first attempt, as it is | ...wide | Attempts, as it is | ...wide |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| no | 60, 20 (arms cap 160) | 43, 41, 39 | 45, 48, 45 | 13, 16, 21 | 12, 19, 27 | 3.12, 3.02, 2.46 | 2.82, 2.46, 2.04 |
+| no | 90, 30 | 48, 49, 49 | 48, 49, 49 | 27, 25, 33 | 29, 32, 39 | 1.96, 1.90, 1.64 | 1.84, 1.72, 1.38 |
+| 0.3 s | 60, 20 | 50, 48, 49 | 49, 49, 49 | 21, 23, 26 | 26, 26, 30 | 1.90, 1.70, 1.58 | 1.84, 1.76, 1.56 |
+
+A wrist that can bend back helps where the assist is weakest, and little once the clip follows the body. It was
+not changed: the asset is as it was, and the 51 scenarios without a get-up are bit for bit the baseline. Whether
+the wrist's model is corrected now or with M4's grab by the hand is the owner's to say.
+
+**The elbow, as recorded, was not a defect of the joint.** The plan had "the elbow cannot straighten past its
+reference pose". It can: the joint's range is 0 to 140 degrees from the straight arm, and with
+`poses.stance.lowerarm_*.swing1_deg=-33` the standing body's arms hang straight (pose error 0.7 degrees). The
+hanging arm is bent by 37 degrees because the stance does not ask for anything else. It is a change of a pose,
+not of the asset, and is the second half of this step.
+
+**What a blow does to a body getting up, with the clip following it.** The clip follows the pelvis with a lag of
+0.3 s, a blow moves it faster. The second blow of `getup_hit_strong` with other impulses: 60 and 100 N*s are
+ridden out, 140 N*s and more throw the pelvis 40 cm off the clip and the get-up is given up. The same threshold as
+with the settings of part 6.
+
+**A body pressed down** (owner's rule: one hand slows a get-up, two hold the body down). Three things were found.
+
+- *With the weaker assist one hand stopped a get-up as surely as two.* The body came up into a crouch and stayed
+  there, its pelvis 25 cm behind where the clip had it over the feet and 14 to 18 cm low, and the clip waited.
+  Legs twice as stiff lifted it and spoilt the unhindered get-up (8.3 s instead of 4.7).
+- *No strength of the body gives a clean line between one hand and two.* Its legs lift 600 N as they lift 300 N,
+  or neither, depending on the phase of the clip the press finds it in. The line is now a rule: a body pressed
+  with `getup.hold_force_n` (450 N) or more does not push on, its clip waits and the attempt is given up after
+  `stall_s`; pressed with less, it gets up where the hand lets it (the clip follows the pelvis on its feet too,
+  `pressed_follow`, and may run 22 cm ahead in height, `pressed_lag_cm`, since a body that pushes against a hand
+  sags under it). What presses is the force felt in every frame of 0.3 s from other simulated bodies, the sense
+  the body leans into a held push with. None of this acts on a body nothing presses: the stand's 50 falls of seed
+  1 have the same hashes with and without it.
+- *The scenario with two scripted hands had one hand on the body.* A scripted hand goes to a point of the world;
+  the right one slid off the rising body and ended on the floor (its contact peak of 2360 N was the floor), and
+  the left one alone was felt as 313 to 342 N: more than its spring's cap of 300 N, by its own weight and the
+  body's push against it. A threshold of 300 N, tried first, therefore "held with two hands" a body that one hand
+  pressed. The rule is now checked with scripted forces of 300 N and 600 N on the pelvis.
+
+| Scenario | Presses | Felt at most, N | Attempts | Stood after, s |
+| --- | --- | --- | --- | --- |
+| `getup_back` (nothing presses) | | 0 | 1 | 4.7 |
+| `getup_one_hand_slows` (new) | one scripted hand on the pelvis, to the end of the run | 342 | 1 | 5.0 |
+| `getup_pressed_one_hand` (new) | 300 N down on the pelvis for 8 s | 300 | 1 | 4.9 |
+| `getup_held` | two scripted hands for 4.5 s, one of which slides off | 340 | 1 | 5.3 |
+| `getup_pressed_two_hands` (new) | 600 N down on the pelvis for 9 s, to the end of the run | 600 | 2, both given up as held down | does not stand |
+| `getup_pressed` | 1500 N for 4 s | 1500 | 2, the first given up as held down | 3.7 (the second) |
+
+New: `getup.pelvis_follow_s`, `hold_force_n`, `pressed_follow`, `pressed_lag_cm`; the expectation `max_get_ups`;
+`control.get_up.pressed_max_n`; three scenarios. Changed values: the arms of `states.get_up` (1200 N*m/rad, cap
+120 N*m), the assist's caps of `states.get_up` (90 N and 30 N).
+
+Against `m3_part7_start`: 51 scenarios with the same hashes, the 8 with a get-up changed (all pass), 3 new: suite
+62 of 62 with `-Long`. Push matrix 160 of 160 and knockdowns 8 of 8 with the figures of part 6 (their bodies do not
+get up), unit tests 31, session self-test 14 of 14, the stand 50, 48 and 49 of 50.
+
+Not done, and open: one hand slows a get-up by 0.2 to 0.6 s only, which may read as no effect at all (the owner's
+to judge in a session); the films of the get-ups with the weaker assist (`Saved\Films\p7_getup_back`, `_front`)
+read as before; of the 202 attempts of the three seeds 151 end standing, 22 are given up with the clip waiting,
+most of them in the crouch at 1.0 to 1.5 s of the clip with the pelvis behind its feet, and 29 with the pelvis
+40 cm off the clip (as many of each as with the assist of part 6: 34 and 25 of 211).
+
+### M3 part 7, step 1, second half (the stance's elbow; a press on 50 falls), 2026-11-24
+
+The owner decided, on the measurements above, that the wrist's model is corrected in M4 with the grab by the hand.
+What is left of step 1 is the elbow, and it brought out that the figures for a pressed body had been one fall's.
+
+**The stance's elbows: -20 degrees from the reference pose** (`poses.stance.lowerarm_l`, `_r`), which leaves 17
+degrees of bend where there were 37. Chosen from pictures of the standing body from the front and the side at 0,
+-15 and -25 (`Saved\Films\p7_elbow_compare.png`): as it was, the forearms are held forward of the thighs; at -25
+the arm is a straight stick; a relaxed arm is in between. The hand's centre of mass is 9 cm further back and 4 cm
+lower, beside the thigh. Against `m3_part7_step1a`: the 51 scenarios with a body under control all changed, as
+they must (every one stands in the stance or falls out of it), and the 10 without one have the same hashes
+(`drop_*`, `impulse_passive`, the portraits, the room and headset scenes).
+
+| | Before | With the elbows at -20 |
+| --- | --- | --- |
+| Quiet-standing assist share, 10 s and 10 minutes (bound 0.0093) | 0.0067, 0.0066 | 0.0067, 0.0066 |
+| Pelvis drift standing, cm | 0.91 | 0.91 |
+| Push matrix | 160 of 160 | 160 of 160 |
+| Knockdowns from 8 directions: slowest to rest, most energy gained, deepest in the floor | 8 of 8: 1.94 s, 25.9 J, 1.22 cm | 8 of 8: 2.50 s, 25.7 J, 1.33 cm |
+| The stand: falls that end standing, at the first attempt, attempts a fall | 50, 48, 49; 39, 38, 44; 1.36 | 49, 50, 49; 41, 43, 45; 1.35 |
+| Strikes on the forearm (`strike_punch_forearm`, `_heights`) | pass | pass |
+
+**Three scenarios failed, none through the elbow itself: each was written for where one fall happened to put the
+body.** With other arms the same blow fells the body another way (after the blow from the front it now lies on
+its back and gets up by the clip for the back, where it had lain half on its right side and taken that clip).
+
+- `getup_front` stood after 7.3 s instead of 3.7 and was in the middle of bringing its feet together when its
+  16 s were over (`end_state` stagger). It has 20 s now.
+- `getup_one_hand_slows`, written in the first half, pressed a scripted hand on the place where the body used to
+  lie; the hand met it with 33 N*s and stayed in the air. Removed: a scripted hand cannot follow a body, and
+  where a body lies changes with every change to it.
+- `getup_pressed_one_hand` (300 N on the pelvis) took two attempts where it had taken one.
+
+**A press on 50 falls instead of one.** That last failure asked how much of "one hand slows a get-up by 0.2 s"
+was one fall's luck. `Tools\getup-stand.ps1 -PressN <force>` presses every fallen body down on the pelvis from
+5 to 25 s and counts the bodies that stood while they were pressed.
+
+| Press, N | Seed | Stood while pressed (5 to 25 s) | Stand at the end (40 s) | Attempts a fall |
+| --- | --- | --- | --- | --- |
+| none | 1, 2, 3 | | 49, 50, 49 | 1.40, 1.30, 1.36 |
+| 300 (one hand) | 1, 2, 3 | 30, 35, 31 of 50 | 45, 46, 48 | 3.02, 2.32, 2.74 |
+| 600 (two hands) | 1, 2, 3 | 0, 0, 0 of 50 | 44, 43, 44 | 4.68, 4.38, 4.44 |
+| 300, with `pressed_lag_cm` 28 and `pressed_follow` 1 | 1, 2, 3 | 25, 31, 32 of 50 | 48, 49, 47 | 3.06, 2.52, 2.76 |
+
+Two hands' worth keeps every body down, 150 of 150: that half of the owner's rule holds. One hand's worth does
+not "only slow" a get-up: two bodies of three get up under it, with twice the attempts, and one of three stays
+down until the press ends. The figure of the first half (0.2 to 0.6 s lost) was three runs of one fall. Wider
+allowances for a pressed body change nothing. The single scenario now asks only that the body stands by the end
+of its run; what a press of 300 N does is told by the stand.
+
+Changed: `poses.stance.lowerarm_*` (-20), `Scenarios\getup_front.json` (20 s), `getup_pressed_one_hand.json`
+(no limit on attempts), `Tools\getup-stand.ps1` (`-PressN`, `-PressFromS`, `-PressForS`); removed
+`Scenarios\getup_one_hand_slows.json`.
+
+Suite 61 of 61 with `-Long`, push matrix 160 of 160, knockdowns 8 of 8, unit tests 31, session self-test 14 of
+14, the stand 49, 50 and 49 of 50.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

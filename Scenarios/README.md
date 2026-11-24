@@ -214,6 +214,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_steps` | At most this many steps while upright (`control.step_count`). Active control only |
 | `max_flinches` | The body went into Flinch at most this many times (a held push: once, as the hand lands). Active control only |
 | `min_get_ups` | The body got up at least this many times (`control.get_up.successes`). Active control only, with `"get_up": true` |
+| `max_get_ups` | The body got up at most this many times: 0 for a body that hands are to keep down for the whole run |
 | `max_get_up_attempts` | The body began to get up at most this many times (`control.get_up.attempts`): 1 for a get-up that a push must not end |
 | `min_pelvis_anchor_shift_cm` | The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the feet (`control.assist_targets`). Active control only |
 | `min_lean_cm` | The body leaned into a held push at least this far at some time (`control.balance.lean_max_cm`). Active control only |
@@ -340,9 +341,11 @@ muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's wei
 **Get-ups** (`control.get_up`, in a run with `"get_up": true`): how many times the body began to get up and how many
 ended standing (`attempts`, `successes`); the last attempt's clip, when it began and how long it took to stand
 (`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`), and why the
-last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`); and what the assist
-did over all the time spent getting up (`seconds`): its commanded force over body weight, mean and largest
-(`assist_force_share_mean` 0.44 to 0.49, `assist_force_share_max` 0.63 to 0.77), and its largest torque share. The
+last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`) and the most the body
+was pressed with (`pressed_max_n`: the force felt in every frame of `reactions.held_push_s`, which is what
+`getup.hold_force_n` is compared with); and what the assist did over all the time spent getting up (`seconds`): its
+commanded force over body weight, mean and largest (`assist_force_share_mean` 0.25 to 0.28 since M3 part 7, 0.44 to
+0.49 before), and its largest torque share. The
 run's log has a line four times a second while the body gets up: the clip's time, how far the pelvis and the feet
 are from where the clip has them, and what the floor carries of each foot.
 
@@ -471,7 +474,10 @@ each with `"get_up": true` and 40 s to end standing in; a blow that did not fell
 and the chair stand together in the middle of the room; the script reads where from the spec, puts no body where
 its arms, out as it appears, would touch a piece or a wall, and has the falls at a wall in the room's corner
 quarters, reporting how near to the furniture each came. It prints one row a fall and the share that stand
-(`-Film failed` for a sheet of pictures of each that does not, `-Film "36,42"` of those trials).
+(`-Film failed` for a sheet of pictures of each that does not, `-Film "36,42"` of those trials). With `-PressN 300`
+every fallen body is also pressed down on the pelvis with that force from 5 to 25 s, and the stand counts the
+bodies that stood while they were pressed: what a hand does to a get-up, asked of 50 falls and not of one (under
+300 N two of three get up, under 600 N none: `getup.hold_force_n`).
 
 To look at what a recorded clip asks of the body, `Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes
 "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60`: the body hangs by its welded pelvis, is asked for the clip's pose

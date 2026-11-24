@@ -113,6 +113,10 @@
     "foot_lag_cm": 15,
     "foot_wait_s": 0.7,
     "frame_follow_s": 0.3,
+    "pelvis_follow_s": 0.3,
+    "pressed_follow": 0.5,
+    "pressed_lag_cm": 22,
+    "hold_force_n": 450,
     "stall_s": 3.0,
     "lost_cm": 40,
     "upright_deg": 15,
@@ -150,13 +154,13 @@
     },
     "get_up": {
       "muscles": {
-        "arms": { "stiffness_nm_per_rad": 200, "damping_s": 0.1 }
+        "arms": { "stiffness_nm_per_rad": 1200, "damping_s": 0.1, "max_torque_nm": 120 }
       },
       "assist": {
-        "pelvis": { "horizontal_n_per_m": 3000, "vertical_n_per_m": 6000, "angular_nm_per_rad": 600, "max_torque_nm": 200, "max_force_n": 250 },
+        "pelvis": { "horizontal_n_per_m": 3000, "vertical_n_per_m": 6000, "angular_nm_per_rad": 600, "max_torque_nm": 200, "max_force_n": 90 },
         "chest": { "angular_nm_per_rad": 0 },
         "head": { "angular_nm_per_rad": 0 },
-        "feet": { "horizontal_n_per_m": 2000, "vertical_n_per_m": 2000, "angular_nm_per_rad": 0, "max_force_n": 50 }
+        "feet": { "horizontal_n_per_m": 2000, "vertical_n_per_m": 2000, "angular_nm_per_rad": 0, "max_force_n": 30 }
       }
     },
     "lying": {

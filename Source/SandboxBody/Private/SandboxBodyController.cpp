@@ -1307,6 +1307,29 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		const FVector2D Shift = (CarriedOff / CarriedN) * FMath::Min(Share * DeltaTime / Limits.FrameFollowS, 1.0);
 		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
 	}
+	// And over the body itself where the feet carry nothing: a body that turns into the clip's first pose, rolls onto
+	// its side or comes onto its hands and knees moves over the floor, and where on the floor it gets up does not
+	// matter. The clip's root follows the pelvis, by the share of the weight that is not on the feet
+	// (getup.pelvis_follow_s). A blow moves the pelvis faster than that and is still told by the distance above.
+	//
+	// What presses on the body is the force felt in every frame of the last moments from other simulated bodies, as
+	// for a held push (FeelFrame). Pressed down harder than it will push against (getup.hold_force_n), the body does
+	// not go on: its clip waits, below, and the attempt is given up when it has waited too long. Pressed with less,
+	// it gets up where the hand lets it: the clip goes on following the pelvis when the feet carry the body too, by
+	// getup.pressed_follow. (A hand on the pelvis of a body in a crouch kept it 25 cm behind where the clip had it
+	// over the feet, and one hand then stopped a get-up as surely as two.)
+	const double PressedN = SustainedN.Size();
+	const bool bHeldDown = Limits.HoldForceN > 0.0 && PressedN >= Limits.HoldForceN;
+	const bool bPushesOn = Limits.HoldForceN > 0.0 && PressedN > 0.0 && !bHeldDown;
+	GetUpView.PressedMaxN = FMath::Max(GetUpView.PressedMaxN, PressedN);
+	if (Limits.PelvisFollowS > 0.0)
+	{
+		const double OnFeet = WeightN > 0.0 ? FMath::Clamp(CarriedN / WeightN, 0.0, 1.0) : 0.0;
+		const FVector Off = Now.GetLocation() - Goal.GetLocation();
+		const double Share = 1.0 - OnFeet * (1.0 - (bPushesOn ? Limits.PressedFollow : 0.0));
+		const FVector2D Shift = FVector2D(Off.X, Off.Y) * (Share * FMath::Min(DeltaTime / Limits.PelvisFollowS, 1.0));
+		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
+	}
 	// A line of the log four times a second: where the body is against the clip.
 	if (FMath::FloorToInt32(ElapsedS * 4.0) != FMath::FloorToInt32((ElapsedS - DeltaTime) * 4.0))
 	{
@@ -1320,9 +1343,13 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	// The clip's time waits for a body that does not keep up, and stops at the time by which the clip stands.
 	// A foot in the air is waited for, but not without end (getup.foot_wait_s).
 	const FVector PelvisOff = Now.GetLocation() - Goal.GetLocation();
-	const bool bPelvisBehind = FMath::Abs(PelvisOff.Z) > Limits.LagCm || PelvisOff.Size2D() > Limits.SideLagCm;
+	// A body that pushes on under a press sags under it: its muscles are springs, and a clip that waited at the usual
+	// lag would never ask them for more (a steady 300 N on the pelvis left it 18 cm low in a crouch, 2 cm past the
+	// lag, for as long as it pressed). The clip may then run further ahead in height (getup.pressed_lag_cm).
+	const double HeightLagCm = bPushesOn ? FMath::Max(Limits.LagCm, Limits.PressedLagCm) : Limits.LagCm;
+	const bool bPelvisBehind = FMath::Abs(PelvisOff.Z) > HeightLagCm || PelvisOff.Size2D() > Limits.SideLagCm;
 	GetUpRun.FootWaitS = AirLagCm > Limits.FootLagCm ? GetUpRun.FootWaitS + DeltaTime : 0.0;
-	const bool bBehind = bPelvisBehind || (AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS);
+	const bool bBehind = bHeldDown || bPelvisBehind || (AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS);
 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
 	ClipHold.Rate = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
 	if (Ease >= 1.0 && (bBehind || bThrough))
@@ -1352,6 +1379,11 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	}
 	if (GetUpRun.StallS > Limits.StallS)
 	{
+		if (bHeldDown)
+		{
+			GiveUpGetUp(FString::Printf(TEXT("held down with %.0f N for %.1f s, at %.2f s of the clip"), PressedN, GetUpRun.StallS, ClipHold.TimeS));
+			return;
+		}
 		GiveUpGetUp(FString::Printf(TEXT("the clip stood at %.2f s for %.1f s waiting for the body (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
 			ClipHold.TimeS, GetUpRun.StallS, LagCm, FootLagCm[0], FootLagCm[1]));
 	}

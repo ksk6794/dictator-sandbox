@@ -6,6 +6,9 @@
 #   ... -Only "wall,chair"      only these kinds
 #   ... -DurationS 40           simulated seconds of each trial (the blow comes at 3 s)
 #   ... -MinShare 0.9           the share of falls that must end standing
+#   ... -PressN 300             every fallen body is pressed down on the pelvis with this force (-PressFromS 5 to
+#                               -PressForS 20 seconds later): what a hand does to a get-up, on 50 falls instead of
+#                               one. The stand then also counts the bodies that stood while they were pressed
 #   ... -Tune "name=value,..."  tuning overrides for every run
 #   ... -Film failed            also a sheet of pictures of every trial that did not end standing ("all": of every
 #                               trial; "35,43": of these trials; Saved\Films\getup_stand_<n>)
@@ -34,6 +37,9 @@ param(
     [double]$DurationS = 40.0,
     [double]$MinShare = 0.9,
     [int]$Parallel = 8,
+    [double]$PressN = 0,
+    [double]$PressFromS = 5.0,
+    [double]$PressForS = 20.0,
     [string]$Tune,
     [string]$Film,
     [string]$Out
@@ -192,11 +198,16 @@ function New-Trial([string]$kind, [int]$number) {
         direction  = @([Math]::Round([Math]::Cos($radians), 6), [Math]::Round([Math]::Sin($radians), 6), 0)
     }
     if ($push -gt 0) { $blow.duration_s = $push }
+    $happenings = @($blow)
+    if ($PressN -gt 0) {
+        $happenings += [ordered]@{ t = $PressFromS; type = 'impulse'; body = 'pelvis'; impulse_ns = [Math]::Round($PressN * $PressForS, 3)
+            direction = @(0, 0, -1); duration_s = $PressForS }
+    }
     $scenario = [ordered]@{
         name       = $name
         duration_s = $DurationS
         body       = $body
-        events     = @($blow)
+        events     = $happenings
         expect     = [ordered]@{ fell = $true; end_state = 'standing'; min_get_ups = 1 }
     }
     if ($place.map) { $scenario.map = $place.map }
@@ -322,6 +333,21 @@ foreach ($kind in $kinds) {
     if ($of.Count -gt 0) {
         Write-Output ('  {0,-6} {1} of {2} stand' -f $kind, @($of | Where-Object { $_.got_up }).Count, $of.Count)
     }
+}
+if ($PressN -gt 0) {
+    # The first time each body stood, from its log: a body that stands while it is pressed has not been kept down.
+    $pressedUntil = $PressFromS + $PressForS
+    $under = 0
+    foreach ($r in $results) {
+        $log = Join-Path $Out "runs\$($r.name)\run.log"
+        $firstStood = $null
+        if (Test-Path $log) {
+            $line = Get-Content $log | Where-Object { $_ -match 'Body controller: standing at ([\d\.]+) s \(got up' } | Select-Object -First 1
+            if ($line -and $line -match 'standing at ([\d\.]+) s') { $firstStood = [double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture) }
+        }
+        if ($null -ne $firstStood -and $firstStood -lt $pressedUntil) { $under++ }
+    }
+    Write-Output ('  pressed with {0:N0} N from {1:N0} to {2:N0} s: {3} of {4} bodies stood while they were pressed' -f $PressN, $PressFromS, $pressedUntil, $under, $results.Count)
 }
 $atWall = @($results | Where-Object { $null -ne $_.furniture_clearance_cm } | Sort-Object { [double]$_.furniture_clearance_cm })
 if ($atWall.Count -gt 0) {

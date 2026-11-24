@@ -134,6 +134,8 @@ struct FScenarioExpect
 	TOptional<double> MaxFlinches;
 	/** The body got up at least this many times (control.get_up.successes). Active control only. */
 	TOptional<double> MinGetUps;
+	/** The body got up at most this many times: 0 for a body that is to be kept down. Active control only. */
+	TOptional<double> MaxGetUps;
 	/** The body began to get up at most this many times (control.get_up.attempts). Active control only. */
 	TOptional<double> MaxGetUpAttempts;
 	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */

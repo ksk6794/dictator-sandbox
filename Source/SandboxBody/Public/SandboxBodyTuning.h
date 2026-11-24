@@ -534,6 +534,35 @@ struct FSandboxGetUpTuning
 	 * the body leaning or waiting for good.)
 	 */
 	double FrameFollowS = 0.0;
+	/**
+	 * Where no foot carries the body (it lies, rolls over, is on its hands and knees), the clip is laid over the body
+	 * itself: its root follows the pelvis over the floor with this lag, less in proportion to the weight the feet
+	 * carry. 0: it does not. Seconds. (A body that turns into the clip's first pose moves 20 to 35 cm over the floor.
+	 * A clip that stayed where it was put waited for the assist to drag the pelvis back, which is what half the
+	 * assist's force was for; with a weaker assist it waited for good. A blow moves the pelvis faster than this
+	 * follows, and still counts as one.)
+	 */
+	double PelvisFollowS = 0.0;
+	/**
+	 * While something presses on the body with less than hold_force_n, how much of that following is left when the
+	 * feet carry all of the body's weight: 0 none (the clip is laid over the feet alone, as when nothing presses),
+	 * 1 all of it (feet and pelvis each pull the clip their way and meet in between). It lets a body that one hand
+	 * presses on get up where the hand leaves it room.
+	 */
+	double PressedFollow = 0.0;
+	/**
+	 * ...and how far below the clip's the pelvis may then be before the clip waits, in place of lag_cm. cm. A body
+	 * that pushes on under a hand sags under it, and the clip has to run further ahead for the muscles to be asked
+	 * for more.
+	 */
+	double PressedLagCm = 0.0;
+	/**
+	 * A body pressed down with this much or more does not push on: its clip waits, and the attempt is given up after
+	 * stall_s. N; 0: it always pushes on. What presses is the force other simulated bodies (hands) put on the body in
+	 * every frame of reactions.held_push_s. Between what one hand and two hands can press with, so that one hand
+	 * slows a body that is getting up and two keep it down (owner's rule).
+	 */
+	double HoldForceN = 0.0;
 	/** A get-up whose clip has waited this long without moving on is given up: the body lets go and lies, and tries again. Seconds. */
 	double StallS = 0.0;
 	/** A pelvis this far from where the clip has it has been thrown off: the get-up is given up at once. cm. */

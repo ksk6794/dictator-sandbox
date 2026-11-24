@@ -162,6 +162,8 @@ struct FSandboxGetUpView
 	FString GivenUp;
 	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */
 	int32 Hits = 0;
+	/** The most the body was pressed with while getting up: the force felt in every frame of the last moments from other simulated bodies. N. */
+	double PressedMaxN = 0.0;
 };
 
 /** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */

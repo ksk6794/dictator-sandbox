@@ -57,7 +57,14 @@ knocks the body down 50 times from a seed, 24 of them near a wall, a table and a
 spec, `Specs/rooms/getup_room.json`: the table in the middle of the room, the chair drawn up to it, since the
 owner's request of 24 November), and counts the falls that end standing: 49, 50 and 50 of 50 over three seeds
 (the criterion is 90%), 39, 37 and 43 of them at the first attempt (50, 49 and 48 with the two pieces apart near
-the corners). Next is part 7, the gate.
+the corners). **Part 7, the gate, is in progress: step 1 of 4 (the body) is done.** The get-up's assist is
+0.28 of body weight on average, from 0.51, with the stand unchanged (49, 50 and 49 of 50): the clip follows the
+body over the floor while the feet carry nothing (`getup.pelvis_follow_s`), the arms are stronger while getting
+up, and the assist's caps are 90 N on the pelvis and 30 N on a foot. A body getting up that is pressed with
+450 N or more does not push on (`getup.hold_force_n`): 600 N keeps every body of 150 down, under 300 N two of
+three get up (`Tools\getup-stand.ps1 -PressN`). The stance's elbows hang at 17 degrees of bend, not 37
+(`poses.stance.lowerarm_*`). The wrist's model waits for M4's grab by the hand (owner's decision). Next: step 2,
+friction and restitution; then the sweeps, the clips and the criteria table.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -83,7 +90,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
-| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; the places are worked out from where the room spec has the table and the chair) |
+| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; the places are worked out from where the room spec has the table and the chair) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
@@ -517,6 +524,33 @@ touch must not be in that list, and the ones that are get explained in the part'
   a wall 166 cm from the table stood, at the fourth attempt, 30 cm from the table. A fall "at a wall" stays one
   only by distance: the stand has those falls in the room's corner quarters and reports how near each came to
   the furniture.
+- **A clip that stays where it was put makes the assist drag the body over the floor.** A body that turns into a
+  clip's first pose, rolls over or comes onto hands and knees moves 20 to 35 cm, and the clip waited there for the
+  pelvis to be pulled back: half the assist's force went into that, and with a weaker assist the clip waited for
+  good. The clip's root follows the pelvis while the feet carry nothing (`getup.pelvis_follow_s`). The assist was
+  believed to be lifting a body whose arms were too weak; the log line of the failed attempts said otherwise
+  (pelvis 30 cm off over the floor, 4 cm in height).
+- **An assist that is capped always pulls at its cap,** so its share of body weight measures the caps and not the
+  need. Sweep the caps down against the stand and read what fails, not the share.
+- **A scripted hand goes to a point of the world and slides off a body that moves.** Of the two hands of
+  `getup_held` one ends on the floor; "two hands only slow a get-up" was measured on one hand from part 6 on, and
+  a threshold set between "one hand" and "two hands" from those runs separated nothing. A hand's sustained push
+  also reads above its spring's cap (up to 342 N for 300 N: its weight and the body's push against it). Read
+  `effectors.list.<hand>.touched_impulse_ns` before believing which hand pressed on what; a press of a known
+  size is a scripted force (`impulse` with `duration_s`).
+- **A scenario that starts with a fall is written for where that fall puts the body, and every change to the
+  body moves it.** With the stance's elbows 20 degrees straighter the blow of `getup_*` left the body on its back
+  instead of half on its side: a scripted hand pressed the empty floor, a get-up took 7.3 s instead of 3.7 and
+  ran out of its scenario's time, a pressed body needed two attempts instead of one. "300 N costs a get-up 0.2 s"
+  had been that one fall; on 150 falls a third of the bodies stay down under it. What something does to a get-up
+  is asked of the stand (`-PressN`, `-Tune`, three seeds), and a single scenario holds only what every fall
+  shows.
+- **No strength of the body draws a line between a light press and a heavy one.** Its legs lift 600 N as they
+  lift 300 N, or neither, by the phase of the clip the press finds it in; stiffer legs spoil the get-up nobody
+  hinders. What a press does is a rule on the force the body feels (`getup.hold_force_n`).
+- **"The elbow cannot straighten" was written down and believed for two parts; the joint can.** The stance never
+  asked. Before planning a change to the asset for something a joint "cannot" do, ask it for the pose
+  (`-Tune "poses.stance.<joint>.swing1_deg=..."`) and look.
 - **A clip steps a foot that the body is standing on.** A recording brings a foot forward while its weight is on
   the hands or the other leg; the simulated body's weight is where its own feet, hands and friction put it. With
   the clip's time waiting only for the pelvis, the body stood up leaning like a plank from a foot 45 cm behind where

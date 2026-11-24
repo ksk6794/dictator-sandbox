@@ -159,6 +159,10 @@ namespace
 		Visitor(FString(TEXT("getup.foot_lag_cm")), Tuning.GetUp.FootLagCm);
 		Visitor(FString(TEXT("getup.foot_wait_s")), Tuning.GetUp.FootWaitS);
 		Visitor(FString(TEXT("getup.frame_follow_s")), Tuning.GetUp.FrameFollowS);
+		Visitor(FString(TEXT("getup.pelvis_follow_s")), Tuning.GetUp.PelvisFollowS);
+		Visitor(FString(TEXT("getup.pressed_follow")), Tuning.GetUp.PressedFollow);
+		Visitor(FString(TEXT("getup.pressed_lag_cm")), Tuning.GetUp.PressedLagCm);
+		Visitor(FString(TEXT("getup.hold_force_n")), Tuning.GetUp.HoldForceN);
 		Visitor(FString(TEXT("getup.stall_s")), Tuning.GetUp.StallS);
 		Visitor(FString(TEXT("getup.lost_cm")), Tuning.GetUp.LostCm);
 		Visitor(FString(TEXT("getup.upright_deg")), Tuning.GetUp.UprightDeg);
@@ -384,6 +388,10 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.FootLagCm, 500.0, TEXT("getup"), TEXT("foot_lag_cm"), OutError) ||
 		!CheckRange(GetUp.FootWaitS, 60.0, TEXT("getup"), TEXT("foot_wait_s"), OutError) ||
 		!CheckRange(GetUp.FrameFollowS, 60.0, TEXT("getup"), TEXT("frame_follow_s"), OutError) ||
+		!CheckRange(GetUp.PelvisFollowS, 60.0, TEXT("getup"), TEXT("pelvis_follow_s"), OutError) ||
+		!CheckRange(GetUp.PressedFollow, 1.0, TEXT("getup"), TEXT("pressed_follow"), OutError) ||
+		!CheckRange(GetUp.PressedLagCm, 500.0, TEXT("getup"), TEXT("pressed_lag_cm"), OutError) ||
+		!CheckRange(GetUp.HoldForceN, 100000.0, TEXT("getup"), TEXT("hold_force_n"), OutError) ||
 		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
 		!CheckRange(GetUp.LostCm, 1000.0, TEXT("getup"), TEXT("lost_cm"), OutError) ||
 		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError))
