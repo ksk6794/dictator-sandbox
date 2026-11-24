@@ -8,6 +8,7 @@
 
 class ASandboxEffectorRig;
 class FSandboxDesktopTargetSource;
+struct FSandboxTargetRecording;
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
@@ -84,6 +85,14 @@ public:
 	 * command "Sandbox.Overlay toggle", as a person could.
 	 */
 	void ToggleOverlays();
+	/**
+	 * Begins to keep what the hands are asked for in every stepped frame, or ends it. A recording that ends is
+	 * handed on through OnRecordingStopped; the pawn writes no file. Quitting ends a recording too.
+	 */
+	void ToggleRecording();
+	bool StartRecording();
+	void StopRecording();
+	bool IsRecording() const { return Recording.IsValid(); }
 
 	/** Puts the camera somewhere, looking along a rotation. The hands follow unless they are detached. */
 	void SetView(const FVector& Location, const FRotator& Rotation);
@@ -96,6 +105,13 @@ public:
 
 	/** The character should be put back as it started. The drag handle has let go by the time this is called. */
 	FSimpleMulticastDelegate OnResetRequested;
+
+	/**
+	 * A recording of the hands has ended. FirstFrame is how many frames the world had stepped, by the pawn's
+	 * count (GetSimulatedFrames), before the step the recording's first targets were for.
+	 */
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnRecordingStopped, const TSharedRef<FSandboxTargetRecording>& /*Recording*/, int64 /*FirstFrame*/);
+	FOnRecordingStopped OnRecordingStopped;
 
 	/** Lines the session wants on the HUD below the pawn's own (the character's state, for one). */
 	TFunction<void(TArray<FString>& /*OutLines*/)> ExtraHudLines;
@@ -150,6 +166,9 @@ private:
 
 	TSharedPtr<FSandboxDesktopTargetSource> HandSource;
 	FSandboxDragHandle DragHandle;
+	/** The recording being made, if any, and the pawn's count of stepped frames when it began. */
+	TSharedPtr<FSandboxTargetRecording> Recording;
+	int64 RecordingFirstFrame = 0;
 
 	FSandboxInteractionTuning Tuning;
 	uint32 TuningRevision = 0;

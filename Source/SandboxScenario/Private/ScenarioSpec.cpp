@@ -302,6 +302,23 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 
 	Json->TryGetStringField(TEXT("map"), OutSpec.MapPath);
 
+	if (Json->HasField(TEXT("recording")))
+	{
+		if (!Json->TryGetStringField(TEXT("recording"), OutSpec.Recording) || OutSpec.Recording.IsEmpty())
+		{
+			OutError = TEXT("'recording' must be the path of a recording of the hands");
+			return false;
+		}
+	}
+	if (Json->HasField(TEXT("recording_start_s")))
+	{
+		if (OutSpec.Recording.IsEmpty() || !Json->TryGetNumberField(TEXT("recording_start_s"), OutSpec.RecordingStartS) || OutSpec.RecordingStartS < 0.0)
+		{
+			OutError = TEXT("'recording_start_s' must be a number >= 0, in a scenario with a 'recording'");
+			return false;
+		}
+	}
+
 	const TSharedPtr<FJsonObject>* Body = nullptr;
 	if (!Json->TryGetObjectField(TEXT("body"), Body))
 	{

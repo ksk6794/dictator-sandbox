@@ -8,6 +8,7 @@
 
 class FSandboxParamStore;
 class USandboxEffectorComponent;
+struct FSandboxTargetRecording;
 
 /**
  * The player's physical presence: a set of effectors and the source that says where they should be. The
@@ -39,6 +40,14 @@ public:
 	/** Asks the source where each effector should be and updates the effectors. */
 	void UpdateTargets(float DeltaTime);
 
+	/**
+	 * From the next UpdateTargets on, the target each effector is given is added to the recording, a frame a
+	 * call; null ends it. A recording that names no effectors yet gets the rig's. False with a reason if it
+	 * names others than the rig has, in another order.
+	 */
+	bool SetRecording(TSharedPtr<FSandboxTargetRecording> InRecording, FString& OutError);
+	bool IsRecording() const { return Recording.IsValid(); }
+
 	const TArray<TObjectPtr<USandboxEffectorComponent>>& GetEffectors() const { return Effectors; }
 	USandboxEffectorComponent* FindEffector(FName Id) const;
 	const FSandboxInteractionTuning& GetTuning() const { return Tuning; }
@@ -50,6 +59,7 @@ private:
 	TArray<TObjectPtr<USandboxEffectorComponent>> Effectors;
 
 	TSharedPtr<const ISandboxTargetSource> Source;
+	TSharedPtr<FSandboxTargetRecording> Recording;
 	FSandboxInteractionTuning Tuning;
 	const FSandboxParamStore* Params = nullptr;
 	uint32 ParamsRevision = 0;

@@ -203,6 +203,15 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	TArray<FScenarioEvent> Events;
 	FScenarioExpect Expect;
 
+	/**
+	 * Optional recording of the hands ("recording": a file of FSandboxTargetRecording, relative to the project
+	 * directory unless absolute), replayed frame for frame in place of "effector" events; a scenario has one or
+	 * the other. Its first frame is for the physics step that begins RecordingStartS after the start of the run:
+	 * as old as the body of the session was when the recording began.
+	 */
+	FString Recording;
+	double RecordingStartS = 0.0;
+
 	bool HasEvent(const TCHAR* Type) const
 	{
 		return Events.ContainsByPredicate([Type](const FScenarioEvent& Event) { return Event.Type == Type; });

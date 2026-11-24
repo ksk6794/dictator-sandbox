@@ -8,6 +8,7 @@
 #include "SandboxInteractionTuning.h"
 #include "SandboxParamStore.h"
 #include "SandboxScriptedTargetSource.h"
+#include "SandboxTargetRecording.h"
 #include "SandboxWorldSpring.h"
 
 namespace
@@ -247,6 +248,67 @@ bool FInteractionDesktopSourceTest::RunTest(const FString& Parameters)
 	Source.Update(Anchor, false, false, Tools, ReachCm, Dt, /*bContinuous*/ false);
 	Source.GetTarget(SandboxEffectors::HandRight, Right);
 	TestEqual(TEXT("but not across a pause"), Right.Velocity, FVector::ZeroVector);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteractionRecordingTest, "DictatorSandbox.Interaction.Source.RecordingComesBackBitForBit", InteractionTestFlags)
+bool FInteractionRecordingTest::RunTest(const FString& Parameters)
+{
+	// Numbers that have no short decimal form: a recording that came back rounded would replay another motion.
+	FSandboxTargetRecording Made;
+	Made.Fps = 90;
+	Made.Effectors = { SandboxEffectors::HandLeft, SandboxEffectors::HandRight };
+	for (int32 Frame = 0; Frame < 5; ++Frame)
+	{
+		for (int32 Hand = 0; Hand < 2; ++Hand)
+		{
+			FSandboxEffectorTarget Target;
+			Target.Location = FVector(1.0 / 3.0 + Frame, -70.1 * (Hand + 1), 128.0 + Frame * UE_DOUBLE_PI);
+			Target.Rotation = FQuat(FVector(0.3, -0.5, 0.81).GetSafeNormal(), 0.1 + 0.37 * Frame);
+			Target.Velocity = FVector(600.0 / 7.0 * Frame, 0.0, -1.0e-3 * Hand);
+			Target.Grip = 0.1f * Frame;
+			Made.Targets.Add(Target);
+		}
+	}
+	const FString File = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Tests"), TEXT("recording_round_trip.json"));
+	FString Error;
+	FSandboxTargetRecording Read;
+	if (!TestTrue(TEXT("a recording is written"), Made.Save(File, Error)) ||
+		!TestTrue(TEXT("and read again"), FSandboxTargetRecording::Load(File, Read, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	TestEqual(TEXT("the frame rate comes back"), Read.Fps, Made.Fps);
+	TestTrue(TEXT("the effectors come back in their order"), Read.Effectors == Made.Effectors);
+	TestEqual(TEXT("every frame comes back"), Read.NumFrames(), 5);
+	bool bSame = Read.Targets.Num() == Made.Targets.Num();
+	for (int32 Index = 0; bSame && Index < Made.Targets.Num(); ++Index)
+	{
+		const FSandboxEffectorTarget& A = Made.Targets[Index];
+		const FSandboxEffectorTarget& B = Read.Targets[Index];
+		bSame = A.Location == B.Location && A.Velocity == B.Velocity && A.Grip == B.Grip &&
+			A.Rotation.X == B.Rotation.X && A.Rotation.Y == B.Rotation.Y && A.Rotation.Z == B.Rotation.Z && A.Rotation.W == B.Rotation.W;
+	}
+	TestTrue(TEXT("every number comes back bit for bit"), bSame);
+
+	// Played back: frame for frame, waiting on the first frame before the start and resting on the last after the end.
+	const TSharedRef<FSandboxTargetRecording> Shared = MakeShared<FSandboxTargetRecording>(Read);
+	FSandboxRecordedTargetSource Source(Shared);
+	FSandboxEffectorTarget Target;
+	Source.SetFrame(3);
+	TestTrue(TEXT("a recorded hand has a target"), Source.GetTarget(SandboxEffectors::HandRight, Target));
+	TestTrue(TEXT("frame 3 of the right hand is what was recorded"), Target.Location == Made.Targets[3 * 2 + 1].Location && Target.Velocity == Made.Targets[3 * 2 + 1].Velocity);
+	Source.SetFrame(-10);
+	Source.GetTarget(SandboxEffectors::HandLeft, Target);
+	TestTrue(TEXT("before the start a hand waits on the first frame, at rest"), Target.Location == Made.Targets[0].Location && Target.Velocity.IsZero());
+	Source.SetFrame(99);
+	Source.GetTarget(SandboxEffectors::HandLeft, Target);
+	TestTrue(TEXT("after the end a hand stays on the last frame, at rest"), Target.Location == Made.Targets[4 * 2].Location && Target.Velocity.IsZero());
+
+	FSandboxTargetRecording Empty;
+	TestFalse(TEXT("an empty recording has no target"), Empty.Find(SandboxEffectors::HandLeft, 0, Target));
+	TestFalse(TEXT("and is not written"), Empty.Save(File, Error));
 	return true;
 }
 

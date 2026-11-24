@@ -16,8 +16,12 @@ on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thi
 tunnelling. **M3, balance and recovery, is done: closed on 24 November 2026 with its five criteria met, the fifth by a
 review of the clips that the owner handed to the agent; the owner's own look in a session is deferred with M2's
 and does not hold up M4** (the seven parts, the gate's table, the review and the known limits are in
-the M3 section of `docs/PRD.md`). **M4, full interaction and VR, is next** (its order of parts and what M3 hands
-over to it are in the M4 section). The body senses its own balance (standing feet, support polygon, capture
+the M3 section of `docs/PRD.md`). **M4, full interaction and VR, is in progress: part 1 of 6, the hands in the
+headset, has step 1 of 4 done** (its order of parts and what M3 hands over to it are in the M4 section). Step 1:
+a session's hands can be recorded (`Tools\play.ps1 -Record`, the K key) and a scenario replays the recording frame
+for frame (`"recording"`; `replay_demo_hands`); `Tools\record-replay.ps1` holds a replay against its session
+(the same states of the body within a frame, the pelvis within 1 cm, the hands' impulses within 5%) and two
+replays against each other by their hashes. Next is step 2, the OpenXR target source. The body senses its own balance (standing feet, support polygon, capture
 point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
@@ -122,6 +126,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
 | Self-test of the session, no window | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Smoke` (`-Smoke -Shot` renders it and saves `final.png`) |
+| Record the hands of a session | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Record <name>` (from the first frame; the K key ends a recording and starts the next; `Saved\Recordings\<name>\`: the recording, a scenario that replays it, what the session saw) |
+| A session's hands recorded and replayed, held against each other | `powershell -ExecutionPolicy Bypass -File Tools\record-replay.ps1` (a session without a person uses the hands alone, `play.ps1 -Demo`; `-Recorded <name>` for a recording a person made; `-Twice` also wants two replays with the same hashes; `-PelvisCm`, `-ImpulsePct`, `-Frames` are the limits) |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
 | Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` (`-Force` also rebuilds up-to-date maps) |
@@ -129,7 +135,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (63 scenarios; 85 s with `-Long`),
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (64 scenarios; 85 s with `-Long`), a record and replay 25 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s, the whole
@@ -149,11 +155,12 @@ touch must not be in that list, and the ones that are get explained in the part'
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
 | `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `ApplySurface` gives the bodies their friction and restitution (`surface.*`); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`). |
-| `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
+| `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, recorded, later VR; it can keep the targets of every stepped frame, `SetRecording`); `FSandboxTargetRecording` (what the hands were asked for, frame after frame, as a text file) and `FSandboxRecordedTargetSource` (plays one back frame for frame); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps with their furniture); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
+| `Recordings/` | Recordings of a session's hands that scenarios replay (`"recording"` in a scenario file); new ones are written under `Saved\Recordings` and copied here to be kept. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
 | `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
@@ -672,6 +679,16 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **A scripted force is felt as a press; a pin is not.** `impulse` with `duration_s` goes through what the body
   feels (`SustainedN`), so a get-up under it is "pressed" or "held down". To keep a body from rising without
   pressing on it, pin it (`getup_wait_bounded`).
+- **A session and the scenario that replays it are two runs, not one.** A session's process runs no warm-up
+  scenario, and its hands exist from its first frame and are made in another order relative to the body. A
+  recording of the hands replayed as a scenario agreed with its session in every figure through the first contact
+  and was a frame and 0.27 cm off after it. Hold a replay to its session by figures with limits
+  (`Tools\record-replay.ps1`) and to another replay by hashes; "the same hashes as the session" was planned and
+  could not be.
+- **A recording's first frame belongs to one step of the body's life.** The pawn counts the frames the world
+  stepped; the session knows on which of them its character was put into the world; the difference is
+  `recording_start_s`. A reset during a recording makes a scenario that cannot end as the session did (the
+  session says so in its log).
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,

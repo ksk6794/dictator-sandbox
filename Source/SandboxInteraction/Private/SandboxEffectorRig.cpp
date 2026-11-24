@@ -4,6 +4,7 @@
 #include "SandboxCore.h"
 #include "SandboxEffectorComponent.h"
 #include "SandboxParamStore.h"
+#include "SandboxTargetRecording.h"
 
 ASandboxEffectorRig::ASandboxEffectorRig()
 {
@@ -91,5 +92,38 @@ void ASandboxEffectorRig::UpdateTargets(float DeltaTime)
 			Effector->SetTarget(Target);
 		}
 		Effector->Update(DeltaTime);
+		if (Recording)
+		{
+			// What the effector was given, whoever gave it: with a source that says nothing it is the target it had.
+			Recording->Targets.Add(Effector->GetTarget());
+		}
 	}
+}
+
+bool ASandboxEffectorRig::SetRecording(TSharedPtr<FSandboxTargetRecording> InRecording, FString& OutError)
+{
+	if (InRecording)
+	{
+		TArray<FName> Names;
+		for (const USandboxEffectorComponent* Effector : Effectors)
+		{
+			Names.Add(Effector->GetId());
+		}
+		if (Names.Num() == 0)
+		{
+			OutError = TEXT("the rig has no effectors to record");
+			return false;
+		}
+		if (InRecording->Effectors.Num() == 0)
+		{
+			InRecording->Effectors = Names;
+		}
+		else if (InRecording->Effectors != Names)
+		{
+			OutError = TEXT("the recording is of other effectors than the rig's");
+			return false;
+		}
+	}
+	Recording = MoveTemp(InRecording);
+	return true;
 }

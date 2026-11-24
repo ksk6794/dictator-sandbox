@@ -20,6 +20,7 @@
 #include "SandboxParamStore.h"
 #include "SandboxPawn.h"
 #include "SandboxRagdollActor.h"
+#include "SandboxTargetRecording.h"
 #include "ScenarioStage.h"
 #include "UnrealClient.h"
 
@@ -54,7 +55,7 @@ TStatId USandboxPlaySubsystem::GetStatId() const
 void USandboxPlaySubsystem::Fail(const FString& Message)
 {
 	UE_LOG(LogSandbox, Error, TEXT("Play session cannot start: %s"), *Message);
-	if (bSmoke)
+	if (bSmoke || bDemo)
 	{
 		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 		Root->SetBoolField(TEXT("ok"), false);
@@ -72,7 +73,7 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 	FString ScenarioArg;
 	FParse::Value(FCommandLine::Get(), TEXT("Play="), ScenarioArg);
-	FString ScenarioFile = ScenarioArg;
+	ScenarioFile = ScenarioArg;
 	if (FPaths::GetExtension(ScenarioFile).IsEmpty())
 	{
 		ScenarioFile = FPaths::Combine(TEXT("Scenarios"), ScenarioFile + TEXT(".json"));
@@ -84,6 +85,8 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	ScenarioFile = FPaths::ConvertRelativePathToFull(ScenarioFile);
 
 	bSmoke = FParse::Param(FCommandLine::Get(), TEXT("PlaySmoke"));
+	bDemo = !bSmoke && FParse::Param(FCommandLine::Get(), TEXT("PlayDemo"));
+	bRecordFromStart = FParse::Value(FCommandLine::Get(), TEXT("Record="), RecordName) && !RecordName.IsEmpty() && !bDemo && !bSmoke;
 	if (!FParse::Value(FCommandLine::Get(), TEXT("Out="), OutDir))
 	{
 		OutDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Play"), FPaths::GetBaseFilename(ScenarioFile));
@@ -141,6 +144,11 @@ bool USandboxPlaySubsystem::AdoptPawn(UWorld& World)
 
 	Found->OnImpulseRequested.AddUObject(this, &USandboxPlaySubsystem::ApplyImpulse);
 	Found->OnResetRequested.AddUObject(this, &USandboxPlaySubsystem::ResetCharacter);
+	Found->OnRecordingStopped.AddUObject(this, &USandboxPlaySubsystem::SaveRecording);
+	if (bRecordFromStart)
+	{
+		Found->StartRecording();
+	}
 	Found->ExtraHudLines = [WeakThis = TWeakObjectPtr<const USandboxPlaySubsystem>(this)](TArray<FString>& OutLines)
 	{
 		if (WeakThis.IsValid())
@@ -178,6 +186,7 @@ void USandboxPlaySubsystem::ResetCharacter()
 	FString Error;
 	Character = FScenarioStage::SpawnBody(GetWorldRef(), Spec, Error);
 	++Resets;
+	BodySpawnFrame = Pawn.IsValid() ? Pawn->GetSimulatedFrames() : 0;
 	if (!Character)
 	{
 		UE_LOG(LogSandbox, Error, TEXT("Play session: the character could not be put back: %s"), *Error);
@@ -198,6 +207,204 @@ void USandboxPlaySubsystem::AddHudLines(TArray<FString>& OutLines) const
 		OutLines.Add(Character ? TEXT("Character: passive body") : TEXT("Character: none"));
 	}
 	OutLines.Add(FString::Printf(TEXT("Session: %s, resets %d"), *Spec.Name, Resets));
+}
+
+void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecording>& Recording, int64 FirstFrame)
+{
+	LastRecordingScenario.Reset();
+	LastRecordingError.Reset();
+	if (Recording->NumFrames() == 0)
+	{
+		LastRecordingError = TEXT("the recording has no frames: the world did not step while it ran");
+		UE_LOG(LogSandbox, Warning, TEXT("Play session: %s"), *LastRecordingError);
+		return;
+	}
+	Recording->Fps = Spec.FixedFps;
+	++RecordingsSaved;
+	FString Name = RecordName.IsEmpty() ? Spec.Name + TEXT("_recorded") : RecordName;
+	if (RecordingsSaved > 1)
+	{
+		Name += FString::Printf(TEXT("_%d"), RecordingsSaved);
+	}
+	const FString Dir = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Recordings"), Name));
+	const FString RecordingFile = FPaths::Combine(Dir, Name + TEXT(".recording.json"));
+	if (!Recording->Save(RecordingFile, LastRecordingError))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Play session: %s"), *LastRecordingError);
+		return;
+	}
+
+	// The scenario that replays it: the session's own scene, no events, the hands from the recording, and a run
+	// as long as the body had lived when the recording ended, so that both end at the same moment. The body of
+	// a session gets up by itself, so the replay's does too.
+	const bool bBodyReplaced = BodySpawnFrame > FirstFrame;
+	const int64 StartFrame = bBodyReplaced ? 0 : FirstFrame - BodySpawnFrame;
+	const int64 EndFrame = StartFrame + Recording->NumFrames();
+	if (bBodyReplaced)
+	{
+		UE_LOG(LogSandbox, Warning, TEXT("Play session: the character was reset while '%s' was recorded; its scenario cannot bring that back and will not end as the session did"), *Name);
+	}
+	FString RelativeRecording = RecordingFile;
+	FPaths::MakePathRelativeTo(RelativeRecording, *FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()));
+	TSharedPtr<FJsonObject> Scenario;
+	if (!SandboxJson::LoadObject(ScenarioFile, Scenario, LastRecordingError))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Play session: %s"), *LastRecordingError);
+		return;
+	}
+	Scenario->SetStringField(TEXT("name"), Name);
+	Scenario->SetNumberField(TEXT("duration_s"), static_cast<double>(EndFrame) / Spec.FixedFps);
+	Scenario->SetArrayField(TEXT("events"), TArray<TSharedPtr<FJsonValue>>());
+	Scenario->SetObjectField(TEXT("expect"), MakeShared<FJsonObject>());
+	Scenario->RemoveField(TEXT("end_when_standing_s"));
+	Scenario->SetStringField(TEXT("recording"), RelativeRecording);
+	Scenario->SetNumberField(TEXT("recording_start_s"), static_cast<double>(StartFrame) / Spec.FixedFps);
+	const TSharedPtr<FJsonObject>* Body = nullptr;
+	if (Spec.Control == EScenarioBodyControl::Active && Scenario->TryGetObjectField(TEXT("body"), Body))
+	{
+		(*Body)->SetBoolField(TEXT("get_up"), true);
+	}
+	const FString ReplayFile = FPaths::Combine(Dir, Name + TEXT(".json"));
+	if (!SandboxJson::SaveObject(ReplayFile, Scenario.ToSharedRef(), LastRecordingError))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Play session: %s"), *LastRecordingError);
+		return;
+	}
+
+	// What the session saw at the moment the recording ended, in the terms of a scenario's result file, for the
+	// replay to be held against (Tools\record-replay.ps1).
+	const TSharedRef<FJsonObject> Seen = MakeShared<FJsonObject>();
+	Seen->SetStringField(TEXT("name"), Name);
+	Seen->SetStringField(TEXT("scenario"), Spec.Name);
+	Seen->SetNumberField(TEXT("fps"), Spec.FixedFps);
+	Seen->SetNumberField(TEXT("frames"), Recording->NumFrames());
+	Seen->SetNumberField(TEXT("start_frame"), static_cast<double>(StartFrame));
+	Seen->SetNumberField(TEXT("end_frame"), static_cast<double>(EndFrame));
+	Seen->SetBoolField(TEXT("character_reset_while_recording"), bBodyReplaced);
+	// A session that is closed while it records comes here as the world is taken apart: the character may be gone.
+	const bool bCharacter = IsValid(Character) && Character->GetBodyMesh();
+	const USandboxBodyController* Controller = bCharacter ? Character->GetController() : nullptr;
+	if (Controller)
+	{
+		FString Sequence;
+		TArray<TSharedPtr<FJsonValue>> States;
+		for (const FSandboxStateChange& Change : Controller->GetStateLog())
+		{
+			const FString State = FSandboxBodyTuning::StateName(Change.State);
+			Sequence += (Sequence.IsEmpty() ? TEXT("") : TEXT(">")) + State;
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("state"), State);
+			Entry->SetNumberField(TEXT("t"), Change.TimeS);
+			Entry->SetNumberField(TEXT("frame"), FMath::RoundToInt32(Change.TimeS * Spec.FixedFps));
+			Entry->SetStringField(TEXT("reason"), Change.Reason);
+			States.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		Seen->SetStringField(TEXT("state_sequence"), Sequence);
+		Seen->SetArrayField(TEXT("states"), States);
+		Seen->SetNumberField(TEXT("felt_impulse_ns"), Controller->GetContactImpulseNs());
+	}
+	const FBodyInstance* Root = bCharacter ? Character->GetBodyMesh()->GetBodyInstance() : nullptr;
+	if (Root && Root->IsValidBodyInstance())
+	{
+		// The pelvis's centre of mass from where the character was put, as body.bodies[].final_location_cm has it.
+		Seen->SetArrayField(TEXT("pelvis_cm"), SandboxJson::VectorToArray(Root->GetCOMPosition() - Spec.SpawnLocationCm));
+	}
+	const TSharedRef<FJsonObject> Hands = MakeShared<FJsonObject>();
+	const ASandboxEffectorRig* Rig = Pawn.IsValid() ? Pawn->GetRig() : nullptr;
+	for (const USandboxEffectorComponent* Effector : Rig ? Rig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+	{
+		const FSandboxEffectorStats& Stats = Effector->GetStats();
+		const TSharedRef<FJsonObject> Hand = MakeShared<FJsonObject>();
+		Hand->SetNumberField(TEXT("contact_impulse_ns"), Stats.ContactImpulseNs);
+		Hand->SetNumberField(TEXT("contact_frames"), Stats.ContactFrames);
+		Hand->SetStringField(TEXT("first_touched"), Stats.FirstTouched.IsNone() ? FString() : Stats.FirstTouched.ToString());
+		Hand->SetNumberField(TEXT("first_contact_speed_mps"), Stats.FirstContactSpeedCmS * 0.01);
+		Hand->SetNumberField(TEXT("max_gap_cm"), Stats.MaxGapCm);
+		Hands->SetObjectField(Effector->GetId().ToString(), Hand);
+	}
+	Seen->SetObjectField(TEXT("hands"), Hands);
+	FString Error;
+	if (!SandboxJson::SaveObject(FPaths::Combine(Dir, Name + TEXT(".session.json")), Seen, Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Play session: %s"), *Error);
+	}
+
+	LastRecordingScenario = ReplayFile;
+	UE_LOG(LogSandbox, Display, TEXT("Play session: %d frames of the hands recorded from frame %lld of the character's life; replay with -File %s"),
+		Recording->NumFrames(), StartFrame, *ReplayFile);
+}
+
+void USandboxPlaySubsystem::TickDemo()
+{
+	// The hands alone, for a recording that a scenario can replay to the same end: no tool of the session that
+	// a scenario has no word for (the drag handle, the reset, the time control) is touched.
+	ASandboxPawn* Player = Pawn.Get();
+	if (!Player)
+	{
+		if (DemoFrame++ > 10)
+		{
+			LastRecordingError = TEXT("the player has no ASandboxPawn");
+			FinishDemo();
+		}
+		return;
+	}
+	// Looking at the character's front from the side it faces (+y), level, at arm's length.
+	const FVector Chest = Spec.SpawnLocationCm + FVector(0.0, 0.0, 128.0);
+	switch (DemoFrame)
+	{
+	case 5:
+		Player->SelectTool(ESandboxTool::Hands);
+		Player->SetView(Chest + FVector(0.0, 85.0, 0.0), FRotator(0.0, -90.0, 0.0));
+		break;
+	// The hands have come to rest in front of the new view by now.
+	case 60:
+		if (!Player->StartRecording())
+		{
+			LastRecordingError = TEXT("the pawn could not start a recording (see the log)");
+			FinishDemo();
+			return;
+		}
+		break;
+	// The right hand reaches into the chest and comes back; then the left.
+	case 90:
+		Player->SetPrimary(true);
+		break;
+	case 115:
+		Player->SetPrimary(false);
+		break;
+	case 170:
+		Player->SetSecondary(true);
+		break;
+	case 190:
+		Player->SetSecondary(false);
+		break;
+	case 300:
+		Player->StopRecording();
+		FinishDemo();
+		return;
+	default:
+		break;
+	}
+	++DemoFrame;
+}
+
+void USandboxPlaySubsystem::FinishDemo()
+{
+	const bool bPass = LastRecordingError.IsEmpty() && !LastRecordingScenario.IsEmpty();
+	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	Root->SetBoolField(TEXT("ok"), true);
+	Root->SetBoolField(TEXT("pass"), bPass);
+	Root->SetStringField(TEXT("scenario"), Spec.Name);
+	Root->SetNumberField(TEXT("frames"), DemoFrame);
+	Root->SetStringField(TEXT("replay_scenario"), LastRecordingScenario);
+	Root->SetStringField(TEXT("error"), LastRecordingError);
+	FString Error;
+	if (!SandboxJson::SaveObject(FPaths::Combine(OutDir, TEXT("play.json")), Root, Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("Play demo: %s"), *Error);
+	}
+	bSmokePass = bPass;
+	ExitCountdown = 0;
 }
 
 void USandboxPlaySubsystem::HoldFrameRate()
@@ -262,6 +469,10 @@ void USandboxPlaySubsystem::Tick(float DeltaTime)
 	if (bSmoke)
 	{
 		TickSmoke();
+	}
+	else if (bDemo)
+	{
+		TickDemo();
 	}
 	else if (FApp::CanEverRender())
 	{

@@ -9,6 +9,7 @@ public class SandboxInteraction : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "PhysicsCore", "SandboxCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput" });
+		// Json: a recording of the hands is a text file (FSandboxTargetRecording).
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "Json" });
 	}
 }

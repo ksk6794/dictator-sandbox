@@ -45,6 +45,7 @@
 #include "SandboxParamStore.h"
 #include "SandboxRagdollActor.h"
 #include "SandboxScriptedTargetSource.h"
+#include "SandboxTargetRecording.h"
 #include "ScenarioStage.h"
 #include "UnrealClient.h"
 
@@ -401,6 +402,32 @@ bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 	}
 	TArray<FName> Names;
 	Source->GetEffectors(Names);
+
+	// Or the hands of a session, as they were recorded: the same rig, its targets read from the recording.
+	TSharedPtr<FSandboxRecordedTargetSource> Recorded;
+	if (!Spec.Recording.IsEmpty())
+	{
+		if (Names.Num() > 0)
+		{
+			OutError = TEXT("a scenario has 'effector' events or a 'recording', not both");
+			return false;
+		}
+		const FString File = FPaths::IsRelative(Spec.Recording) ? FPaths::Combine(FPaths::ProjectDir(), Spec.Recording) : Spec.Recording;
+		const TSharedRef<FSandboxTargetRecording> Recording = MakeShared<FSandboxTargetRecording>();
+		if (!FSandboxTargetRecording::Load(FPaths::ConvertRelativePathToFull(File), *Recording, OutError))
+		{
+			return false;
+		}
+		if (Recording->Fps != Spec.FixedFps)
+		{
+			OutError = FString::Printf(TEXT("the recording was made at %d steps a second and the scenario runs at %d: it is replayed frame for frame"), Recording->Fps, Spec.FixedFps);
+			return false;
+		}
+		Recorded = MakeShared<FSandboxRecordedTargetSource>(Recording);
+		Names = Recording->Effectors;
+		RecordingStartFrame = FMath::RoundToInt32(Spec.RecordingStartS * Spec.FixedFps);
+		UE_LOG(LogSandbox, Display, TEXT("Scenario '%s': the hands replay %d frames of '%s' from frame %d"), *Spec.Name, Recording->NumFrames(), *Spec.Recording, RecordingStartFrame);
+	}
 	if (Names.Num() == 0)
 	{
 		return true;
@@ -419,13 +446,27 @@ bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 	for (const FName Name : Names)
 	{
 		FSandboxEffectorTarget Start;
-		Source->Evaluate(Name, 0.0, Start);
+		if (Recorded)
+		{
+			Recorded->GetRecording().Find(Name, 0, Start);
+		}
+		else
+		{
+			Source->Evaluate(Name, 0.0, Start);
+		}
 		if (!EffectorRig->AddEffector(Name, FTransform(Start.Rotation, Start.Location), OutError))
 		{
 			return false;
 		}
 		EffectorFirstContactFrame.Add(-1);
 		EffectorTracks.AddDefaulted();
+	}
+	if (Recorded)
+	{
+		RecordedSource = Recorded;
+		RecordedSource->SetFrame(-RecordingStartFrame);
+		EffectorRig->SetSource(RecordedSource);
+		return true;
 	}
 	EffectorSource = Source;
 	EffectorRig->SetSource(EffectorSource);
@@ -561,7 +602,15 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 	// Where the hands should be at the start of the coming step, which begins at SimTimeS.
 	if (EffectorRig)
 	{
-		EffectorSource->SetTime(SimTimeS);
+		if (EffectorSource)
+		{
+			EffectorSource->SetTime(SimTimeS);
+		}
+		if (RecordedSource)
+		{
+			// The coming step is the run's step FrameIndex + 1, counted from 0.
+			RecordedSource->SetFrame(FrameIndex + 1 - RecordingStartFrame);
+		}
 		EffectorRig->UpdateTargets(static_cast<float>(FixedDt));
 	}
 
@@ -2445,6 +2494,14 @@ void UScenarioRunnerSubsystem::Finish()
 		EffectorsJson->SetNumberField(TEXT("contact_impulse_ns"), EffectorImpulseNs);
 		EffectorsJson->SetNumberField(TEXT("max_contact_force_n"), EffectorForceN);
 		EffectorsJson->SetNumberField(TEXT("tuning_changes"), EffectorRig->GetTuningChangeCount());
+		if (RecordedSource)
+		{
+			const TSharedRef<FJsonObject> RecordingJson = MakeShared<FJsonObject>();
+			RecordingJson->SetStringField(TEXT("file"), Spec.Recording);
+			RecordingJson->SetNumberField(TEXT("frames"), RecordedSource->GetRecording().NumFrames());
+			RecordingJson->SetNumberField(TEXT("start_frame"), RecordingStartFrame);
+			EffectorsJson->SetObjectField(TEXT("recording"), RecordingJson);
+		}
 		// Measured by the runner with scene queries after every frame, not taken from the solver's contacts.
 		EffectorsJson->SetNumberField(TEXT("max_penetration_cm"), EffectorPenetrationCm);
 		EffectorsJson->SetNumberField(TEXT("tunnel_frames"), EffectorTunnelFrames);

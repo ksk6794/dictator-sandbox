@@ -1,5 +1,6 @@
 # Takes a clean clone to a verified build: stock content, the clips of Epic's Game Animation Sample, compile, asset generation, lighting bake, unit tests,
-# scenario suite, push matrix, knockdowns, the stand of falls and get-ups, self-test of the interactive session.
+# scenario suite, push matrix, knockdowns, the stand of falls and get-ups, self-test of the interactive session,
+# a session's hands recorded and replayed.
 #   powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1
 # Needs: Epic's Game Animation Sample as a project of its own (a manual download; Tools\fetch-sample-anims.ps1 says
 # where it is looked for), Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
@@ -17,7 +18,8 @@ $steps = @(
     @{ name = 'push-matrix';         script = 'push-matrix.ps1' },
     @{ name = 'knockdowns';          script = 'knockdowns.ps1' },
     @{ name = 'getup-stand';         script = 'getup-stand.ps1' },
-    @{ name = 'play-smoke';          script = 'play.ps1'; arguments = @('-Smoke') }
+    @{ name = 'play-smoke';          script = 'play.ps1'; arguments = @('-Smoke') },
+    @{ name = 'record-replay';       script = 'record-replay.ps1'; arguments = @('-Twice') }
 )
 
 $results = @()

@@ -2355,6 +2355,67 @@ Changed: `SandboxBodyController` (`UpdateGetUp`: the bound), `SandboxBodyTuning`
 `Config/Tuning/body.json` and its `README.md`, `ScenarioSpec` and `ScenarioRunnerSubsystem`
 (`min_get_up_attempts`), `Scenarios\getup_wait_bounded.json`, `Scenarios\README.md`.
 
+### M4 part 1, step 1 (the hands recorded and replayed), 2026-11-24
+
+What a session's hands are asked for can be kept and replayed by a scenario. Nothing of the body or of an existing
+scenario changed: the 63 scenarios of the baseline `m3_gate_wait_start` have its hashes, `getup_wait_bounded` has
+the hashes of the commit before, and one scenario is new (`replay_demo_hands`).
+
+**What is built.** The rig adds the target each hand was given to a recording on every `UpdateTargets`
+(`ASandboxEffectorRig::SetRecording`), so only frames on which the world steps are kept, whatever source the
+targets came from. The pawn starts and ends a recording (the K key, `StartRecording`, `StopRecording`) and hands a
+finished one on; it writes no file and knows no character. The session (`USandboxPlaySubsystem`, `-Record=`) writes
+it with a scenario that replays it and with what it saw of the outcome. A recording is text, one line a frame, 17
+significant digits (a unit test reads one back bit for bit); 240 frames of two hands are 49 kB, a minute about
+1.1 MB. A scenario names a recording in place of `effector` events (`"recording"`, `"recording_start_s"`), and the
+runner plays it back frame for frame through `FSandboxRecordedTargetSource`.
+
+**The check** is `Tools\record-replay.ps1`: a session without a person uses the hands alone (`-PlayDemo`: at frame
+60 the recording begins, the right hand reaches into the chest from frame 90 to 115, the left from 170 to 190, the
+recording ends at frame 300), the recording is replayed as a scenario of the same length, and the replay is held
+against what the session saw.
+
+| | Session | Replay |
+| --- | --- | --- |
+| States of the body | standing, flinch, stagger, standing, flinch, standing, stagger | the same |
+| The frames they began in | 0, 99, 110, 161, 182, 214, 267 | 0, 99, 110, 161, 181, 213, 266 |
+| Pelvis at the end, cm from the spawn point | 3.59, -6.77, 84.32 | 3.64, -6.51, 84.41: 0.27 cm apart |
+| Right hand: first touched, impulse, speed of arrival | `spine_04`, 40.55 N*s, 3.26 m/s | `spine_04`, 40.55 N*s, 3.26 m/s |
+| Left hand | `spine_04`, 14.84 N*s, 3.09 m/s | `spine_04`, 15.26 N*s (2.8% more), 3.13 m/s |
+| Two replays | | the same hashes |
+| The session a second time | the same recording, byte for byte | |
+
+Up to and through the first hand's contact the two runs agree in every figure shown (the flinch in frame 99, the
+stagger in 110, standing again in 161, the impulse to four digits), which is what says that the recording's first
+frame is put on the right step of the body's life: one frame off would move all of them. After it they drift
+apart by a frame and a quarter of a centimetre. A session and a scenario are not the same run: a session's process
+runs no warm-up scenario (the first run of a process differs bit for bit from later ones), its hands exist from
+its first frame and are made in another order relative to the body. The limits of the check (a frame, 1 cm, 5%)
+were set after this one measurement, on this one scene, and are close to what was measured; a recording of a
+longer or rougher motion will need wider ones, and what the check is for is a recording that is wired wrongly, not
+the last digit.
+
+**The plan said "the same hashes" and that was wrong.** A run's hashes are of every frame of that run, and a
+session is another run. Written down in `docs/PRD.md` as it is: a replay ends as its session did within stated
+limits, and a replay repeats bit for bit.
+
+**What a recording cannot do.** It is made of points of the world, so against a body that moves otherwise the
+hands reach for where the session's body was, as a scripted hand does. The drag handle, the impulse tool and the
+reset are not in it (they join in part 5); a recording made across a reset is written with a warning. Pause and
+slow motion are no hindrance.
+
+| Check | Result |
+| --- | --- |
+| Suite with `-Long` against `m3_gate_wait_start` | 65 of 65; 63 with the same hashes, 2 new (`getup_wait_bounded`, as committed; `replay_demo_hands`) |
+| Unit tests | 32 (one new: a recording comes back bit for bit, and is played back frame for frame) |
+| Session self-test | 14 of 14 |
+| `replay_demo_hands` (the demo's recording kept under `Recordings\`, 7 s) | hands deliver 55.8 N*s, 0.006 cm into the body at most, no tunnelling, the body staggers twice and ends standing |
+
+Changed: `SandboxTargetRecording` (new), `SandboxEffectorRig`, `SandboxPawn`, `SandboxInteraction.Build.cs` (Json),
+`ScenarioSpec`, `ScenarioRunnerSubsystem`, `SandboxPlaySubsystem`, `InteractionTests`; `Tools\play.ps1` (`-Record`,
+`-Demo`), `Tools\record-replay.ps1` (new), `Tools\bootstrap.ps1` (a twelfth step); `Recordings\demo_hands.json`,
+`Scenarios\replay_demo_hands.json`, `Scenarios\README.md`.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

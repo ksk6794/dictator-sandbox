@@ -15,6 +15,7 @@
 #include "SandboxEffectorComponent.h"
 #include "SandboxEffectorRig.h"
 #include "SandboxParamStore.h"
+#include "SandboxTargetRecording.h"
 
 namespace
 {
@@ -101,6 +102,8 @@ void ASandboxPawn::BeginPlay()
 
 void ASandboxPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// A session that is closed while it records keeps what it has.
+	StopRecording();
 	DragHandle.Release();
 	if (Rig)
 	{
@@ -344,6 +347,54 @@ void ASandboxPawn::ToggleOverlays()
 	}
 }
 
+void ASandboxPawn::ToggleRecording()
+{
+	if (Recording)
+	{
+		StopRecording();
+	}
+	else
+	{
+		StartRecording();
+	}
+}
+
+bool ASandboxPawn::StartRecording()
+{
+	if (!Rig || Recording)
+	{
+		return false;
+	}
+	const TSharedRef<FSandboxTargetRecording> Fresh = MakeShared<FSandboxTargetRecording>();
+	FString Error;
+	if (!Rig->SetRecording(Fresh, Error))
+	{
+		LastAction = FString::Printf(TEXT("no recording: %s"), *Error);
+		return false;
+	}
+	Recording = Fresh;
+	RecordingFirstFrame = SimulatedFrames;
+	LastAction = TEXT("recording the hands (K ends it)");
+	return true;
+}
+
+void ASandboxPawn::StopRecording()
+{
+	if (!Recording)
+	{
+		return;
+	}
+	FString Error;
+	if (Rig)
+	{
+		Rig->SetRecording(nullptr, Error);
+	}
+	const TSharedRef<FSandboxTargetRecording> Done = Recording.ToSharedRef();
+	Recording.Reset();
+	LastAction = FString::Printf(TEXT("recorded %d frames of the hands"), Done->NumFrames());
+	OnRecordingStopped.Broadcast(Done, RecordingFirstFrame);
+}
+
 void ASandboxPawn::SetView(const FVector& Location, const FRotator& Rotation)
 {
 	SetActorLocationAndRotation(Location, FRotator(FMath::Clamp(Rotation.Pitch, -MaxPitchDeg, MaxPitchDeg), Rotation.Yaw, 0.0));
@@ -401,6 +452,10 @@ void ASandboxPawn::GetHudLines(TArray<FString>& OutLines) const
 	{
 		OutLines.Add(TEXT("Hands: none (see the log)"));
 	}
+	if (Recording)
+	{
+		OutLines.Add(FString::Printf(TEXT("RECORDING the hands: %d frames (K ends it)"), Recording->NumFrames()));
+	}
 	if (!LastAction.IsEmpty())
 	{
 		OutLines.Add(FString::Printf(TEXT("Last: %s"), *LastAction));
@@ -409,7 +464,7 @@ void ASandboxPawn::GetHudLines(TArray<FString>& OutLines) const
 	{
 		ExtraHudLines(OutLines);
 	}
-	OutLines.Add(TEXT("1 2 3 tool | buttons use | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | Esc quit"));
+	OutLines.Add(TEXT("1 2 3 tool | buttons use | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | K record | Esc quit"));
 }
 
 void ASandboxPawn::OnMove(const FInputActionValue& Value)
@@ -524,6 +579,7 @@ void ASandboxPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	Input->BindAction(MakeKey(TEXT("Reset"), EKeys::R), ETriggerEvent::Started, this, &ASandboxPawn::RequestReset);
 	Input->BindAction(MakeKey(TEXT("FreeCamera"), EKeys::C), ETriggerEvent::Started, this, &ASandboxPawn::ToggleCameraDetached);
 	Input->BindAction(MakeKey(TEXT("Overlays"), EKeys::V), ETriggerEvent::Started, this, &ASandboxPawn::ToggleOverlays);
+	Input->BindAction(MakeKey(TEXT("Record"), EKeys::K), ETriggerEvent::Started, this, &ASandboxPawn::ToggleRecording);
 	Input->BindAction(MakeKey(TEXT("Quit"), EKeys::Escape), ETriggerEvent::Started, this, &ASandboxPawn::OnQuit);
 
 	Subsystem->AddMappingContext(MappingContext, 0);

@@ -127,6 +127,43 @@ was moving at the start of the physics step in which it did), `struck_bone` and 
 (the body of the character it touched first, and the furthest that body's centre of mass got from where it
 was just before the contact), and what the next section measures.
 
+### Recorded hands
+
+```json
+{ "recording": "Recordings/demo_hands.json", "recording_start_s": 0.66666666666666663 }
+```
+
+Instead of `effector` events a scenario can name a **recording**: what the hands of a session were asked for in
+every stepped frame (`FSandboxTargetRecording`, a text file with one line a frame: place, turn, velocity and
+grip of each hand). The path is relative to the repository unless absolute. The hands are the same rig; their
+targets are read from the recording frame for frame, with nothing worked out in between, so the recording's
+`fps` has to be the scenario's. A scenario has `effector` events or a recording, not both.
+
+- `recording_start_s` is when the recording's first frame is used: for the physics step that begins that long
+  after the start of the run. A session writes the age its character had when the recording began, so that the
+  replay's hands meet a body of the same age (the idle moves the body by a few centimetres).
+- Before that the hands wait on the first frame's targets, and after the last frame they stay on its targets.
+- A recording is made of points of the world. Against a body that does not move as the session's did, the hands
+  reach for where that body was.
+- `effectors.recording` in `metrics.json` has the file, its frames and the frame it started on.
+
+A recording is made in a session: `Tools\play.ps1 -Record <name>` records from the first frame, the K key ends
+a recording and starts the next. Each is written to `Saved\Recordings\<name>\`: `<name>.recording.json`,
+`<name>.json` (the session's scene with the recording, no events, no expectations, as long as the character had
+lived when the recording ended) and `<name>.session.json` (what the session saw at that moment: the body's
+states and their frames, where the pelvis was, what each hand had touched and with how much). To keep one, copy
+the recording to `Recordings\` and write a scenario for it with expectations, as `replay_demo_hands` is.
+
+`Tools\record-replay.ps1` is the check of the whole way: a session without a person uses the hands alone
+(`play.ps1 -Demo`: the right hand reaches into the chest, then the left), the recording is replayed as a
+scenario, and the replay is held against the session file: the same states, each within a frame of the
+session's, the pelvis within 1 cm, each hand's impulse within 5%, and with `-Twice` two replays with the same
+hashes. A session and a scenario are different runs (a session's process runs no warm-up, its hands exist from
+its first frame), so they agree to the first contact and by figures after it, not bit for bit.
+`-Recorded <name>` checks a recording a person made. The drag handle, the impulse tool and the reset are not
+recorded: a session that used them will not replay to the same end. Pause and slow motion do no harm: only
+the frames on which the world stepped are kept.
+
 ## Tunnelling and penetration
 
 The solver's contacts cannot say whether a hand went through something: where the solver missed a contact

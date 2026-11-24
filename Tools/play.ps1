@@ -11,6 +11,12 @@
 #   ... -Smoke                      no window and no person: the session uses every tool itself, checks the
 #                                   result and exits (about 15 s). Writes <Out>\play.json
 #   ... -Smoke -Shot                the same, rendered offscreen, with <Out>\final.png of the last frame
+#   ... -Record <name>              the hands are recorded from the first frame until the session ends (the K
+#                                   key ends a recording and starts another). Written to Saved\Recordings\<name>:
+#                                   the recording, a scenario that replays it (Tools\scenario.ps1 -File ...) and
+#                                   what the session saw of its outcome
+#   ... -Demo                       no window and no person: the session uses the hands alone and records them
+#                                   (Saved\Recordings\<Record or "demo_hands">). Tools\record-replay.ps1 replays it
 # Keys are listed on the screen and in Source\SandboxInteraction\Public\SandboxPawn.h. Escape quits.
 # Close the Unreal Editor first. Exit code: 0 the session ended (or the self-test passed), 1 a self-test
 # check failed, 2 the session could not run.
@@ -23,6 +29,8 @@ param(
     [int]$ResX = 1600,
     [int]$ResY = 900,
     [switch]$Smoke,
+    [switch]$Demo,
+    [string]$Record,
     [switch]$Shot,
     [string]$Out,
     [int]$TimeoutSec = 0
@@ -58,6 +66,38 @@ if ($spec.map) { $arguments = "$($spec.map) $arguments" }
 if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
+if ($Demo -and -not $Record) { $Record = 'demo_hands' }
+if ($Record) {
+    if ($Record -notmatch '^[A-Za-z0-9_\-]+$') {
+        Write-Output "PLAY ERROR: -Record takes a name of letters, digits, '_' and '-', not '$Record'"
+        exit 2
+    }
+    $arguments += " -Record=$Record"
+}
+
+if ($Demo) {
+    $arguments += ' -PlayDemo -nullrhi'
+    if ($TimeoutSec -le 0) { $TimeoutSec = 300 }
+    $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
+    $result = Read-JsonFile $resultFile
+    if ($run.TimedOut -or -not $result -or -not $result.ok) {
+        $why = "it wrote no play.json (process exit code $($run.ExitCode))"
+        if ($run.TimedOut) { $why = "it timed out after $TimeoutSec s" }
+        if ($result -and -not $result.ok) { $why = "the session could not start: $($result.error)" }
+        Write-Output "PLAY ERROR: the hands' session did not run: $why. Log: $logFile"
+        Get-LogErrors $logFile | ForEach-Object { Write-Output "  $_" }
+        exit 2
+    }
+    $errors = @(Get-LogErrors $logFile | Where-Object { $_ -match 'LogSandbox' })
+    if (-not $result.pass -or $errors.Count -gt 0) {
+        Write-Output "PLAY DEMO FAILED: no recording of the hands on '$Name': $($result.error)"
+        $errors | ForEach-Object { Write-Output "  log: $_" }
+        exit 1
+    }
+    Write-Output "PLAY DEMO OK: the hands' session on '$Name' recorded ($($result.frames) frames of session)"
+    Write-Output "  replay: $($result.replay_scenario)"
+    exit 0
+}
 
 if ($Smoke) {
     $arguments += ' -PlaySmoke'

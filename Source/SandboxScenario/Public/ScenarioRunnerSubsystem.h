@@ -15,6 +15,7 @@ class USandboxEffectorComponent;
 class ASandboxRagdollActor;
 class ACameraActor;
 class AGameModeBase;
+class FSandboxRecordedTargetSource;
 class FSandboxScriptedTargetSource;
 
 /**
@@ -144,6 +145,9 @@ private:
 	UPROPERTY()
 	TObjectPtr<ASandboxEffectorRig> EffectorRig;
 	TSharedPtr<FSandboxScriptedTargetSource> EffectorSource;
+	/** Or, with a "recording": the hands of a session, frame for frame, from RecordingStartFrame on. */
+	TSharedPtr<FSandboxRecordedTargetSource> RecordedSource;
+	int32 RecordingStartFrame = 0;
 	/** Per effector, in the rig's order: the frame of its first contact, -1 while it has touched nothing. */
 	TArray<int32> EffectorFirstContactFrame;
 	FDelegateHandle GameModeInitializedHandle;

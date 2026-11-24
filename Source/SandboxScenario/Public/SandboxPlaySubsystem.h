@@ -8,6 +8,7 @@
 
 class ASandboxPawn;
 class ASandboxRagdollActor;
+struct FSandboxTargetRecording;
 
 /**
  * An interactive session: the scene of a scenario file, handed to a person. Exists only when the process
@@ -17,6 +18,13 @@ class ASandboxRagdollActor;
  *                          and expectations are not
  *   -PlaySmoke             no person: the session drives the pawn's tools itself for a few seconds, checks
  *                          what they did, writes <Out>/play.json and exits (0 pass, 1 a check failed)
+ *   -PlayDemo              no person either: the session uses the hands alone (the right one reaches into the
+ *                          chest, then the left), records them, writes the recording, <Out>/play.json and exits.
+ *                          What the recording's own check is made of (Tools\record-replay.ps1)
+ *   -Record=<name>         the hands are recorded from the first frame until the session ends, or until the K
+ *                          key ends it; K starts and ends further recordings. Each is written to
+ *                          Saved/Recordings/<name>/ as <name>.recording.json, with a scenario that replays it
+ *                          (<name>.json) and what the session saw of its outcome (<name>.session.json)
  *   -Out=<dir>             output directory of the self-test (default Saved/Play/<name>)
  *   -Shot=<file.png>       screenshot at the end of the self-test (rendered runs only)
  *   -Tune=, -TuningDir=    as for scenarios
@@ -60,6 +68,23 @@ private:
 	void TickSmoke();
 	void Check(const TCHAR* Name, bool bPass, const FString& Detail);
 	void FinishSmoke();
+
+	// Recordings of the hands. The pawn keeps the targets; the session, which knows the scene and the character,
+	// writes them down with a scenario that replays them against a body of the same age.
+	void SaveRecording(const TSharedRef<FSandboxTargetRecording>& Recording, int64 FirstFrame);
+	void TickDemo();
+	void FinishDemo();
+
+	FString ScenarioFile;
+	FString RecordName;
+	bool bRecordFromStart = false;
+	int32 RecordingsSaved = 0;
+	FString LastRecordingScenario;
+	FString LastRecordingError;
+	/** The pawn's count of stepped frames when the character now in the world was put there. */
+	int64 BodySpawnFrame = 0;
+	bool bDemo = false;
+	int32 DemoFrame = 0;
 
 	FScenarioSpec Spec;
 	FString OutDir;
