@@ -33,6 +33,7 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "PhysicsEngine/PhysicsSettings.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 #include "RenderTimer.h"
 #include "StereoRendering.h"
 #include "SandboxBodyController.h"
@@ -299,6 +300,13 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	FixedDt = Spec.FixedDt();
 	TotalFrames = Spec.TotalFrames();
 	NextCheckpointTimeS = Spec.CheckpointIntervalS;
+	InputsEndS = 0.0;
+	for (const FScenarioEvent& Event : Spec.Events)
+	{
+		InputsEndS = FMath::Max(InputsEndS, Event.TimeS + Event.DurationS);
+	}
+	StandingRunFrames = 0;
+	bEndedWhenStanding = false;
 
 	// Screenshots at moments of the run, next to the final one. A comma separates the times, so the value
 	// is read whole.
@@ -569,6 +577,20 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 		if (Moment.Key == FrameIndex && FApp::CanEverRender())
 		{
 			FScreenshotRequest::RequestScreenshot(Moment.Value, /*bInShowUI*/ false, /*bAddFilenameSuffix*/ false);
+		}
+	}
+
+	// A run that only asks whether the body ends on its feet is over once it has stood for a while with nothing
+	// left to happen to it. The frame after this one is the last, so that it is sampled and traced as a last frame is.
+	if (Spec.EndWhenStandingS > 0.0 && !bEndedWhenStanding)
+	{
+		const USandboxBodyController* BodyController = Ragdoll ? Ragdoll->GetController() : nullptr;
+		StandingRunFrames = (BodyController && BodyController->GetState() == ESandboxBodyState::Standing) ? StandingRunFrames + 1 : 0;
+		if (EventsApplied == Spec.Events.Num() && SimTimeS >= InputsEndS + Spec.EndWhenStandingS &&
+			StandingRunFrames * FixedDt >= Spec.EndWhenStandingS && FrameIndex + 2 < TotalFrames)
+		{
+			TotalFrames = FrameIndex + 2;
+			bEndedWhenStanding = true;
 		}
 	}
 
@@ -1583,6 +1605,12 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxPelvisDriftCm.GetValue();
 		AddCheck(TEXT("max_pelvis_drift_cm"), MaxPelvisDriftCm <= Limit, Number(MaxPelvisDriftCm), Number(Limit));
 	}
+	if (Spec.Expect.MinPelvisDriftCm.IsSet())
+	{
+		// For a scenario that must show a body was moved: slid over the floor, carried off.
+		const double Limit = Spec.Expect.MinPelvisDriftCm.GetValue();
+		AddCheck(TEXT("min_pelvis_drift_cm"), MaxPelvisDriftCm >= Limit, Number(MaxPelvisDriftCm), Number(Limit));
+	}
 	if (Spec.Expect.MinHeadHeightCm.IsSet())
 	{
 		const double Limit = Spec.Expect.MinHeadHeightCm.GetValue();
@@ -1905,6 +1933,7 @@ void UScenarioRunnerSubsystem::Finish()
 	const TSharedRef<FJsonObject> Timing = MakeShared<FJsonObject>();
 	Timing->SetNumberField(TEXT("fixed_dt_s"), FixedDt);
 	Timing->SetNumberField(TEXT("frames"), TotalFrames);
+	Timing->SetBoolField(TEXT("ended_when_standing"), bEndedWhenStanding);
 	Timing->SetNumberField(TEXT("sim_time_s"), SimTimeS);
 	Timing->SetNumberField(TEXT("wall_time_s"), WallTimeS);
 	Timing->SetNumberField(TEXT("realtime_factor"), WallTimeS > 0.0 ? SimTimeS / WallTimeS : 0.0);
@@ -1920,6 +1949,20 @@ void UScenarioRunnerSubsystem::Finish()
 	Body->SetNumberField(TEXT("constraint_count"), Mesh ? Mesh->Constraints.Num() : 0);
 	Body->SetNumberField(TEXT("bone_count"), Mesh ? Mesh->GetComponentSpaceTransforms().Num() : 0);
 	Body->SetNumberField(TEXT("total_mass_kg"), TotalMassKg);
+	// The surface everything else has (the engine's default material) and how two surfaces' figures are combined
+	// into a contact's: 0 average, 1 the smaller, 2 the product, 3 the larger.
+	{
+		const TSharedRef<FJsonObject> Surfaces = MakeShared<FJsonObject>();
+		if (GEngine && GEngine->DefaultPhysMaterial)
+		{
+			Surfaces->SetStringField(TEXT("default_material"), GEngine->DefaultPhysMaterial->GetName());
+			Surfaces->SetNumberField(TEXT("default_friction"), GEngine->DefaultPhysMaterial->Friction);
+			Surfaces->SetNumberField(TEXT("default_restitution"), GEngine->DefaultPhysMaterial->Restitution);
+		}
+		Surfaces->SetNumberField(TEXT("friction_combine"), static_cast<int32>(UPhysicsSettings::Get()->FrictionCombineMode.GetValue()));
+		Surfaces->SetNumberField(TEXT("restitution_combine"), static_cast<int32>(UPhysicsSettings::Get()->RestitutionCombineMode.GetValue()));
+		Body->SetObjectField(TEXT("surfaces"), Surfaces);
+	}
 
 	// Structure of the physics asset as instanced: enough to check a generated asset against its spec.
 	const auto MotionName = [](EAngularConstraintMotion Motion)
@@ -1956,6 +1999,13 @@ void UScenarioRunnerSubsystem::Finish()
 				FinalJson.Add(MakeShared<FJsonValueNumber>(Final[Axis]));
 			}
 			Entry->SetArrayField(TEXT("final_location_cm"), FinalJson);
+			// What the body's surface is made of, as the run-time body has it: read back, not taken from a plan.
+			if (const UPhysicalMaterial* Material = Instance->GetSimplePhysicalMaterial())
+			{
+				Entry->SetStringField(TEXT("material"), Material->GetName());
+				Entry->SetNumberField(TEXT("friction"), Material->Friction);
+				Entry->SetNumberField(TEXT("restitution"), Material->Restitution);
+			}
 			if (const FVector2D* Fastest = SettledBodySpeeds.Find(Mesh->GetBoneName(Instance->InstanceBoneIndex)))
 			{
 				// Fastest this body moved and turned after the settle time: shows which body jitters.

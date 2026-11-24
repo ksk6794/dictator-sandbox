@@ -55,6 +55,11 @@ namespace
 		Visitor(FString(TEXT("solver.position_iterations")), Tuning.Solver.PositionIterations);
 		Visitor(FString(TEXT("solver.velocity_iterations")), Tuning.Solver.VelocityIterations);
 		Visitor(FString(TEXT("solver.projection_iterations")), Tuning.Solver.ProjectionIterations);
+		Visitor(FString(TEXT("surface.friction")), Tuning.Surface.Friction);
+		Visitor(FString(TEXT("surface.feet_friction")), Tuning.Surface.FeetFriction);
+		Visitor(FString(TEXT("surface.restitution")), Tuning.Surface.Restitution);
+		Visitor(FString(TEXT("surface.friction_combine")), Tuning.Surface.FrictionCombine);
+		Visitor(FString(TEXT("surface.restitution_combine")), Tuning.Surface.RestitutionCombine);
 		Visitor(FString(TEXT("thresholds.flinch_impulse_ns")), Tuning.Thresholds.FlinchImpulseNs);
 		Visitor(FString(TEXT("thresholds.flinch_window_s")), Tuning.Thresholds.FlinchWindowS);
 		Visitor(FString(TEXT("thresholds.fall_pelvis_drop_cm")), Tuning.Thresholds.FallPelvisDropCm);
@@ -418,6 +423,22 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	if (Solver.PositionIterations < 1.0)
 	{
 		OutError = TEXT("solver.position_iterations must be at least 1");
+		return false;
+	}
+
+	// The surface. A combine mode is one of the engine's four, by its number.
+	if (!CheckRange(Surface.Friction, 4.0, TEXT("surface"), TEXT("friction"), OutError) ||
+		!CheckRange(Surface.FeetFriction, 4.0, TEXT("surface"), TEXT("feet_friction"), OutError) ||
+		!CheckRange(Surface.Restitution, 1.0, TEXT("surface"), TEXT("restitution"), OutError) ||
+		!CheckRange(Surface.FrictionCombine, 3.0, TEXT("surface"), TEXT("friction_combine"), OutError) ||
+		!CheckRange(Surface.RestitutionCombine, 3.0, TEXT("surface"), TEXT("restitution_combine"), OutError))
+	{
+		return false;
+	}
+	if (Surface.FrictionCombine != FMath::RoundToDouble(Surface.FrictionCombine) ||
+		Surface.RestitutionCombine != FMath::RoundToDouble(Surface.RestitutionCombine))
+	{
+		OutError = TEXT("surface.friction_combine and surface.restitution_combine must be whole numbers: 0 average, 1 the smaller, 2 the product, 3 the larger");
 		return false;
 	}
 

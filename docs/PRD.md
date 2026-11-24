@@ -39,8 +39,8 @@ The product is one room, one NPC and one player; it succeeds when the NPC's body
 
 ### Non-goals for the prototype
 
-- Combat design, health, scoring, progression or NPC behaviour beyond standing, reacting and recovering.
-- NPC locomotion beyond balance-recovery steps.
+- Combat design, health, scoring, progression or NPC behaviour beyond standing, reacting, recovering and the actions of FR-19 to FR-21.
+- NPC locomotion beyond balance-recovery steps and what FR-19 to FR-21 need (until 24 November 2026: balance-recovery steps only).
 - Wounds, blood, dismemberment or bone breakage.
 - Multiplayer, save games, menus beyond a debug panel.
 - Standalone headset builds (Quest native) or consoles.
@@ -56,6 +56,7 @@ The product is one room, one NPC and one player; it succeeds when the NPC's body
 | Grab | Hold grab on a body part | Grip on a body part | Constraint at contact point; part follows hand up to a force cap |
 | Drag | Move while grabbing | Move or pull while gripping | Body follows; standing NPC stumbles, fallen NPC slides with friction |
 | Knock down | Any of the above at high energy | Same | Loss of balance, protective fall, rest, get-up |
+| Hold an object | Hold grab on an object; the strike and push keys then use it; release to drop or throw | Grip on an object with one or two hands; release to drop or throw | The object follows the hand up to a force and torque cap; a strike, push or throw with it acts by its own mass and speed |
 
 ### Functional requirements
 
@@ -79,6 +80,11 @@ The product is one room, one NPC and one player; it succeeds when the NPC's body
 | FR-16 | Soft-tissue secondary motion on face and torso under impact | Should |
 | FR-17 | Skin flush at impact sites driven by a material mask | Could |
 | FR-18 | The body can be interacted with at every moment and in every state, getting up included: it is always a simulated body that feels a hit, a push and a grab and answers them. No state makes it kinematic or deaf to contact (owner, 24 November 2026) | Must |
+| FR-19 | The NPC gets up from the floor, walks to a chair around the furniture and sits down on it (owner, 24 November 2026) | Must |
+| FR-20 | The NPC picks a fallen chair up, sets it on its legs and sits down on it (owner, 24 November 2026) | Must |
+| FR-21 | An NPC that ends up under the table gets out: it crawls out or overturns the table (owner, 24 November 2026) | Must |
+| FR-22 | The player takes a blunt object with one or two hands, holds it, strikes and pushes the NPC with it, throws it and puts it down (owner, 24 November 2026) | Must |
+| FR-23 | Simple facial expressions by impulse and body state: eyes shut, pain, fright, calm, and blinking (owner, 24 November 2026) | Should |
 
 ### Non-functional requirements
 
@@ -106,6 +112,8 @@ Balance that looks alive, and joints that stay rigid when the player hauls on th
 | 7 | Fast strikes | A fist moving 8 m/s travels 4 cm per 180 Hz step and can tunnel or spike impulses | Continuous collision on hands, feet and head; swept query; impulse clamp | Thicker collision shapes on limbs |
 | 8 | Repeatable tests on a solver without a determinism guarantee | Parallel solving can reorder work between runs | Fixed timestep, fixed spawn order, measured deviation at Milestone 0 | Tolerance bands and repeated runs |
 | 9 | Stereo bugs in the 5.8 deferred path | Open reports of right-eye errors with instanced stereo | Avoid the affected features; validate on a headset at Milestone 1 | Forward renderer; UE 5.7.4 |
+| 10 | Walking under full simulation (M4b) | Balance has to hold while the body moves, and a push on the way must be answered as it is from a stance | A recorded walk as the muscles' target, as in the get-up, with steps placed by the capture point; a stand of many walks | Slow single steps; a stronger assist while walking |
+| 11 | Setting a fallen chair on its legs (M4b) | Bending over with a load, hands without fingers, a wrist whose model is weak, a chair that lies any way | The capped grab of M4 for the NPC's own hands; the simple ways it lies first; a bounded number of tries | Another chair, or stay standing |
 
 ## Architecture
 
@@ -158,6 +166,7 @@ Read top down: three interchangeable sources produce target poses, effectors tur
 - One interface carries the desktop and VR split: a target source returns a pose and a grip value per effector each tick.
 - No Blueprint classes. Actors, components, input and the game mode are C++; the map contains only static geometry and lighting.
 - Engine plugins used: Physics Control, OpenXR, DLSS. No third-party gameplay plugins.
+- What decides what the NPC does (the actions of M4b; later a language model or a health system) only asks the body's controller and writes nothing to the body. In a scenario its answers are recorded ones, so that a run repeats (owner, 24 November 2026).
 
 ### Repository layout
 
@@ -535,7 +544,7 @@ As built in M3 part 1: `Tools\sweep.ps1` runs chosen scenarios over every combin
 
 ## Milestones and acceptance criteria
 
-Six milestones, each closed by a gate an agent can check from CLI and, from M1 on, a short human review in the headset. The first two exist to retire the three unknowns before the expensive work begins.
+Seven milestones, each closed by a gate an agent can check from CLI and, from M1 on, a short human review in the headset. The first two exist to retire the three unknowns before the expensive work begins.
 
 ```mermaid
 flowchart LR
@@ -544,14 +553,15 @@ flowchart LR
     M2["<b>M2 Active ragdoll core</b><br/>Muscles, assist, flinch, fall,<br/>desktop effectors, overlays<br/><i>Gate: stands 10 min; push matrix passes;<br/>no joint stretch</i>"]
     M3["<b>M3 Balance and recovery</b><br/>Capture point, stumble steps,<br/>protective fall, get-up<br/><i>Gate: get-up succeeds in 90%<br/>of 50 random falls</i>"]
     M4["<b>M4 Full interaction and VR</b><br/>All verbs, two-hand grab, VR hands,<br/>haptics, replay<br/><i>Gate: verb scenarios pass;<br/>headset review signed off</i>"]
+    M4b["<b>M4b The NPC's own actions</b><br/>Walk, sit, pick a chair up,<br/>get out from under the table<br/><i>Gate: 80% of 50 random falls<br/>end seated (proposed)</i>"]
     M5["<b>M5 Photoreal at 90 FPS</b><br/>Final room and bake, soft tissue,<br/>audio, packaging<br/><i>Gate: 90 FPS at p99 on headset;<br/>10 min soak clean</i>"]
-    M0 --> M1 --> M2 --> M3 --> M4 --> M5
+    M0 --> M1 --> M2 --> M3 --> M4 --> M4b --> M5
     style M1 stroke-width:3px
 ```
 
 *Roadmap: feasibility is settled at M1, before the ragdoll work starts.*
 
-A rough estimate is 13 to 16 weeks with agents implementing and one person reviewing at gates. M3 carries the most uncertainty.
+For the milestones without M4b, a rough estimate is 13 to 16 weeks with agents implementing and one person reviewing at gates. M3 carries the most uncertainty.
 
 ### M0: Toolchain and agent loop (about 1 week)
 
@@ -811,13 +821,30 @@ Not done by the audit, in the order it would take them: **(1) the feet stayed wh
 
 The order of part 7 that follows from these: (1) the body: wrist, elbow, the arms' strength and the assist's caps in the get-up, two hands hold and one slows; (2) friction and restitution; (3) the sweeps: muscle strength, damping, assist, and solver iterations 8, 16, 32 and 64 against every criterion and the push matrix; (4) the clips for review, the three long runs and a strike with overlays among them, and the criteria table. Still with the owner from M2: trying the desktop session by hand and looking at a strike with the overlays.
 
-**Part 7 was started on 24 November 2026. Step 1 of 4, the body, is done** (`docs/testing.md`, "M3 part 7, step 1", two halves): the get-up's assist, a body pressed down, and the stance's elbow; the wrist is put off to M4 on the owner's decision. Next is step 2, friction and restitution.
+**Part 7 was started on 24 November 2026. Steps 1 to 3 of 4 are done.** Step 1, the body (`docs/testing.md`, "M3 part 7, step 1", two halves): the get-up's assist, a body pressed down, and the stance's elbow; the wrist is put off to M4 on the owner's decision. Step 2, friction and restitution, is below the figures of step 1.
 
 - **The assist of the get-up is 0.27 of body weight on average, from 0.51, with the stand unchanged:** 50, 48 and 49 of 50 falls end standing on three seeds, 39, 38 and 44 at the first attempt, 1.36 attempts a fall (1.41 before). The pull had not been lifting the body; it had been dragging it over the floor, back to where the clip was put when the get-up began. A body that turns into a clip's first pose moves 20 to 35 cm, and the clip waited for it there. The clip now follows the pelvis over the floor while the feet carry nothing (`getup.pelvis_follow_s`); with that, caps of 90 N on the pelvis and 30 N on a foot do what 250 N and 50 N did. The arms are stronger while getting up (1200 N*m/rad, cap 120 N*m, a shoulder's published peak), which is worth a tenth of an attempt a fall. Lower still the criterion is met (96% at a share of 0.14) with two to three times as many failed attempts, and a failed attempt is a body that flops back; 0.27 is taken. A get-up takes 3.7 to 5.5 s in the suite (3.3 to 4.1 before).
 - **The wrist was measured and not changed.** A variant asset with a wrist that bends back 85 degrees instead of 25 helps where the assist is weakest (at a share of 0.20 without the following: 45, 48 and 45 of 50 instead of 43, 41 and 39) and little with the following (at 0.19: 26, 26 and 30 at the first attempt instead of 21, 23 and 26, the same count standing). The decision of 24 November named the wrist as the first thing to correct; with this measured it was put to the owner again, and **the owner decided (24 November 2026) that the wrist's model is corrected in M4, with the grab by the hand**, where the NPC's wrist is loaded in any case and limits counted in the hand's own frame are needed. The asset is as it was, so the 51 scenarios without a get-up are bit for bit the baseline.
 - **The elbow is a pose, not a joint, and the stance now asks for it.** The record said the elbow cannot straighten; its joint can (0 to 140 degrees from the straight arm). The stance's elbows are at -20 degrees from the reference pose (17 degrees of bend left, from 37): the hands hang beside the thighs and not in front of them. Chosen from pictures at 0, -15 and -25. Every scenario with a body under control changed (51) and all pass; quiet-standing assist share 0.0067 as before, push matrix 160 of 160, knockdowns 8 of 8 (at rest within 2.5 s, 1.9 s before), the stand 49, 50 and 49 of 50 with 41, 43 and 45 at the first attempt.
 - **A body pressed down: one hand slows it, two hold it** (owner's rule), by a rule and not by strength, since no strength of the body drew the line: its legs lift 600 N as they lift 300 N, or neither, depending on where in the clip the press finds it. Pressed with 450 N or more (`getup.hold_force_n`; one hand at its cap is felt as up to 340 N, two as 600 N), the body does not push on and the attempt is given up; pressed with less, it gets up where the hand lets it. Measured on the stand's 50 falls with every body pressed for 20 s (`Tools\getup-stand.ps1 -PressN`), three seeds: **600 N keeps every body down, 150 of 150; under 300 N two bodies of three get up (96 of 150), with twice the attempts, and one of three stays down until the press ends.** So "two hands hold" is met and "one hand slows" is met for two bodies of three; wider allowances for a pressed body did not change that, and it is left for the owner to judge in a session. (One fall had said that 300 N costs a get-up 0.2 s: a figure from one fall.) Found on the way: of the two scripted hands of `getup_held` one slides off the rising body and ends on the floor, so that scenario has been one hand since part 6, and "two hands at 300 N each only slow it" was measured on one.
 - Figures at the end of step 1: suite 61 of 61 with `-Long`, push matrix 160 of 160, knockdowns 8 of 8, unit tests 31, session self-test 14 of 14, the stand 49, 50 and 49 of 50 at an assist share of 0.28.
+
+**Step 2 of 4, friction and restitution, was finished on 24 November 2026** (`docs/testing.md`, "M3 part 7, step 2"). **The owner accepted the values on 24 November 2026** (body 0.5 and soles 0.7 on the floor, restitution 0.1; the alternatives were a body at 0.4 and the restitution left at 0.3); the sweeps of step 3 are made on them. Next is step 3, the sweeps.
+
+- **What acted, and what is taken.** Every body of the NPC had the engine's default material (friction 0.7, restitution 0.3; a contact has the average of its two surfaces). The body's surface is now tuning: `surface.friction` 0.3 for skin and cloth, `surface.feet_friction` 0.7 for the soles, `surface.restitution` 0.1 combined as the smaller of the two. On the floor that is a friction of 0.5 for the body and 0.7 for the soles. With the old values every hash is the baseline's; a change in the middle of a run reaches the solver (`tune_live_surface`).
+- **Measured by experiment.** `Tools\surface-friction.ps1` drags the lying body by its pelvis and reads the friction off its acceleration: 0.69 before, 0.51 to 0.54 now (the feet carry part of it), and every combine mode gives what the engine's source says.
+- **What the sweep showed.** Standing, the push matrix and the knockdowns hardly notice friction between 0.4 and 1.0 or restitution between 0 and 0.3. The stand does in one place: a body with 0.9 against the floor gets up at the first attempt 101 times of 150 instead of 124 to 130. Soles at 0.9 made the stand no better and failed two scenarios of the suite, one of them with the body frozen on crossed legs.
+- **Figures with the values taken:** suite 62 of 62 with `-Long`, push matrix 160 of 160, knockdowns 8 of 8 (at rest within 2.21 s), quiet-standing assist share 0.0063, the stand 50, 50 and 49 of 50 with 38, 44 and 45 at the first attempt, unit tests 31, session self-test 14 of 14. A fallen body's legs now slide out and it lies flat, where it kept its knees up.
+- **For M4:** a lying body needs about 400 N to be dragged, so one hand (300 N) does not move it and two do.
+- **The stand is quicker:** a trial ends once its body has stood for 3 s (`end_when_standing_s`), which changes no outcome of 150 trials; one stand takes 66 s instead of 90, three seeds side by side 110 s (`Tools\getup-seeds.ps1`). An engine process takes 1.75 GB, so no more than nine run at a time.
+- **Open, for the owner:** a stance on crossed legs that Stagger does not leave (rare; `push_pelvis_80_side_steps` with soles at 0.9 shows it); a body that ends kneeling, propped on its hands, trembles around the rest threshold; of 48 knockdowns with blows up to 320 N*s on the chest and the head, 2 to 6 do not pass the fall's limits at any setting (the criterion is 200 N*s on the chest).
+
+**Step 3 of 4, the sweeps, was finished on 24 November 2026** (`docs/testing.md`, "M3 part 7, step 3"). No value was changed; the suite is bit for bit the baseline of step 2. Next is step 4, the clips and the criteria table.
+
+- **Solver iterations stay at 64,** the only count of 8, 16, 32, 40, 48 and 64 that passes everything. 16 and 8 break the bound on the standing assist's share (0.0136 and 0.0255 against 0.0093); 32 to 48 keep it (0.0083 at 32) and lose two cells of the push matrix. 32 would save 0.15 ms of a frame (0.43 against 0.58 ms of physics).
+- **Muscles stay.** The legs are held from both sides: at half their stiffness the body does not make the steps it needs, at one and a half a blow of 200 N*s on the chest no longer fells it. Spine, arms, neck and every damping are on a plateau at half and at twice.
+- **The assist stays.** The body stands with none at all (pelvis drift 1.6 cm instead of 0.9), but then takes up to seven steps after a blow of 30 N*s on the head. At half, the standing share is 0.0037 instead of 0.0063, the stand is level, and `stand_foot_moved` falls. The cap on the pelvis's upright hold in Stagger stays at 150 N*m: at 100 three times as many pushes of 80 N*s end on the floor.
+- **Open, for the owner: what counts as a step.** The two cells that 32 to 48 iterations lose, and the single cell most assist candidates lose, are not a second step: as the stepping foot lands, the other leaves the floor for 0.12 s and stands again 5 to 6 cm away, and the measure counts a step from 5 cm. With a step counted from 10 cm none of them has a step too many. The measure was not changed.
 
 **To do before part 5 (owner's request, 23 November 2026): look at what exists before building the fall.** Unreal has no balance controller (standing, recovery steps, the decision to fall, get-up), and Euphoria, the one mature system of that kind, has not been licensed since 2017; parts 3 and 4 build that layer on Chaos and Physics Control. But Epic's Game Animation Sample, updated for UE 5.8 in August 2026, now has a character with a "powered ragdoll" (states for fall protection, injury, flailing and rolling, driven through Physics Control), which the decision at the start of M3 did not know of. Before part 5 starts: the owner downloads the sample (Fab or the Epic launcher; a manual download, against the M3 rule that no animation set has to be downloaded by a person, so it is the owner's call), and an evaluation of an hour or two answers whether its protective fall and its poses, and perhaps its get-up, can be taken over (C++ and text poses, no Blueprint logic) instead of written from scratch. Fab plugins that claim catch steps or get-up (Physical Impact Reaction, Z11) are looked at only if the owner is willing to relax the no-Blueprint rule or the fully simulated body.
 
@@ -830,7 +857,18 @@ What part 3 did not do, or did otherwise than planned:
 
 ### M4: Full interaction and VR (2 to 3 weeks)
 
-All seven verbs on desktop, one- and two-handed grab and drag, the kick effector, OpenXR hands, locomotion and haptics, session record and replay.
+All eight verbs on desktop, one- and two-handed grab and drag, the kick effector, OpenXR hands, locomotion and haptics, session record and replay.
+
+Order, decided by the owner on 24 November 2026: the hands reach the headset first.
+
+1. OpenXR hands on today's spheres, with the hand's velocity from the tracking rather than from the difference of two poses, and recording of motions.
+2. The hand: grip closed is a fist, open is a flat palm, two shapes of one body, with a mass of its own for the fist as a tuning value. A grip that closes on a body or an object grabs it; one that closes in the air is a fist. Haptics; the force cap and the mass tuned on recorded motions. New scenarios: a strike on the shoulder, a push with both hands.
+3. Grab and drag, and the wrist's model.
+4. Objects, movable furniture, support or hit.
+5. Verbs on desktop, the kick, locomotion.
+6. Headset review.
+
+The body also gets a public stream of events (hit, grab, change of state). Haptics, audio and faces use it now; a language model or a health system can later.
 
 - [ ] Every verb has a passing scenario
 - [ ] Grab and drag scenarios meet the stretch and force-cap criteria
@@ -839,15 +877,60 @@ All seven verbs on desktop, one- and two-handed grab and drag, the kick effector
 - [ ] The OpenXR path passes a smoke test in Meta XR Simulator
 - [ ] Headset review: hands feel weighted, nothing launches, no discomfort
 
+Held objects (FR-22), decided by the owner on 24 November 2026:
+
+- **Blunt objects only:** bottle, stick, book, cushion, chair. Cutting, stabbing, ropes and cloth are out.
+- **Grip:** a handle named in the object's spec draws the hand in when it is near; anywhere else the object is held where it was touched.
+- **Overload:** the object lags behind the controller and sinks; two hands hold twice as much. The grip opens when the load stays above a limit for a fraction of a second, or when the hand is too far from its target.
+- **Support or hit is read from the contact, not from the kind of object:** a steady force from below is support, a sharp impulse from the side or above is a hit. The body still does not know what touches it. A hand that lifts or presses must keep reading as it does now; that is checked, not assumed.
+
+Criteria; the figures are proposals, set at the milestone's start:
+
+- [ ] Take, hold, put down and throw: hand force stays at its cap, joint stretch under 3 cm, the thrown object leaves with the hand's speed
+- [ ] A stick strikes head, chest, shoulder and forearm at several heights with its end at up to 12 m/s: no tunnelling, and the impulse grows with the speed
+- [ ] One hand lags under a 5 kg chair and two hands lift it; a stuck or overloaded object is let go and nothing launches
+- [ ] Standing on a stick or propped on a movable chair, the body does not flinch and the contact counts as support; a blow with the same object counts as a hit
+- [ ] Scenarios without movable objects keep their hashes; the stand of 50 falls is repeated with movable furniture on three seeds
+
+### M4b: The NPC's own actions (duration set after its first step)
+
+Added by the owner on 24 November 2026 (FR-19 to FR-21), between M4 and M5, so that M5's soak, motion sign-off and packaging are done once. The body stays fully simulated (FR-18): a recorded clip is a target for the muscles, and a hit, a push or a grab is answered at every moment of an action. What chooses an action asks the body's controller for it and writes nothing to the body. Every action can also be asked for by a scenario event. The NPC's hand gets a target at a point of the world, as the foot has one (`SetFootTarget`): for the chair, and for gestures later.
+
+It needs four things from M4: furniture with mass, the capped grab constraint, the difference between a movable thing that supports the body and one that hits it, and the corrected wrist.
+
+1. Walking: straight, turning, stopping, pushed on the way.
+2. A path through the room around the furniture.
+3. Sitting down and standing up. The balance sense takes the seat as support (today it takes the feet only).
+4. The table: crawl out or overturn it, by its weight and the room around it.
+5. The fallen chair: first lying on its side or back, then any way. Fallback after a bounded number of tries: another chair, or stay standing.
+6. All together, from random falls.
+
+Clips: Epic's Game Animation Sample has walking, and sitting down on, sitting on and getting up from a bench. None for crawling, lifting or overturning was found; those are written as poses, or a clip is proposed to the owner under the rule for paid content.
+
+Criteria; the figures are proposals, set by the owner at the milestone's start:
+
+- [ ] From random places and headings it walks to a point across the room around the table: at least 95% of 50 runs arrive without falling
+- [ ] Pushed while walking with 30 N·s it stays up; felled, it gets up and goes on
+- [ ] Sits down on a standing chair, stays seated 60 s and stands up: at least 90% of 50
+- [ ] Sets a fallen chair on its legs and sits down: at least 80% of 50; otherwise it gives up after a bounded number of tries
+- [ ] Under the table after a fall: at least 90% of 50 end standing clear of it
+- [ ] Knocked down, with the chair standing or fallen at random: at least 80% of 50 end seated
+- [ ] Hit, pushed and grabbed in the middle of every action it answers and nothing blows up; the assist's share is recorded for each action
+- [ ] The owner signs off films of every action
+
 ### M5: Photoreal at 90 FPS (2 to 3 weeks)
 
 Final room art and lighting bake, character shading, soft-tissue motion, impact audio, performance tuning and packaging.
+
+Also simple facial expressions (FR-23), three or four ready ones chosen by the impulse and the body's state, added to the work on the face. Their cost in the frame is measured before they stay.
 
 - [ ] 99th-percentile frame time at or under 11.1 ms in the headset during the standard interaction scenario
 - [ ] Desktop holds 120 FPS at 2560×1440
 - [ ] 10-minute soak is clean and get-up succeeds in 95% of runs
 - [ ] The packaged Win64 build runs outside the development environment
 - [ ] Visual sign-off on room, character and motion
+
+**After M5, ideas without dates** (owner, 24 November 2026): talking to the NPC through a language model (speech, lips, gaze) and health. Neither is planned; M4's events and the rule on who writes to the body keep them possible.
 
 ## Risks and open questions
 
@@ -887,6 +970,10 @@ The technical risks sit in the Hardest problems table. What remains are assumpti
 - [x] **Agent permissions.** May agents install software, run multi-hour sweeps unattended and commit directly, or should each be approved?
 
   Decided 23 November 2026: long runs (sweeps, the 50-fall stand) start without asking, in the background, with a report. Installing software needs the owner's consent. Commits only on the owner's command, to `main`; no push unless asked.
+
+- [x] **Should the NPC walk and act on its own, and when is it built?** It reverses the non-goal on locomotion.
+
+  Decided 24 November 2026: yes (FR-19 to FR-21), as milestone M4b between M4 and M5. After M5 was the alternative; it would have meant repeating M5's soak, sign-off and packaging. Walking alone right after M3 was the other.
 
 - [x] **NPC build.** The spec defaults to an 80 kg adult male; mass and proportions change every tuning value.
 

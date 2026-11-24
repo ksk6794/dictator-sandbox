@@ -57,14 +57,26 @@ knocks the body down 50 times from a seed, 24 of them near a wall, a table and a
 spec, `Specs/rooms/getup_room.json`: the table in the middle of the room, the chair drawn up to it, since the
 owner's request of 24 November), and counts the falls that end standing: 49, 50 and 50 of 50 over three seeds
 (the criterion is 90%), 39, 37 and 43 of them at the first attempt (50, 49 and 48 with the two pieces apart near
-the corners). **Part 7, the gate, is in progress: step 1 of 4 (the body) is done.** The get-up's assist is
+the corners). **Part 7, the gate, is in progress: steps 1 to 3 of 4 (the body; friction and restitution; the sweeps) are done.** The get-up's assist is
 0.28 of body weight on average, from 0.51, with the stand unchanged (49, 50 and 49 of 50): the clip follows the
 body over the floor while the feet carry nothing (`getup.pelvis_follow_s`), the arms are stronger while getting
 up, and the assist's caps are 90 N on the pelvis and 30 N on a foot. A body getting up that is pressed with
 450 N or more does not push on (`getup.hold_force_n`): 600 N keeps every body of 150 down, under 300 N two of
 three get up (`Tools\getup-stand.ps1 -PressN`). The stance's elbows hang at 17 degrees of bend, not 37
-(`poses.stance.lowerarm_*`). The wrist's model waits for M4's grab by the hand (owner's decision). Next: step 2,
-friction and restitution; then the sweeps, the clips and the criteria table.
+(`poses.stance.lowerarm_*`). The wrist's model waits for M4's grab by the hand (owner's decision). **Step 2,
+friction and restitution, is done:** the body's surface is tuning (`surface.*`: on the floor a friction of 0.5 for
+skin and cloth and 0.7 for the soles, where both were the engine's 0.7; restitution 0.1, taken as the smaller of
+the two surfaces'), measured by dragging the lying body (`Tools\surface-friction.ps1`: 0.69 before, 0.51 to 0.54
+now). A body with 0.9 against the floor gets up at the first attempt 101 times of 150 instead of 124 to 130;
+otherwise standing, pushes, falls and get-ups hardly notice friction from 0.4 to 1.0 or restitution from 0 to
+0.3. A lying body needs about 400 N to be dragged: one hand does not move it, two do. **Step 3, the sweeps, is
+done and changed no value:** 64 solver iterations is the only count that passes everything (16 and 8 break the
+bound on the standing assist's share, 32 to 48 lose two cells of the push matrix; 32 would save 0.15 ms a frame),
+the legs' strength is held from both sides (at 400 the body does not step, at 1200 a blow of 200 N*s on the chest
+does not fell it), the other muscles and the dampings are on a plateau, and the body stands with no assist at all
+but then takes up to seven steps after 30 N*s on the head. Open for the owner: the cells lost at 32 iterations
+and with a weaker assist are a foot that shuffles 5 to 6 cm as the other lands, which the measure counts as a
+step (from 5 cm). Next: step 4, the clips and the criteria table.
 DLSS is deliberately deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -84,13 +96,15 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Debug overlays in the pictures | add `-Overlay all` to a `-Shot` run or to `play.ps1` (or layers: `com,support,capture,joints,assist,contacts,state,hands`); in a session the V key, in any console `Sandbox.Overlay all\|off\|toggle\|<layers>` |
 | One scenario in the headset | add `-VR` (headset on, SteamVR running; takes the scenario's duration in real time) |
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
-| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight engine processes take the scenarios from one queue; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Long` adds the scenarios over 60 s, `stand_npc_10min`; `-Parallel 1` for physics step times nothing disturbed) |
+| All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight engine processes take the scenarios from one queue; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Long` adds the scenarios over 60 s, `stand_npc_10min`; `-Parallel 1` for physics step times nothing disturbed; `-Tune "name=value,..." -Label <name>` runs the whole suite against other values into `Saved\Suites\<name>`, leaving what baselines are made of alone) |
 | A motion as a sheet of pictures over time | `powershell -ExecutionPolicy Bypass -File Tools\film.ps1 -Name hit_chest_200_falls -Times "3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0"` (`-Camera side\|front\|back\|quarter`, `-Events <file>`, `-Tune`; `Saved\Films\<name>\sheet.png`) |
 | What a recorded clip asks of the body, as a sheet of pictures | `powershell -ExecutionPolicy Bypass -File Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60` (the body hangs by its welded pelvis and is asked for the clip's pose at each time; `-Carry` moves the pelvis as the clip does; several clips separated by commas; `Saved\Films\clip_<name>\sheet.png`) |
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
-| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; the places are worked out from where the room spec has the table and the chair) |
+| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
+| The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-Seeds "1,2,3"`, `-PressN`, `-Only`; three engine processes a stand, nine in all; results in `Saved\Matrix\getup_seeds\<name>`) |
+| Friction between the lying body and the floor, by experiment | `powershell -ExecutionPolicy Bypass -File Tools\surface-friction.ps1` (knocks the body down and drags it by the pelvis with `-ForceN 800` for `-PushS 1.0`; the friction from its acceleration; `-Tune` to try values) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
 | Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
@@ -103,7 +117,8 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
 (the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (49 scenarios; 80 s with `-Long`),
-the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 90 s, regenerating the physics asset 10 s, a film
+the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 66 s (three seeds side by
+side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s, the whole
 bootstrap about 5 minutes. Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
 processes; `SANDBOX_SEPARATE_PROCESSES=1` goes back to one process per run.
@@ -120,7 +135,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `ApplySurface` gives the bodies their friction and restitution (`surface.*`); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, later VR); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
@@ -588,6 +603,38 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **The sample's clips log load errors that are not failures.** Each names anim notifies of the sample that were
   not copied (`BP_AnimNotify_FoleyEvent_*`); the keys load. An automation test must not load one: it fails on any
   logged error.
+- **A contact's friction is not the body's.** The engine combines the two surfaces of a contact, by the average
+  unless one of them asks for a mode with a higher number (the smaller, the product, the larger), and the floor
+  and the hands have the engine's 0.7 and 0.3: `surface.friction` 0.3 is 0.5 on the floor, and under the average
+  no value of the body gives less than 0.35. A material's "override combine mode" flags are read by nothing. What
+  the floor gives is measured (`Tools\surface-friction.ps1`), and a new value of a material reaches the solver
+  only through `FChaosEngineInterface::UpdateMaterial` (`USandboxBodyController::ApplySurface`).
+- **A passive body keeps the engine's default surface.** The surface values are the controller's; `drop_*` and
+  `impulse_passive` slide and bounce on 0.7 and 0.3.
+- **More grip is not more stability.** With the soles at 0.9 on the floor a blow of 200 N*s on a thigh tripped
+  the body where it had stumbled and stood, and after a push sideways it froze on crossed legs, in Stagger, for
+  the rest of the run; the push matrix called both "stepped" or "fell" as allowed and passed. And a body with 0.9
+  against the floor gets up worse: turning into a clip's first pose and coming onto hands and knees it has to
+  slide.
+- **"In motion" by the mass-weighted speed lasts long after a body has stopped:** limbs go on settling above the
+  threshold. Friction worked out of the time a dragged body was in motion read 0.55 where the acceleration gave
+  0.69. Check a new measure on a case whose answer is known.
+- **A step counted from outside is a foot that left the floor for 0.1 s and stood again 5 cm away, and a
+  shuffle is just over that.** As a stepping foot lands, the other one hops 5.0 to 6.1 cm, and the push matrix
+  read one recovery step as two: the cells that 32 to 48 solver iterations and most weaker assists "lose" in the
+  30 N*s row are that, by the controller's own log (`control.recovery_steps` against `control.steps`). Before a
+  failed cell is taken for behaviour, read both.
+- **A push matrix of 160 of 160 can stand on a threshold.** The blow of 30 N*s on the head from behind and to a
+  side leaves the capture point just under the 4 cm that call for a step; any small change to the body puts it
+  at 4.4 cm, the body steps, and the cell is judged by how its feet shuffle.
+- **An engine process takes 1.75 GB.** Fifteen side by side (three stands at once) took 26 GB of 32 and the
+  batch was stopped for want of memory. Nine is the most that run at a time (`Tools\getup-seeds.ps1`).
+- **PowerShell hash keys do not tell case apart either.** `@{ s = 0; S = 0 }` does not parse, and a script that
+  does not parse fails at once: run a new helper once in the foreground before a long batch in the background.
+- **A run that only asks whether the body ends standing need not run to its end.** Most bodies of the stand are
+  on their feet 8 s after the blow and were simulated for 40 s. `end_when_standing_s` ends a run once every event
+  is over and the body has been Standing for that long without a break; checked against the full-length runs
+  trial by trial before it became the default.
 - **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated
   code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.- **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.

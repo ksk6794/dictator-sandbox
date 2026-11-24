@@ -1,0 +1,24 @@
+{
+  "name": "tune_live_surface",
+  "duration_s": 8.5,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "events": [
+    { "t": 1.0, "type": "impulse", "body": "spine_04", "impulse_ns": 200, "direction": [0, -1, 0] },
+    { "t": 6.0, "type": "console", "command": "Sandbox.Tune surface.friction=0,surface.feet_friction=0,surface.friction_combine=1" },
+    { "t": 6.5, "type": "impulse", "body": "pelvis", "impulse_ns": 300, "duration_s": 1.0, "direction": [0, -1, 0] }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": true,
+    "min_pelvis_drift_cm": 450.0,
+    "max_joint_stretch_cm": 2.0
+  }
+}

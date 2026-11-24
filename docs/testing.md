@@ -1922,6 +1922,240 @@ Changed: `poses.stance.lowerarm_*` (-20), `Scenarios\getup_front.json` (20 s), `
 Suite 61 of 61 with `-Long`, push matrix 160 of 160, knockdowns 8 of 8, unit tests 31, session self-test 14 of
 14, the stand 49, 50 and 49 of 50.
 
+### M3 part 7, step 2 (friction and restitution of the body's surface), 2026-11-24
+
+The owner's decision before part 7: friction and restitution of the body against the floor are measured and chosen
+before muscle strength and solver iterations are. Until now they were whatever the engine gave.
+
+**What acted.** Every one of the NPC's 18 bodies had the engine's default physical material: friction 0.7,
+restitution 0.3. The generator copies the template asset's material, and the MetaHuman template has none. Two
+surfaces are combined into a contact's figures by the mode with the higher number of the two (0 average, 1 the
+smaller, 2 the product, 3 the larger); everything asks for the average. The material's "override combine mode"
+flags are read by nothing in the engine: a material's own mode always counts. The engine applies restitution only
+to a contact closing faster than 5.6 cm/s (1000 cm/s² times the 1/180 s substep). A run now reports all of it:
+`body.bodies[].material`, `friction`, `restitution`, and `body.surfaces`. Reading it changes nothing (61 of 61
+hashes of `m3_part7_step2_start`).
+
+**Tuning values.** `surface.friction` (every body but the feet), `surface.feet_friction`, `surface.restitution`,
+`surface.friction_combine`, `surface.restitution_combine`. The controller makes two materials of its own, gives
+them to its bodies as overrides and brings the solver's copy up to date when a value changes. With the values
+that acted before (0.7, 0.7, 0.3, average) all 61 scenarios have the baseline's hashes.
+
+**Friction of the pair, by experiment** (`Tools\surface-friction.ps1`: the body is knocked down, lies still and is
+dragged by a steady force on its pelvis; from the trace, the friction is (F/m - a)/g while it is pushed and -a/g
+after):
+
+| `surface.friction` and `feet_friction` | Combine | Expected on the floor (0.7) | While pushed | After the push |
+| --- | --- | --- | --- | --- |
+| 0.7 (as before) | average | 0.70 | 0.69 | 0.69 |
+| 0.3 | average | 0.50 | 0.51 | 0.50 |
+| 0.3 | the smaller | 0.30 | 0.29 | 0.30 |
+| 0 | average | 0.35 | | 0.36 |
+| 0.5 | the product | 0.35 | | 0.36 |
+| 1.1 | average | 0.90 | 0.89 | |
+| 1.0 | the larger | 1.00 | 0.94 | 0.89 |
+| 0.7, changed to 0.3 at 7.5 s of the run | average | 0.50 after the change | 0.51 | 0.49 |
+
+A force of 500 N does not move the body and 560 N does (the threshold at 0.7 is 549 N). The settings mean what
+the engine's source says, a change in the middle of a run reaches contacts that already exist, and at 0.9 and
+more the figure reads low (limbs catch and roll). The first way tried, the push's impulse over the time the body
+is in motion, read 0.55 to 0.58 at 0.7: the mass-weighted speed stays above its threshold while limbs settle, long
+after the body has stopped. `tune_live_surface` holds the mechanism in the suite: a lying body whose friction is
+taken in the middle of the run slides 7.1 m under a push of 300 N that would not move it otherwise
+(`min_pelvis_drift_cm`, new).
+
+**The sweep.** Figures are the pair's friction on the floor. Quiet standing, the push matrix and 8 knockdowns:
+
+| Feet | Body | Restitution | Assist share standing | Push matrix | Knockdowns: pass, mean rest, ends this far away |
+| --- | --- | --- | --- | --- | --- |
+| 0.7 | 0.7 | 0.3 (before) | 0.0067 | 160 of 160 | 8 of 8, 1.61 s, 189 cm |
+| 0.5 | 0.5 | 0.3 | 0.0067 | 159 (one fall at 80 N*s) | 8, 1.73 s, 200 cm |
+| 0.9 | 0.9 | 0.3 | 0.0068 | 160 | 7 (one at rest after 3.8 s), 1.91 s, 181 cm |
+| 0.9 | 0.5 | 0.3 | 0.0068 | 160 | 8, 1.67 s, 194 cm |
+| 0.7 | 0.5 | 0.3 | 0.0067 | 160 | 7 (3.2 s), 1.74 s, 196 cm |
+| 0.9 | 0.7 | 0.3 | 0.0068 | 160 | 7 (3.3 s), 1.84 s, 186 cm |
+| 0.5 | 0.7 | 0.3 | 0.0067 | 160 | 8, 1.59 s, 188 cm |
+| 1.0 | 0.4 | 0.3 | 0.0067 | 160 | 8, 1.83 s, 201 cm |
+| 0.7 | 0.7 | 0.15 (0, average) | 0.0063 | 160 | 8, 1.65 s, 187 cm |
+| 0.7 | 0.7 | 0 (0, the smaller) | 0.0061 | 160 | 8, 1.64 s, 187 cm |
+
+Standing does not care about friction; without restitution the assist's share is a tenth lower. The push matrix
+has the same counts in every row within two cells. The one knockdown over 3 s is another fall each time: a figure
+from one fall. On 48 knockdowns (200, 260 and 320 N*s on the chest and the head) 42 to 44 pass at every setting
+tried, the mean rest is 1.7 to 2.0 s and the mean energy gain 8 J; restitution changes none of it.
+
+The stand, three seeds each (150 falls):
+
+| Feet | Body | Restitution | End standing | At the first attempt | Attempts a fall |
+| --- | --- | --- | --- | --- | --- |
+| 0.7 | 0.7 | 0.3 (before) | 148 | 129 | 1.35 |
+| 0.5 | 0.5 | 0.3 | 147 | 130 | 1.32 |
+| 0.9 | 0.9 | 0.3 | 149 | 101 | 1.54 |
+| 0.9 | 0.5 | 0.3 | 150 | 129 | 1.21 |
+| 0.7 | 0.5 | 0.3 | 150 | 124 | 1.30 |
+| 0.9 | 0.4 | 0.3 | 149 | 130 | 1.25 |
+| 0.7 | 0.7 | 0 | 148 | 120 | 1.39 |
+| 0.9 | 0.5 | 0 | 145 | 130 | 1.31 |
+| 0.9 | 0.5 | 0.1 | 148 | 127 | 1.37 |
+| **0.7** | **0.5** | **0.1 (taken)** | **149** | **127** | **1.33** |
+
+One thing stands out of the noise (two or three falls, five first attempts): a body with 0.9 against the floor
+gets up at the first attempt 101 times instead of 124 to 130. A body turning into a clip's first pose and coming
+onto hands and knees has to slide over the floor. From 0.4 to 0.7 nothing differs.
+
+**Grippy soles were not taken.** With the feet at 0.9 the stand was as good as any (150, 129, 1.21) and the
+matrix passed, and two scenarios of the suite then failed in every combination with it: `push_thigh_200_stumbles`
+fell (4 of 4 runs, 0 of 4 with the feet at 0.7), and `push_pelvis_80_side_steps` ended in Stagger (3 of 4, 0 of
+4). The film of the second (`Saved\Films\sf_pelvis_side`): after two crossing steps the body stands with its legs
+crossed, one foot against the other, and stays so for the 4.5 s left of the run. The matrix calls that "stepped".
+In the matrices one run of 160 ends in Stagger at two of nine settings (one of them with the feet at 0.5) and
+none at the others, so it is rare at any friction; it is a defect of leaving Stagger that this scenario shows
+with these soles, and it is open (below). With the average, 1.1 is also what the two feet have against each other.
+
+**Taken: `friction` 0.3, `feet_friction` 0.7, `restitution` 0.1 with `restitution_combine` 1.** On the floor that
+is 0.5 for the body and 0.7 for the soles, and a restitution of 0.1 against anything that has more. The body's
+0.5 is the middle of what is given for cloth and skin on a floor and well clear of the 0.9 that hinders getting
+up; the soles stay where they were, since nothing measured asks for a change and more grip does harm; restitution
+is near zero as a body's is, and no run could tell 0, 0.1 and 0.3 apart beyond noise. A search for published
+figures gave the 0.5 that standards ask of a walking surface and nothing measured for cloth on a floor: the range
+is the owner's. Dragged, the lying body now reads 0.51 to 0.54 (its feet carry part of it at 0.7).
+
+| | Before | With the values taken |
+| --- | --- | --- |
+| Friction of the lying body on the floor, measured | 0.69 | 0.51 to 0.54 |
+| Quiet-standing assist share, 10 s and 10 minutes (bound 0.0093) | 0.0067, 0.0066 | 0.0063, 0.0062 |
+| Pelvis drift standing, cm | 0.91 | 0.91 |
+| Push matrix; the 200 N*s row | 160 of 160; 15 stepped, 25 fell | 160 of 160; 12 stepped, 28 fell |
+| Knockdowns from 8 directions: slowest to rest, most energy gained, deepest in the floor | 8 of 8: 2.50 s, 25.7 J, 1.33 cm | 8 of 8: 2.21 s, 25.5 J, 1.23 cm |
+| ...mean rest, and how far from where it stood the body ends | 1.61 s, 189 cm | 1.55 s, 196 cm |
+| 48 knockdowns up to 320 N*s, chest and head | 43 pass | 46 pass |
+| The stand: end standing, at the first attempt, attempts a fall | 49, 50, 49; 41, 43, 45; 1.35 | 50, 50, 49; 38, 44, 45; 1.33 |
+| ...on its feet after the blow, median and 90th percentile | 8.0 s, 14.4 s | 7.9 s, 18.4 s |
+| The suite's four get-ups, s | 5.0, 7.3, 4.9, 4.7 | 5.4, 4.1, 5.7, 4.8 |
+
+Against `m3_part7_step2_start`: the 51 scenarios with a body under control changed, as they must (each has
+another surface), all pass; the 10 without one have the same hashes; `tune_live_surface` is new. Suite 62 of 62
+with `-Long`, unit tests 31, session self-test 14 of 14. Baseline `m3_part7_step2`.
+
+**How it looks** (`Saved\Films\sf_fall_new` and `_old`, `sf_getup_new` and `_old`). After the blow of
+`hit_chest_200_falls` the body used to stay on its back with its knees up and its feet planted; now the legs
+slide out within a second and it lies flat. The get-up of `getup_back` goes another way for it (over the front,
+onto hands and knees) and takes 5.4 s instead of 5.0: one fall, and the stand says the two are level.
+
+**For M4.** A lying body of 80 kg at 0.5 needs about 400 N to be dragged: one hand at its cap of 300 N does not
+move it, two (600 N) do, with 2.5 m/s² to spare. At 0.7 it took 549 N, and two hands had 0.6 m/s².
+
+**The stand runs shorter.** A trial ran for 40 s whatever happened, and most bodies stand 8 s after the blow. A
+scenario can now end once every event is over and the body has been Standing for a time without a break
+(`end_when_standing_s`; `Tools\getup-stand.ps1 -StopStandingS`, 3 s by default, 0 for the whole length). All 150
+trials of three seeds agree with the full-length runs on who stood, after how many attempts and when; the mean
+trial is 18.6 s. One stand takes 66 s instead of 90. `Tools\getup-seeds.ps1` runs three seeds side by side and
+prints one line a seed: 106 to 114 s for the three.
+
+**An engine process takes 1.75 GB.** Three stands side by side with 15 processes took 26 GB of the machine's 32
+and a batch was stopped for want of memory. Nine processes (16 GB) leave room; `getup-seeds.ps1` has 3 a stand
+by default.
+
+**Open, found on the way.**
+
+- *The crossed-leg stance that Stagger does not leave* (above): `push_pelvis_80_side_steps` with
+  `-Tune "surface.feet_friction=1.1"` shows it.
+- *A body that ends kneeling trembles.* One knockdown of 48 (260 N*s on the head from the front) ends sitting on
+  its calves, propped on its hands, pelvis 40 cm up, and trembles at 4 to 6 cm/s around the rest threshold
+  (0.05 m/s) for good: `rest_after_s` is null with restitution 0.3, 1.7 s without. Other fallen bodies lie at
+  0.001 to 0.004 m/s.
+- *Blows harder than the criterion's.* Of 48 knockdowns up to 320 N*s, 2 to 6 do not pass at any setting: at rest
+  after 3 to 7 s, and one fall (320 N*s on the head, forward) with 50 J of energy gain. The criterion of part 5
+  is 200 N*s on the chest, where 8 of 8 pass.
+
+**Mistakes of mine.** A helper script had hash keys `s` and `S`, which PowerShell takes for one; the batch that
+used it failed at once and was waited for. Five stand candidates were put in one batch where three would have
+shown the trend. The first friction figure came from a measure that was not checked against a known case.
+
+Changed: `Config/Tuning/body.json` (`surface`), `SandboxBodyTuning` and `SandboxBodyController` (`ApplySurface`),
+`ScenarioRunnerSubsystem` and `ScenarioSpec` (materials in the result, `min_pelvis_drift_cm`,
+`end_when_standing_s`), `Tools\getup-stand.ps1`; new `Tools\getup-seeds.ps1`, `Tools\surface-friction.ps1`,
+`Scenarios\tune_live_surface.json`.
+
+### M3 part 7, step 3 (the sweeps: solver iterations, muscles, assist), 2026-11-24
+
+The owner accepted the surface values of step 2, and the sweeps were made on them. One value at a time, each
+against quiet standing (`stand_npc`), the knockdowns from 8 directions and the push matrix (the 30 and 80 N*s
+rows for muscles and assist, all four for the iterations); what looked like a candidate, against the whole suite
+and the stand on three seeds. **No value was changed:** every one sits between two that are worse, or on a
+plateau. The suite is bit for bit the baseline `m3_part7_step2`.
+
+**Solver position iterations** (the owner's rule: the smallest count that passes every criterion and the matrix):
+
+| Iterations | Assist share standing (bound 0.0093) | Pelvis drift, cm | Push matrix | Knockdowns | Physics step alone, ms a frame |
+| --- | --- | --- | --- | --- | --- |
+| 64 (as it is) | 0.0063 | 0.91 | 160 of 160 | 8 of 8 | 0.58 |
+| 48 | 0.0068 | 0.91 | 158 | 7 (one at rest after 3.6 s) | |
+| 40 | 0.0073 | 0.92 | 158 | 8 | |
+| 32 | 0.0083 | 0.94 | 158 | 8 | 0.43 |
+| 16 | 0.0136 | 1.07 | 160 | 8 | 0.36 |
+| 8 | 0.0255 | 1.25 | 153 (5 pushes of 80 N*s held without a step) | 6 (2.4 cm into the floor) | |
+
+Only 64 passes all of it. 16 and 8 break the bound on the assist's share; 32 to 48 keep it and lose the same two
+cells of the matrix, mirror images of each other (30 N*s on the head from behind and to a side: two steps where
+one is allowed). At 32 the stand is as it was (149 of 150, 126 at the first attempt) and two get-up scenarios of
+the suite fail (`getup_held`: its scripted hand misses the body; `getup_pressed`: not yet standing at the end:
+each one fall). 32 would save 0.15 ms of a frame of 11.1 ms.
+
+**Those two cells are not a second step.** In every candidate that loses a cell of the 30 N*s row, the body makes
+one recovery step and one step that brings the feet back, by its own log, and the run counts three: as the
+stepping foot lands, the other one leaves the floor for 0.12 s and stands again 5.0 to 6.1 cm away. A step
+measured from outside is a foot that left the floor for 0.1 s and stood again 5 cm or more away
+(`StepMinLengthCm`), and this shuffle is just over it. (Four more candidates lose a cell on a blow to the head
+from the side: three flights of a foot of 5 to 11 cm.) Judged again from the saved runs with a step counted from
+10 cm, no cell of the 30 N*s row has a step too many at 16 to 64 iterations or in any muscle or assist candidate
+but the one with no assist at all. At the values as they are, the same blow leaves the capture point under the
+4 cm that call for a step, and the body does not step at all; with the pelvis's angular assist at half it is
+4.4 cm out. The matrix's 160 of 160 has one row standing on two thresholds. Whether a shuffle of 5 cm is a step is the owner's
+to say; the measure was not changed.
+
+**Muscles** (stiffness at half and at one and a half or twice; damping at half and twice):
+
+| Group | Value | What changed |
+| --- | --- | --- |
+| Legs, stiffness 800 | 400 | Pelvis drift 1.11 cm; 4 pushes of 80 N*s held without a step: legs too weak to step |
+| | 1200 | A blow of 200 N*s on the chest no longer fells the body from two directions of eight: the table wants a fall |
+| Spine, 600 | 300, 900 | Nothing beyond one knockdown over 3 s and one shuffle cell |
+| Arms, 40 | 20, 80 | Nothing (fastest joint standing 1.62 and 1.40 rad/s against 1.43) |
+| Neck, 40 | 20, 80 | One shuffle cell each |
+| Damping: legs 0.06 | 0.03, 0.12 | Two knockdowns over 3 s at 0.03; 33.5 J of muscle work in a fall at 0.12 (25.5) |
+| Damping: spine 0.06, arms 0.15, neck 0.1 | half, twice | One or two knockdowns over 3 s with the arms' at either; nothing else |
+
+The legs are held from both sides; the rest is a plateau. "One knockdown over 3 s" is what one fall of eight does
+by itself: three of the ten surface settings of step 2 had one.
+
+**Assist.**
+
+| What | Assist share standing | Pelvis drift, cm | Push matrix, rows 30 and 80 |
+| --- | --- | --- | --- |
+| As it is | 0.0063 | 0.91 | pass; 2 falls at 80 N*s |
+| Pelvis horizontal 750 (1500) | 0.0051 | 1.12 | two shuffle cells |
+| Pelvis horizontal 0 | 0.0033 | 1.54 | one shuffle cell |
+| Feet 750 (1500) | 0.0048 | 0.91 | one shuffle cell |
+| Feet 0 | 0.0030 | 0.91 | one shuffle cell |
+| Pelvis angular 30 or 0 (60) | 0.0064 | 0.92 | one shuffle cell |
+| Chest angular 0 (60) | 0.0063 | 0.92 | 6 falls at 80 N*s, one push of 30 held |
+| Head angular 0 (10) | 0.0063 | 0.90 | two shuffle cells |
+| Feet angular 0 (15) | 0.0064 | 0.91 | pass |
+| Everything at half | 0.0037 | 1.12 | one shuffle cell; 4 falls at 80 N*s |
+| No assist at all | 0 | 1.60 | 8 cells of the 30 N*s row fail (up to 7 steps after a blow on the head); 6 falls at 80 N*s |
+| Stagger: pelvis torque cap 100 N*m (150) | 0.0063 | 0.91 | pass by the table, 6 falls at 80 N*s |
+| ...cap 50 N*m | 0.0063 | 0.91 | 4 cells fail, 13 falls at 80 N*s |
+| ...angular stiffness 500 (1000) | 0.0063 | 0.91 | as it is: the cap rules |
+
+The body stands for 10 s with no assist at all. With everything at half the stand is level (148 of 150, 127 at
+the first attempt) and `stand_foot_moved` falls. The cap of 150 N*m on the pelvis's upright hold in Stagger,
+chosen in part 4 as the lowest that passes, is still that: at 100 three times as many pushes of 80 N*s end on the
+floor.
+
+Tooling: `Tools\suite.ps1 -Tune "<values>" -Label <name>` runs the whole suite against other values into
+`Saved\Suites\<name>` and leaves the files baselines are made of alone.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

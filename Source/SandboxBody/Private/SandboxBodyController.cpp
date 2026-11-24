@@ -7,6 +7,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 #include "PhysicsControlComponent.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/ConstraintInstance.h"
@@ -3054,8 +3055,51 @@ void USandboxBodyController::FollowParams()
 	UE_LOG(LogSandbox, Display, TEXT("Body controller: new tuning values applied (change %d)"), TuningChangeCount);
 }
 
+void USandboxBodyController::ApplySurface()
+{
+	if (bSurfaceApplied && AppliedSurface == Tuning.Surface)
+	{
+		return;
+	}
+	const auto Write = [this](TObjectPtr<UPhysicalMaterial>& Material, const TCHAR* Name, double Friction)
+	{
+		if (!Material)
+		{
+			Material = NewObject<UPhysicalMaterial>(this, MakeUniqueObjectName(this, UPhysicalMaterial::StaticClass(), Name), RF_Transient);
+		}
+		Material->Friction = static_cast<float>(Friction);
+		Material->Restitution = static_cast<float>(Tuning.Surface.Restitution);
+		Material->FrictionCombineMode = static_cast<EFrictionCombineMode::Type>(FMath::RoundToInt32(Tuning.Surface.FrictionCombine));
+		Material->RestitutionCombineMode = static_cast<EFrictionCombineMode::Type>(FMath::RoundToInt32(Tuning.Surface.RestitutionCombine));
+		Material->bOverrideFrictionCombineMode = true;
+		Material->bOverrideRestitutionCombineMode = true;
+		// The solver has its own copy of a material, made when the material is first asked for and brought up to
+		// date only by this call (the editor makes it after a property was edited; nothing does at run time).
+		FChaosEngineInterface::UpdateMaterial(Material->GetPhysicsMaterial(), Material);
+	};
+	Write(SurfaceMaterial, TEXT("SandboxBodySurface"), Tuning.Surface.Friction);
+	Write(FeetSurfaceMaterial, TEXT("SandboxFeetSurface"), Tuning.Surface.FeetFriction);
+
+	for (FBodyInstance* Body : Mesh->Bodies)
+	{
+		if (!Body || !Body->IsValidBodyInstance())
+		{
+			continue;
+		}
+		const FName Bone = Mesh->GetBoneName(Body->InstanceBoneIndex);
+		UPhysicalMaterial* Material = (Bone == FootBoneName[0] || Bone == FootBoneName[1]) ? FeetSurfaceMaterial : SurfaceMaterial;
+		if (Body->GetPhysMaterialOverride() != Material)
+		{
+			Body->SetPhysMaterialOverride(Material);
+		}
+	}
+	AppliedSurface = Tuning.Surface;
+	bSurfaceApplied = true;
+}
+
 void USandboxBodyController::PushTuningToControls()
 {
+	ApplySurface();
 	for (FBodyInstance* Body : Mesh->Bodies)
 	{
 		if (Body && Body->IsValidBodyInstance())

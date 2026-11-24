@@ -11,6 +11,7 @@
 #include "SandboxBodyController.generated.h"
 
 class FSandboxParamStore;
+class UPhysicalMaterial;
 class UPhysicsControlComponent;
 class USkeletalMeshComponent;
 
@@ -597,6 +598,19 @@ private:
 	 * See RefreshSolverIsland.
 	 */
 	TUniquePtr<FConstraintInstance> IslandRefresh;
+
+	/**
+	 * The surface of the body's bodies (surface.*): one physical material for the feet and one for the rest, made
+	 * here and given to every body as its override. Held here because nothing else keeps them alive.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UPhysicalMaterial> SurfaceMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<UPhysicalMaterial> FeetSurfaceMaterial;
+	/** The surface values the bodies have now; nothing is touched while the tuning's are the same. */
+	FSandboxSurfaceTuning AppliedSurface;
+	bool bSurfaceApplied = false;
+	void ApplySurface();
 
 	/** Where the tuning comes from, and the revision of it the controls were last brought up to. */
 	const FSandboxParamStore* Params = nullptr;

@@ -61,6 +61,7 @@ bool FBodyTuningRepoFilesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("muscle values are listed"), Names.Contains(TEXT("muscles.legs.stiffness_nm_per_rad")));
 	TestTrue(TEXT("assist values are listed"), Names.Contains(TEXT("assist.pelvis.horizontal_n_per_m")));
 	TestTrue(TEXT("solver values are listed"), Names.Contains(TEXT("solver.position_iterations")));
+	TestTrue(TEXT("surface values are listed"), Names.Contains(TEXT("surface.friction")) && Names.Contains(TEXT("surface.feet_friction")) && Names.Contains(TEXT("surface.restitution")));
 	TestTrue(TEXT("thresholds are listed"), Names.Contains(TEXT("thresholds.fall_pelvis_drop_cm")));
 	TestTrue(TEXT("balance decisions are listed"), Names.Contains(TEXT("balance.step_reach_cm")));
 	TestTrue(TEXT("reactions are listed"), Names.Contains(TEXT("reactions.flinch_weakening")));
@@ -116,6 +117,8 @@ bool FBodyTuningOverridesTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("a rejection carries a reason"), Error.IsEmpty());
 	TestFalse(TEXT("a negative stiffness is rejected"), Store.SetOverrides(TEXT("muscles.arms.stiffness_nm_per_rad=-1"), Error));
 	TestFalse(TEXT("a fractional iteration count is rejected"), Store.SetOverrides(TEXT("solver.position_iterations=8.5"), Error));
+	TestFalse(TEXT("a combine mode that is not one of the four is rejected"), Store.SetOverrides(TEXT("surface.friction_combine=1.5"), Error));
+	TestFalse(TEXT("a restitution above 1 is rejected"), Store.SetOverrides(TEXT("surface.restitution=1.2"), Error));
 	TestFalse(TEXT("a rig bone is not a number"), Store.SetOverrides(TEXT("rig.pelvis=1"), Error));
 	TestTrue(TEXT("the tuning still reads"), FSandboxBodyTuning::FromParams(Store, FString(), Tuning, Error));
 	TestEqual(TEXT("and is unchanged by the rejections"), Tuning.Legs.StiffnessNmPerRad, 450.0);

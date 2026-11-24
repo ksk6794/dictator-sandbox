@@ -122,6 +122,10 @@ private:
 	EPhase Phase = EPhase::Idle;
 	int32 FrameIndex = 0;
 	int32 TotalFrames = 0;
+	/** For end_when_standing_s: when the last event is over, how long the body has stood without a break, and whether the run was cut short. */
+	double InputsEndS = 0.0;
+	int32 StandingRunFrames = 0;
+	bool bEndedWhenStanding = false;
 	double FixedDt = 0.0;
 	int32 NextEventIndex = 0;
 	double NextCheckpointTimeS = 0.0;

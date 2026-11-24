@@ -23,6 +23,13 @@
     "velocity_iterations": 2,
     "projection_iterations": 1
   },
+  "surface": {
+    "friction": 0.3,
+    "feet_friction": 0.7,
+    "restitution": 0.1,
+    "friction_combine": 0,
+    "restitution_combine": 1
+  },
   "thresholds": {
     "flinch_impulse_ns": 5,
     "flinch_window_s": 0.15,

@@ -37,6 +37,7 @@ The file name must equal the `name` field (a unit test checks this).
 | `map` | no | Map package to run in, e.g. `/Game/Generated/Maps/TestRoom`. Without it the runner builds a bare floor and two lights |
 | `fixed_fps` | no, default 90 | Engine frames per simulated second. Physics substeps come from `Config/DefaultEngine.ini` |
 | `checkpoint_interval_s` | no, default 0.5 | How often body and bone transforms are written to `trace.json` |
+| `end_when_standing_s` | no | The run ends before `duration_s` once every event is over and the body has been in the Standing state for this long without a break (`timing.ended_when_standing`, `timing.frames`). For runs that only ask whether the body ends on its feet, as the stand of get-ups does: `duration_s` is then the time allowed for the slowest. Active control only; the hashes are those of the frame the run ended on |
 | `body.mesh` | yes | Skeletal mesh object path |
 | `body.physics_asset` | no | Overrides the mesh's own physics asset |
 | `body.location_cm` | no, default `[0, 0, 150]` | Spawn location of the mesh origin (the feet). The floor's top is at z = 0 |
@@ -183,6 +184,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `rest_within_s` | The body is at rest by that time and stays at rest |
 | `max_joint_stretch_cm` | No rigid joint's anchors separate by more, measured from the sixth frame on. A body with `"simulate": false` has no stretch (`metrics.max_joint_stretch_cm` is null) and fails this expectation |
 | `max_pelvis_drift_cm` | The pelvis (the root body) never gets further from where it was spawned, over the whole run |
+| `min_pelvis_drift_cm` | ...and does get at least this far from it at some time: for a scenario that must show the body was moved (`tune_live_surface`: a body slides away once its friction is taken) |
 | `min_head_height_cm` | The head body's centre of mass never drops below this height above the spawn point. Active control only |
 | `max_settled_speed_mps`, `max_settled_angular_speed_rads` | No body moves or turns faster after `settle_s`: the measure of jitter at rest. A standing body's idle moves its hands at up to 0.08 m/s, so the speed limit of a standing scenario is 0.15 |
 | `min_settled_head_travel_cm` | The head travels at least this far after `settle_s` (the diagonal of the box its centre of mass stays in, `metrics.settled_head_travel_cm`): a body that stands is not a statue. 4 cm with the idle, 0.5 without. Every body's own figure is `body.bodies[].settled_travel_cm` |
@@ -470,7 +472,9 @@ statue: the arms held out, a fall like a plank and a body frozen in a lunge all 
 
 The stand of falls and get-ups, `Tools\getup-stand.ps1`, generates its scenarios the same way: 50 falls drawn
 from a seed (26 on the bare floor, 8 each near a wall, the table and the chair of `Specs\rooms\getup_room.json`),
-each with `"get_up": true` and 40 s to end standing in; a blow that did not fell the body is drawn again. The table
+each with `"get_up": true` and 40 s to end standing in (a trial ends as soon as its body has stood for 3 s with
+nothing left to happen to it, `end_when_standing_s`; `-StopStandingS 0` runs each to the end); a blow that did not
+fell the body is drawn again. `Tools\getup-seeds.ps1` runs the stand on three seeds side by side. The table
 and the chair stand together in the middle of the room; the script reads where from the spec, puts no body where
 its arms, out as it appears, would touch a piece or a wall, and has the falls at a wall in the room's corner
 quarters, reporting how near to the furniture each came. It prints one row a fall and the share that stand

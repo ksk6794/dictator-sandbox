@@ -283,6 +283,14 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			return false;
 		}
 	}
+	if (Json->HasField(TEXT("end_when_standing_s")))
+	{
+		if (!Json->TryGetNumberField(TEXT("end_when_standing_s"), OutSpec.EndWhenStandingS) || OutSpec.EndWhenStandingS <= 0.0)
+		{
+			OutError = TEXT("'end_when_standing_s' must be a number > 0");
+			return false;
+		}
+	}
 	if (Json->HasField(TEXT("checkpoint_interval_s")))
 	{
 		if (!Json->TryGetNumberField(TEXT("checkpoint_interval_s"), OutSpec.CheckpointIntervalS) || OutSpec.CheckpointIntervalS <= 0.0)
@@ -417,6 +425,7 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("rest_within_s"), &OutSpec.Expect.RestWithinS },
 			{ TEXT("max_joint_stretch_cm"), &OutSpec.Expect.MaxJointStretchCm },
 			{ TEXT("max_pelvis_drift_cm"), &OutSpec.Expect.MaxPelvisDriftCm },
+			{ TEXT("min_pelvis_drift_cm"), &OutSpec.Expect.MinPelvisDriftCm },
 			{ TEXT("min_head_height_cm"), &OutSpec.Expect.MinHeadHeightCm },
 			{ TEXT("max_settled_speed_mps"), &OutSpec.Expect.MaxSettledSpeedMps },
 			{ TEXT("max_settled_angular_speed_rads"), &OutSpec.Expect.MaxSettledAngularSpeedRadS },

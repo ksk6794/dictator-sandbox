@@ -78,6 +78,31 @@ struct FSandboxSolverTuning
 	double ProjectionIterations = 0.0;
 };
 
+/**
+ * What the body's surface is like in a contact: the physical material of its bodies. The engine works a contact's
+ * friction and restitution out of the two surfaces that meet, by the combine mode with the higher number of the
+ * two (0 the average, 1 the smaller, 2 the product, 3 the larger). Everything else in the world has the engine's
+ * default material (friction 0.7, restitution 0.3, average) unless something gives it another.
+ */
+struct FSandboxSurfaceTuning
+{
+	/** Friction of every body but the feet: skin and cloth. */
+	double Friction = 0.0;
+	/** Friction of the feet: the soles. */
+	double FeetFriction = 0.0;
+	/** Restitution of every body: how much of the speed it meets a surface with it leaves with. */
+	double Restitution = 0.0;
+	/** Combine modes the body's surface asks for, 0 to 3 as above. */
+	double FrictionCombine = 0.0;
+	double RestitutionCombine = 0.0;
+
+	bool operator==(const FSandboxSurfaceTuning& Other) const
+	{
+		return Friction == Other.Friction && FeetFriction == Other.FeetFriction && Restitution == Other.Restitution &&
+			FrictionCombine == Other.FrictionCombine && RestitutionCombine == Other.RestitutionCombine;
+	}
+};
+
 /** What the body is doing. The names double as the state names of the tuning files ("states.falling..."). */
 enum class ESandboxBodyState : uint8
 {
@@ -615,6 +640,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxAssistTuning Feet;
 
 	FSandboxSolverTuning Solver;
+	FSandboxSurfaceTuning Surface;
 	FSandboxThresholdTuning Thresholds;
 	FSandboxBalanceTuning Balance;
 	FSandboxReactionTuning Reactions;

@@ -7,6 +7,10 @@
 #   ... -Long                  also the scenarios that simulate more than a minute (stand_npc_10min: drift over ten
 #                              minutes of standing). Left out by default: one of them took 60 of the suite's 80 s.
 #                              Run them at the end of a part and at a milestone's gate
+#   ... -Tune "name=value,..." tuning overrides for every run: the whole suite against other values. Its runs
+#                              and its result file then go to Saved\Suites\<Label> (-Label, "tuned" by default)
+#                              and leave Saved\Scenarios and Saved\Tools\suite.json, which baselines are made
+#                              of, as they were; -SaveBaseline and -Baseline are refused with it
 # Besides each scenario's own expectations it holds the whole set to the limits that are stated for "any
 # scenario": no simulated body's joints stretch by more than -MaxJointStretchCm, and no scenario's physics
 # step takes more than -MaxPhysicsStepMeanMs on average. The worst scenario of each is printed.
@@ -23,9 +27,24 @@ param(
     [double]$MaxPhysicsStepMeanMs = 1.5,
     [string]$SaveBaseline,
     [string]$Baseline,
-    [switch]$Long
+    [switch]$Long,
+    [string]$Tune,
+    [string]$Label = 'tuned'
 )
 . "$PSScriptRoot\common.ps1"
+
+if ($Tune -and ($SaveBaseline -or $Baseline)) {
+    Write-Output 'SUITE ERROR: a suite run with -Tune is not what a baseline is made of or compared with'
+    exit 1
+}
+$runRoot = Join-Path $RepoRoot 'Saved\Scenarios'
+$resultDir = $ToolsOut
+if ($Tune) {
+    $runRoot = Join-Path $RepoRoot "Saved\Suites\$Label"
+    if (Test-Path $runRoot) { Remove-Item $runRoot -Recurse -Force }
+    New-Item -ItemType Directory -Force $runRoot | Out-Null
+    $resultDir = $runRoot
+}
 
 $files = @(Get-ChildItem (Join-Path $RepoRoot 'Scenarios') -Filter '*.json' | Where-Object { $_.BaseName -like $Filter } | Sort-Object Name)
 if (-not $Long) {
@@ -41,7 +60,9 @@ if ($files.Count -eq 0) {
 $started = Get-Date
 $jobs = @()
 foreach ($file in $files) {
-    $jobs += @{ Name = $file.BaseName; Out = (Join-Path $RepoRoot "Saved\Scenarios\$($file.BaseName)") }
+    $job = @{ Name = $file.BaseName; Out = (Join-Path $runRoot $file.BaseName) }
+    if ($Tune) { $job.Tune = $Tune }
+    $jobs += $job
 }
 Invoke-ScenarioBatch -Jobs $jobs -Parallel $Parallel
 
@@ -101,7 +122,7 @@ foreach ($limit in @(
 $failed = @($results | Where-Object { -not $_.pass })
 $brokenLimits = @($limits | Where-Object { -not $_.pass })
 $ok = ($failed.Count -eq 0) -and ($brokenLimits.Count -eq 0)
-Write-JsonFile (Join-Path $ToolsOut 'suite.json') ([ordered]@{
+Write-JsonFile (Join-Path $resultDir 'suite.json') ([ordered]@{
     ok       = $ok
     total    = $results.Count
     passed   = $results.Count - $failed.Count

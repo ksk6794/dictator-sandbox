@@ -4,7 +4,9 @@
 #   ... -Seed 1                 the trials are drawn from this seed: the same seed, the same 50 falls
 #   ... -Floor 26 -Wall 8 -Table 8 -Chair 8     how many falls of each kind
 #   ... -Only "wall,chair"      only these kinds
-#   ... -DurationS 40           simulated seconds of each trial (the blow comes at 3 s)
+#   ... -DurationS 40           simulated seconds of each trial at most (the blow comes at 3 s)
+#   ... -StopStandingS 3        a trial ends once its body has stood this long with nothing left to happen to it
+#                               (most stand 8 s after the blow); 0 runs every trial for the whole -DurationS
 #   ... -MinShare 0.9           the share of falls that must end standing
 #   ... -PressN 300             every fallen body is pressed down on the pelvis with this force (-PressFromS 5 to
 #                               -PressForS 20 seconds later): what a hand does to a get-up, on 50 falls instead of
@@ -35,6 +37,7 @@ param(
     [int]$Chair = 8,
     [string]$Only,
     [double]$DurationS = 40.0,
+    [double]$StopStandingS = 3.0,
     [double]$MinShare = 0.9,
     [int]$Parallel = 8,
     [double]$PressN = 0,
@@ -211,6 +214,7 @@ function New-Trial([string]$kind, [int]$number) {
         expect     = [ordered]@{ fell = $true; end_state = 'standing'; min_get_ups = 1 }
     }
     if ($place.map) { $scenario.map = $place.map }
+    if ($StopStandingS -gt 0) { $scenario.end_when_standing_s = $StopStandingS }
     $file = Join-Path $scenarioDir "$name.json"
     Write-JsonFile $file $scenario
     return [ordered]@{ number = $number; name = $name; kind = $kind; body = $struck; angle = $angle; impulse = $impulse; push = $push

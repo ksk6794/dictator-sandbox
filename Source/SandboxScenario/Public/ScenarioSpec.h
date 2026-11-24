@@ -61,6 +61,7 @@ struct FScenarioExpect
 	TOptional<double> MaxJointStretchCm;
 	/** Furthest the pelvis may get from where it was spawned, over the whole run. */
 	TOptional<double> MaxPelvisDriftCm;
+	TOptional<double> MinPelvisDriftCm;
 	/** Lowest the head body's centre of mass may get above the spawn height: the character stayed upright. */
 	TOptional<double> MinHeadHeightCm;
 	/** Fastest any body may move or turn once the settle time has passed: no jitter at rest. */
@@ -163,6 +164,12 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	double DurationS = 0.0;
 	int32 FixedFps = 90;
 	double CheckpointIntervalS = 0.5;
+	/**
+	 * Above 0: the run ends before DurationS once the body, with every event behind it, has been in the Standing
+	 * state for this long without a break. For runs that only ask whether a body ends on its feet (the stand of
+	 * get-ups): most of them stand long before the time allowed for the slowest is over.
+	 */
+	double EndWhenStandingS = 0.0;
 
 	/** Optional map package (e.g. /Game/Generated/Maps/TestRoom). Empty: the runner builds a bare floor. */
 	FString MapPath;
