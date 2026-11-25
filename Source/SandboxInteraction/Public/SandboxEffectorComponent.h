@@ -204,6 +204,15 @@ private:
 	UFUNCTION()
 	void OnEffectorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
+	/** What a thing in the hand meets (effectors.hand.strike_held). */
+	UFUNCTION()
+	void OnHeldHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
+
+	/** Starts and stops listening to the thing in the hand, and reads how it moves as a step begins. */
+	void UpdateHeldThing();
+	/** Holds and turns the thing in the hand for a blow (Share of effectors.hand.strike_hold_scale), or as usual again. */
+	void SetHeldStrength(bool bBlow);
+
 	const FSandboxWorldSpring& ActiveSpring() const { return bPalmActive ? PalmSpring : Spring; }
 	FSandboxWorldSpring& ActiveSpring() { return bPalmActive ? PalmSpring : Spring; }
 	FBodyInstance* ActiveBody() const;
@@ -256,6 +265,13 @@ private:
 	bool bStrikeOn = false;
 	/** The fist springs back from a blow to its target (effectors.hand.strike_return_cm): what it meets is no new blow. */
 	bool bStrikeReturning = false;
+	/** A blow of the thing in the hand: the thing listened to, how it moved as the step began, and the last frame it met something. */
+	TWeakObjectPtr<UPrimitiveComponent> HeldThing;
+	FVector HeldVelocityCmS = FVector::ZeroVector;
+	FVector HeldAngularRadS = FVector::ZeroVector;
+	FVector HeldComCm = FVector::ZeroVector;
+	int64 HeldImpulseFrame = -10;
+	bool bHeldBlow = false;
 	/** How much of a blow's strength this one has, 0 to 1, by the speed the hand came at. */
 	double StrikeShare = 0.0;
 	double CapNow() const;

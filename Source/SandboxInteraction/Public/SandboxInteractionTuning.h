@@ -105,6 +105,14 @@ struct FSandboxEffectorTuning
 	 * meets on that way is no new blow. A blow may begin again once the fist is within this of its target. 0: at once.
 	 */
 	double StrikeReturnCm = 0.0;
+	/**
+	 * Above 0.5 a thing in the hand strikes as a fist does: the hand's cap and spring of a blow, graded by the speed of the point
+	 * of the thing that met a simulated body, and for the blow the thing is held and turned StrikeHoldScale times as firmly.
+	 */
+	double StrikeHeld = 0.0;
+	double StrikeHoldScale = 0.0;
+	/** The speed of the point that met something at which a blow of a thing has all of its strength, m/s (a fist's is StrikeFullSpeedMps). */
+	double StrikeHeldFullSpeedMps = 0.0;
 	double StrikeS = 0.0;
 	double StrikeSpeedMps = 0.0;
 	double StrikeFullSpeedMps = 0.0;

@@ -3989,6 +3989,63 @@ counted two hits where one is expected. 32 is an edge of one scenario (35 passes
 - **Seen on the film** (`Saved\Films\punch_40.png`): in `effector_hit_head` the body lies on its back with its hands 51 cm up at 4.5 s and 30 cm up from 5.5 s on, where the other lying bodies hold theirs at 8 to 24. A matter of the fall's pose and of N7, not of the punch.
 - The recorded sessions were made with 25; their replays are not comparable.
 
+### M4 part 3, what is left of it: the wrist and a lifted body, facts (25 November)
+
+No code, no tuning and no asset was changed.
+
+- **The wrist.** A joint's angles are measured in the forearm's frame (twist 70, swing1 60, swing2 25 each way). The four get-up clips ask the hand for a swing2 of 32 to 98 degrees at a twist of 11 to 60 (`hand_r`: 60 to 73
+  beyond the range; `hand_l` 7 to 63; B of `hand_l` is the small one), which is the hand bent back with the forearm turned. The bend of 85 to 98 degrees is also more than the 60 that the range of swing1 gives, so a wrist whose limits
+  count in the hand's own frame and reach 85 degrees would serve most of it (the largest ask is 98). Where it has been tried (a swing2 of 85, M3 part 7) it helped the get-up little. The other user, a hand on the
+  floor in a fall (N6), is not built yet.
+- **Two ways to correct it, neither tried:** (a) the forearm's turn taken to the elbow, as in a person (a `lowerarm` that twists 70 degrees, a wrist that does not): the clips and the poses have to hand the hand's turn over, the skin twists at the elbow and has to be looked at. (b) The joint's two
+  frames exchanged, so that the solver counts in the hand's frame: our code takes the child as the first bone of a joint, and the projection of the joint would move the forearm instead of the hand.
+  Either changes the physics asset and with it every hash.
+- **A lifted body.** A lying body taken by the chest with two hands and drawn up 1 m: the hands are 300 N each, 600 of 785 N of weight; the chest rises from 16 to 34 cm, the hands are then 45 cm away, the grip slips at 10.5 s and the body sinks back. With one hand it rises from 17 to 22 cm. The body
+  stays in Lying and limp all along and the head follows the trunk. No hand can lift it off the floor (`Saved\Films\lift_two`), so the state of its own that the plan asks for has no situation to be in.
+
+### M4 part 4: what a stick's blow is made of, the sweep again (25 November, nothing changed)
+
+The 12 scenarios of the stick sweep (95, 120, 140 and 162 cm at 3, 5 and 7 m/s), by `-Tune`: the impulse the body's contacts add up to, N*s.
+
+| | 95 cm: 3, 5, 7 m/s | 120 cm | 140 cm | 162 cm | Hits told in 12 |
+| --- | --- | --- | --- | --- | --- |
+| Now | 14, 30, 36 | 14, 14, 51 | 13, 12, 3 | 2, 2, 0 | 2 (5 to 6 N*s each) |
+| Wrist and hold 5 times stronger (100 N*m each, 750 N*m/rad) | 48, 47, 45 | 55, 48, 48 | 56, 48, 7 | 5, 4, 4 | 8 |
+| Hand 900 N, 9000 N/m, wrist as it is | 14, 14, 13 | 14, 13, 13 | 13, 12, 12 | 2, 2, 0 | 0 |
+| Both | 52, 48, 48 | 57, 50, 49 | 56, 46, 7 | 5, 4, 4 | 8 |
+
+- The wrist and the hold decide, not the hand's strength: three times the hand's force and spring change nothing.
+- **It does not grow with the speed in any of them.** With the wrist strong it is flat at 45 to 57 N*s whatever the speed, and the body tells a hit of 5 N*s: what is delivered is the hold pressing on, as with a punch before the blow. The plan's "the impulse grows with the speed" is
+  met by the fist because its blow is graded by the speed it arrives at (`strike_speed_mps`), and a thing in the hand has no such blow.
+- At 162 cm (head) the stick passes without touching in all; at 140 and 7 m/s it nearly does. A wrist of 100 N*m is four times a man's (25 N*m).
+
+### M4 part 4: the blow of a thing in the hand (25 November, the owner's option A)
+
+`effectors.hand.strike_held`. A thing in the hand that meets a simulated body at `strike_speed_mps` or faster (the speed of the point that met it, read before the step) has the hand's blow for `strike_s`: cap up to 900 N, spring up to 9000 N/m, 40 cm
+through, and the thing is held and turned up to `strike_hold_scale` times as firmly; the strength grows with the speed up to `strike_held_full_speed_mps` (9). The hand's slip and tear rules do not count in a blow. A fist's own blow is unchanged.
+
+Off, the 112 scenarios of before have the hashes of `through40`. On for the whole suite, 113 pass and one has another hash (`prop_stick_strike_arm`, which is a stick).
+
+The limit set before the runs: the felt impulse grows from 3 to 5 to 7 m/s in three places of the body, nothing goes 2 cm into it, scenarios with a fist and without things keep their hashes. **The first test failed, and what it was is said here.** The 12 scenarios of the old sweep
+(`stick_sweep`, hand at x = 88): grows from 3 to 5, falls at 7 in two places of three. Read by a temporary log of the contacts: at 7 m/s the stick meets the trunk for 4 to 14 frames against 69, because 17 to 20 cm of it overlap the body and the tip lags the hand. Moved 18 cm nearer (x = 70, the same swing) it lies on the trunk in all. That is a change of the test after its result, and it is the test that
+was wrong: the figures for x = 88 are left above. And the blow's own speed limit (4.5 m/s, a fist's) flattened 5 to 7, so things got one of their own (9).
+
+Contact impulse, N*s, x = 70, by point and speed (3, 5, 7 m/s):
+
+| | 95 cm | 120 cm | 140 cm | 162 cm (head) |
+| --- | --- | --- | --- | --- |
+| Off | 19, 18, 19 | 19, 18, 17 | 18, 19, 18 | 23, 15, 17 |
+| Hold x1, full speed 4.5 | 20, 20, 18 | 19, 17, 16 | 19, 21, 20 | 18, 15, 31 |
+| Hold x5, full speed 9 | 22, 26, 29 | 21, 25, 30 | 20, 24, 29 | 27, 25, 6 |
+| **Hold x10, full speed 9** | 25, 35, 42 | 24, 33, 45 | 24, 33, 40 | 30, 30, 20 |
+| Hold x15, full speed 9 | 27, 48, 54 | 26, 41, 56 | 25, 39, 50 | 25, 34, 29 |
+
+In the chosen row it goes 0.23 cm into the body at most, no joint faster than 16.7 rad/s, no grip slips or tears, the body stands and one hit of 5 to 6 N*s is told at 5 and 7 m/s (none at 3). **The head (162 cm) does not meet the criterion:** the stick lies there for a moment only. Nothing above 45 N*s at 7 m/s,
+where a fist at 5.5 m/s is 120 into the chest: the stick is 0.8 kg held at one end, and what is delivered is the hold. `strike_hold_scale` 10 is 400 N*m at full strength, not a man's wrist; it lasts 0.15 s. On the film
+(`Saved\Films\blow_torso`) the stick comes to the trunk and lies against it for the rest of the sixth of a second; the body hardly moves. Scenario: `prop_stick_blow_torso` (120 cm, 7 m/s).
+
+**The owner's decision, 25 November: on, with a hold of 5 times** (21, 25 and 30 N*s at 120 cm, half the wrist's torque of x10); the hold is tuned after the owner's ten minutes with a stick in a session. With it: suite 113 of 113 (one other hash, `prop_stick_strike_arm`, the stick), push matrix 160 of 160, grab pulls 93 of 93, session grab demo and record and replay pass. Baseline `held5`.
+
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 
 Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the

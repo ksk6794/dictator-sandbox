@@ -476,10 +476,11 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 	// A blow. A hand that came fast and has met something has, for a moment, the arm's push behind it: a
 	// higher force cap (effectors.hand.strike_force_n for strike_s). A hand that pushes, holds or drags has
 	// the cap it always had. Without it a punch was as hard as the time it stayed in the body, at 300 N.
-	if (Grab.IsAttached())
+	UpdateHeldThing();
+	if (Grab.IsAttached() && !bHeldBlow)
 	{
 		// A hand that holds something strikes with nothing, and a blow that was landing as it took hold does
-		// not come back when it lets go.
+		// not come back when it lets go. (What a thing in the hand strikes is a blow of its own, OnHeldHit.)
 		StrikeLeftS = 0.0;
 	}
 	if (StrikeLeftS > 0.0)
@@ -489,6 +490,7 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 			bStrikeOn = true;
 			++Stats.Strikes;
 			ActiveSpring().SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
+			SetHeldStrength(bHeldBlow);
 		}
 		StrikeLeftS -= DeltaTime;
 	}
@@ -498,6 +500,8 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 		StrikeLeftS = 0.0;
 		bStrikeReturning = Tuning.StrikeReturnCm > 0.0;
 		ActiveSpring().SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
+		SetHeldStrength(false);
+		bHeldBlow = false;
 	}
 	// The contacts reported since the last Update belong to the step that has just ended.
 	Stats.LastFrameImpulseNs = ImpulseFrame == Frame ? FrameImpulseNs.Size() : 0.0;
@@ -645,6 +649,12 @@ void USandboxEffectorComponent::UpdateGrab(float DeltaTime, bool bGripClosed)
 			? FMath::Clamp(FMath::CeilToInt32(DeltaTime / Physics->MaxSubstepDeltaTime - 1.0e-3f), 1, FMath::Max(Physics->MaxSubsteps, 1)) : 1;
 		const double ForceN = Grab.GetForceN(DeltaTime / Substeps);
 		GrabOverloadS = Tuning.GrabMaxForceN > 0.0 && ForceN > Tuning.GrabMaxForceN ? GrabOverloadS + DeltaTime : 0.0;
+		if (bHeldBlow)
+		{
+			// A blow with the thing pulls harder than a hand may for its 0.15 s, and carries the hand past its target: neither is a grip that slips.
+			GrabSlipS = 0.0;
+			GrabOverloadS = 0.0;
+		}
 		if (!Grab.IsHolding())
 		{
 			++Stats.GrabsLost;
@@ -813,6 +823,71 @@ bool USandboxEffectorComponent::FindGrabbable(UPrimitiveComponent*& OutComponent
 		}
 	}
 	return OutComponent != nullptr;
+}
+
+void USandboxEffectorComponent::UpdateHeldThing()
+{
+	UPrimitiveComponent* Wanted = Tuning.StrikeHeld > 0.5 && Grab.IsAttached() ? Grab.GetComponent() : nullptr;
+	if (Wanted && Wanted->IsA<USkeletalMeshComponent>())
+	{
+		Wanted = nullptr;
+	}
+	if (HeldThing.Get() != Wanted)
+	{
+		if (UPrimitiveComponent* Old = HeldThing.Get())
+		{
+			Old->OnComponentHit.RemoveDynamic(this, &USandboxEffectorComponent::OnHeldHit);
+		}
+		HeldThing = Wanted;
+		HeldImpulseFrame = -10;
+		if (Wanted)
+		{
+			Wanted->OnComponentHit.AddUniqueDynamic(this, &USandboxEffectorComponent::OnHeldHit);
+		}
+	}
+	if (const FBodyInstance* Held = Wanted ? Wanted->GetBodyInstance(Grab.GetBone()) : nullptr)
+	{
+		HeldVelocityCmS = Held->GetUnrealWorldVelocity();
+		HeldAngularRadS = Held->GetUnrealWorldAngularVelocityInRadians();
+		HeldComCm = Held->GetCOMPosition();
+	}
+}
+
+void USandboxEffectorComponent::SetHeldStrength(bool bBlow)
+{
+	const double Scale = bBlow ? 1.0 + StrikeShare * (Tuning.StrikeHoldScale - 1.0) : 1.0;
+	Grab.SetHold(Tuning.GrabHoldNmPerRad * Scale, Tuning.GrabHoldDampingS, Tuning.GrabHoldMaxTorqueNm * Scale);
+	ActiveSpring().SetAngular(Tuning.AngularStiffnessNmPerRad * Scale, Tuning.AngularDampingS, Tuning.MaxTorqueNm * Scale);
+}
+
+void USandboxEffectorComponent::OnHeldHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
+{
+	// A thing in the hand that comes fast and meets a body that moves strikes as a fist does (OnEffectorHit).
+	if (Tuning.StrikeHeld <= 0.5 || !Grab.IsAttached() || Grab.GetComponent() != HitComponent || !OtherComponent || OtherActor == GetOwner() ||
+		!OtherComponent->IsSimulatingPhysics(Hit.BoneName))
+	{
+		return;
+	}
+	const bool bFirst = HeldImpulseFrame < Frame - 1;
+	HeldImpulseFrame = Frame;
+	if (!bFirst || StrikeLeftS > 0.0 || bStrikeOn || bStrikeReturning || Tuning.StrikeForceN <= Tuning.MaxForceN)
+	{
+		return;
+	}
+	const FVector PointVelocity = HeldVelocityCmS + FVector::CrossProduct(HeldAngularRadS, Hit.ImpactPoint - HeldComCm);
+	const double SpeedMps = PointVelocity.Size() * 0.01;
+	const double Full = Tuning.StrikeHeldFullSpeedMps;
+	const double Share = Full > Tuning.StrikeSpeedMps
+		? FMath::Clamp((SpeedMps - Tuning.StrikeSpeedMps) / (Full - Tuning.StrikeSpeedMps), 0.0, 1.0)
+		: (SpeedMps >= Tuning.StrikeSpeedMps ? 1.0 : 0.0);
+	if (Share > 0.0)
+	{
+		StrikeLeftS = Tuning.StrikeS;
+		StrikeShare = Share;
+		StrikeDirection = StepStartSpeedCmS > 50.0 ? StepStartVelocityCmS.GetSafeNormal() : PointVelocity.GetSafeNormal();
+		StrikePoint = GetHandTransform().GetLocation();
+		bHeldBlow = true;
+	}
 }
 
 void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)

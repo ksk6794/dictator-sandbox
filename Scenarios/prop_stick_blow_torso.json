@@ -1,0 +1,193 @@
+{
+  "name": "prop_stick_blow_torso",
+  "duration_s": 10.1,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "props": [
+    {
+      "name": "stick",
+      "size_cm": [
+        90,
+        4,
+        4
+      ],
+      "mass_kg": 0.8,
+      "location_cm": [
+        150,
+        60,
+        2
+      ],
+      "handle_cm": [
+        40,
+        0,
+        0
+      ]
+    }
+  ],
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.grab=1"
+    },
+    {
+      "t": 3,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {
+          "t": 0,
+          "location_cm": [
+            180.0,
+            60.0,
+            80.0
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.6,
+          "location_cm": [
+            180.0,
+            60.0,
+            6.0
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.9,
+          "location_cm": [
+            180.0,
+            60.0,
+            6.0
+          ],
+          "grip": 0
+        },
+        {
+          "t": 1,
+          "location_cm": [
+            180.0,
+            60.0,
+            6.0
+          ],
+          "grip": 1
+        },
+        {
+          "t": 1.8,
+          "location_cm": [
+            185.0,
+            60.0,
+            120.0
+          ]
+        },
+        {
+          "t": 3,
+          "location_cm": [
+            70.0,
+            150.0,
+            120.0
+          ]
+        },
+        {
+          "t": 3.6,
+          "location_cm": [
+            70.0,
+            150.0,
+            120.0
+          ]
+        },
+        {
+          "t": 3.7429,
+          "location_cm": [
+            70.0,
+            130.0,
+            120.0
+          ]
+        },
+        {
+          "t": 3.8143,
+          "location_cm": [
+            70.0,
+            110.0,
+            120.0
+          ]
+        },
+        {
+          "t": 3.8619,
+          "location_cm": [
+            70.0,
+            90.0,
+            120.0
+          ]
+        },
+        {
+          "t": 3.8976,
+          "location_cm": [
+            70.0,
+            70.0,
+            120.0
+          ]
+        },
+        {
+          "t": 4.069,
+          "location_cm": [
+            70.0,
+            -50.0,
+            120.0
+          ]
+        },
+        {
+          "t": 4.669,
+          "location_cm": [
+            70.0,
+            -50.0,
+            120.0
+          ],
+          "grip": 1
+        },
+        {
+          "t": 4.769,
+          "location_cm": [
+            70.0,
+            -50.0,
+            120.0
+          ],
+          "grip": 0
+        },
+        {
+          "t": 5.269,
+          "location_cm": [
+            150.0,
+            -50.0,
+            160.0
+          ],
+          "grip": 0
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "end_state": "standing",
+    "effector_grabs": 1,
+    "effector_grab_slips": 0,
+    "effector_grab_overloads": 0,
+    "effector_strikes": 1,
+    "hit_events": 1,
+    "max_grab_stretch_cm": 3.0,
+    "min_felt_impulse_ns": 25,
+    "max_prop_speed_mps": 10,
+    "max_body_penetration_cm": 2.0,
+    "max_joint_stretch_cm": 2.0
+  }
+}

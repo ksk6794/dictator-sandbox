@@ -36,6 +36,8 @@ public:
 	bool Attach(FBodyInstance* InHand, const FVector& WorldPoint, UPrimitiveComponent* InComponent, FName InBone, UObject* DebugOwner,
 		double HoldNmPerRad = 0.0, double HoldDampingS = 0.0, double HoldMaxTorqueNm = 0.0, const FVector* ThingPoint = nullptr);
 	void Detach();
+	/** New strength for a thing that is held in its direction (HoldNmPerRad above 0 at Attach); nothing for any other grab. */
+	void SetHold(double HoldNmPerRad, double HoldDampingS, double HoldMaxTorqueNm);
 
 	/** True from Attach to Detach, whether or not the held body still exists. */
 	bool IsAttached() const { return Constraint.IsValid(); }
@@ -60,6 +62,7 @@ private:
 	FBodyInstance* Hand = nullptr;
 	TWeakObjectPtr<UPrimitiveComponent> Component;
 	FName Bone;
+	bool bHeldInDirection = false;
 	/** The held point in each body's own frame. */
 	FVector HandPoint = FVector::ZeroVector;
 	FVector OtherPoint = FVector::ZeroVector;

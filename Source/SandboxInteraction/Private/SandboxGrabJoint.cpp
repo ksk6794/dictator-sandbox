@@ -42,7 +42,8 @@ bool FSandboxGrabJoint::Attach(FBodyInstance* InHand, const FVector& WorldPoint,
 	// Whether the two collide is the hand's business (USandboxEffectorComponent::SetPassesBodies).
 	Constraint->SetDisableCollision(false);
 	Constraint->SetRefFrame(EConstraintFrame::Frame1, FTransform(HandPoint));
-	if (HoldNmPerRad > 0.0)
+	bHeldInDirection = HoldNmPerRad > 0.0;
+	if (bHeldInDirection)
 	{
 		// Held in its direction: the frame on the thing is turned so that the two frames agree as things are
 		// now, and a spring with a torque cap drives the turn between them to nothing.
@@ -71,6 +72,15 @@ bool FSandboxGrabJoint::Attach(FBodyInstance* InHand, const FVector& WorldPoint,
 	Hand->WakeInstance();
 	Other->WakeInstance();
 	return true;
+}
+
+void FSandboxGrabJoint::SetHold(double HoldNmPerRad, double HoldDampingS, double HoldMaxTorqueNm)
+{
+	if (Constraint && bHeldInDirection)
+	{
+		const double Spring = HoldNmPerRad * GrabTorqueToUnreal / GrabChaosAngularDriveScale;
+		Constraint->SetAngularDriveParams(static_cast<float>(Spring), static_cast<float>(Spring * HoldDampingS), static_cast<float>(HoldMaxTorqueNm * GrabTorqueToUnreal));
+	}
 }
 
 void FSandboxGrabJoint::Detach()

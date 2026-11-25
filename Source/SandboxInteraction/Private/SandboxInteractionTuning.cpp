@@ -58,6 +58,9 @@ namespace
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_stiffness_n_per_m"), Kind), Values.StrikeStiffnessNPerM);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_through_cm"), Kind), Values.StrikeThroughCm);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_return_cm"), Kind), Values.StrikeReturnCm);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_held"), Kind), Values.StrikeHeld);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_hold_scale"), Kind), Values.StrikeHoldScale);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_held_full_speed_mps"), Kind), Values.StrikeHeldFullSpeedMps);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_s"), Kind), Values.StrikeS);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_speed_mps"), Kind), Values.StrikeSpeedMps);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_full_speed_mps"), Kind), Values.StrikeFullSpeedMps);
@@ -209,6 +212,9 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 		!CheckRange(TEXT("effectors.hand.strike_stiffness_n_per_m"), Hand.StrikeStiffnessNPerM, 0.0, 100000.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_through_cm"), Hand.StrikeThroughCm, 0.0, 100.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_return_cm"), Hand.StrikeReturnCm, 0.0, 100.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_held"), Hand.StrikeHeld, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_hold_scale"), Hand.StrikeHoldScale, 1.0, 50.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_held_full_speed_mps"), Hand.StrikeHeldFullSpeedMps, 0.0, 100.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_s"), Hand.StrikeS, 0.0, 2.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_speed_mps"), Hand.StrikeSpeedMps, 0.0, 30.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_full_speed_mps"), Hand.StrikeFullSpeedMps, 0.0, 30.0, false, OutError))
