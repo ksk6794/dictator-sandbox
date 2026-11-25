@@ -108,4 +108,66 @@ bool FMotionStatsDriveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/** A jump of a command against a motion that goes on, each with its known answer. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMotionStatsJumpTest, "DictatorSandbox.Body.MotionStats.CommandJump", StatsTestFlags)
+bool FMotionStatsJumpTest::RunTest(const FString& Parameters)
+{
+	const FQuat Parent(FVector(0, 0, 1), 0.7);
+	const FQuat Base(FVector(0, 1, 0), 0.3);
+	const FQuat Child = Parent * Base;
+	// Four commands by their targets' turns about the child's x, degrees, and their stiffnesses; the joint is on Base.
+	typedef double FFour[4];
+	const auto Jump = [&](const FFour& Deg, const FFour& Stiffness, double SpeedRadS, double DampingS, double& OutDeg)
+	{
+		FSandboxDriveCommand Commands[4];
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			Commands[Index].Target = Base * FQuat(FVector(1, 0, 0), FMath::DegreesToRadians(Deg[Index]));
+			Commands[Index].StiffnessNmPerRad = Stiffness[Index];
+			Commands[Index].DampingNmsPerRad = Stiffness[Index] * DampingS;
+		}
+		return FSandboxMotionStats::CommandJumpNm(Commands, Parent, Child, FVector::ZeroVector, Child.RotateVector(FVector(SpeedRadS, 0, 0)), OutDeg);
+	};
+	const FFour Even = { 100, 100, 100, 100 };
+	const FFour Still = { 0, 0, 0, 0 };
+	double Deg = -1.0;
+	const double ThirtyDegNm = 100.0 * FMath::DegreesToRadians(30.0);
+	// A target that stands, is elsewhere and stands: all of it is a jump. The frames before and after are none.
+	const FFour Jumps = { 0, 0, 30, 30 };
+	TestEqual(TEXT("a jump, N*m"), Jump(Jumps, Even, 0.0, 0.0, Deg), ThirtyDegNm, 1.0e-3);
+	TestEqual(TEXT("a jump, degrees"), Deg, 30.0, 1.0e-3);
+	const FFour BeforeIt = { 0, 0, 0, 30 };
+	TestEqual(TEXT("before a jump"), Jump(BeforeIt, Even, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	const FFour AfterIt = { 0, 30, 30, 30 };
+	TestEqual(TEXT("after a jump"), Jump(AfterIt, Even, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	// The same 30 degrees a frame as a motion that goes on, that begins and that ends: no jump.
+	const FFour GoesOn = { -30, 0, 30, 60 };
+	TestEqual(TEXT("a fast motion"), Jump(GoesOn, Even, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	TestEqual(TEXT("a fast motion, degrees"), Deg, 0.0, 1.0e-3);
+	const FFour Begins = { 0, 0, 30, 60 };
+	TestEqual(TEXT("a motion that begins"), Jump(Begins, Even, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	const FFour Ends = { -30, 0, 30, 30 };
+	TestEqual(TEXT("a motion that ends"), Jump(Ends, Even, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	// A jump of 20 degrees in the middle of a motion of 5 a frame: the 20 alone. One there and back: all of it.
+	const FFour InMotion = { -5, 0, 25, 30 };
+	Jump(InMotion, Even, 0.0, 0.0, Deg);
+	TestEqual(TEXT("a jump in a motion, degrees"), Deg, 20.0, 1.0e-3);
+	const FFour AndBack = { 0, 0, 30, 0 };
+	Jump(AndBack, Even, 0.0, 0.0, Deg);
+	TestEqual(TEXT("there and back, degrees"), Deg, 30.0, 1.0e-3);
+	// A target that jumps while its muscle has no strength asks for nothing; so does one whose muscle comes up from none.
+	const FFour Far = { 0, 0, 120, 120 };
+	const FFour Held = { 120, 120, 120, 120 };
+	const FFour FromNone = { 0, 0, 5, 10 };
+	TestEqual(TEXT("without strength"), Jump(Far, Still, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	TestEqual(TEXT("without strength, degrees"), Deg, 120.0, 1.0e-3);
+	TestEqual(TEXT("coming up from none"), Jump(Held, FromNone, 0.0, 0.0, Deg), 0.0, 1.0e-3);
+	// A strength halved in one frame on a joint that turns at 2 rad/s on its target: half of the damping's 20 N*m. The same loss over many frames: none.
+	const FFour Halved = { 100, 100, 50, 50 };
+	const FFour Fades = { 100, 90, 80, 70 };
+	TestEqual(TEXT("a strength that drops"), Jump(Still, Halved, 2.0, 0.1, Deg), 10.0, 1.0e-3);
+	TestEqual(TEXT("a strength that fades"), Jump(Still, Fades, 2.0, 0.1, Deg), 0.0, 1.0e-3);
+	return true;
+}
+
 #endif

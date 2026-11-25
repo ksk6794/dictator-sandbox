@@ -3744,6 +3744,161 @@ before the state began, a reference was used after its array had moved, the phys
 the head's impact was the first touch only, sway joined stretches of standing at two places, the database's stamp did not
 cover its poses, and smaller ones.
 
+### The natural body, reconnaissance before N8 and N2, 2026-11-25
+
+Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the
+hands and the skin (step 1 of N8), and where the jumps of C25 come from. **Nothing moved:** against the baseline
+`pre_recon` (which is `pre_n1` to the digit, and N1's ten `measure_*`) all 111 scenarios have the same two hashes; one
+scenario is new. The suite takes 43 s; 42 unit tests, one of them new. The corrections that were tried to prove a cause
+were behind a variable and are out again (`Saved\Recon\trial_corrections.patch`; the verdicts of its suites and matrices beside it).
+
+**Close-ups** (`Saved\Films\n8_*`; the sheets are `n8_hand_stance.png`, `n8_hand_fall.png`, `n8_twist_0.png`,
+`n8_twist_p70.png`, `n8_twist_m70.png`, `n8_raise_side.png`, `n8_raise_side_clav.png`, `n8_raise_front.png`,
+`n8_knee120.png`, `n8_knee120_hip.png`, `n8_correctives_with_without.png`, `n8_grab_lift.png`). In the test room, the pelvis
+welded, the idle off, the arms at the get-up's 1200 N*m/rad and 120 N*m so that the pose is reached; the fall is the
+body's own.
+
+| Pose asked for | Angle that came out | With the body's own arms (40 N*m/rad) | What is seen |
+| --- | --- | --- | --- |
+| Wrist twisted +70 and -70 | 69.9 and -69.9, at the end of its range (70), not beyond | the same | The skin holds: no crease, no "candy wrapper". The turn is spread along the forearm; the wrist is a little narrower than untwisted, as a person's is |
+| Arm raised 150 sideways (swing1 116) | 151.0 from the vertical | 141.6: the weight takes 9 degrees | The shoulder does not rise with the arm: no collarbone is asked for. The armpit and the top of the shoulder hold |
+| The same with the collarbone (30) and the arm (90; 85 in the pictures) | 155.5 (90) | 147.1 | Nearer a person's shoulder; skin holds |
+| Arm raised 150 forward (swing2 150) | 145.3 from the vertical, 147.6 from the chest: **at the joint's end**, 0.9 degrees beyond the 150 its range has from the reference pose | 139.7 | A deep notch behind the shoulder: the arm goes up and the shoulder blade does not |
+| Knee bent 120, thigh down | 120.4, pelvis raised 45 cm | 120.4 | The skin holds. The kneecap is a pointed wedge with straight facets |
+| Knee bent 120, thigh forward | 120.5, the same | 120.5 | The same |
+| Knee bent 120 on the floor | **15.4: the foot meets the floor** (8.1 with the thigh forward) | 16.0; 8.0 | Not used: the pelvis has to be raised for the pose |
+
+- **The fingers are never posed.** In stance, in the air, at the floor and lying they are the modelled hand: fingers apart and
+  slightly bent. By the traces the 33 evaluated finger bones of each hand turn by 0.0000 degrees against the hand over a
+  fall backward, a fall forward, a get-up, 32 s of standing and a get-up that is held, while the hand itself turns by up to
+  173. In the fall forward two fingers of the lying hand are not to be seen: they are in the floor. The hand is one body and
+  a posed finger will have none either.
+- **The plan was wrong about the skin: the MetaHuman's own correctives are running.** The assembled body mesh has Epic's
+  `ABP_Body_PostProcess` as its post-process blueprint, nothing of ours switches it off, and its bones move: with the wrist
+  at 70 `lowerarm_twist_01` turns 55.9 degrees and `lowerarm_twist_02` 14.0, with the arm raised `upperarm_out` 50 to 97,
+  with the knee at 120 `calf_knee` 39. Switched off for a trial, the shoulder collapses and the forearm twists at the wrist
+  alone (`n8_correctives_with_without.png`, lower row). It moves the bodies by rounding only (0.003 cm after half a second of standing, 0.006 after ten; every hash
+  changes, so it must not be switched on or off in passing). What it costs a frame was not measured.
+- **But the correctives follow the pose the muscles are asked for, not the body.** A bone without a body keeps the turn the
+  animation gave it. Where the body is elsewhere than its target the skin is corrected for the target: in `getup_back` the
+  right wrist is twisted by 21.7 degrees and its twist bone by 3.0 (17.4 would fit); lying forward a knee at 16 degrees wears the
+  corrective of one at about 56 (in proportion to the 39 degrees at 120). An arm lifted to 110 degrees by a grab has `upperarm_out` at 0.0 (`n8_grab_lift.png`): at
+  that height it still looks right, higher it would be the collapsed shoulder of the lower row.
+- **The facets are the mesh.** The body was assembled at the quality MEDIUM: 8568 vertices at its best level of detail,
+  3974 and 1239 below; 145 of its 342 bones (the fingers' `bulge`, `side`, `mcp`, `pip`, `dip`) carry no skin there and are
+  not evaluated. A pointed knee and a faceted fingertip are that, not a joint.
+
+**What follows for N8.** N8 C as planned (the twist shared out natively) is **not needed**: it is done already. What is left
+of it is smaller and belongs to M5: the correctives from the body's own pose (a pass after the physics blend, native, the
+same 0.8 and 0.2 for the forearm's twist; or Epic's blueprint on a second, hidden pose), and a higher assembly quality with
+its cost in the frame measured. It becomes urgent only if M4's grab lifts arms over the shoulder in the headset. **N8 B
+starts with `rest` and the stance**, since that hand is seen most and the present one is a spread one: one pose for all
+states behind a switch (hash of bodies unchanged but for rounding), looked at on `n8_hand_stance`; then `splayed` with
+`flat` for the floor, where the picture of fingers in the floor is the test. The `*_half` finger bones are evaluated, so
+the post-process blueprint should fill the knuckles of a posed finger as it does now for wrists (not tried).
+
+**A jump told from a fast motion.** `command_step_max_nm` counts both. The new `control.pose.command_jump_max_nm` (and
+`target_jump_max_deg`) is what is left of a change after its neighbours have explained it: the command is where the two frames
+before were heading, or the frame before is where the two after come from (`FSandboxMotionStats::CommandJumpNm`). Known answers:
+a unit test of 15 cases (a jump, a motion that goes on, begins and ends at 30 degrees a frame, a jump within a motion, no
+strength, strength coming up, dropping, fading); `measure_jumps` 30.0 degrees and 20.9 N*m; the new `measure_fast_target`, the
+same 30 degrees in 0.1 s: the largest change 4.98 degrees and 3.48 N*m, the jump 1.23 degrees and 0.86 N*m (the smooth step's
+own second difference). Seven breaks on purpose were all caught (the whole change taken; not looked behind; not looked ahead;
+strengths that do not go on; frames in the wrong order; a frame late; half a strength). Its limits: a jump over two frames
+reads as a motion; the target's own speed in the damping is left out, as in `command_step_max_nm`; the last frame is not judged.
+Over the 86 scenarios that count for C25 the largest jump is 367 N*m (the largest change 399); 55 scenarios have one above
+100 N*m; standing 0.1 N*m.
+
+**Where the jumps come from.** All jumps above 60 N*m in the suite's runs (the `tune_*` ones among them), by what happened in that frame (from a per-frame log that
+was read and removed; the log left all hashes alone). `stand_foot_moved` (298 N*m) is the scenario's own: its second
+`foot_target` moves the point by 21 cm, taken as given.
+
+| Cause | Joint-frames | Scenarios | Largest |
+| --- | --- | --- | --- |
+| A landing: the swing leg's doubled stiffness and damping dropped in one frame | 303 | 43 | 363 N*m |
+| The first time a leg is placed at all (`leg_extension_max`, whole from the first frame) | 280 | 53 | 223 |
+| The frame after a landing (the settling's height; the foot's level) | 161 | 39 | 282 |
+| Getting up, not looked into (the clip at 1200 N*m/rad; hits and their flinch) | 159 | 13 | 224 |
+| In a stagger, other, not looked into | 124 | 33 | 271 |
+| **The frame after a lift that follows another step (cases a and b)** | 95 | 24 | 367 |
+| A fall begins: legs let go | 44 | 24 | 219 |
+| A fall begins: the state's strengths | 41 | 13 | 260 |
+| A hit: the flinch's weakening and pose offset | 36 | 13 | 213 |
+
+Three of these were proved as the cases below were, each alone on one landing or first step of `push_chest_80_steps`: the landing's
+strength eased out instead of dropped (thigh, calf, foot 70, 118, 159 N*m to 10, 6, 3); the settling begun at the height the leg
+was solved for, 5 cm above the bone, and the level eased out (118, 203, 79 to 4, 5, 7); the reach eased in with the placement
+(the standing leg's calf 146 to 5, the swinging one's 118 to 97).
+
+**Case a, `push_chest_80_steps`, thigh_r at 3.444 s: a defect.** 27.6 degrees in a frame, 26.8 of them a jump (213 N*m; the
+calf 278). The leg's placement was on its way from the frame it had been solved in to the next (`EFrame::Stance`, begun at the
+landing of 3.300 and 18% done: 0.175 of `balance.anchor_follow_s` 0.5 s). `StartSwing` calls `PlaceFoot` without `bFromLast`, so
+the new change starts from the **whole** Stance frame, 21.5 cm from where the leg had been solved a frame before, and not from
+there. `StartOffset` does its work: the point goes on without a step (0.00 in the log); it is the frame that jumps. It breaks
+the rule that a leg's target never jumps ("every change of a foot's point or of the frame its leg is solved in glides from what the
+leg was solved for last"). Proof: the one argument, `bFromLast`, switched on from that moment on with everything before it
+identical, and the thigh's jump is 1.7 degrees (42 N*m, what the easing strength gives), the calf's 1.5 (20). The change of
+the joint's speed in that frame falls from 7.9 to 1.1 rad/s. The jump costs more than it reads: the swing leg follows its
+target's speed, and 27 degrees in 11 ms is a speed, so by the spring law the drive asks for 1900 N*m and is cut at its cap.
+
+**Case b, `push_thigh_200_stumbles`, foot_r at 3.756 s: three defects in one frame.** 399 N*m, 365 of them a jump. The left foot
+lands at 3.733, the right lifts a frame later, its change of frame 0.1% done. (1) The same lost frame as in case a (18 cm): all of
+the thigh's jump (265 N*m) and the calf's (225), and a part of the foot's. (2) The foot is held level with the world from the first
+frame of a swing (`EndFrame`), where on the floor it is level with the pelvis, which is tilted by 14.2 degrees. (3) It is held to its ankle's
+range with the whole weight from the first frame (`EndLimitWeight` 0 to 1), where the landing eases it out. With each switched
+alone the foot's jump is 333, 333 and 140 N*m; with the first and the second 241, the first and the third 137; with all three
+**26 N*m** (thigh 13, calf 9). The swing that follows is a fast motion, not a jump: at 3.500 s of
+case a the thigh's command changes by 64.7 N*m in a frame and 4.4 of it are a jump.
+
+**Case c, `getup_back`, upperarm_l at 6.089 s: as intended, in the torque; not in the motion.** `StartGetUp` sets the clip's pose
+whole and the strength from nothing (`ClipHold.Share = 1`, its comment says so). The target turns 127 degrees with a muscle of
+1.2 N*m/rad: 2.7 N*m are asked for, the jump is 0.0 N*m. The frame before, the resting body loses the 10 to 40 N*m/rad it had
+(spine 11.7 N*m, thigh 8.7): `max jump` 13. But a limp arm is light to turn: at 11 N*m/rad and 122 degrees of
+error it is at 11.2 rad/s (640 degrees a second) within three frames (13.3 at most), 65 N*m within 0.12 s. The strength "from
+nothing" is 0.6 s; the arm has gone two thirds of the way in 0.2.
+
+**What a correction would move.** Each trial on the whole suite and on the push matrix. All passed the matrix: the rows of 10, 30
+and 80 N*s end as they did (a few of the 80s with a step or a stagger more or less), the row of 200 N*s, on the thighs above all,
+changes sides in a few runs. Mirror-image pushes that end differently: 5 today.
+
+| Trial | Scenarios that move | Fail | Matrix | Mirror pairs |
+| --- | --- | --- | --- | --- |
+| 1 the frame glides from the last (case a) | 43 | `grab_getup_held` (ends lying) | 6 differ | 4 |
+| 1, 2, 3 level and limit eased in too (a and b) | 54 | `strike_kick_thigh` (a stagger at the run's end) | 7 | 2 |
+| The landing's strength eased out (`step_ease_s`) | 43 | `palm_close_on_chest` (a grip on the body that was counted is not) | 8 | 4 |
+| The settling from the solved height | 43 | none | 7 | 3 |
+| The first placement's reach eased in | 54 | `prop_fall_on_box` (5.6 s to rest, 5 allowed), `prop_getup_on_plate` | 11 | 5 |
+| All of these but the reach | 54 | `effector_hold_chest` (ends in a stagger, its feet 73 cm apart) | 11 | 1 |
+| All of them | 54 | `strike_punch_forearm` (10 steps for 8), `strike_punch_torso` (8 for 7) | 11 | 1 |
+| The clip's pose blended in over `poses.blend_s` (case c) | 14, all with a get-up | none | not run | - |
+
+Jumps above 60 N*m in the suite: 1231 joint-frames in 56 scenarios today, 1052 with the three of a and b, 905 with the landing's
+strength, 889 with the reach, 694 with all but the reach, 490 in 50 scenarios with all of them. In two trials the largest jump of the
+suite is larger than today's (451 N*m in `getup_held` with the landing's strength, 414 in `getup_left` with all): these runs go
+another way, and what jumps in them was not looked into. Each correction has to be looked at before it is kept. On the stand (seeds 1 to 3): with a and b 150 of 150 stand (149 today), 130 at the first attempt (132);
+with the clip's pose blended in 146 stand, 132 at the first attempt, and four of the `getup_*` are 0.0 to 1.1 s quicker: within what
+changes by itself, no gain. The fastest joint in the first 0.67 s of a get-up falls from 13.3 to 7.3 rad/s (back), 11.6 to 6.1
+(left), 7.0 to 5.2 (right).
+
+**Recommended** (none of it done; a and b, and c, were decided so by the owner on 25 November 2026; C25's figure is set in N2 after the repair):
+
+- **a and b: repair them together, as the first thing of N2 and before its step 2,** which needs the weight torque on legs whose
+  targets do not jump. The correction is small (one argument; two easings over `step_ease_s` that exist for the strength) and each
+  is a defect by the project's own rule. It moves 54 scenarios, so it has its own baseline, three seeds of the stand and the
+  push matrix, and the one scenario that then fails (`strike_kick_thigh`) is read, not loosened. Films of
+  the trials were not made. Alternatives: (2) now, as a step of its own
+  beside M4, at the price of a new baseline in the middle of M4; (3) the frame alone (a) now and level and limit with N8 D,
+  since the toes change the foot anyway.
+- **c: leave it,** count it in C25 by the torque (0) and not by the target (127), and take the arm's whip up with N7's gathering
+  and N3's tone, where the get-up begins from a resting tone and not from nothing. Alternatives: (2) blend the pose in now: no
+  gain on the stand and the arms are slower; (3) a limit on how fast a muscle's target may turn while its strength comes up.
+- **The other causes** (the landing's strength, the reach, the settling, the fall's strengths) are found, not asked for: they are
+  the same kind of thing and are the larger part of C25. They belong into the same step as a and b, one by one.
+- **C25 is to be read from `command_jump_max_nm`.** Its proposed limit cannot be "today's largest", since today's largest is a
+  defect: proposed 60 N*m after the repair, looked at again then. (Said too soon: 60 lies in the gap between the scenarios without a step, 50 N*m at most, and those with one, 100 at least, but no trial comes under it. With all the corrections together 38 scenarios still jump by more than 100, 414 at most, a hit that weakens a muscle among them, which is by design.) `target_step_max_deg` 127 is case c and is no jump.
+
+**Not established.** What jumps in the 124 joint-frames of a stagger and the 159 of a get-up that have no name above; whether the correctives can be evaluated from the body's pose without an Animation Blueprint of ours.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

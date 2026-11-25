@@ -140,6 +140,32 @@ FVector FSandboxMotionStats::DriveTorqueNm(const FQuat& Parent, const FQuat& Chi
 	return Child.RotateVector(Torque);
 }
 
+double FSandboxMotionStats::CommandJumpNm(const FSandboxDriveCommand (&Commands)[4], const FQuat& Parent, const FQuat& Child, const FVector& ParentSpeed,
+	const FVector& ChildSpeed, double& OutTargetDeg)
+{
+	// Where a motion from one command to the next goes on to. The cap is a limit and has no way to go on.
+	const auto GoOn = [](const FSandboxDriveCommand& From, const FSandboxDriveCommand& To)
+	{
+		FSandboxDriveCommand Next = To;
+		Next.Target = (To.Target * From.Target.Inverse() * To.Target).GetNormalized();
+		Next.StiffnessNmPerRad = FMath::Max(2.0 * To.StiffnessNmPerRad - From.StiffnessNmPerRad, 0.0);
+		Next.DampingNmsPerRad = FMath::Max(2.0 * To.DampingNmsPerRad - From.DampingNmsPerRad, 0.0);
+		return Next;
+	};
+	const auto Torque = [&](const FSandboxDriveCommand& Asked)
+	{
+		bool bUnused = false;
+		return DriveTorqueNm(Parent, Child, Asked.Target, ParentSpeed, ChildSpeed, FVector::ZeroVector, Asked.StiffnessNmPerRad, Asked.DampingNmsPerRad, Asked.CapNm, bUnused);
+	};
+	const FSandboxDriveCommand Ahead = GoOn(Commands[0], Commands[1]);
+	const FSandboxDriveCommand Behind = GoOn(Commands[3], Commands[2]);
+	const FVector Was = Torque(Commands[1]);
+	const FVector Is = Torque(Commands[2]);
+	OutTargetDeg = FMath::RadiansToDegrees(FMath::Min3(Commands[1].Target.AngularDistance(Commands[2].Target), Ahead.Target.AngularDistance(Commands[2].Target),
+		Commands[1].Target.AngularDistance(Behind.Target)));
+	return FMath::Min3((Is - Was).Size(), (Is - Torque(Ahead)).Size(), (Was - Torque(Behind)).Size());
+}
+
 FVector FSandboxMotionStats::TurnSpeed(const FQuat& From, const FQuat& To, double StepS)
 {
 	const FQuat Turn = (To * From.Inverse()).GetShortestArcWith(FQuat::Identity);

@@ -138,6 +138,7 @@ void FNaturalMeasures::Sample(const FNaturalFrame& Frame)
 		{
 			// Reactions compare with the targets of the frame before, which SampleMuscles then replaces.
 			SampleReactions(Frame, State);
+			SampleJumps(Frame);
 			SampleMuscles(Frame, State, TargetStepDeg);
 		}
 		SampleSway(Frame, State);
@@ -331,6 +332,50 @@ void FNaturalMeasures::SampleReactions(const FNaturalFrame& Frame, ESandboxBodyS
 			Reaction.FallFrame = Frame.Frame;
 		}
 	}
+}
+
+void FNaturalMeasures::SampleJumps(const FNaturalFrame& Frame)
+{
+	// The command that is judged is LastMuscles', of the frame before: what comes after it has to be seen too.
+	const TArray<FSandboxMuscleView>& Muscles = Frame.View->Muscles;
+	const int32 Judged = Frame.Frame - 1;
+	if (Judged >= SettleFrames && LastMuscles.Num() == Muscles.Num() && OlderMuscles[0].Num() == Muscles.Num() && OlderMuscles[1].Num() == Muscles.Num())
+	{
+		for (int32 Index = 0; Index < Muscles.Num(); ++Index)
+		{
+			const FSandboxBodySample* Parent = Find(OlderBodies, Muscles[Index].ParentBone);
+			const FSandboxBodySample* Child = Find(OlderBodies, Muscles[Index].ChildBone);
+			if (!Parent || !Child)
+			{
+				continue;
+			}
+			const FSandboxMuscleView* const Views[] = { &OlderMuscles[0][Index], &OlderMuscles[1][Index], &LastMuscles[Index], &Muscles[Index] };
+			FSandboxDriveCommand Commands[4];
+			for (int32 Each = 0; Each < 4; ++Each)
+			{
+				Commands[Each] = FSandboxDriveCommand{ Views[Each]->TargetRelative, Views[Each]->StiffnessNmPerRad, Views[Each]->DampingNmsPerRad, Views[Each]->MaxTorqueNm };
+			}
+			double TargetDeg = 0.0;
+			const double JumpNm = FSandboxMotionStats::CommandJumpNm(Commands, Parent->WorldTransform.GetRotation(), Child->WorldTransform.GetRotation(),
+				Parent->AngularVelocityRad, Child->AngularVelocityRad, TargetDeg);
+			if (JumpNm > CommandJumpMaxNm)
+			{
+				CommandJumpMaxNm = JumpNm;
+				CommandJumpJoint = Muscles[Index].ChildBone;
+				CommandJumpFrame = Judged;
+			}
+			if (TargetDeg > TargetJumpMaxDeg)
+			{
+				TargetJumpMaxDeg = TargetDeg;
+				TargetJumpJoint = Muscles[Index].ChildBone;
+				TargetJumpFrame = Judged;
+			}
+		}
+	}
+	OlderMuscles[0] = MoveTemp(OlderMuscles[1]);
+	OlderMuscles[1] = LastMuscles;
+	// The bodies as this frame's step found them: it is this frame's command that is judged next.
+	OlderBodies = LastBodies;
 }
 
 void FNaturalMeasures::SampleMuscles(const FNaturalFrame& Frame, ESandboxBodyState State, double& OutTargetStepDeg)
@@ -942,6 +987,12 @@ void FNaturalMeasures::WritePose(FJsonObject& Pose) const
 	Pose.SetNumberField(TEXT("command_step_max_nm"), CommandStepMaxNm);
 	Pose.SetStringField(TEXT("command_step_joint"), Text(CommandStepJoint));
 	Pose.SetField(TEXT("command_step_t"), Optional(CommandStepFrame >= 0, CommandStepFrame * Dt));
+	Pose.SetNumberField(TEXT("command_jump_max_nm"), CommandJumpMaxNm);
+	Pose.SetStringField(TEXT("command_jump_joint"), Text(CommandJumpJoint));
+	Pose.SetField(TEXT("command_jump_t"), Optional(CommandJumpFrame >= 0, CommandJumpFrame * Dt));
+	Pose.SetNumberField(TEXT("target_jump_max_deg"), TargetJumpMaxDeg);
+	Pose.SetStringField(TEXT("target_jump_joint"), Text(TargetJumpJoint));
+	Pose.SetField(TEXT("target_jump_t"), Optional(TargetJumpFrame >= 0, TargetJumpFrame * Dt));
 	Pose.SetNumberField(TEXT("strength_step_max"), StrengthStepMax);
 	Pose.SetStringField(TEXT("strength_step_joint"), Text(StrengthStepJoint));
 	Pose.SetField(TEXT("strength_step_t"), Optional(StrengthStepFrame >= 0, StrengthStepFrame * Dt));

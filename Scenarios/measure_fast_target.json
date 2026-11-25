@@ -1,0 +1,54 @@
+{
+  "name": "measure_fast_target",
+  "duration_s": 4.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.idle.weight=0,poses.idle.sway_weight=0,poses.blend_s=0.1"
+    },
+    {
+      "t": 3.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.stance.lowerarm_l.swing1_deg=10"
+    }
+  ],
+  "expect": {
+    "tuning_changes": 2,
+    "fell": false,
+    "measures": {
+      "control.pose.target_step_max_deg": {
+        "min": 4.9,
+        "max": 5.1
+      },
+      "control.pose.target_step_joint": {
+        "equals": "lowerarm_l"
+      },
+      "control.pose.command_step_max_nm": {
+        "min": 3.2,
+        "max": 3.6
+      },
+      "control.pose.target_jump_max_deg": {
+        "min": 1.1,
+        "max": 1.35
+      },
+      "control.pose.command_jump_max_nm": {
+        "min": 0.75,
+        "max": 0.95
+      }
+    }
+  }
+}

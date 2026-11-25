@@ -322,15 +322,17 @@ if ($suite) {
         $run = Read-JsonFile (Join-Path $RepoRoot "Saved\Scenarios\$($result.scenario)\metrics.json")
         if ($run -and $run.control.mode -eq 'active') {
             $jumps += [pscustomobject]@{ scenario = $result.scenario; torque = [double]$run.control.pose.command_step_max_nm; torque_joint = $run.control.pose.command_step_joint; torque_t = $run.control.pose.command_step_t; turn = [double]$run.control.pose.target_step_max_deg; turn_joint = $run.control.pose.target_step_joint; turn_t = $run.control.pose.target_step_t
-                strength = [double]$run.control.pose.strength_step_max; strength_joint = $run.control.pose.strength_step_joint; strength_t = $run.control.pose.strength_step_t }
+                strength = [double]$run.control.pose.strength_step_max; strength_joint = $run.control.pose.strength_step_joint; strength_t = $run.control.pose.strength_step_t
+                jump = [double]$run.control.pose.command_jump_max_nm; jump_joint = $run.control.pose.command_jump_joint; jump_t = $run.control.pose.command_jump_t }
         }
     }
 }
 $turns = @($jumps | Sort-Object { -$_.turn })
 $drops = @($jumps | Sort-Object { -$_.strength })
 $torques = @($jumps | Sort-Object { -$_.torque })
+$leaps = @($jumps | Sort-Object { -$_.jump })
 if ($turns.Count -gt 0) {
-    Row 'C25' 'Largest jump in a frame: of the torque a command asks for, of a target, of a strength' "$(Num $torques[0].torque 'F0') N*m ($($torques[0].torque_joint), $($torques[0].scenario) at $(Num $torques[0].torque_t) s); $(Num $turns[0].turn 'F1') degrees ($($turns[0].turn_joint), $($turns[0].scenario) at $(Num $turns[0].turn_t) s); strength by $(Num (100 * $drops[0].strength) 'F0')% ($($drops[0].strength_joint), $($drops[0].scenario)); $($turns.Count) scenarios" '-' 'today''s, less what is a defect' @() @{ torque_nm = $torques[0].torque; target_deg = $turns[0].turn; strength = $drops[0].strength }
+    Row 'C25' 'Largest jump of the torque a command asks for; its largest change in a frame, a motion''s included; a target''s; a strength''s' "$(Num $leaps[0].jump 'F0') N*m ($($leaps[0].jump_joint), $($leaps[0].scenario) at $(Num $leaps[0].jump_t) s; over 100 N*m in $(@($jumps | Where-Object { $_.jump -gt 100 }).Count) scenarios); $(Num $torques[0].torque 'F0') N*m ($($torques[0].torque_joint), $($torques[0].scenario) at $(Num $torques[0].torque_t) s); $(Num $turns[0].turn 'F1') degrees ($($turns[0].turn_joint), $($turns[0].scenario) at $(Num $turns[0].turn_t) s); strength by $(Num (100 * $drops[0].strength) 'F0')% ($($drops[0].strength_joint), $($drops[0].scenario)); $($turns.Count) scenarios" '-' 'set in N2; until then the baseline''s' @() @{ jump_nm = $leaps[0].jump; torque_nm = $torques[0].torque; target_deg = $turns[0].turn; strength = $drops[0].strength }
 }
 Row 'C26' 'Hit, pushed and held in every new phase' 'the get-up has its three scenarios' '-' 'each new phase its three' @()
 

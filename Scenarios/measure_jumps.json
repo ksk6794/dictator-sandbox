@@ -60,6 +60,21 @@
       "control.pose.strength_step_t": {
         "min": 3.98,
         "max": 4.02
+      },
+      "control.pose.command_jump_max_nm": {
+        "min": 19.5,
+        "max": 22.0
+      },
+      "control.pose.command_jump_joint": {
+        "equals": "lowerarm_l"
+      },
+      "control.pose.target_jump_max_deg": {
+        "min": 29.5,
+        "max": 30.5
+      },
+      "control.pose.target_jump_t": {
+        "min": 2.98,
+        "max": 3.05
       }
     }
   }

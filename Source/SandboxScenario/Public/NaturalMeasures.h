@@ -162,6 +162,17 @@ private:
 	FName CommandStepJoint;
 	int32 CommandStepFrame = -1;
 	TArray<FSandboxMuscleView> LastMuscles;
+	/** The part of it that is a jump and not a motion that goes on (FSandboxMotionStats::CommandJumpNm), of the torque and of the target alone. */
+	double CommandJumpMaxNm = 0.0;
+	FName CommandJumpJoint;
+	int32 CommandJumpFrame = -1;
+	double TargetJumpMaxDeg = 0.0;
+	FName TargetJumpJoint;
+	int32 TargetJumpFrame = -1;
+	/** The commands of the two frames before LastMuscles', and the bodies as the step of its frame found them: a jump is told a frame late. */
+	TArray<FSandboxMuscleView> OlderMuscles[2];
+	TArray<FSandboxBodySample> OlderBodies;
+	void SampleJumps(const FNaturalFrame& Frame);
 	double StrengthStepMax = 0.0;
 	FName StrengthStepJoint;
 	int32 StrengthStepFrame = -1;

@@ -537,7 +537,11 @@ change that makes one of them fail has broken a measure (or the solver), not the
 - **Jumps**: the largest turn of a muscle's target in one frame (`control.pose.target_step_max_deg`), the largest
   relative change of a stiffness (`strength_step_max`), and what the two together change of a muscle's torque on the
   body as it is (`command_step_max_nm`): a target that jumps while its muscle has no strength (a get-up's start, 127
-  degrees) asks for nothing, and a target that moves fast (a swinging leg's) reads as a jump of that much. `metrics.joint_speed_step_max_rads` is the largest change of a joint's turning speed.
+  degrees) asks for nothing, and a target that moves fast (a swinging leg's) reads as a jump of that much. `command_jump_max_nm` is the part
+  that is a jump: what is left after the change has been explained by a motion that goes on from the two frames before or
+  comes from the two after (`FSandboxMotionStats::CommandJumpNm`), with its joint and time; `target_jump_max_deg` is the same
+  of the target alone. A jump over two frames reads as a motion, and the run's last frame is not judged.
+  `metrics.joint_speed_step_max_rads` is the largest change of a joint's turning speed.
 - **The head** (`metrics.head_accel_max_mps2`, `head_jerk_rms_mps3`): from the velocity of the head body's centre of
   mass, a mean of three frames.
 - **Stillness** (`metrics.stillness`): a body is still while no part of it has gone further than 0.5 cm in the last
