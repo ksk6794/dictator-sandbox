@@ -17,7 +17,7 @@ tunnelling. **M3, balance and recovery, is done: closed on 24 November 2026 with
 review of the clips that the owner handed to the agent; the owner's own look in a session is deferred with M2's
 and does not hold up M4** (the seven parts, the gate's table, the review and the known limits are in
 the M3 section of `docs/PRD.md`). **M4, full interaction and VR, is in progress: part 1 of 6, the hands in the
-headset, has steps 1 and 2 of 4 done** (its order of parts and what M3 hands over to it are in the M4 section). Step 1:
+headset, is done (four steps)** (its order of parts and what M3 hands over to it are in the M4 section). Step 1:
 a session's hands can be recorded (`Tools\play.ps1 -Record`, the K key) and a scenario replays the recording frame
 for frame (`"recording"`; `replay_demo_hands`); `Tools\record-replay.ps1` holds a replay against its session
 (the same states of the body within a frame, the pelvis within 1 cm, the hands' impulses within 5%) and two
@@ -55,9 +55,9 @@ does not feel a grab; a hand that goes on through the body fells it as the hands
 second is a knockdown; `effector_push_chest_falls`, `effector_shove_knockdown_gets_up`), while a punch that
 comes back delivered 12 to 28 N*s. **Since the owner's looks of 25 November a fist that comes fast has a blow**
 (`effectors.hand.strike_*`: for 0.15 s a cap of up to 900 N and a spring of up to 9000 N/m, graded by the speed it
-arrived at, from 2 to 4.5 m/s, and carried at least 25 cm beyond where it landed, the way it came, though the
+arrived at, from 2 to 4.5 m/s, and carried at least 40 cm beyond where it landed (the owner's decision of 25 November: 25 before), the way it came, though the
 player's hand stops at the surface or goes back; an open hand has none, and pushing, holding and dragging keep the
-300 N): a fist that comes at 3, 4 and 5.5 m/s is 33, 70 and 86 N*s into the chest and 39, 86 and 110 into the belly,
+300 N): a fist that comes at 3, 4 and 5.5 m/s is 51, 101 and 120 N*s into the chest, 60, 127 and 154 into the belly and 20, 41 and 47 into the head; one of 5.5 m/s (and the desktop's of 8) fells it,
 and the body steps; an open hand at 4 m/s is 7 to 9. In the owner's first session with a blow (`vr_check2`) his
 punches were 8 to 34 N*s: his hand was open most of the time and stopped at the surface. The
 desktop hand goes at 8 m/s to what the camera aims at and 15 cm through it. **A body hit from the front into the
@@ -76,9 +76,12 @@ direction in the hand (`effectors.hand.grab_hold_*`) and is taken by its handle 
 `reactions.thing_support` is switched on, which is off: a thing that pushes up on the body steadily is then support, as
 the floor is (`prop_*_on_plate` switch it on for themselves; with it on for the whole suite 90 of 95 scenarios are
 unchanged). A stick's blow is 2.5 N*s, no hit. On the grab: the run and the session tell it what is held (`FScenarioStage::TellBodyOfHolds`) and it
-tells its listeners, but it does nothing else with it yet; and a standing leg that is pulled does not come. Next: a short launch
-in the headset (the controllers' buttons, a lost hand, the way the palm faces, the take's gesture, the
-vibration), then step 4, the owner's ten minutes. The body senses its own balance (standing feet, support polygon, capture
+tells its listeners, but it does nothing else with it yet; and a standing leg that is pulled does not come. Part 1's step 4,
+the owner's two sessions in the headset (25 November, 462 s), is done: the hands and the grab are right, the punches are weak,
+a slap does not turn the head (a criterion of N8 A) and the get-up ends like a plank over the toes. **The get-up was
+worked on inside M4 that day (three attempts, the toes of N8 D and the ankle's range tried; each below the limit set before its
+runs, all taken out) and is put off with its cause written down:** the clip brings its feet under the body while they are loaded on ours, and a loaded
+foot does not go (`docs/testing.md`, 25 November). Next: the rest of M4. The body senses its own balance (standing feet, support polygon, capture
 point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
@@ -200,7 +203,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 43 s (111 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 55 s), the compliance table 25 s, the pose database 35 s, a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 43 s (112 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 55 s), the compliance table 25 s, the pose database 35 s, a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s (its grab demo 12 s), the whole
@@ -229,7 +232,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
 | `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
-| `docs/` | `PRD.md` (plan), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, no other part is started), `testing.md` (repeatability policy and measurements). |
+| `docs/` | `PRD.md` (plan), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, and the reconnaissance before N8 and N2; no other part is started), `testing.md` (repeatability policy and measurements). |
 
 ## Rules
 
@@ -945,6 +948,16 @@ touch must not be in that list, and the ones that are get explained in the part'
   will read.
 - **A check that a thing is its own inverse does not say it is right.** A pose database mirrored without changing sides
   passed "mirrored twice it is itself". Break a measure on purpose and see its check fail before relying on either.
+- **The MetaHuman's corrective blueprint runs on our body.** "No Animation Blueprints" was read as "none is there", and the
+  plan said the skin had no correctives. The assembled mesh brings `ABP_Body_PostProcess` as its post-process blueprint and
+  the engine runs it. It sees the pose the muscles are asked for, not the simulated body, and switching it off changes every
+  hash by rounding. Ask the bones (`trace.json`, with the mesh's bone names from an editor script) before saying what moves them.
+- **A glide that is cut short has to be gone on from where it was cut.** `PlaceFoot` without `bFromLast` starts a change of
+  frame from the frame the leg was going to, not from the one it was last solved in: 21 cm, 27 degrees of the thigh in one
+  frame after a lift (known, to be repaired: `docs/natural-body.md`, decision 13).
+- **The largest change of a command in a frame is not its largest jump.** A swinging leg's is 65 N*m, and 4 of them are a
+  jump: read `command_jump_max_nm`. And a frame can have several causes: of 365 N*m 333, 333 and 140 were left with each of
+  three put right alone, 26 with all.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,

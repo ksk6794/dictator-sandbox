@@ -1,6 +1,6 @@
 # The natural body: requirements and plan
 
-Proposed on 25 November 2026. **N1 is done** (25 November 2026); no other part has been started. The same text is the tab "Natural body" of the plan in Claude Docs, and the two are kept in step by hand, as `docs/PRD.md` and its document are. Every figure in a criterion is a proposal for the owner to set.
+Proposed on 25 November 2026. **N1 is done** (25 November 2026), and so is the reconnaissance before N8 and N2 of the same day (close-ups, the jumps of C25; `docs/testing.md`, "The natural body, reconnaissance"); no other part has been started. The same text is the tab "Natural body" of the plan in Claude Docs, and the two are kept in step by hand, as `docs/PRD.md` and its document are. Every figure in a criterion is a proposal for the owner to set.
 
 The NPC's body is physically honest and stable, but nothing yet measures whether it moves and reacts like a living person. This plan defines what natural means in figures and lays out nine parts, N1 to N9, that take the body there. It is a proposal: every figure in a criterion is for the owner to set.
 
@@ -65,7 +65,7 @@ The body stands, steps, falls and gets up under full simulation and passes every
 | The body does not see, and does not feel a hold | The character does not know the pawn; `TellHolds` changes no force, target or decision | N5 |
 | The fall has fixed poses and no aim | Three poses; the film above | N6 |
 | On the floor the body is dead, and the get-up waits | 53 of 203 get-up attempts are given up; a clip waits up to 5 s in one pose | N7 |
-| The model is coarse where the eye looks | Head and neck as one body, a foot as one box; nothing was found that poses the fingers (not yet checked on a close-up) | N8 |
+| The model is coarse where the eye looks | Head and neck as one body, a foot as one box; the fingers are never posed (close-ups, and by the traces 0.0000 degrees against the hand in every run) | N8 |
 | The same input gives the same motion, and the idle is a loop | Runs repeat by design; the sway is a clip of fixed length | N9 |
 
 ## Requirements and criteria
@@ -141,7 +141,7 @@ The track adds nine requirements and 26 criteria. Every limit below is a proposa
 
 | # | Criterion | Measure | Today | Proposed limit | Part |
 | --- | --- | --- | --- | --- | --- |
-| C25 | Nothing jumps | `target_step_max_deg`, `strength_step_max`, `command_step_max_nm`, in every scenario | 127 degrees and 100% as a get-up begins, with no strength in the muscle; else 28 degrees of the thigh in the frame after a step lifts, and 399 N·m asked of an ankle as a step lands | No larger than the largest N1 finds in today's suite, less the cases N1 shows to be defects | N1 on |
+| C25 | Nothing jumps | `command_jump_max_nm` (a jump told from a fast motion); beside it `target_step_max_deg`, `strength_step_max`, `command_step_max_nm`; in every scenario | A jump of 367 N·m; over 100 N·m in 55 of 86 scenarios; 0.1 standing. Of N1's three cases the 28 degrees of the thigh after a lift and the 399 N·m of an ankle are defects; the 127 degrees as a get-up begins ask 2.7 N·m and are as intended | Set in N2 after the repair (decision 15); until then no larger than the baseline's | N1 on |
 | C26 | The body can be interacted with in every new phase (FR-18) | A hit, a push and a hold during the brace, the reach, settling, the roll, the crouch | The get-up has these three scenarios | Each new phase has its three | Every part |
 
 Beside these, each part ends with the owner's look in a session, and the pose's likeness (`pose_prior`) and the time outside a joint's range are reported for every part and must not be worse than before it.
@@ -231,18 +231,22 @@ Fore-and-aft sway amplitude of the centre of pressure; relaxed against braced st
 
 The parts are numbered as they were first discussed, by what they give. They are built in another order, because a change to the physics asset moves every baseline and has to come before the muscles are tuned again.
 
-| Order | Part | Why here | Against the milestones (proposed) |
+**The order, decided by the owner on 25 November 2026 (decision 1):** the owner's session in the headset (done), then, by the owner's decision of the same day, the get-up inside M4 (tried, put off: `docs/testing.md`), then the rest of M4 (the reconnaissance before N8 and N2 runs beside it), then N8 A and B, N2, N3, N6, N4, N5, N8 D, then M4b together with N7, then N9 and N8 C, then M5.
+
+| Order | Part | Why here | Against the milestones |
 | --- | --- | --- | --- |
-| 1 | N1, measures | Changes no behaviour; everything after it is tuned on its figures | Now, beside M4 |
-| 2 | N8 A, the head as a body; N8 B, fingers | The asset changes before the muscles are tuned on it; the fingers are cheap and show at once | After M4's gate |
-| 3 | N2, weight carried by the joints | The base of a soft body; N3 builds on it | Before M4b |
-| 4 | N3, tone | Needs N2's weight torque for relaxed arms | Before M4b |
-| 5 | N6, the fall with an aim | Gives the hand target that N4, N5 and M4b use | Before M4b |
-| 6 | N4, the order and timing of reactions | Needs the tone; its last step needs the hand target | Before M4b |
-| 7 | N5, perception | Needs tone, timing and the hand target; ends in the headset | Before M4b, with a headset session |
-| 8 | N8 D, toes | An experiment that serves walking, kneeling and sitting | Just before M4b |
-| 9 | N7, life on the floor and the get-up | Shares clips and the hand target with M4b's actions | With M4b |
-| 10 | N9, variation; N8 C, the twist | Spreads what the other parts built; the skin is for M5's sign-off | After M4b, before M5 |
+| - | N1, measures | Changes no behaviour; everything after it is tuned on its figures | Done, beside M4 |
+| - | The reconnaissance: close-ups (N8's step 1), the jumps of C25 | Changes no behaviour; says what N8 and N2 begin with | Done on 25 November 2026, beside M4 |
+| - | The owner's session in the headset, then the rest of M4 | M4 part 1, step 4 is next | M4 |
+| 1 | N8 A, the head as a body; N8 B, fingers | The asset changes before the muscles are tuned on it; the fingers are cheap and show at once | After M4's gate |
+| 2 | N2, weight carried by the joints | The base of a soft body; N3 builds on it | Before M4b |
+| 3 | N3, tone | Needs N2's weight torque for relaxed arms | Before M4b |
+| 4 | N6, the fall with an aim | Gives the hand target that N4, N5 and M4b use | Before M4b |
+| 5 | N4, the order and timing of reactions | Needs the tone; its last step needs the hand target | Before M4b |
+| 6 | N5, perception | Needs tone, timing and the hand target; ends in the headset | Before M4b, with a headset session |
+| 7 | N8 D, toes | An experiment that serves walking, kneeling and sitting. Brought forward by the owner on 25 November 2026 for the get-up and tried inside M4 as a second asset; **put off again the same day by the limit set before the run (1.06 s against 0.7): see `docs/testing.md`**. The get-up itself waits too: three attempts, the cause is in `docs/testing.md` (25 November) | Just before M4b |
+| 8 | N7, life on the floor and the get-up | Shares clips and the hand target with M4b's actions | With M4b |
+| 9 | N9, variation; N8 C, the skin | Spreads what the other parts built; the skin is for M5's sign-off | After M4b, before M5 |
 
 Why before M4b: walking, sitting and righting a chair will be tuned on the muscles. If N2 and N3 change them afterwards, M4b is tuned twice.
 
@@ -250,7 +254,7 @@ Why before M4b: walking, sitting and righting a chair will be tuned on the muscl
 
 | # | Decision | Options | Needed by |
 | --- | --- | --- | --- |
-| 1 | Where the track sits | (a) As in the table: N1 now, the body's core before M4b. (b) All of it after M4b, at the price of tuning M4b's actions twice. (c) All of it before M4 ends, at the price of a later headset review | Now |
+| 1 | Where the track sits | **Decided on 25 November 2026: (a), as in the table above.** Not chosen: (b) all of it after M4b, at the price of tuning M4b's actions twice; (c) all of it before M4 ends, at the price of a later headset review | Decided |
 | 2 | The figures of the criteria | Proposals in "Requirements and criteria"; the owner sets each when its part begins, as for every milestone | Each part |
 | 3 | Human timing against the push matrix's table | (a) Delays from the low end of the human range, the table as it is. (b) Mid-range delays and a new table with more steps and falls. (c) No delay for the step, only for the reflex | N4 |
 | 4 | A dazed body may take two steps where the table allows one | (a) Yes, for hits on the head from 15 N·s. (b) No daze below the knockdown | N3 |
@@ -262,6 +266,9 @@ Why before M4b: walking, sitting and righting a chair will be tuned on the muscl
 | 10 | Clips the sample does not have (ways of lying, a crawl) | (a) Written as poses first. (b) A clip pack, brought to the owner with its price and licence | N7 |
 | 11 | C14 was met by hands that land beside the hips (found in N1) | **Decided on 25 November 2026: a hand counts only if it lands ahead of the chest along the fall** (`hands_ahead_first`). Measured by that rule today's body still meets it, 86% against 80%, with hands 10 to 20 cm ahead that do not brake: for N6 it is C15 and C16 that show the difference | N6 |
 | 12 | C15 said "touches", and a head that is laid down after the fall touches too | **Decided on 25 November 2026: "strikes"**, 0.5 m/s or more downward (`head_struck`). The share that touches at all is printed beside it | N6 |
+| 13 | The jumps at a step's lift (found in the reconnaissance, cases a and b: the leg's frame, the foot's level, the ankle's limit) | **Decided on 25 November 2026: (a), repaired together as the first thing of N2, before its step 2, the reconnaissance's other causes one by one in the same place.** M4 stays on today's baseline. Not chosen: (b) now, beside M4, at the price of a new baseline in the middle of it; (c) the frame alone, the foot with N8 D | Decided |
+| 14 | The clip's pose is taken whole as a get-up begins (case c) | **Decided on 25 November 2026: (a), left as it is, and C25 counts it by its torque.** Blended in, the stand does not gain. The arm's whip (13 rad/s in the first moments) is for N3, whose get-up begins from a resting tone, and for N7's gathering. Not chosen: (b) blended in now; (c) a limit on how fast a target may turn while its strength comes up | Decided |
+| 15 | C25's limit | **Decided on 25 November 2026: the figure is set in N2, from what is measured after the repair (decision 13), with what jumps by design listed apart.** Until then no part may raise `command_jump_max_nm` above its baseline (367 N·m today); 60 N·m is the aim. Not chosen: 60 at once (no trial comes under it: 38 scenarios over 100 N·m with all the corrections); today's largest, which is a defect | Decided; the figure in N2 |
 
 ## N1. Measures of naturalness
 
@@ -417,6 +424,8 @@ A unit test holds the arithmetic: a two-link arm against its analytic torques, a
 | Every figure tuned so far moves | The whole set of "Must hold" is run again at the end, not only the suite | Stop at the last step that held |
 
 ### Steps
+
+**First, before step 2: the jumps of a step (decision 13).** The leg's frame, the foot's level and the ankle's limit at a lift, together; then, one by one, the swing strength dropped at a landing, the first placement's reach, the settling's height and the strengths and legs let go as a fall begins. Its own baseline before and after; each correction alone on the suite, the push matrix and the stand on three seeds, with films; a scenario that then fails (`strike_kick_thigh` did in the trial) is read, not loosened. What the trials showed is in `docs/testing.md`, "The natural body, reconnaissance".
 
 0. Read N1's compliance and effort tables against the human figures; write down which joints are stiffer than a person's and by how much; agree the scope with the owner.
 1. `FSandboxWeightTorques` with its unit tests.
@@ -839,11 +848,11 @@ N8 refines the model in the four places where the eye looks: the head on its nec
 
 **Must be measured again, since every hash moves:** the push matrix's rows on the head, the strikes and slaps on the head, the knockdown's threshold of 35 N·s (set from what the head's body counts as a hit, and that body is now lighter), the kicks to the head, the stand, the grab's pulls on the neck.
 
-**Go or no-go:** standing is as steady as before (drift, the feet's turning speed, the assist's share within a tenth); the neck's joints stretch no more than 0.5 cm under a kick; a dense strip of `palm_slap_head` shows the head turning on the neck. Otherwise the one-body neck stays.
+**Go or no-go:** standing is as steady as before (drift, the feet's turning speed, the assist's share within a tenth); the neck's joints stretch no more than 0.5 cm under a kick; a dense strip of `palm_slap_head` shows the head turning on the neck; **a slap on the cheek with an open hand turns the head 20 degrees or more** (the owner's answer in the headset on 25 November 2026: a slapped face has to turn; today it turns 1 to 3). Otherwise the one-body neck stays.
 
 ### B. Fingers that are posed
 
-**Why.** The hand is one body and its fingers have none. Nothing was found that poses them, so they are presumably held as modelled, in every state. A hand that never changes is a mannequin's. (The first step is a close-up of a hand, to see what is there.)
+**Why.** The hand is one body and its fingers have none. Nothing poses them: they are held as modelled, apart and slightly bent, in every state (close-ups in stance, in the air, at the floor and lying). A hand that never changes is a mannequin's.
 
 **Design.** The fingers stay without bodies: they are bones the animation instance sets, relative to the hand. `poses.fingers.rest`, `fist`, `splayed`, `flat`: a curl for each finger and the thumb and one spread, about ten values a pose. Which is asked for follows the body: `rest` when relaxed, half a `fist` when braced (N3), `splayed` with the palms to the floor in a fall (N6), `flat` under a hand that carries weight in a get-up, `rest` on the body when a hand holds a struck place (N4). Changes are eased, as every pose is.
 
@@ -851,9 +860,9 @@ N8 refines the model in the four places where the eye looks: the head on its nec
 
 ### C. Skin at twisted joints
 
-**Why.** The forearm's turn sits in the wrist's twist, and the body runs no Animation Blueprint, the MetaHuman's own corrective one included. Whether the skin collapses at a twisted wrist, a raised shoulder or a deeply bent knee has not been looked at, and M5's photoreal sign-off will look.
+**Looked at on 25 November 2026: the skin holds, and what was planned here is not needed.** The MetaHuman's own correctives are running (`ABP_Body_PostProcess`, the post-process blueprint of the assembled mesh; this plan had said they were not): with the wrist at 70 degrees the forearm's two twist bones turn by 56 and 14. Switched off, the shoulder collapses (`Saved\Films\n8_correctives_with_without.png`). What is left, for M5: they follow the pose the muscles are asked for and not the body (an arm lifted by a grab has none), and the mesh is assembled at the quality MEDIUM, 8568 vertices, whose facets show at the knee and the fingertips.
 
-**Design.** Step 1 is the look: close-ups of the forearm with the wrist twisted 70 degrees each way, the arm raised 150 degrees, the knee bent 120. If the skin holds, nothing is built. If not: the twist is shared out along the limb's twist bones natively in `USandboxAnimInstance` (they have no bodies). If that is not enough, whether the MetaHuman's corrective poses can be evaluated without an Animation Blueprint is found out, and the rule on Animation Blueprints is the owner's to weigh.
+**Design.** The correctives from the body's own pose, natively after the physics blend (the forearm's twist by 0.8 and 0.2, as Epic's blueprint has it), and the assembly at a higher quality with its cost in the frame measured. Sooner only if M4's grab lifts arms over the shoulder in the headset. That a blueprint of Epic's runs on the body, where the rule says no Animation Blueprints, is the owner's to weigh.
 
 ### D. Toes (an experiment, before M4b)
 
@@ -869,10 +878,10 @@ The wrist's model is M4's part 3. Soft tissue (FR-16) and the face (FR-23) are M
 
 ### Steps
 
-1. Close-ups: a hand, a twisted forearm, a raised shoulder, a bent knee. What is there is written down before anything is built.
+1. Close-ups: a hand, a twisted forearm, a raised shoulder, a bent knee. **Done on 25 November 2026** (`docs/testing.md`; `Saved\Films\n8_*`).
 2. A: the head. A new baseline; everything listed above measured again; go or no-go.
-3. B: the fingers.
-4. C: the twist, if step 1 calls for it.
+3. B: the fingers, `rest` in the stance first, then `splayed` and `flat` for the floor (in a fall forward two fingers of the lying hand are in the floor).
+4. C: the skin, as above; step 1 did not call for the twist.
 5. D: the toes, just before M4b; a new baseline; go or no-go.
 
 ### Done when

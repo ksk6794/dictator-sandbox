@@ -3744,6 +3744,120 @@ before the state began, a reference was used after its array had moved, the phys
 the head's impact was the first touch only, sway joined stretches of standing at two places, the database's stamp did not
 cover its poses, and smaller ones.
 
+### M4 part 1, step 4: the owner's two sessions in the headset (25 November)
+
+`Saved\Recordings\vr_step4` and `vr_step4_2` to `_4`: four takes, 175 s; then, the owner having chosen a second
+session, `vr_step4b` and `vr_step4b_2` to `_6`: six takes, 287 s. 462 s in all of the 600 planned. What the owner saw is below. The first session:
+
+- **The headset.** 89.9 frames a second (89.0 in the first ten seconds). Both controllers tracked in all 14 795 frames. The target caught up with
+  its controller one to three times a hand (24 to 75 frames).
+- **The gesture of a new take** worked three times (its first trial): the character put back, a recording of its own. Whether it was
+  meant each time is not known from the recording: the fists were at 184 to 197 cm.
+- **From the session's own log:** two falls (pelvis tilted by 35 degrees at 44.2 s of take 1; a knockdown by a hit on the head), two doublings
+  over (the figures the log has with them, 35.2, 42.9 and 42.4 N*s, are the running sum as it passed the threshold of 35 or 40,
+  not the hit's size), two get-ups at the first
+  attempt (5.6 and 5.0 s), one of them hit with 5.3 N*s while it went on.
+- **From the replays** (`Tools\recording-report.ps1`): 21 hits, 17 grabs, one slipped, none torn open; no tunnelling, 0.13 cm inside a
+  body at most. Takes 2 and 4 end as the session did (2.4 and 0.1 cm), takes 1 and 3 do not (61 and 187 cm): as with every
+  session of hard blows and grabs, so their figures are the replays' own. The two fastest fists of take 3: 4.3 m/s 77 N*s and
+  6.5 m/s 38 N*s on the chest.
+- **The hand against its target** (`Tools\swing-lag.ps1 -Recording ... -FromS 33 -ToS 42`, nothing touched): 0.6 cm under 0.5 m/s, 1.3
+  to 1.8 up to 2, 4.8 at 2 to 3, 6.3 above 3, with the difference of two poses; with the runtime's velocity 5 to 11 cm up to 3 m/s.
+- **Little of it:** two blows above 4 m/s.
+
+The second session:
+
+- **The headset.** 89.1 to 89.9 frames a second; both controllers tracked in all 25 863 frames, no loss. The gesture of a new take
+  worked five times more (eight in all).
+- **From the session's own log:** three knockdowns by a hit on the head, four falls by the posture, six doublings over (eight over
+  both sessions). Over both sessions twelve get-ups were begun and nine ended standing; three were given up, each with hits felt
+  while it went on (the pelvis 40 cm from where the clip has it). Twice the weight did not come over the stance foot within 2 s.
+  One body that had just got up fell again 0.6 s later.
+- **From the replays:** 54 hits, 27 grabs, two slipped, none torn open; no tunnelling, 0.16 cm inside a body at most; the hands that arrived fastest 9.1, 6.5, 6.2 and 6.0 m/s. **None of the six
+  replays ends as its session did** (34 to 163 cm, in one with two hits only), as of the first session's two with blows and
+  grabs: a recording of a person's interaction is a source of motion, not a regression test. Of ten recordings two replay
+  (`vr_step4_2`, `vr_step4_4`).
+- **The hand against its target** (take 6, 3 to 31 s, nothing touched; 4638 frames): 0.5 cm under 0.5 m/s, 1.3 up to 1, 1.9 up to 2, 3.8
+  up to 3, 5.7 above, with the difference of two poses; 0.8, 3.3, 5.3, 7.5 and 12.4 with the runtime's velocity, 1.5 to 16.1 with
+  none. Largest 21.4 cm.
+
+**The owner's answers.** The hands are where the controllers are and do not tremble. The grab works well. The gesture of a new
+take was meant each of the eight times. The punches are weak, and a fist hardly ever fells the body. A slap on the face should
+turn the face the way of the slap. The skin of a raised shoulder was not noticed, so it is not far off. The get-up looks like
+separate animations with pauses between them, and its end is very unnatural: the body comes onto its feet on almost straight legs
+with nothing to push from, where a person gets up off the floor by bent knees; to be looked into and put right.
+
+**Looked into the same day, nothing changed** (the physics asset was regenerated with another ankle for one trial and put back byte
+for byte; the trials ran on `-Tune`).
+
+*The pauses.* The clip's time waits for the body: in the four get-up scenarios 2.2, 2.5, 1.6 and 0.9 s of 5.4, 5.7, 4.8 and 4.1 s (back,
+left, right, front), in the sessions by the same log lines 0.5 to 1.25 s at one clip time (0.73, 1.47, 1.88, 2.17 s; 4.4 to 5.8 s in all). The
+first 0.5 to 0.75 s are the easing of the strength (`getup.ease_s`) with the clip at 0. The rest is the pelvis 16 to 35 cm from the clip's
+place, mostly over the floor. With the pelvis's upright torque of the assist at 2000 N*m/rad and 500 N*m (600 and 200) the
+waits are 0.6, 0.9, 0.6 and 0.1 s and the whole 3.8, 4.1, 3.8 and 3.3 s: what is waited for is a body that has pitched forward (its
+pelvis is turned 22 to 39 degrees from the clip's). That is the world holding it up, which N2 is to take away, so it is a diagnosis
+and not a cure.
+
+*The last part.* Measured between a pelvis at 55 and 85 cm: the heels are 6 to 8 cm up on average (the clips have 0 to 4 from about 58 cm on),
+the feet 26 to 33 cm from the pelvis over the floor (8 to 23 in the clips), and the trunk lies flat (over 70 degrees from upright) for 1.0 to
+1.3 s in three of the four. At a pelvis of 78 to 80 cm the trunk is still at 59 to 72 degrees; clip R has it at 53 at 76 cm and at 31 at 84. So
+the body stands on its toes with its hips high and then unfolds from horizontal to upright in half a second: the owner's "straight
+legs". Two things of the clips themselves add to it: R and L rise hips first (their trunk is at 76 and 91 degrees with the pelvis
+at 68 and 70 cm), while B squats (trunk 38 to 56 degrees, heels 0 to 4, pelvis 45 to 56 cm) and F half-kneels (26 to 36 degrees at 54 to 71 cm):
+which is "by the knees". The body fell on its back in `getup_back` and got up by R.
+
+| Tried (stall s, heels cm, trunk flat s, in back, left, right, front) | Result |
+| --- | --- |
+| `side_lag_cm` 35; `lag_cm` 25; `foot_lag_cm` 25; both lags | Less waiting (0.6 to 2.3 s), the same posture; two attempts given up with the side lag |
+| `frame_follow_s` 0.1, 1.0; `pelvis_follow_s` 1.0; `rate` 0.7 | No better, or worse |
+| The ankle's dorsiflexion 55 degrees instead of 20 (the clips ask for 21 to 73 of the 25 there are, by joint) | Front 4.1 to 3.7 s and lower heels; back, left and right as they were |
+| Feet's assist 150 and 400 N (30) | Heels 3 to 5, two attempts given up, assist share 0.5 to 1.0 |
+| Legs 1600 and 2400 N*m/rad (800) | The trunk at 80 cm gets flatter (79 to 95) |
+| Spine 1500 N*m/rad (600) | Waits 1.5, 1.8, 1.6, 0.0 s; posture as it was |
+| Everything together | 3.5 to 3.9 s with heels at 5 to 8 and the feet 23 to 26 away: the posture is the clips' way on this body, not a strength |
+
+So no value of the tuning makes it right, and the ankle alone does not. What it needs is a way up of its own from the moment the
+feet are under the body: the feet placed flat under the pelvis, and the rise by the knees, from a crouch, at a speed the centre of mass over
+the feet allows. That is N7's two-stage get-up (step 5), with the clip carrying only the part on the floor.
+
+*The slap.* A slap of the open hand at 6.2 m/s on the head (at 0, 4, 8 and 11 cm ahead of its centre) turns it by 1.1 to 2.6 degrees
+about the vertical and tilts it sideways by 6 to 13. The hand's friction changes nothing to the digit (a body friction of 1.5 gives the same
+run), nor does the flinch's giving way (`flinch_give_deg` 0). With a neck of 1 N*m/rad it is 12 to 13 degrees of turn and 24 to 26 of
+tilt. So the head's neck muscle (40 N*m/rad) is most of it and the round shape of the head the rest: what the hand gives goes
+through the axis. N8 A (the head on a joint of its own) is where it belongs; its "go or no-go" is to have a slap on the cheek turn
+the head by 20 degrees or more, and the shape to have a face.
+
+*The punch.* Jabs that stop at the surface, by speed (3, 4, 5.5 m/s): head 13, 27, 34 N*s, chest 33, 70, 86. The carry decides it:
+`effectors.hand.strike_through_cm` 40 instead of 25 gives head 20, 41, 47 and chest 51, 101, 120, and then the fist at 5.5 m/s fells by
+the head (knockdown) and by the chest (a fall), a fastest joint of 30 rad/s. Force 1500 N: 13, 28, 36 and 36, 79, 97. A hand of
+3 kg: 14, 31, 35 and 36, 81, 88. `strike_s` 0.25: to the digit the same. The knockdown threshold at 25: 5.5 m/s fells, 4 does not. What the owner's hands
+bring in the replays: head median 20 N*s at 2 to 3 m/s and 13 at 3 to 4.5, trunk 57 and 56: a person's fist comes at 2 to 4.5 m/s.
+
+### The get-up: two attempts that failed, and what they showed (25 November)
+
+The owner asked for the get-up to be put right at once (a part of its own inside M4). Nothing of what was built is in the code:
+the attempts were taken out again (`Saved\Recon\getup_kneel_attempt.patch`), all 112 scenarios have the hashes of `pre_getup`.
+
+- **The owner's three frames** (`an_film_front`, 9.10 to 9.60): the body leans like a plank over its toes. From 8.3 to 9.3 s the feet
+  carry 625 to 900 N, all of the weight, and the centre of mass is 25 to 44 cm outside them. The world holds it. Over the four get-ups
+  it is more than 5 cm outside for 1.6 to 2.1 s, 45 to 65 cm at most. That is the criterion the get-up lacked: while the weight
+  is on the feet, the centre of mass is over them.
+- **First attempt:** the clip's own steps made as steps (a path for the foot, in relation to the body's pelvis). From the front better
+  (feet 13 cm from the pelvis instead of 32, the trunk at 21 degrees instead of 49 at 80 cm), by the clips R and L worse, and a plank
+  in the middle.
+- **Second attempt:** a stand-up of its own from poses written as angles (both knees, a foot forward, the rise). It hung on its knees and
+  fell over. The owner: much worse, nothing like getting up. I had called its first pictures convincing; they were not.
+- **The recorded clips B and F by themselves look right on this body** (`an_ref_B`, `an_ref_F`: sit, half-kneel, up by the knees, feet flat).
+  The source is good; following it is what fails.
+- **The foot looked like the largest single cause** (four falls; the stand of 150 below does not bear it out). It is one rigid box of 26 cm, and the clips bend the toes. With a box of 18 cm (no toes)
+  and an ankle that goes to 50 degrees, nothing else changed, the waits fall from 2.5, 1.6 and 0.9 s to 0.1, 0.6 and 0.6 (left, right, front),
+  the trunk is never flat (1.3 and 1.0 s before from left and right), at a pelvis of 80 cm it is at 44, 45 and 38 degrees (72, 65, 49), the heels are
+  2.5 to 3.6 cm up (7.2 to 8.0) and the centre of mass is off the feet for 0.7 to 0.9 s (1.6 to 2.1). The ankle alone did not do it. From the
+  back the attempt is given up. The feet still stay 22 to 28 cm behind the pelvis, so it is not the only one. Trial only: the asset was put back
+  byte for byte.
+- **The pauses** go when the clip does not wait and the pelvis is followed harder (400 N and 500 N*m, 90 and 200): 3.2 s, as recorded, at an
+  assist share of 0.4 to 0.5. That is the world's help again.
+
 ### N8 D brought forward: a foot with toes, first step (25 November)
 
 The owner's decision: the toes first, then the get-up again, with a film shown at every step. A second physics asset beside
@@ -3786,6 +3900,68 @@ that hangs on the foot's). Today's body: 112 scenarios with the hashes of `pre_g
   `Saved\Films\getup_same_clip.png`. The rows look alike.
 - Today's asset was made again by the generator with the new one: its bytes differ (md5 024a087b, was b799ab98), its runs do not (112 hashes).
   Film: `Saved\Films\getup_now_vs_toes.png`.
+
+### Why the body leans: the clip against the body, frame by frame (25 November)
+
+Measuring only, on the stand (a temporary log of the clip's and the body's poses in one frame; taken out again; the stand with the log had the hashes of the
+stand without it, 150 of 150; the suite afterwards 112 of 112). The first table has 149 get-ups; the second, of turns, the 99 of seeds 2 and 3
+(seed 1 gave no result: processes of `getup-seeds.ps1` that clean old queue folders at the same time collide, `common.ps1:248`; not repaired).
+
+- **The clip stands; the body does not follow it.** Distance of the centre of mass from the line between the feet, cm, clip and body, at a clip time of 1.0, 1.4, 1.8 s:
+  F 55/65, 46/50, 13/40; L 57/58, 46/51, 15/40; R 30/49, 22/44, 4/28; B 33/35, 26/37, 8/33. From 1.4 (R from 1.0) the clip brings it in, the body does not.
+- **The body is pitched forward as one piece.** Off the clip at clip time 1.6 to 2.2 s, degrees: feet 12 to 37 (heels 13 to 14 cm up, the clip's 5 to 6), shins 16 to 34, thighs 9 to 28,
+  pelvis 5 to 26, chest up to 37; the joints between them are mostly within 0 to 13 (the knee to 17, F's ankle 20 at its range's end). So the pose is nearly the clip's and the turn is of the whole.
+- **Where it begins: the moment the hands leave the floor** (last time the lower hand is under 9 cm; medians). Centre of mass off the feet, body and clip, cm: B 35 and 27, F 47 and 27,
+  L 44 and 25, R 43 and 22. In none of 149 falls is the body within 10 cm of its feet then. The clip is not either. Its closing speed at that moment,
+  cm/s, clip and body: B 47 and 19, F 104 and 31, L 84 and 10, R 25 and -20. (Corrected: the first version of this line called it the speed of the centre of
+  mass and said the clip "falls back onto its feet". The figure is how fast the gap closes, feet included, and the next part shows that the feet do it.)
+  The hands leave the floor at the clip's time all the same, and the body then holds the lean for 1.7 to 2.1 s, by the world's help.
+- **What it is not.** Not the pauses alone: in F the clip waits 10% of the second before and the body is as far off; in L 69%, in R 49%, in B 37%. Not the toes
+  (above), and the ankle's range is a part only (W0: 1.14 s of 1.45). Within a clip the distance at liftoff and the time off the feet afterwards go together only loosely (0.61, 0.34, 0.46 and -0.23
+  in B, F, L, R), so the liftoff is where it shows and may not be all of the cause. What makes the body slow there (arms' push, legs, the clip's waiting)
+  is not measured.
+
+### What keeps the gap open: the feet are loaded when the clip moves them (25 November)
+
+The same stand, 149 get-ups, hashes as without the log (150 of 150; the log's code is out again, suite 112 of 112). The floor's push on the bodies reads 848 N over a
+get-up against a weight of 784 (8% too much; 749 at its end), so shares of weight below are good to about 10%. Horizontal forces of contacts could not be
+checked and are not used.
+
+- **The clip closes the gap with its feet.** Between clip 1.3 and 1.9 s its feet go forward by 18, 31, 55 and 35 cm (B, F, L, R) and its centre of mass moves by 11 cm at most. The body's
+  feet go 2, 7, 9 and -9 cm. Its centre of mass comes back instead, 13, 3, 25 and 60, and later (1.9 to 2.3) 17 to 40 while the feet slide back by up to 19.
+- **A foot that carries weight does not go.** Each move of a clip foot (40 cm/s and more): a body foot that carries under 40 N goes 41 of the clip's 45 cm in F, 52 of 59 in R, 14 of 31 in L; one that
+  carries 40 N and more goes 35 of 52 in F, 20 of 48 in R, 13 of 85 in L, 8 of 54 in B. The body's foot is loaded (40 N and more) in all the clip's foot moves of B, in 67% of F and R, in 33% of L.
+- **The arms carry too little of the weight, though the clip needs them to.** In the half second before the liftoff the arms should carry 0.60, 0.49, 0.42 and 0.42 of the weight for the body to balance on
+  its feet and hands (B, F, L, R); they carry 0.07, 0.22, 0.29 and 0.27. Shoulders are at their cap in 5, 24, 42 and 40% of those frames, elbows in 0 to 29%, knees in 0 to 1%, hips in 36, 1, 32 and 11%.
+  After the liftoff hardly any muscle is at its cap. The pelvis's assist torque is at its cap of 200 N*m, where 166 to 254 N*m would hold the lean.
+- **Two interventions, by `-Tune`, files unchanged, and both failed.** Pelvis torque cap 100: 115 of 150 end standing, 25 at the first attempt, and in those that stand in F the time off the feet is the same (1.24 s, as with 200).
+  (0 there means no cap, so the run with 0 tested nothing: 1.39 s.) Arm cap 300 instead of 120: 147 of 150, 105 at the first attempt, 1.51 s. The body does not lean
+  because a force is too small. The assist torque is what holds it up, not what keeps the arms from being loaded.
+- **What is measured and what is not.** That a loaded foot does not move with the clip is measured. That the loaded feet are the cause of the lean is the reading of it, with the free foot (90% of the
+  clip's travel in F and R) as the comparison and L (45%) against it. The two processes of `getup-seeds.ps1` that clean old queues still collide now and then.
+
+### The get-up, third attempt: the foot held until it is free (25 November). Put off
+
+The limit was set before the runs: time off the feet 0.7 s at most, 146 of 150 end standing, 125 at the first attempt. **Not met, taken out again**
+(`Saved\Recon\getup_step_hold.patch`; suite 112 of 112 with the hashes of `pre_getup`, 42 unit tests). The get-up waits with its cause written down.
+
+- **What it was:** a foot that the clip is about to move and that carries 40 N or more is lifted by the leg's own placement, the clip waits for it (1 s at most), the pelvis
+  is aimed toward the other foot and the hands on the floor, and once free the foot goes with the clip's.
+- **The first version did not test the idea:** 96 of 122 waits ended after 0.06 s, by a contact that flickered off, and the leg was let go at once. It gave 1.42 to 1.45 s (1.45 today).
+  Put right once: free for 0.1 s without a break, kept lifted to the end of the clip's move. Hands on the floor were also read after their reading had been set back; fixed with it.
+- **The second version,** three settings, 150 falls each (all three, none chosen; lift 6 or 12 cm, shift 10 or 0). Time off the feet by clip in the last four columns:
+
+  | Run | off, s | stood | first | B | F | L | R |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | today | 1.45 | 149 | 132 | 1.86 | 1.24 | 1.63 | 1.29 |
+  | T1: lift 6, shift 10 | 1.05 | 147 | 99 | 1.05 | 0.70 | 1.29 | 1.45 |
+  | T2: lift 6, no shift | 1.12 | 145 | 99 | 1.22 | 0.73 | 1.42 | 1.45 |
+  | T3: lift 12, shift 10 | 1.09 | 147 | 86 | 0.89 | 0.85 | 1.53 | 1.39 |
+
+  On the falls that both bodies got up from at the first attempt by the same clip (T1): B 6 falls, 1.85 and 1.04 s; F 38, 1.24 and 0.72; L 34, 1.63 and 1.25; R 19, 1.39 and 1.41.
+- **What it shows:** the loaded foot is a cause in F and B (the lean is shorter by 0.5 and 0.8 s on paired falls), a smaller one in L, and not the cause in R. One fall in four then needs
+  another attempt, so the foot that is held spoils the rest of the get-up. Nobody has looked at why; R was not explained.
+- Film: `Saved\Films\getup_step_hold.png`, one fall on the bare floor a clip.
 
 ### The punch, how far a fist is carried: what each value does (25 November, for the owner's decision)
 
