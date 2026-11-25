@@ -22,7 +22,7 @@
       "palm_width_cm": 9,
       "palm_thickness_cm": 3,
       "palm_forward_cm": 4.5,
-      "palm_collides": 0,
+      "palm_collides": 1,
       "palm_mass_kg": 1.5,
       "grab": 0,
       "grab_reach_cm": 3,
@@ -38,9 +38,10 @@
       "grab_draw_s": 0.3,
       "strike_force_n": 900,
       "strike_stiffness_n_per_m": 9000,
+      "strike_through_cm": 25,
       "strike_s": 0.15,
       "strike_speed_mps": 2,
-      "strike_full_speed_mps": 5
+      "strike_full_speed_mps": 4.5
     },
     "foot": {
       "mass_kg": 10,

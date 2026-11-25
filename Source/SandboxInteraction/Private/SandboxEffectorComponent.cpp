@@ -595,10 +595,30 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 		Visual->SetVisibility(!bPalmActive);
 	}
 
-	ActiveSpring().SetTarget(Target.Location, Target.Rotation, Target.Velocity);
+	// A blow is carried through. A player's own hand stops where it sees the body's surface and is on its way
+	// back a frame later, and a fist that follows it delivers its own 1.5 kg and little else (8 to 34 N*s in the
+	// owner's session in the headset, where a scripted punch that goes 15 cm into the body brings 77 to 113).
+	// While a blow lasts the fist is asked to be at least so far beyond where it landed, the way it came: as
+	// much of effectors.hand.strike_through_cm as the blow has of its strength. A target that is further on
+	// than that (a hand that pushes on) is followed as it is; one that is short of it, or on its way back, is
+	// moved up to it along the blow's way and loses its speed backward (which would brake the fist through
+	// the spring's damping). The body is in the way: what is seen is a fist that presses on for a moment and
+	// then goes back to the hand.
+	if (bStrikeOn)
+	{
+		const double AlongCm = FVector::DotProduct(Target.Location - StrikePoint, StrikeDirection);
+		const double ShortCm = FMath::Max(Tuning.StrikeThroughCm * StrikeShare - AlongCm, 0.0);
+		const double BackCmS = ShortCm > 0.0 ? FMath::Min(FVector::DotProduct(Target.Velocity, StrikeDirection), 0.0) : 0.0;
+		ActiveSpring().SetTarget(Target.Location + StrikeDirection * ShortCm, Target.Rotation, Target.Velocity - StrikeDirection * BackCmS);
+	}
+	else
+	{
+		ActiveSpring().SetTarget(Target.Location, Target.Rotation, Target.Velocity);
+	}
 	Stats.MaxGapCm = FMath::Max(Stats.MaxGapCm, ActiveSpring().GetGapCm());
 	Stats.MaxDemandN = FMath::Max(Stats.MaxDemandN, ActiveSpring().GetDemandN());
-	StepStartSpeedCmS = bPalmActive ? GetHandVelocity().Size() : Body->GetUnrealWorldVelocity().Size();
+	StepStartVelocityCmS = bPalmActive ? GetHandVelocity() : Body->GetUnrealWorldVelocity();
+	StepStartSpeedCmS = StepStartVelocityCmS.Size();
 	Stats.MaxSpeedCmS = FMath::Max(Stats.MaxSpeedCmS, StepStartSpeedCmS);
 }
 
@@ -801,7 +821,8 @@ void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent,
 		// How much of one grows with the speed it came at, from none at strike_speed_mps to all of it at
 		// strike_full_speed_mps, so that no speed is an edge between a push and a punch.
 		// One at a time: a hand that leaves what it struck for a frame and meets it again is the same blow.
-		if (ImpulseFrame < Frame - 1 && StrikeLeftS <= 0.0 && !bStrikeOn && Tuning.StrikeForceN > Tuning.MaxForceN && !Grab.IsAttached())
+		// Only a fist strikes: an open hand that lands is a slap, with the hand's own mass and strength.
+		if (ImpulseFrame < Frame - 1 && StrikeLeftS <= 0.0 && !bStrikeOn && bFist && !bPalmActive && Tuning.StrikeForceN > Tuning.MaxForceN && !Grab.IsAttached())
 		{
 			const double SpeedMps = StepStartSpeedCmS * 0.01;
 			const double Share = Tuning.StrikeFullSpeedMps > Tuning.StrikeSpeedMps
@@ -811,6 +832,8 @@ void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent,
 			{
 				StrikeLeftS = Tuning.StrikeS;
 				StrikeShare = Share;
+				StrikeDirection = StepStartVelocityCmS.GetSafeNormal();
+				StrikePoint = GetHandTransform().GetLocation();
 			}
 		}
 		ImpulseFrame = Frame;

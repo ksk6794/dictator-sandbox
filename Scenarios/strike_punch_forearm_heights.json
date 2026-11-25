@@ -7,19 +7,155 @@
     "attached_meshes": [
       "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
     ],
-    "location_cm": [0, 0, 0],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
     "control": "active"
   },
-  "camera": {"location_cm": [-150, 230, 140], "look_at_cm": [0, 0, 105]},
+  "camera": {
+    "location_cm": [
+      -150,
+      230,
+      140
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      105
+    ]
+  },
   "events": [
-    {"t": 3.0, "type": "effector", "effector": "hand_left", "path": [
-      {"t": 0.0, "location_cm": [105, 1.7, 92.4]}, {"t": 0.0938, "location_cm": [30, 1.7, 92.4]}, {"t": 0.4938, "location_cm": [105, 1.7, 92.4]}]},
-    {"t": 5.0, "type": "effector", "effector": "hand_left", "path": [
-      {"t": 0.0, "location_cm": [105, 1.7, 94.4]}, {"t": 0.0938, "location_cm": [30, 1.7, 94.4]}, {"t": 0.4938, "location_cm": [105, 1.7, 94.4]}]},
-    {"t": 7.0, "type": "effector", "effector": "hand_left", "path": [
-      {"t": 0.0, "location_cm": [105, 1.7, 98.4]}, {"t": 0.0938, "location_cm": [30, 1.7, 98.4]}, {"t": 0.4938, "location_cm": [105, 1.7, 98.4]}]},
-    {"t": 9.0, "type": "effector", "effector": "hand_left", "path": [
-      {"t": 0.0, "location_cm": [105, 1.7, 100.4]}, {"t": 0.0938, "location_cm": [30, 1.7, 100.4]}, {"t": 0.4938, "location_cm": [105, 1.7, 100.4]}]}
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.strike_force_n=0"
+    },
+    {
+      "t": 3.0,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            105,
+            1.7,
+            92.4
+          ]
+        },
+        {
+          "t": 0.0938,
+          "location_cm": [
+            30,
+            1.7,
+            92.4
+          ]
+        },
+        {
+          "t": 0.4938,
+          "location_cm": [
+            105,
+            1.7,
+            92.4
+          ]
+        }
+      ]
+    },
+    {
+      "t": 5.0,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            105,
+            1.7,
+            94.4
+          ]
+        },
+        {
+          "t": 0.0938,
+          "location_cm": [
+            30,
+            1.7,
+            94.4
+          ]
+        },
+        {
+          "t": 0.4938,
+          "location_cm": [
+            105,
+            1.7,
+            94.4
+          ]
+        }
+      ]
+    },
+    {
+      "t": 7.0,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            105,
+            1.7,
+            98.4
+          ]
+        },
+        {
+          "t": 0.0938,
+          "location_cm": [
+            30,
+            1.7,
+            98.4
+          ]
+        },
+        {
+          "t": 0.4938,
+          "location_cm": [
+            105,
+            1.7,
+            98.4
+          ]
+        }
+      ]
+    },
+    {
+      "t": 9.0,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            105,
+            1.7,
+            100.4
+          ]
+        },
+        {
+          "t": 0.0938,
+          "location_cm": [
+            30,
+            1.7,
+            100.4
+          ]
+        },
+        {
+          "t": 0.4938,
+          "location_cm": [
+            105,
+            1.7,
+            100.4
+          ]
+        }
+      ]
+    }
   ],
   "expect": {
     "hit_events": 4,
@@ -28,6 +164,7 @@
     "min_effector_impact_speed_mps": 8.0,
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30,
-    "max_effector_penetration_cm": 1
+    "max_effector_penetration_cm": 1,
+    "effector_strikes": 0
   }
 }

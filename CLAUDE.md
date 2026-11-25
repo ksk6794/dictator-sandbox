@@ -40,8 +40,8 @@ makes the hands anew and starts a recording of its own, which replays within the
 (`Tools\record-replay.ps1 -Takes`). Toward part 2, with no physics changed: the hand has a frame of its own
 (`effectors.hand.grip_*_deg`), is a fist or open by its grip and shows an open hand as a plate, the controllers
 vibrate with the hand's contact force, and the body tells of every hit and change of state. The open hand can
-also be the body that collides (`effectors.hand.palm_collides`, off until the owner has seen the plate in the
-headset; four scenarios `palm_*` switch it on for themselves, and a scripted hand's keys say `"grip"`). **Part 3's
+also be the body that collides (`effectors.hand.palm_collides`, on since the owner's second look in the headset on
+25 November: an open hand is the plate; a scripted hand's keys say `"grip"`, and without it the hand is a fist). **Part 3's
 first step, the grab, is built behind a switch that is off** (`effectors.hand.grab`; nine scenarios `grab_*`
 switch it on for themselves; a session has it with `Tools\play.ps1 -Grab`, where on the desktop the G key holds
 the hands open): a grip that closes with a simulated body within 3 cm of the hand takes hold of it
@@ -50,13 +50,16 @@ the grip opens, slips (the hand 45 cm behind its target), is torn open (450 N fo
 gone; an arm is lifted, a standing body pulled by an arm comes along in steps, a fallen body is dragged 2 m by
 two hands and not by one (`Tools\grab-pulls.ps1`: 93 pulls within the stretch and force criteria). One hand
 slows a get-up and two hold it, measured on the stand with holding hands (`Tools\getup-stand.ps1 -HoldHands`, three
-seeds: from one hand 37 bodies of 146 pull free and stand within the 15 s, from two none). The body
+seeds: from one hand 47 bodies of 146 pull free and stand within the 15 s, from two none; 37 while the open hand was a ball). The body
 does not feel a grab; a hand that goes on through the body fells it as the hands are tuned (300 N for half a
 second is a knockdown; `effector_push_chest_falls`, `effector_shove_knockdown_gets_up`), while a punch that
-comes back delivered 12 to 28 N*s. **Since the owner's look at the desktop session on 25 November a hand that comes
-fast has a blow** (`effectors.hand.strike_*`: for 0.15 s a cap of up to 900 N and a spring of up to 9000 N/m, graded
-by the speed it arrived at, from 2 to 5 m/s; pushing, holding and dragging keep the 300 N): a punch with weight
-behind it is 77 to 83 N*s into the chest and 104 to 113 into the belly, and the body steps; a jab is 23 to 31; the
+comes back delivered 12 to 28 N*s. **Since the owner's looks of 25 November a fist that comes fast has a blow**
+(`effectors.hand.strike_*`: for 0.15 s a cap of up to 900 N and a spring of up to 9000 N/m, graded by the speed it
+arrived at, from 2 to 4.5 m/s, and carried at least 25 cm beyond where it landed, the way it came, though the
+player's hand stops at the surface or goes back; an open hand has none, and pushing, holding and dragging keep the
+300 N): a fist that comes at 3, 4 and 5.5 m/s is 33, 70 and 86 N*s into the chest and 39, 86 and 110 into the belly,
+and the body steps; an open hand at 4 m/s is 7 to 9. In the owner's first session with a blow (`vr_check2`) his
+punches were 8 to 34 N*s: his hand was open most of the time and stopped at the surface. The
 desktop hand goes at 8 m/s to what the camera aims at and 15 cm through it. **A body hit from the front into the
 belly or the solar plexus with 40 N*s or more doubles over for two seconds** (`reactions.double_over_*`,
 `poses.double_over`; by its own clock in every state, told as `double_over`): a punch with weight behind it and a
@@ -885,6 +888,21 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **A head does not fall to momentum.** Kicked 30 cm through, the body fell from three points of nine on
   the head and not from the six beside them: the foot slides off a small round thing on a soft neck. What a hit on
   the head does is a rule on what the head felt (`reactions.knockdown_head_ns`), as for the belly.
+- **A person's hand stops where it sees the surface; a scripted punch does not.** "A punch with weight behind
+  it" had its target 15 cm inside the body for a tenth of a second and delivered 77 to 113 N*s; the owner's
+  punches in the headset delivered 8 to 34 with the same hands. A strike that a person is to throw is measured
+  on a target that stops at the surface and goes back at once (`Saved\Matrix\vr_punch_sweep`).
+- **Something added to a target that is going back goes back with it.** A follow-through of 15 or 25 cm beyond
+  the hand's target left a jab at 11 N*s to the digit: the target, with its speed backward in the spring's
+  damping, took it along. And one held at where the fist landed made a hand that came to push stand still.
+  The blow is a least depth along its own way (`USandboxEffectorComponent::Update`).
+- **A session with hard blows is not reproduced by its replay.** `vr_check3` replayed ended 153 cm from where
+  the session did, with none of its eight falls; `vr_check2`, with weak punches, to 0.00 cm. What happened in
+  such a session is in the session's own log, not in `Tools\recording-report.ps1`, which reads a replay.
+- **A recording replayed with other hands measures nothing after its first hit.** The body stands elsewhere
+  from then on and the recorded hands strike the air (9 hits of 51).
+- **A probe written for a ball is wrong for a plate.** "The middle cannot be nearer a surface than half the
+  thickness" holds flat on only; edge on, a plate 2 cm deep has not gone through anything.
 - **A hand is one frame behind its target by design.** It is given the place for the start of the coming step
   and is there at the step's end: 2.2 cm at 2 m/s, 8.9 cm at 8 m/s, with the best velocity there is. A gap
   measured at the start of a step has that frame in it; do not tune it away with stiffness. Three times the

@@ -952,7 +952,19 @@ from a metre under the camera at 54 to 65 degrees upward), and a hit on the head
 knocks an upright body down (`reactions.knockdown_head_ns`: every kick into the head of twelve, no punch).
 **This changes six cells of the M3 push matrix, which still passes by its rules: a blow of 80 N*s on the head
 now fells the body where it stepped.** Figures in "M4, the desktop's kick as a thrust, and the knockdown by a
-hit on the head". For the owner to look at on the desktop and in the headset.
+hit on the head". The owner looked at punch, doubling over and kick on the desktop: good (committed, 57dbcbc).
+**The second look in the headset, the same day** (`vr_check2`, 180 s with the grab on): frame rate, tracking,
+every key of both controllers (the triggers too) and the grab are right; the punch is weak, "about as a slap",
+the open hand is a ball and a rectangle of which only the ball collides, and a fist is no stronger than an open
+hand. Step 5, done: the open hand is the plate as a body (`effectors.hand.palm_collides` 1); only a fist has a
+blow; and a blow is carried at least 25 cm beyond where it landed, though the player's hand stops at the surface
+(`effectors.hand.strike_through_cm`), so that its strength is set by the speed the fist came at: 33, 70 and
+86 N*s into the chest at 3, 4 and 5.5 m/s, 39, 86 and 110 into the belly (doubling over from 4 m/s), an open hand
+7 to 9. Figures in "M4, the second look in the headset". **The owner's third session in the headset, the same
+day, with these hands: the punch is good, the open hand lies as his palm does and the body answers it, a hand
+out of sight behaves, the vibration is felt; a very hard punch on the head may knock the body down (one did,
+at 35.1 N*s). Of the launch's questions below, only the take's gesture is still open: he did not try it.** A
+session with hard blows is not reproduced by its replay (153 cm apart at the end).
 
 **Built on the night of 24 to 25 November 2026 in the owner's absence, on the owner's word to work by the plan and to decide by the data; every item is for the owner to confirm or to take back.** Nothing of it changes a run of before: the 73 scenarios that existed keep their hashes, and what changes behaviour is off until it is switched on. The measurements and what was found on the way are in `docs/testing.md` (the sections of that night); the code was read by an independent reviewer nine times, and what each reading found was fixed.
 
@@ -1013,12 +1025,12 @@ Decided in step 2 the same way:
 
 | Question | How it is answered |
 | --- | --- |
-| Which buttons of the controllers reach the game (the triggers did not) | Press every button and stick once; the session's last lines name every key that arrived |
-| What a hand does when the headset cannot see its controller | A hand behind the back for a few seconds, and the headset taken off with the session running: the hand should stay where it was and come back at walking pace (`lost_frames`, `estimated_frames`, `catch_ups` of the session's file) |
-| Whether the open hand's plate faces as the real palm does | Look at an open hand and turn it: the plate should lie in the palm, its long side along the fingers. If not, say how it lies: `effectors.hand.grip_*_deg` |
+| Which buttons of the controllers reach the game (the triggers did not). **Answered 25 November: all of them, the triggers too** | Press every button and stick once; the session's last lines name every key that arrived |
+| What a hand does when the headset cannot see its controller. **Answered 25 November: it behaves (the owner), though the runtime never reported a controller lost** | A hand behind the back for a few seconds, and the headset taken off with the session running: the hand should stay where it was and come back at walking pace (`lost_frames`, `estimated_frames`, `catch_ups` of the session's file) |
+| Whether the open hand's plate faces as the real palm does. **Answered 25 November: it does** | Look at an open hand and turn it: the plate should lie in the palm, its long side along the fingers. If not, say how it lies: `effectors.hand.grip_*_deg` |
 | Whether the hand trembles now that its velocity is the difference of two poses | Hold the hands still, then move them slowly |
-| The gesture of a new take | Both fists raised above the eyes, grips closed, for a second: the controllers buzz, the character is back on its feet. And it must not happen by itself while punching |
-| The vibration of a contact | Press a hand against the character, then strike it: stronger for more force, nothing in the air |
+| The gesture of a new take (**still open on 25 November: not tried**; it did not happen by itself in 360 s of punching) | Both fists raised above the eyes, grips closed, for a second: the controllers buzz, the character is back on its feet. And it must not happen by itself while punching |
+| The vibration of a contact. **Answered 25 November: it is felt** | Press a hand against the character, then strike it: stronger for more force, nothing in the air |
 | The grab, if the owner wants to try it there (it is off: `Tools\play.ps1 -VR -Grab` switches it on for that session) | Open hand on a forearm, close the grip, lift and pull; on the chest of the standing character, pull it along; knock it down and drag it with one hand and with two. The controller vibrates while the hand pulls. Say whether a hand takes hold where it looks as if it should (the reach is 3 cm), and whether the grip slips too soon or too late (45 cm) |
 
 **Part 2 of 6, the hand: steps proposed by the agent on the night of 24 November 2026, for the owner to confirm.** Step 0 is built (the hand's own frame, fist or open by the grip, the open hand shown, the vibration, the body's events; above).

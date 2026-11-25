@@ -477,14 +477,14 @@ void USandboxPlaySubsystem::TickDemo()
 		case 560:
 			Player->SetSecondary(true);
 			break;
-		case 179:
-		case 579:
+		case 176:
+		case 576:
 			Player->SetSecondary(false);
 			break;
 		case 360:
 			Player->SetPrimary(true);
 			break;
-		case 379:
+		case 376:
 			Player->SetPrimary(false);
 			break;
 		case 700:
@@ -618,6 +618,9 @@ void USandboxPlaySubsystem::TickDemo()
 	case 5:
 		Player->SelectTool(ESandboxTool::Hands);
 		Player->SetView(Chest + FVector(0.0, 85.0, 0.0), FRotator(0.0, -90.0, 0.0));
+		// Open hands, as in the takes: this session is held against its replay, and a fist sent at the chest is
+		// a punch that makes the body step, where the smallest difference between the two tells two stories.
+		Player->SetHandsOpen(true);
 		break;
 	// The hands have come to rest in front of the new view by now.
 	case 60:
@@ -628,17 +631,17 @@ void USandboxPlaySubsystem::TickDemo()
 			return;
 		}
 		break;
-	// The right hand reaches into the chest and comes back; then the left.
+	// The right hand reaches to the chest, touches it and comes back; then the left.
 	case 90:
 		Player->SetPrimary(true);
 		break;
-	case 115:
+	case 109:
 		Player->SetPrimary(false);
 		break;
 	case 170:
 		Player->SetSecondary(true);
 		break;
-	case 190:
+	case 189:
 		Player->SetSecondary(false);
 		break;
 	case 300:

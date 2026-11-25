@@ -38,7 +38,8 @@
             65,
             0,
             160
-          ]
+          ],
+          "grip": 0
         },
         {
           "t": 0.1,
@@ -46,7 +47,8 @@
             5,
             0,
             160
-          ]
+          ],
+          "grip": 0
         },
         {
           "t": 0.5,
@@ -54,7 +56,8 @@
             65,
             0,
             160
-          ]
+          ],
+          "grip": 0
         }
       ]
     }
@@ -69,6 +72,7 @@
     "max_joint_speed_rads": 30,
     "max_effector_penetration_cm": 1,
     "min_struck_displacement_cm": 5,
-    "knockdowns": 0
+    "knockdowns": 0,
+    "effector_strikes": 0
   }
 }

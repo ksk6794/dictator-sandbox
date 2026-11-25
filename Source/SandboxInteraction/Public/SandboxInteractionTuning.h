@@ -98,6 +98,8 @@ struct FSandboxEffectorTuning
 	 */
 	double StrikeForceN = 0.0;
 	double StrikeStiffnessNPerM = 0.0;
+	/** A blow is carried through: while it lasts the fist is asked to be at least this far beyond where it landed, the way it came (as much of it as the blow has of its strength), though its target stops short or goes back. cm. */
+	double StrikeThroughCm = 0.0;
 	double StrikeS = 0.0;
 	double StrikeSpeedMps = 0.0;
 	double StrikeFullSpeedMps = 0.0;

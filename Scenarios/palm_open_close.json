@@ -1,6 +1,6 @@
 {
   "name": "palm_open_close",
-  "duration_s": 6.0,
+  "duration_s": 10.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
     "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
@@ -104,11 +104,13 @@
     "hit_events": 1,
     "effector_shape_changes": 2,
     "fell": false,
-    "state_sequence": "standing>flinch>standing",
     "min_effector_impact_speed_mps": 6.0,
     "min_effector_impulse_ns": 10,
     "max_joint_stretch_cm": 2.0,
     "max_effector_penetration_cm": 1,
-    "effector_grips_on_body": 0
+    "effector_grips_on_body": 0,
+    "end_state": "standing",
+    "max_steps": 6,
+    "effector_strikes": 1
   }
 }

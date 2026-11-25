@@ -3500,6 +3500,104 @@ the head are other falls now.
 Open: a hand's hit on the head in the headset can reach 35 N*s if it stays on the head (a punch here brings
 27 at most); a kick has no source in the headset; a knocked-down body gets up as fast as any other.
 
+### M4, the second look in the headset, the fist's carried blow and the open hand as a body (25 November)
+
+**The session** (`Saved\Recordings\vr_check2`, 180 s, with the grab on; the owner's first with the blow, the
+doubling over and the knockdown): 89.9 frames a second, both controllers tracked in every one of 15845 frames,
+no error, and the replay ends as the session did (pelvis 0.00 cm apart). Every key of both controllers reached
+the player's input, the triggers among them, which had not arrived the day before (touch, click and axis of
+trigger and grip, the sticks, X and Y, A and B). The hands took hold 17 times and held for 26 s in all; no grip
+slipped. 51 hits: 31 on the head, 9 on the chest, none into the belly (the belly's largest sum 16 N*s, the head's
+29); the fist arrived at 2 to 5.6 m/s and a contact brought 8 to 34 N*s on the head and up to 44 on the chest;
+36 blows; 69 steps, three falls, no doubling over, no knockdown. No new
+take was made.
+
+**What the owner said:** the punch is weak, about as a slap; an open hand is a ball and a rectangle, and the
+body answers the ball only; the body answers a fist and an open hand alike, and a fist has to be stronger.
+
+**Why.** (1) `effectors.hand.palm_collides` was off: the open hand's plate was drawn and the ball collided.
+(2) A blow was given to every hand that came fast, open or closed. (3) A player's own hand stops where it sees
+the body's surface and is on its way back a frame later; a scripted punch "with weight behind it" has its
+target 15 cm inside the body for a tenth of a second. The same hand delivers 8 to 34 N*s the one way and 77 to
+113 the other, and his right hand was open for three quarters of the session.
+
+**What was changed.**
+- `effectors.hand.palm_collides` is 1: an open hand is the plate, as a body.
+- Only a fist has a blow (`bFist`, and the ball as the body).
+- A blow is carried through (`effectors.hand.strike_through_cm`, 25): while it lasts the fist is asked to be at
+  least that far beyond where it landed, the way it came, as much of it as the blow has of its strength; a
+  target that stops short or goes back is moved up to that along the blow's way and loses its speed backward.
+  What a blow delivers is then set by the speed the fist came at and not by what the player's hand does after
+  it has landed. Its whole strength is from 4.5 m/s (`strike_full_speed_mps`, from 5).
+
+Two ways of it were tried and taken back, each by a measurement. A place beyond the *target* did nothing for a
+jab (11, 11 and 11 N*s with 0, 15 and 25 cm): the target is on its way back and takes the place with it, and
+its speed backward brakes the fist through the spring's damping. A place beyond where it *landed*, held
+whatever the target did, made `effector_push_chest_steps` fall: a hand that came at 2.0 m/s to push stood at
+the surface for the blow's time, and then had its whole push at once.
+
+**Punches as a person in a headset throws them** (the target stops at the surface and goes back at once;
+4 cm deeper gives the same figures):
+
+| the fist comes at | chest | belly | head |
+| --- | --- | --- | --- |
+| 3 m/s | 33 N*s, two steps | 39 N*s, two steps | 13 N*s, a flinch |
+| 4 m/s | 70 N*s, three steps | 86 N*s, four steps, doubles over | 27 N*s, two steps |
+| 5.5 m/s | 86 N*s, four steps | 110 N*s, doubles over | 34 N*s, two steps |
+| an open hand at 4 m/s | 7 N*s, a flinch | 9 N*s, a flinch | no touch at that depth |
+
+No joint faster than 23.3 rad/s, the hand no deeper than 0.12 cm in the body. A punch whose target goes 15 cm
+in and stays 0.1 s is now what a jab at its speed is (70 and 90 N*s at 4 m/s, where it was 77 and 104); with
+its whole strength, from 4.5 m/s, it is the 86 and 110 N*s here against the 83 and 113 the owner looked at on
+the desktop.
+
+**A recording replayed with other hands is no measurement of those hands.** The owner's recording replayed with
+the carried blow had 9 hits where the session had 51 and ended a metre from where the session did: after the
+first hit that lands otherwise the body stands elsewhere, and what the hands were asked for goes into the air.
+
+**What it changed.** 69 of 102 scenarios keep their hashes. The 33: every scenario with a fist that arrives
+fast, with an open hand (it is a plate now: the grabs, the things that are taken, the slaps), or both. Ten
+expectations were rewritten, all for the same reason, "a flinch and nothing else" under a fist that now makes
+the body step: `effector_hit_head` (35 N*s, two steps), `strike_punch_head` (36, three), `strike_punch_forearm`
+(80, six), `strike_punch_leg` (156, four), `strike_punch_torso` (101, five, doubles over), `palm_open_close`
+(88, four) want a body that stands again, within a number of steps; the three `strike_slap_*` are open hands
+now, as a slap is, and no blow; `strike_punch_forearm_heights`, which holds the wrist against a fist at speed
+at several heights, is struck with the blow switched off (the body stepped away after the first of its four
+punches), and gives the hashes it had before there was a blow: without one a fist is what it was.
+
+**Measured again.** The grab's pulls: 93 of 93 (the joint 294 N on average at most, 389 N in a frame). The
+stand with holding hands: from one hand 89 grips of 146 come off and 47 bodies pull free and stand within the
+15 s (77 and 37 with the ball as the open hand), from two none; 143 and 144 of 150 stand in the end.
+
+**The probe for tunnelling was wrong for a plate.** It held the plate's middle to half the plate's thickness
+from any surface, whichever way the plate lay; two pulls of 93 (the calf, downward) failed on one frame in
+which the released plate was 2.07 cm deep in the foot, not by its flat side. The probe now takes how far the
+shape reaches from its middle the way the overlap would be left (`ReachCm`). The setting first blamed,
+`effectors.hand.grab_clear_cm`, was tried at 1, 0.5 and 0.3 with the same two failures to the digit: when a
+figure does not move with the setting that should move it, the cause is elsewhere.
+
+**The third session in the headset, the same day** (`Saved\Recordings\vr_check3`, 180 s, the grab on, with these
+hands; the session's own log is kept beside the recording as `session_run.log`). By that log: 31 hits; the body
+doubled over four times (hits of 40 to 44 N*s into the belly by its own sum) and fell eight times (four from
+punches, one knocked down by a fist on the head that brought 35.1 N*s, one at the end, two get-ups that were
+given up under the owner's hands); no new take was made. Both controllers tracked in every frame, no error. The
+grip closed 44 times.
+
+**The owner's answers.** The punch is good. The open hand lies as his palm does and the body answers it. A very
+hard punch on the head may knock the body down as that one did: the threshold stays at 35. A hand out of the
+headset's sight behaved (it stayed and caught up). The vibration is felt. The take's gesture he did not try, in
+either session of the day: it is still unseen in the headset.
+
+**A session with hard blows is not reproduced by its replay.** `vr_check3` replayed ends 153 cm from where the
+session did, and no fall of the eight happens in it; `vr_check2`, of the same morning with weak punches,
+replayed to 0.00 cm. A session and its replay are two runs that differ by a frame after the first contact
+(M4 part 1, step 1); a touch keeps that within limits, a blow that makes the body step does not. So
+`Tools\recording-report.ps1`, which reads a replay, says what the hands were asked for and not what happened
+in such a session: for that, the session's own log.
+
+Open: the take's gesture in the headset; no kick in the headset; a report on a session from the session's own
+figures, not from a replay.
+
 ### The machine's reboot of 24 November 2026, 22:03
 
 The fifth launch in the headset that evening ended in a blue screen and a reboot. What the logs say:

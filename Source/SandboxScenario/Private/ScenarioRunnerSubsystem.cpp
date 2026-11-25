@@ -1198,6 +1198,9 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 
 	// Penetration: how far the sphere would have to move to be clear of each thing it overlaps.
 	double DepthCm = 0.0;
+	// The way out of the deepest of them: the shape's middle is as far from its own surface that way as the
+	// shape reaches that way from its middle.
+	FVector DeepestWay = FVector::ZeroVector;
 	FName Into;
 	if (Mesh)
 	{
@@ -1207,6 +1210,7 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 			if (Body && Body->IsValidBodyInstance() && Body->OverlapTest(ShapeCenter, ShapeRotation, Sphere, &Separation) && Separation.Distance > DepthCm)
 			{
 				DepthCm = Separation.Distance;
+				DeepestWay = Separation.Direction;
 				Into = Mesh->GetBoneName(Body->InstanceBoneIndex);
 			}
 		}
@@ -1235,6 +1239,7 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 		if (Component && Component->ComputePenetration(Separation, Sphere, ShapeCenter, ShapeRotation) && Separation.Distance > DepthCm)
 		{
 			DepthCm = Separation.Distance;
+			DeepestWay = Separation.Direction;
 			Into = Component->GetOwner() ? Component->GetOwner()->GetFName() : Component->GetFName();
 		}
 	}
@@ -1244,15 +1249,27 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 		Track.DeepestInto = Into;
 	}
 
+	// How far the shape reaches from its middle the way the deepest overlap would be left: a ball its radius
+	// every way, the open hand's plate half its thickness flat on and half its length or width edge on. (Held
+	// to half its thickness whatever way it lay, a plate that was 2 cm deep in a foot, not by its flat side,
+	// was taken for a hand that had gone through.)
+	double ReachCm = RadiusCm;
+	if (Sphere.IsBox() && !DeepestWay.IsNearlyZero())
+	{
+		const FVector Local = ShapeRotation.UnrotateVector(DeepestWay.GetSafeNormal());
+		const FVector Half = Sphere.GetBox();
+		ReachCm = FMath::Abs(Local.X) * Half.X + FMath::Abs(Local.Y) * Half.Y + FMath::Abs(Local.Z) * Half.Z;
+	}
+
 	// Tunnelling: the centre of a sphere cannot get closer to a surface than its radius (nor the middle of the
-	// open hand's plate than half its thickness). If the straight line from where the centre was a frame ago
+	// open hand's plate than the plate reaches that way). If the straight line from where the centre was a frame ago
 	// to where it is now crosses a surface, or the centre lies inside a shape, the hand went through
 	// something. A snap is not motion and is left out; it fails the run on its own. Nor is the frame in
 	// which the hand changes from the ball to the plate or back: the two have their middles in other places.
 	const bool bMoved = Track.bHaveLast && Stats.Snaps == Track.LastSnaps && Stats.ShapeChanges == Track.LastShapeChanges;
 	FHitResult Crossed;
 	const bool bCrossed = bMoved && World.LineTraceSingleByObjectType(Crossed, Track.LastCenter, ShapeCenter, Objects, NotTheHands);
-	if (bCrossed || DepthCm >= RadiusCm)
+	if (bCrossed || DepthCm >= ReachCm)
 	{
 		++Track.TunnelFrames;
 		if (FirstTunnelFrame < 0)

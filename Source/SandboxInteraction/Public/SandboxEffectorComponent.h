@@ -275,4 +275,8 @@ private:
 	double FrameDt = 0.0;
 	/** Speed of the body at the last Update: at the start of the step whose contacts are reported next. */
 	double StepStartSpeedCmS = 0.0;
+	FVector StepStartVelocityCmS = FVector::ZeroVector;
+	/** The way the fist came as its blow landed, and where it was then: the blow is carried on from there, that way. */
+	FVector StrikeDirection = FVector::ZeroVector;
+	FVector StrikePoint = FVector::ZeroVector;
 };
