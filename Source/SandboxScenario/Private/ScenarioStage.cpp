@@ -197,6 +197,8 @@ void FScenarioStage::TellBodyOfHolds(const ASandboxEffectorRig* Rig, ASandboxRag
 				Hold.Holder = Effector->GetId();
 				Hold.Bone = Effector->GetGrabbedBone();
 				Hold.ForceN = Effector->GetGrabForceN();
+				Hold.PullN = Effector->GetGrabPullN();
+				Hold.PointCm = Effector->GetHandTransform().GetLocation();
 			}
 		}
 	}

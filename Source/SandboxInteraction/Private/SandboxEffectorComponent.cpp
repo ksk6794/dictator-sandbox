@@ -825,6 +825,11 @@ bool USandboxEffectorComponent::FindGrabbable(UPrimitiveComponent*& OutComponent
 	return OutComponent != nullptr;
 }
 
+FVector USandboxEffectorComponent::GetGrabPullN() const
+{
+	return Grab.IsAttached() ? (ActiveSpring().GetTargetLocation() - GetHandTransform().GetLocation()).GetSafeNormal() * GrabForceN : FVector::ZeroVector;
+}
+
 void USandboxEffectorComponent::UpdateHeldThing()
 {
 	UPrimitiveComponent* Wanted = Tuning.StrikeHeld > 0.5 && Grab.IsAttached() ? Grab.GetComponent() : nullptr;

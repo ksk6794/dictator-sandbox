@@ -4112,6 +4112,25 @@ Limit set before: no step at 0.13 and 0.3 m/s, the pelvis within 10 cm of where 
 **The stick to 12 m/s** (hold x5, the swing of x = 70 made faster): the hand reaches 12 m/s at 9 and 11 m/s asked, the stick's middle 9.5 to 11.5, and nothing goes deeper than 0.8 cm. The impulse grows up to 9 m/s (120 cm: 21, 25, 30, 62 N*s at 3, 5, 7, 9; 140 cm: 20, 24, 29, 37; 95 cm: 22, 26, 29, 33) and at 11 falls in two
 of three places (10 and 8 N*s, and 68 at 95 cm): the hand at its 300 N does not follow and the stick grazes. The head (162 cm) is not reached by the sweep.
 
+### M4 part 3, its two open questions: a hold that is felt, and the standing leg (25 November), on by the owner's decision
+
+**A cap on the pelvis's assist is not the answer to the leg** (`assist.pelvis.max_force_n` 80, the first time with the whole set): 117 scenarios but one pass (`grab_pull_standing` falls), matrix 160 of 160, knockdowns 8 of 8, stand 149 of 150, 93 pulls; of the 24 pulls on thigh and calf 2 bodies come along (2 that are stepped without it: calf up), and the arm pulls get worse
+(44 stood instead of 51). What was written that "at no cost" held for the push matrix alone.
+
+**`reactions.hold_felt`**: what the hands that hold the body pull with (told by the run and the session, `TellHolds`, now with its direction: along the hand's spring, as strong as the joint carries) counts as a push that is kept up, as contacts do (`held_push_s`): the body leans into it, steps for it, and while it gets up it is pressed by it. Off, the 117 scenarios have the hashes of `part4`.
+
+Limits set before the runs, with it on:
+
+| Limit | Result |
+| --- | --- |
+| Off: every hash; on: only scenarios with a hold differ | Met: `grab_getup_held`, `grab_lift_arm`, `grab_palm_lift_arm`, `grab_pull_standing`, `grab_two_hands_one_arm`; the suite passes |
+| Thigh or calf pulled: the body comes along in at least 6 of 24 (2 before) | Met: 9 of 24, four with the grip still holding |
+| `grab_pull_standing` passes, and not more falls in the 93 pulls than now (1) | Passes; **falls 2, not met** (the chest pulled left at 2 m/s with 265 N falls; before it stepped and stood) |
+| One hand on a get-up: 20 to 60 of 150 pull free; two: at most 5 | Met: 46 (47 off); none (none off) |
+| A stand without holds as it is | Met by the hashes |
+
+**The owner's decision, 25 November: on.** The drop with two hands (139 of 150 against 144) was seeds 1 to 3's: on six seeds, 300 falls, 286 off and 284 on (new seeds 4 to 6 142 and 145), none pulled free but one off. With it on: suite 117 of 117 (five `grab_*` with other hashes, no expectation changed), matrix 160 of 160, knockdowns 8 of 8, 93 pulls, session grab demo, record and replay, stand 149 of 150 (132 first). Baseline `hold`. Outcomes of the 93 pulls: stepped 57, stood 34, fell 2 (off 41, 51, 1): the body gives way to a pull more readily. Film `Saved\\Films\\hold_felt.png`: on, a thigh pulled to the side or forward is followed by a step of that leg, and the arms go out; off nothing happens and the hand slips off.
+
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 
 Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the

@@ -485,6 +485,8 @@ struct FSandboxReactionTuning
 	 * up faster than ThingSupportMaxUpMps where it touches. Anything from the side or from above is felt as before.
 	 */
 	double ThingSupport = 0.0;
+	/** Above 0.5 a hold is felt as a held push is: the body leans into it, steps for it and, while getting up, is pressed by it. */
+	double HoldFelt = 0.0;
 	double ThingSupportMaxUpMps = 0.0;
 };
 

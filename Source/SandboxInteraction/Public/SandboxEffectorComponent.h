@@ -166,6 +166,8 @@ public:
 	bool IsPassingBodies() const { return bPassesBodies; }
 	/** The force the hand held on with in the last physics substep, N; 0 while it holds nothing. */
 	double GetGrabForceN() const { return GrabForceN; }
+	/** The pull of a hold on what is held, N, world: along the way the hand's spring pulls it, as strong as the joint carries. Zero while it holds nothing. */
+	FVector GetGrabPullN() const;
 	UPrimitiveComponent* GetGrabbedComponent() const { return Grab.GetComponent(); }
 	bool IsStarted() const { return bStarted; }
 	const FSandboxEffectorTuning& GetTuning() const { return Tuning; }

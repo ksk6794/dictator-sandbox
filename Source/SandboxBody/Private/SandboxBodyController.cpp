@@ -3083,6 +3083,16 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		}
 		RecentForceN[RecentNext] = Felt / DeltaTime;
 		RecentMomentNCm[RecentNext] = FrameMomentNsCm / DeltaTime;
+		if (Reactions.HoldFelt > 0.5)
+		{
+			// A hold reaches the body through a joint and no contact tells of it: what the hands pull with is told
+			// (TellHolds) and counts as a push that is kept up, for the lean, for the step and for a get-up that is pressed.
+			for (const FSandboxBodyHold& Hold : Holds)
+			{
+				RecentForceN[RecentNext] += Hold.PullN;
+				RecentMomentNCm[RecentNext] += FVector2D(Hold.PullN.X, Hold.PullN.Y) * (Hold.PointCm.Z - LastSupportHeightCm);
+			}
+		}
 		RecentNext = (RecentNext + 1) % Frames;
 		int32 Least = 0;
 		for (int32 Index = 1; Index < Frames; ++Index)

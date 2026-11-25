@@ -71,6 +71,9 @@ struct FSandboxBodyHold
 	FName Holder;
 	FName Bone;
 	double ForceN = 0.0;
+	/** The pull on the body, world, N (its size is ForceN), and where it is held, cm. */
+	FVector PullN = FVector::ZeroVector;
+	FVector PointCm = FVector::ZeroVector;
 };
 
 /**

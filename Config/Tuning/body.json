@@ -112,6 +112,7 @@
     "pressure_s": 0.1,
     "held_push_s": 0.3,
     "thing_support": 1,
+    "hold_felt": 1,
     "thing_support_max_up_mps": 1,
     "double_over_ns": 40,
     "double_over_s": 2.0,
