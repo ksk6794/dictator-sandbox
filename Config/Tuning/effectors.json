@@ -24,7 +24,7 @@
       "palm_forward_cm": 4.5,
       "palm_collides": 1,
       "palm_mass_kg": 1.5,
-      "grab": 0,
+      "grab": 1,
       "grab_reach_cm": 3,
       "grab_slip_cm": 45,
       "grab_slip_s": 0.25,

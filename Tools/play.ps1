@@ -20,7 +20,8 @@
 #   ... -Seconds 180                the session ends by itself after that many simulated seconds, as Escape
 #                                   would end it: a recording is written. (A session that is closed by its
 #                                   window, killed or timed out loses its recording.)
-#   ... -Grab                       a session with the grab switched on (effectors.hand.grab=1; also with -VR). On the
+#   ... -Grab                       a session with the grab switched on whatever the tuning says (effectors.hand.grab=1;
+#                                   it is 1 in the tuning files since 25 November 2026, so every session has it). On the
 #                                   desktop the G key holds the hands open: reach, let G go while the hand presses on
 #                                   the body, and the hand holds it; G again lets go
 #   ... -Demo -Grab                 the same for the grab (effectors.hand.grab switched on): the hands open, the right
@@ -83,7 +84,8 @@ foreach ($stale in @('play.json', 'final.png')) {
     if (Test-Path $path) { Remove-Item $path -Force }
 }
 
-# -Grab is the grab switched on (effectors.hand.grab), whatever else is tuned: for the grab's own demo, and for
+# -Grab is the grab switched on (effectors.hand.grab), whatever else is tuned (it is on in the tuning files since
+# 25 November 2026; the flag stays for the grab's own demo and for a run with other tuning): for that demo, and for
 # a person's session, on the desktop (the G key holds the hands open) and in the headset.
 if ($Grab) {
     if ($Tune) { $Tune = "$Tune,effectors.hand.grab=1" } else { $Tune = 'effectors.hand.grab=1' }

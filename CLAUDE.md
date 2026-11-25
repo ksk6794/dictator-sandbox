@@ -42,8 +42,8 @@ makes the hands anew and starts a recording of its own, which replays within the
 vibrate with the hand's contact force, and the body tells of every hit and change of state. The open hand can
 also be the body that collides (`effectors.hand.palm_collides`, on since the owner's second look in the headset on
 25 November: an open hand is the plate; a scripted hand's keys say `"grip"`, and without it the hand is a fist). **Part 3's
-first step, the grab, is built behind a switch that is off** (`effectors.hand.grab`; nine scenarios `grab_*`
-switch it on for themselves; a session has it with `Tools\play.ps1 -Grab`, where on the desktop the G key holds
+first step, the grab, is built and on by the owner's decision of 25 November, after three sessions with it**
+(`effectors.hand.grab` 1; `palm_close_on_chest` switches it off for itself; every session has it, and on the desktop the G key holds
 the hands open): a grip that closes with a simulated body within 3 cm of the hand takes hold of it
 by a joint at the hand's own point (`FSandboxGrabJoint`), the force is the hand's spring's, and it lets go when
 the grip opens, slips (the hand 45 cm behind its target), is torn open (450 N for 0.1 s) or what it held is
@@ -181,7 +181,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Friction between the lying body and the floor, by experiment | `powershell -ExecutionPolicy Bypass -File Tools\surface-friction.ps1` (knocks the body down and drags it by the pelvis with `-ForceN 800` for `-PushS 1.0`; the friction from its acceleration; `-Tune` to try values) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
-| Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen; `-Grab` switches the grab on for the session: G holds the hands open, and a hand that closes on the body holds it) |
+| Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen; the grab is on; `-Grab` switches the grab on for the session: G holds the hands open, and a hand that closes on the body holds it) |
 | Self-test of the session, no window | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Smoke` (`-Smoke -Shot` renders it and saves `final.png`) |
 | The grab in a session without a person | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Demo -Grab` (the grab switched on: the right hand opens, reaches into the chest and takes hold; the character is put back while it is held; the hand takes hold of the new one, pulls and lets go; a step of the bootstrap) |
 | Record the hands of a session | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Record <name>` (from the first frame; the K key ends a recording and starts the next; `Saved\Recordings\<name>\`: the recording, a scenario that replays it, what the session saw) |

@@ -3598,6 +3598,14 @@ in such a session: for that, the session's own log.
 Open: the take's gesture in the headset; no kick in the headset; a report on a session from the session's own
 figures, not from a replay.
 
+**The grab is on by default** (`effectors.hand.grab` 1; the owner's word of 25 November, after the desktop
+session and the two in the headset: 17 grabs in the first of those, no grip slipped; the second is known by
+its log only, which does not tell of grabs). Of the 102 scenarios 101 keep their
+hashes: a grab is taken only by a grip that closes within reach of a body, and a hand that is a fist from its
+first key closes on nothing. The one that changed, `palm_close_on_chest`, holds what an open hand does when it
+closes on a body with no grab (it stays the plate until a fist has room, and the grip is counted); with the
+grab it took hold of the chest. It switches the grab off for itself and has the hashes it had.
+
 ### The machine's reboot of 24 November 2026, 22:03
 
 The fifth launch in the headset that evening ended in a blue screen and a reboot. What the logs say:

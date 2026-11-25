@@ -971,7 +971,7 @@ session with hard blows is not reproduced by its replay (153 cm apart at the end
 | What | Part | How it is switched on | State |
 | --- | --- | --- | --- |
 | The open hand as a body | 2 | `effectors.hand.palm_collides` | off; waits for the owner's look at the plate in the headset |
-| The grab: a closing grip takes hold of the body or a thing within 3 cm | 3 | `effectors.hand.grab`; a session: `Tools\play.ps1 -Grab` (G opens the hands on the desktop) | off; 9 scenarios `grab_*`, 93 pulls, the rule "one hand slows a get-up, two hold it" measured on the stand |
+| The grab: a closing grip takes hold of the body or a thing within 3 cm | 3 | `effectors.hand.grab`; a session: `Tools\play.ps1 -Grab` (G opens the hands on the desktop) | **on since 25 November 2026 (the owner's decision, after three sessions with it)**; 9 scenarios `grab_*`, 93 pulls, the rule "one hand slows a get-up, two hold it" measured on the stand |
 | A thing that is held keeps its direction in the hand, and is taken by its handle if it names one | 4 | with the grab | a stick taken by its end can be swung at the arm |
 | The kick: a foot of 10 kg on a spring capped at 3500 N (5 kg and 1800 N that night) | 5 | scenarios name `foot_right`; on the desktop the F key | additive; 4 scenarios; no kick in the headset yet |
 | Things with mass in a scenario (`"props"`) | 4 | a scenario lists them | additive; 11 scenarios `prop_*` |
@@ -1031,7 +1031,7 @@ Decided in step 2 the same way:
 | Whether the hand trembles now that its velocity is the difference of two poses | Hold the hands still, then move them slowly |
 | The gesture of a new take (**still open on 25 November: not tried**; it did not happen by itself in 360 s of punching) | Both fists raised above the eyes, grips closed, for a second: the controllers buzz, the character is back on its feet. And it must not happen by itself while punching |
 | The vibration of a contact. **Answered 25 November: it is felt** | Press a hand against the character, then strike it: stronger for more force, nothing in the air |
-| The grab, if the owner wants to try it there (it is off: `Tools\play.ps1 -VR -Grab` switches it on for that session) | Open hand on a forearm, close the grip, lift and pull; on the chest of the standing character, pull it along; knock it down and drag it with one hand and with two. The controller vibrates while the hand pulls. Say whether a hand takes hold where it looks as if it should (the reach is 3 cm), and whether the grip slips too soon or too late (45 cm) |
+| The grab (tried by the owner in three sessions on 25 November and switched on for good) | Open hand on a forearm, close the grip, lift and pull; on the chest of the standing character, pull it along; knock it down and drag it with one hand and with two. The controller vibrates while the hand pulls. Say whether a hand takes hold where it looks as if it should (the reach is 3 cm), and whether the grip slips too soon or too late (45 cm) |
 
 **Part 2 of 6, the hand: steps proposed by the agent on the night of 24 November 2026, for the owner to confirm.** Step 0 is built (the hand's own frame, fist or open by the grip, the open hand shown, the vibration, the body's events; above).
 

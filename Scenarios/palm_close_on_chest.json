@@ -30,6 +30,11 @@
     {
       "t": 0.0,
       "type": "console",
+      "command": "Sandbox.Tune effectors.hand.grab=0"
+    },
+    {
+      "t": 0.0,
+      "type": "console",
       "command": "Sandbox.Tune effectors.hand.palm_collides=1"
     },
     {
