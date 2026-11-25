@@ -7,19 +7,55 @@
     "attached_meshes": [
       "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
     ],
-    "location_cm": [0, 0, 0],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
     "control": "active"
   },
-  "camera": {"location_cm": [-150, 230, 140], "look_at_cm": [0, 0, 105]},
+  "camera": {
+    "location_cm": [
+      -150,
+      230,
+      140
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      105
+    ]
+  },
   "events": [
     {
       "t": 3.0,
       "type": "effector",
       "effector": "hand_right",
       "path": [
-        {"t": 0.0, "location_cm": [0, 70, 160]},
-        {"t": 0.0875, "location_cm": [0, 0, 160]},
-        {"t": 0.4875, "location_cm": [0, 70, 160]}
+        {
+          "t": 0.0,
+          "location_cm": [
+            0,
+            70,
+            160
+          ]
+        },
+        {
+          "t": 0.0875,
+          "location_cm": [
+            0,
+            0,
+            160
+          ]
+        },
+        {
+          "t": 0.4875,
+          "location_cm": [
+            0,
+            70,
+            160
+          ]
+        }
       ]
     }
   ],
@@ -31,6 +67,7 @@
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30,
     "max_effector_penetration_cm": 1,
-    "min_struck_displacement_cm": 5
+    "min_struck_displacement_cm": 5,
+    "knockdowns": 0
   }
 }

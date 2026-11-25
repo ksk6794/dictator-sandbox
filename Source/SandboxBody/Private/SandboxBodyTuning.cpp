@@ -133,6 +133,13 @@ namespace
 		Visitor(FString(TEXT("reactions.flinch_recovery_s")), Tuning.Reactions.FlinchRecoveryS);
 		Visitor(FString(TEXT("reactions.flinch_pose_full_ns")), Tuning.Reactions.FlinchPoseFullNs);
 		Visitor(FString(TEXT("reactions.flinch_give_deg")), Tuning.Reactions.FlinchGiveDeg);
+		Visitor(FString(TEXT("reactions.double_over_ns")), Tuning.Reactions.DoubleOverNs);
+		Visitor(FString(TEXT("reactions.double_over_s")), Tuning.Reactions.DoubleOverS);
+		Visitor(FString(TEXT("reactions.double_over_in_s")), Tuning.Reactions.DoubleOverInS);
+		Visitor(FString(TEXT("reactions.double_over_out_s")), Tuning.Reactions.DoubleOverOutS);
+		Visitor(FString(TEXT("reactions.double_over_from")), Tuning.Reactions.DoubleOverFrom);
+		Visitor(FString(TEXT("reactions.double_over_to")), Tuning.Reactions.DoubleOverTo);
+		Visitor(FString(TEXT("reactions.knockdown_head_ns")), Tuning.Reactions.KnockdownHeadNs);
 		Visitor(FString(TEXT("reactions.pressure_s")), Tuning.Reactions.PressureS);
 		Visitor(FString(TEXT("reactions.held_push_s")), Tuning.Reactions.HeldPushS);
 		Visitor(FString(TEXT("reactions.thing_support")), Tuning.Reactions.ThingSupport);
@@ -149,6 +156,7 @@ namespace
 		};
 		Pose(TEXT("stance"), Tuning.Poses.Stance);
 		Pose(TEXT("flinch"), Tuning.Poses.Flinch);
+		Pose(TEXT("double_over"), Tuning.Poses.DoubleOver);
 		Visitor(FString(TEXT("poses.fall_blend_s")), Tuning.Poses.FallBlendS);
 		Pose(TEXT("fall_back"), Tuning.Poses.FallBack);
 		Pose(TEXT("fall_forward"), Tuning.Poses.FallForward);
@@ -533,7 +541,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	{
 		return false;
 	}
-	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch },
+	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch }, { TEXT("double_over"), &Poses.DoubleOver },
 		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide },
 		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide } };
 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
@@ -559,6 +567,21 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	if (Reactions.FlinchPoseFullNs <= 0.0)
 	{
 		OutError = TEXT("reactions.flinch_pose_full_ns must be above 0");
+		return false;
+	}
+	if (Reactions.DoubleOverNs < 0.0 || Reactions.DoubleOverS < 0.0 || Reactions.DoubleOverInS <= 0.0 || Reactions.DoubleOverOutS <= 0.0)
+	{
+		OutError = TEXT("reactions: double_over_ns and double_over_s must not be negative, double_over_in_s and double_over_out_s must be above 0");
+		return false;
+	}
+	if (Reactions.KnockdownHeadNs < 0.0)
+	{
+		OutError = TEXT("reactions.knockdown_head_ns must not be negative");
+		return false;
+	}
+	if (Reactions.DoubleOverFrom >= Reactions.DoubleOverTo)
+	{
+		OutError = TEXT("reactions.double_over_from must be below reactions.double_over_to");
 		return false;
 	}
 	if (Thresholds.FallPelvisDropCm <= 0.0 || Thresholds.FallTiltDeg <= 0.0)

@@ -5,7 +5,9 @@
       "rest_side_cm": 18,
       "rest_down_cm": 22,
       "reach_cm": 80,
-      "reach_speed_mps": 3
+      "reach_speed_mps": 8,
+      "through_cm": 15,
+      "open_reach_speed_mps": 2
     },
     "kick": {
       "rest_forward_cm": 20,
@@ -13,7 +15,8 @@
       "rest_down_cm": 100,
       "speed_mps": 8,
       "through_cm": 15,
-      "reach_cm": 130,
+      "chamber_cm": 50,
+      "reach_cm": 150,
       "rest_force_n": 40,
       "settle_s": 0.4
     },

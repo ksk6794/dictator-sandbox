@@ -53,8 +53,18 @@ slows a get-up and two hold it, measured on the stand with holding hands (`Tools
 seeds: from one hand 37 bodies of 146 pull free and stand within the 15 s, from two none). The body
 does not feel a grab; a hand that goes on through the body fells it as the hands are tuned (300 N for half a
 second is a knockdown; `effector_push_chest_falls`, `effector_shove_knockdown_gets_up`), while a punch that
-comes back delivers 12 to 28 N*s. The kick has its effector (`foot_left`, `foot_right`: a foot of 5 kg on a spring
-capped at 1800 N, `effectors.foot.*`; scenarios `strike_kick_*`: into the thigh three steps, through the trunk a fall; on the desktop the F key kicks at
+comes back delivered 12 to 28 N*s. **Since the owner's look at the desktop session on 25 November a hand that comes
+fast has a blow** (`effectors.hand.strike_*`: for 0.15 s a cap of up to 900 N and a spring of up to 9000 N/m, graded
+by the speed it arrived at, from 2 to 5 m/s; pushing, holding and dragging keep the 300 N): a punch with weight
+behind it is 77 to 83 N*s into the chest and 104 to 113 into the belly, and the body steps; a jab is 23 to 31; the
+desktop hand goes at 8 m/s to what the camera aims at and 15 cm through it. **A body hit from the front into the
+belly or the solar plexus with 40 N*s or more doubles over for two seconds** (`reactions.double_over_*`,
+`poses.double_over`; by its own clock in every state, told as `double_over`): a punch with weight behind it and a
+kick do it, a jab, a push and a hit into the chest do not; the push matrix, the knockdowns and the stand are as they
+were. **A hit on the head that brings 35 N*s or more knocks an upright body down** (`reactions.knockdown_head_ns`: a kick
+does, a punch at 27 at most does not; six cells of the push matrix's 80 N*s row, the blows on the head, now end in a fall).
+The kick has its effector (`foot_left`, `foot_right`: a foot of 10 kg on a spring
+capped at 3500 N since that day, `effectors.foot.*`; scenarios `strike_kick_*`: into the head a knockdown, into the belly a fall, doubled over, into the thigh and the calf steps; the desktop's kick comes up to the height of its point and is thrust level through it, `tools.kick.chamber_cm`; on the desktop the F key kicks at
 what the camera aims at, `tools.kick.*`, and a desktop session's rig and recordings have the foot as a third
 effector; at rest the foot is held with 40 N and a kick reaches 130 cm at most). **Part 4's first step:** a scenario
 can put boxes with mass into its world (`"props"`; `prop_*`: one pushed, one lifted and carried by a grab, one dropped
@@ -184,7 +194,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 39 s (98 scenarios; 85 s with `-Long`), a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 39 s (100 scenarios; 87 s with `-Long`), a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s (its grab demo 12 s), the whole
@@ -849,6 +859,32 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **A count of hits needs a rule for what one hit is.** Summed as the flinch sums and set back at each telling,
   a shove of 200 N*s over nine frames was nine hits; once a stretch of rising force, a hand held at the chest
   was six in six seconds. One contact is one hit, and a blow into a contact another (`FeelFrame`).
+- **A hand's force cap is not what limits a punch; its spring is.** The spring asks for stiffness times the gap,
+  and a target 15 cm inside a body is 450 N at 3000 N/m: raising the cap to 900, 1200 or 1500 N gave the same
+  66 N*s. And a punch's impulse did not grow with its speed at all (50 N*s at 4 and at 8 m/s): it was the time
+  the hand pressed. When a figure does not move with a setting, find what else bounds it before raising the
+  setting further.
+- **A rule that switches at one speed makes an edge of that speed.** A blow for every hand that arrives at
+  2 m/s or faster turned a scripted push at 2.5 m/s into a punch (17 to 43 N*s, two steps). A blow's strength is
+  graded from none at 2 m/s to all of it at 5.
+- **A scripted impulse is felt at its body's centre of mass, and the chest's is at the solar plexus.** A zone
+  for "the belly" that ended 1 cm above it made every scripted blow on the chest a hit into the belly: 20
+  scenarios changed for a rule that was meant to touch three. Before a rule about where a hit lands is believed,
+  list where the scripted hits of the suite land by it (`control.max_belly_hit_ns` above 0).
+- **What a hand delivers is not what the body counts as a hit.** Of a punch's 112 N*s the body sums 63: what
+  goes on pressing is pressure. A threshold on the body's side is set from the body's own figure.
+- **Two runs that differ in two things say nothing of either.** "The same kick is seven steps on a body that
+  stays upright and a fall on one that folds over it" was written from a run of the night and one of the
+  morning; the two feet had other springs (16000 and 24000 N/m). With the reaction switched off on the morning's
+  foot the body fell as well. To say what a change does, switch that change alone (`-Tune`).
+- **A kick that looked right in scenarios was weak in the owner's hands, because the scenarios did not kick as
+  the desktop does.** The scripted foot came at 28 degrees, the desktop's from a metre under the camera at 54
+  (belly) and 65 (head): a blow from below that lifts a head and does not throw it back. A tool a person uses
+  is measured on the path that tool makes (`FSandboxDesktopTargetSource::UpdateFoot`), not on one written
+  beside it.
+- **A head does not fall to momentum.** Kicked 30 cm through, the body fell from three points of nine on
+  the head and not from the six beside them: the foot slides off a small round thing on a soft neck. What a hit on
+  the head does is a rule on what the head felt (`reactions.knockdown_head_ns`), as for the belly.
 - **A hand is one frame behind its target by design.** It is given the place for the start of the coming step
   and is there at the step's end: 2.2 cm at 2 m/s, 8.9 cm at 8 m/s, with the best velocity there is. A gap
   measured at the start of a step has that frame in it; do not tune it away with stiffness. Three times the

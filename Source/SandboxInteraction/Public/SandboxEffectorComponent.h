@@ -65,6 +65,8 @@ struct FSandboxEffectorStats
 	int32 GrabOverloads = 0;
 	double MaxGrabForceN = 0.0;
 	double GrabForceSumN = 0.0;
+	/** Blows: times the hand, having come fast, met something and had the higher cap for a moment (effectors.hand.strike_force_n). */
+	int32 Strikes = 0;
 	/** Of the grabs, those that took a thing by its handle (a point the thing names; effectors.hand.grab_handle_cm). */
 	int32 HandleGrabs = 0;
 	/**
@@ -249,6 +251,13 @@ private:
 	double GrabDrawLeftS = 0.0;
 	bool bPassesBodies = false;
 	double ForceShare = 1.0;
+	/** A blow: how long the higher cap still lasts, s, and whether the spring has it now. */
+	double StrikeLeftS = 0.0;
+	bool bStrikeOn = false;
+	/** How much of a blow's strength this one has, 0 to 1, by the speed the hand came at. */
+	double StrikeShare = 0.0;
+	double CapNow() const;
+	double StiffnessNow() const;
 	FSandboxEffectorStats Stats;
 	bool bStarted = false;
 	bool bFist = true;

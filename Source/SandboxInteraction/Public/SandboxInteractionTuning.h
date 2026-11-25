@@ -90,6 +90,17 @@ struct FSandboxEffectorTuning
 	double GrabHandleCm = 0.0;
 	/** For how long after that the two held points may be apart without it counting as the joint's stretch, s: the handle is being drawn in. */
 	double GrabDrawS = 0.0;
+	/**
+	 * A blow. A hand that meets something while it moves faster than StrikeSpeedMps has, for StrikeS, a higher
+	 * force cap and a stiffer spring: the arm's push behind the fist. How much higher grows with the speed, up
+	 * to StrikeForceN and StrikeStiffnessNPerM at StrikeFullSpeedMps. Pushing, holding and dragging keep the cap
+	 * and the spring above. StrikeForceN at or below that cap: no blows.
+	 */
+	double StrikeForceN = 0.0;
+	double StrikeStiffnessNPerM = 0.0;
+	double StrikeS = 0.0;
+	double StrikeSpeedMps = 0.0;
+	double StrikeFullSpeedMps = 0.0;
 	double PalmMassKg = 0.0;
 };
 
@@ -111,6 +122,10 @@ struct FSandboxToolTuning
 	/** How far in front of the camera a reaching hand goes, cm, and how fast its target travels, m/s. */
 	double HandReachCm = 0.0;
 	double HandReachSpeedMps = 0.0;
+	/** How fast an open desktop hand travels, m/s: a reach, not a punch. */
+	double HandOpenReachSpeedMps = 0.0;
+	/** A desktop fist that is sent at something the camera aims at goes this far through it, cm (an open hand reaches as far as the wheel has set). */
+	double HandThroughCm = 0.0;
 	/**
 	 * The desktop's kick. The foot rests below the camera (forward, to the right and down from it, the camera
 	 * taken as level), and a kick takes it in a straight line to KickThroughCm beyond the point that is aimed
@@ -122,6 +137,8 @@ struct FSandboxToolTuning
 	double KickRestDownCm = 0.0;
 	double KickSpeedMps = 0.0;
 	double KickThroughCm = 0.0;
+	/** A kick's thrust begins this far before the point that is aimed at, at that point's height: the foot comes up to there first. cm. */
+	double KickChamberCm = 0.0;
 	double KickReachCm = 0.0;
 	/** The force the foot is held with while it rests, N: it follows the player and pushes nothing. */
 	double KickRestForceN = 0.0;

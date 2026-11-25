@@ -306,6 +306,7 @@ bool FInteractionDesktopKickTest::RunTest(const FString& Parameters)
 	Tools.KickRestDownCm = 100.0;
 	Tools.KickSpeedMps = 9.0;
 	Tools.KickThroughCm = 15.0;
+	Tools.KickChamberCm = 50.0;
 	Tools.KickReachCm = 130.0;
 	Tools.KickSettleS = 0.1;
 	const float Dt = 1.0f / 90.0f;
@@ -330,27 +331,38 @@ bool FInteractionDesktopKickTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("at rest, later, it is held weakly"), Foot.Strength, 0.02f, 1.0e-6f);
 	TestEqual(TEXT("and does not move"), Foot.Velocity, FVector::ZeroVector, 1.0e-4f);
 
-	// A kick at a point 60 cm ahead of the rest: 75 cm out with the way through, 10 cm a frame.
-	const FVector Point = Rest + FVector(0.0, 60.0, 0.0);
+	// A kick at a point 100 cm ahead of the camera and 120 cm up. The foot comes up to that height 50 cm before
+	// the point, (0, 50, 120), which is 76.81 cm from where it rests, and is thrust level from there to 15 cm
+	// through the point, (0, 115, 120): 141.81 cm out, 10 cm a frame.
+	const FVector Point(0.0, 100.0, 120.0);
+	const FVector Chamber(0.0, 50.0, 120.0);
+	const FVector Strike(0.0, 115.0, 120.0);
 	Source.Kick(Point);
 	TestTrue(TEXT("a kick is under way"), Source.IsKicking());
 	Source.Kick(Point + FVector(100.0, 0.0, 0.0));
 	Source.Update(Anchor, false, false, Tools, 80.0, Dt, true);
 	Source.GetTarget(SandboxEffectors::FootRight, Foot);
-	TestEqual(TEXT("one frame out: 10 cm along the line to the point"), Foot.Location, Rest + FVector(0.0, 10.0, 0.0), 1.0e-3f);
+	TestEqual(TEXT("one frame out: 10 cm along the line to where the thrust begins"), Foot.Location, Rest + (Chamber - Rest).GetSafeNormal() * 10.0, 1.0e-3f);
 	TestEqual(TEXT("at the kick's speed"), Foot.Velocity.Size(), 900.0, 1.0e-1);
 	TestEqual(TEXT("with the whole strength"), Foot.Strength, 1.0f);
 	double FurthestCm = 0.0;
+	double FurthestAheadCm = 0.0;
+	bool bThrustIsLevel = true;
 	int32 Frames = 1;
 	while (Source.IsKicking() && Frames < 200)
 	{
 		Source.Update(Anchor, false, false, Tools, 80.0, Dt, true);
 		Source.GetTarget(SandboxEffectors::FootRight, Foot);
 		FurthestCm = FMath::Max(FurthestCm, FVector::Dist(Foot.Location, Rest));
+		FurthestAheadCm = FMath::Max(FurthestAheadCm, Foot.Location.Y);
+		// Past where the thrust begins the foot is on the level line through the point.
+		bThrustIsLevel = bThrustIsLevel && (Foot.Location.Y <= 50.0 + 1.0e-3 || (FMath::Abs(Foot.Location.Z - 120.0) < 1.0e-3 && FMath::Abs(Foot.Location.X) < 1.0e-3));
 		++Frames;
 	}
-	TestTrue(TEXT("it turns back 15 cm through the point, not at the second point that was asked for meanwhile"), FurthestCm > 70.0 && FurthestCm <= 75.0 + 1.0e-3);
-	TestEqual(TEXT("75 cm out and 75 back at 10 cm a frame"), Frames, 15);
+	TestTrue(TEXT("it turns back 15 cm through the point, not at the second point that was asked for meanwhile"), FurthestAheadCm > 105.0 && FurthestAheadCm <= 115.0 + 1.0e-3);
+	TestTrue(TEXT("which is no further from its rest than the end of the thrust"), FurthestCm <= FVector::Dist(Strike, Rest) + 1.0e-3);
+	TestTrue(TEXT("the thrust is level, at the height of the point and the way the camera looks"), bThrustIsLevel);
+	TestEqual(TEXT("141.81 cm out and back at 10 cm a frame"), Frames, 29);
 	TestEqual(TEXT("home"), Foot.Location, Rest, 1.0e-4f);
 	TestEqual(TEXT("still strong as it arrives"), Foot.Strength, 1.0f);
 	for (int32 Frame = 0; Frame < 12; ++Frame)

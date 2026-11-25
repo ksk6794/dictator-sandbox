@@ -35,14 +35,19 @@
       "grab_hold_damping_s": 0.05,
       "grab_hold_max_torque_nm": 40,
       "grab_handle_cm": 15,
-      "grab_draw_s": 0.3
+      "grab_draw_s": 0.3,
+      "strike_force_n": 900,
+      "strike_stiffness_n_per_m": 9000,
+      "strike_s": 0.15,
+      "strike_speed_mps": 2,
+      "strike_full_speed_mps": 5
     },
     "foot": {
-      "mass_kg": 5,
+      "mass_kg": 10,
       "radius_cm": 6,
-      "stiffness_n_per_m": 10000,
+      "stiffness_n_per_m": 24000,
       "damping_s": 0.045,
-      "max_force_n": 1800,
+      "max_force_n": 3500,
       "angular_stiffness_nm_per_rad": 20,
       "angular_damping_s": 0.05,
       "max_torque_nm": 20,

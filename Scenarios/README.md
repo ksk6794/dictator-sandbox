@@ -335,6 +335,10 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `min_pose_offset_deg` | In the last frame some muscle's target was turned at least this far from the reference pose (`control.pose.target_offset_max_deg`): the pose of the tuning reached the solver |
 | `max_assist_force_share_mean` | The balance assist's commanded force over body weight, averaged over the settled frames, stayed at most this (`control.assist_load.force_share_mean`). The standing scenarios hold it to 0.0093, the owner's M3 bound. Active control only |
 | `max_steps` | At most this many steps while upright (`control.step_count`). Active control only |
+| `min_steps` | At least this many: the body was made to step. Active control only |
+| `effector_strikes` | The hands landed exactly this many blows in all (`effectors.list.<hand>.strikes`): touches at a speed that gives the hand its blow's strength (`effectors.hand.strike_*`) |
+| `double_overs` | The body doubled over exactly this many times (`control.double_overs`; `reactions.double_over_*`). Active control only |
+| `knockdowns` | A hit on the head knocked the body down exactly this many times (`control.knockdowns`; `reactions.knockdown_head_ns`). Active control only |
 | `max_flinches` | The body went into Flinch at most this many times (a held push: once, as the hand lands). Active control only |
 | `min_get_ups` | The body got up at least this many times (`control.get_up.successes`). Active control only, with `"get_up": true` |
 | `max_get_ups` | The body got up at most this many times: 0 for a body that hands are to keep down for the whole run |

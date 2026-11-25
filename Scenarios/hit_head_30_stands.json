@@ -7,11 +7,25 @@
     "attached_meshes": [
       "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
     ],
-    "location_cm": [0, 0, 0],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
     "control": "active"
   },
   "events": [
-    {"t": 3.0, "type": "impulse", "body": "neck_01", "impulse_ns": 30, "direction": [1, 0, 0]}
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "neck_01",
+      "impulse_ns": 30,
+      "direction": [
+        1,
+        0,
+        0
+      ]
+    }
   ],
   "expect": {
     "hit_events": 1,
@@ -19,6 +33,7 @@
     "max_recovery_steps": 1,
     "fell": false,
     "max_joint_stretch_cm": 2.0,
-    "max_joint_speed_rads": 30.0
+    "max_joint_speed_rads": 30.0,
+    "knockdowns": 0
   }
 }

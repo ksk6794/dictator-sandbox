@@ -30,11 +30,24 @@ void FSandboxDesktopTargetSource::UpdateFoot(const FTransform& Anchor, const FSa
 	const FTransform Rest = FootRestPose(Anchor, Tools);
 	if (Foot.bAsked)
 	{
-		// To the point and a little way through it, along the line from where the foot rests now, and no
-		// further than a leg reaches: aimed at a wall across the room, the foot goes that way for the reach.
-		const FVector Toward = (Foot.AskedPoint - Rest.GetLocation()).GetSafeNormal();
-		const double FarCm = FMath::Min(FVector::Dist(Rest.GetLocation(), Foot.AskedPoint) + Tools.KickThroughCm, Tools.KickReachCm);
-		Foot.Strike = Rest.GetLocation() + Toward * FarCm;
+		// A straight kick. The foot comes up to the height of the point a little way before it, as the knee
+		// comes up before a front kick, and is thrust from there level, the way the camera looks, through the
+		// point. (In one line from where it rests, a metre under the camera, it struck a belly at 54 degrees
+		// upward and a head at 65: a glancing blow from below, which lifts a head and does not throw it back.)
+		// Neither place is further than a leg reaches from where the foot rests: aimed at a wall across the
+		// room, the foot goes that way for the reach.
+		const FVector Home = Rest.GetLocation();
+		const FVector Sight = Foot.AskedPoint - Anchor.GetLocation();
+		FVector Along = FVector(Sight.X, Sight.Y, 0.0);
+		// Looking almost straight down or up there is no level way to look: along the line of sight then.
+		Along = Along.Size() > 0.2 * Sight.Size() ? Along.GetSafeNormal() : Sight.GetSafeNormal();
+		if (Along.IsNearlyZero())
+		{
+			Along = (Foot.AskedPoint - Home).GetSafeNormal();
+		}
+		const double BackCm = FMath::Min(Tools.KickChamberCm, 0.8 * FVector::DotProduct(Sight, Along));
+		Foot.Chamber = Home + (Foot.AskedPoint - Along * FMath::Max(BackCm, 0.0) - Home).GetClampedToMaxSize(Tools.KickReachCm);
+		Foot.Strike = Home + (Foot.AskedPoint + Along * Tools.KickThroughCm - Home).GetClampedToMaxSize(Tools.KickReachCm);
 		Foot.Phase = 0.0;
 		Foot.bKicking = true;
 		Foot.bAsked = false;
@@ -42,9 +55,11 @@ void FSandboxDesktopTargetSource::UpdateFoot(const FTransform& Anchor, const FSa
 	FVector Location = Rest.GetLocation();
 	if (Foot.bKicking)
 	{
-		// Out and back at the kick's speed. The line is from the rest as it is now, so a player who moves
-		// during the kick takes it along.
-		const double TravelCm = FVector::Dist(Rest.GetLocation(), Foot.Strike);
+		// Out and back at the kick's speed, by the same way: up to where the thrust begins, and along it. The
+		// way up is from the rest as it is now, so a player who moves during the kick takes it along.
+		const double OutCm = FVector::Dist(Rest.GetLocation(), Foot.Chamber);
+		const double ThrustCm = FVector::Dist(Foot.Chamber, Foot.Strike);
+		const double TravelCm = OutCm + ThrustCm;
 		Foot.Phase += TravelCm > UE_KINDA_SMALL_NUMBER ? Tools.KickSpeedMps * 100.0 * DeltaTime / TravelCm : 2.0;
 		if (Foot.Phase >= 2.0)
 		{
@@ -55,7 +70,10 @@ void FSandboxDesktopTargetSource::UpdateFoot(const FTransform& Anchor, const FSa
 		}
 		else
 		{
-			Location = FMath::Lerp(Rest.GetLocation(), Foot.Strike, Foot.Phase <= 1.0 ? Foot.Phase : 2.0 - Foot.Phase);
+			const double AtCm = (Foot.Phase <= 1.0 ? Foot.Phase : 2.0 - Foot.Phase) * TravelCm;
+			Location = AtCm <= OutCm || ThrustCm <= UE_KINDA_SMALL_NUMBER
+				? FMath::Lerp(Rest.GetLocation(), Foot.Chamber, OutCm > UE_KINDA_SMALL_NUMBER ? FMath::Min(AtCm / OutCm, 1.0) : 1.0)
+				: FMath::Lerp(Foot.Chamber, Foot.Strike, FMath::Min((AtCm - OutCm) / ThrustCm, 1.0));
 		}
 	}
 	Foot.Target.Velocity = bContinuous && Foot.bHasTarget && DeltaTime > 0.0f ? (Location - Foot.Target.Location) / DeltaTime : FVector::ZeroVector;
@@ -100,7 +118,9 @@ void FSandboxDesktopTargetSource::UpdateHand(FHand& Hand, bool bLeft, bool bReac
 
 	// The target travels between the two points at the reach speed, whichever way it is going.
 	const double TravelCm = FVector::Dist(Rest, Ahead);
-	const double Step = TravelCm > UE_KINDA_SMALL_NUMBER ? Tools.HandReachSpeedMps * 100.0 * DeltaTime / TravelCm : 1.0;
+	// A fist goes out as a punch does; an open hand reaches, slowly enough to be no blow when it arrives.
+	const double SpeedMps = bHandsOpen ? Tools.HandOpenReachSpeedMps : Tools.HandReachSpeedMps;
+	const double Step = TravelCm > UE_KINDA_SMALL_NUMBER ? SpeedMps * 100.0 * DeltaTime / TravelCm : 1.0;
 	Hand.Reach = FMath::Clamp(Hand.Reach + (bReach ? Step : -Step), 0.0, 1.0);
 
 	const FVector Location = Anchor.TransformPositionNoScale(FMath::Lerp(Rest, Ahead, Hand.Reach));

@@ -68,6 +68,7 @@
     "max_joint_speed_rads": 30,
     "max_effector_penetration_cm": 1,
     "min_struck_displacement_cm": 10,
-    "hit_events": 1
+    "hit_events": 1,
+    "double_overs": 0
   }
 }

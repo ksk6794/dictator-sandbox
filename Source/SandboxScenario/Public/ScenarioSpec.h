@@ -152,6 +152,8 @@ struct FScenarioExpect
 	TOptional<double> MaxAssistForceShareMean;
 	/** At most this many steps while upright (control.steps). Active control only. */
 	TOptional<double> MaxSteps;
+	/** At least this many steps while upright (control.steps): the body was made to step. Active control only. */
+	TOptional<double> MinSteps;
 	/** Every step the controller made (control.recovery_steps) landed at most this far from its target; there was at least one. cm. */
 	TOptional<double> MaxLandingErrorCm;
 	/** The controller made at most this many steps for its balance or asked for (control.recovery_steps without the regrouping ones). */
@@ -160,6 +162,10 @@ struct FScenarioExpect
 	TOptional<double> MaxStanceErrorCm;
 	/** The body went into Flinch at most this many times. Active control only. */
 	TOptional<double> MaxFlinches;
+	/** The body doubled over exactly this many times (control.double_overs; reactions.double_over_*). Active control only. */
+	TOptional<double> DoubleOvers;
+	/** A hit on the head knocked the body down exactly this many times (control.knockdowns; reactions.knockdown_head_ns). Active control only. */
+	TOptional<double> Knockdowns;
 	/** The body got up at least this many times (control.get_up.successes). Active control only. */
 	TOptional<double> MinGetUps;
 	/** The body got up at most this many times: 0 for a body that is to be kept down. Active control only. */
@@ -178,6 +184,8 @@ struct FScenarioExpect
 	TOptional<double> EffectorGripsOnBody;
 	/** The hands took hold of a body exactly this many times in all (effectors.list.<hand>.grabs). */
 	TOptional<double> EffectorGrabs;
+	/** The hands landed exactly this many blows in all: touches at a speed that gives the hand its blow's strength (effectors.list.<hand>.strikes). */
+	TOptional<double> EffectorStrikes;
 	/** The hands' grips slipped exactly this many times in all (effectors.list.<hand>.grab_slips). */
 	TOptional<double> EffectorGrabSlips;
 	/** The two points a grab holds together came at most this far apart (effectors.list.<hand>.max_grab_stretch_cm). cm. */

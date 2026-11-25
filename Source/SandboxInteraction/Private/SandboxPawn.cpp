@@ -428,9 +428,26 @@ void ASandboxPawn::Kick()
 	HandSource->Kick(Point);
 }
 
+void ASandboxPawn::AimReach()
+{
+	// A fist that is sent at something goes there and through it, as a punch does. An open hand reaches as far
+	// as the wheel has set, and so does a fist with nothing under the crosshair. (An open hand that stopped at
+	// the surface was tried: the body gives way by more than a grab's reach, and half a centimetre of the
+	// body's stance was a sixth of the hand's push.)
+	FHitResult Hit;
+	if (Tool == ESandboxTool::Hands && !bCameraDetached && !bHandsOpen && TraceAim(Hit))
+	{
+		ReachCm = FMath::Clamp(Hit.Distance + Tuning.Tools.HandThroughCm, MinDistanceCm, MaxReachCm);
+	}
+}
+
 void ASandboxPawn::SetPrimary(bool bDown)
 {
 	bPrimaryDown = bDown;
+	if (bDown)
+	{
+		AimReach();
+	}
 	if (Tool == ESandboxTool::Impulse && bDown)
 	{
 		FHitResult Hit;
@@ -471,6 +488,10 @@ void ASandboxPawn::SetPrimary(bool bDown)
 void ASandboxPawn::SetSecondary(bool bDown)
 {
 	bSecondaryDown = bDown;
+	if (bDown)
+	{
+		AimReach();
+	}
 }
 
 void ASandboxPawn::AdjustTool(float Notches)

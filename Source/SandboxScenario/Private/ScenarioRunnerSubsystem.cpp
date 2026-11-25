@@ -2017,6 +2017,11 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MaxSteps.GetValue();
 		AddCheck(TEXT("max_steps"), Controller && Steps.Num() <= Limit, Controller ? Number(Steps.Num()) : Null(), Number(Limit));
 	}
+	if (Spec.Expect.MinSteps.IsSet())
+	{
+		const double Limit = Spec.Expect.MinSteps.GetValue();
+		AddCheck(TEXT("min_steps"), Controller && Steps.Num() >= Limit, Controller ? Number(Steps.Num()) : Null(), Number(Limit));
+	}
 	if (Spec.Expect.MaxLandingErrorCm.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxLandingErrorCm.GetValue();
@@ -2073,6 +2078,16 @@ void UScenarioRunnerSubsystem::Finish()
 	{
 		AddCheck(TEXT("state_sequence"), Controller && StateSequence == Spec.Expect.StateSequence.GetValue(), Controller ? Text(StateSequence) : Null(), Text(Spec.Expect.StateSequence.GetValue()));
 	}
+	if (Spec.Expect.DoubleOvers.IsSet())
+	{
+		const double Wanted = Spec.Expect.DoubleOvers.GetValue();
+		AddCheck(TEXT("double_overs"), Controller && Controller->GetDoubleOverCount() == Wanted, Controller ? Number(Controller->GetDoubleOverCount()) : Null(), Number(Wanted));
+	}
+	if (Spec.Expect.Knockdowns.IsSet())
+	{
+		const double Wanted = Spec.Expect.Knockdowns.GetValue();
+		AddCheck(TEXT("knockdowns"), Controller && Controller->GetKnockdownCount() == Wanted, Controller ? Number(Controller->GetKnockdownCount()) : Null(), Number(Wanted));
+	}
 	if (Spec.Expect.MaxFlinches.IsSet())
 	{
 		const double Limit = Spec.Expect.MaxFlinches.GetValue();
@@ -2115,6 +2130,16 @@ void UScenarioRunnerSubsystem::Finish()
 			Grips += Effector->GetStats().GripsOnBody;
 		}
 		AddCheck(TEXT("effector_grips_on_body"), EffectorRig && Grips == Wanted, EffectorRig ? Number(Grips) : Null(), Number(Wanted));
+	}
+	if (Spec.Expect.EffectorStrikes.IsSet())
+	{
+		int32 Strikes = 0;
+		for (const USandboxEffectorComponent* Effector : EffectorRig ? EffectorRig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+		{
+			Strikes += Effector->GetStats().Strikes;
+		}
+		const double Wanted = Spec.Expect.EffectorStrikes.GetValue();
+		AddCheck(TEXT("effector_strikes"), EffectorRig && Strikes == Wanted, EffectorRig ? Number(Strikes) : Null(), Number(Wanted));
 	}
 	if (Spec.Expect.EffectorGrabs.IsSet() || Spec.Expect.EffectorGrabSlips.IsSet() || Spec.Expect.MaxGrabStretchCm.IsSet() || Spec.Expect.MinGrabFrames.IsSet() ||
 		Spec.Expect.EffectorGrabOverloads.IsSet() || Spec.Expect.MaxGrabForceN.IsSet() || Spec.Expect.EffectorHandleGrabs.IsSet())
@@ -2718,6 +2743,10 @@ void UScenarioRunnerSubsystem::Finish()
 		// What the body took from contacts with other simulated bodies: the hits it could feel.
 		ControlJson->SetNumberField(TEXT("contact_impulse_ns"), Controller->GetContactImpulseNs());
 		ControlJson->SetNumberField(TEXT("contact_reports"), Controller->GetContactReportCount());
+		ControlJson->SetNumberField(TEXT("double_overs"), Controller->GetDoubleOverCount());
+		ControlJson->SetNumberField(TEXT("max_belly_hit_ns"), Controller->GetMaxBellyHitNs());
+		ControlJson->SetNumberField(TEXT("knockdowns"), Controller->GetKnockdownCount());
+		ControlJson->SetNumberField(TEXT("max_head_hit_ns"), Controller->GetMaxHeadHitNs());
 
 		// What the body told its listeners of: every hit and every change of state, in order.
 		TArray<TSharedPtr<FJsonValue>> EventsJson;
@@ -2732,6 +2761,12 @@ void UScenarioRunnerSubsystem::Finish()
 			{
 				++HitEvents;
 				Entry->SetStringField(TEXT("type"), TEXT("hit"));
+				Entry->SetStringField(TEXT("bone"), Event.Bone.ToString());
+				Entry->SetNumberField(TEXT("impulse_ns"), Event.ImpulseNs.Size());
+			}
+			else if (Event.Type == ESandboxBodyEventType::DoubledOver)
+			{
+				Entry->SetStringField(TEXT("type"), TEXT("double_over"));
 				Entry->SetStringField(TEXT("bone"), Event.Bone.ToString());
 				Entry->SetNumberField(TEXT("impulse_ns"), Event.ImpulseNs.Size());
 			}
@@ -2802,6 +2837,7 @@ void UScenarioRunnerSubsystem::Finish()
 			Entry->SetNumberField(TEXT("grips_on_body"), Effector->GetStats().GripsOnBody);
 			Entry->SetStringField(TEXT("last_gripped"), Effector->GetStats().LastGripped.IsNone() ? FString() : Effector->GetStats().LastGripped.ToString());
 			Entry->SetBoolField(TEXT("open_hand_at_end"), Effector->IsPalmActive());
+			Entry->SetNumberField(TEXT("strikes"), Stats.Strikes);
 			Entry->SetNumberField(TEXT("grabs"), Stats.Grabs);
 			Entry->SetStringField(TEXT("last_grabbed"), Stats.LastGrabbed.IsNone() ? FString() : Stats.LastGrabbed.ToString());
 			Entry->SetNumberField(TEXT("grab_frames"), Stats.GrabFrames);

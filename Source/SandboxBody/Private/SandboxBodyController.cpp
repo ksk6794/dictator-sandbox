@@ -562,6 +562,24 @@ void USandboxBodyController::UpdatePoseTurns()
 			}
 		}
 	}
+	// Doubled over: the pose of it, as much as is on now (FeelFrame), on top of whatever else turns the joints.
+	if (DoubledWeight > 0.0)
+	{
+		TArray<FSandboxPoseTurn> Bend;
+		PoseRig.BuildTurns(Tuning.Poses.DoubleOver, FMath::SmoothStep(0.0, 1.0, DoubledWeight), Bend);
+		for (const FSandboxPoseTurn& Each : Bend)
+		{
+			const int32 Bone = Each.MeshBoneIndex;
+			if (FSandboxPoseTurn* Existing = Turns.FindByPredicate([Bone](const FSandboxPoseTurn& Turn) { return Turn.MeshBoneIndex == Bone; }))
+			{
+				Existing->Turn = (Existing->Turn * Each.Turn).GetNormalized();
+			}
+			else
+			{
+				Turns.Add(Each);
+			}
+		}
+	}
 	// What the body adds for its balance and while it idles is its own, and gives way to a pose asked for from
 	// outside (SetClipPose) as that pose comes in.
 	const double Posed = IsPosedFromOutside() ? ClipWeight() : 0.0;
@@ -2825,7 +2843,50 @@ void USandboxBodyController::FeelImpulse(FName Bone, const FVector& ImpulseNs, c
 	{
 		FrameBoneImpulseNs = ImpulseNs.Size();
 		FrameBone = Bone;
+		FramePointCm = PointCm;
 	}
+}
+
+bool USandboxBodyController::IsIntoBelly(FName Bone, const FVector& PointCm, const FVector& HitNs) const
+{
+	// The trunk only (an arm that hangs in front of the belly is an arm), from the front, and between two
+	// shares of the line from the pelvis's joint to the neck's: the belly and the solar plexus, not the chest.
+	static const FName PelvisName(TEXT("pelvis"));
+	static const FName NeckName(TEXT("neck_01"));
+	if (Bone != PelvisName && FSandboxBodyTuning::GroupOfBone(Bone) != ESandboxMuscleGroup::Spine)
+	{
+		return false;
+	}
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(PelvisName);
+	const FBodyInstance* Neck = Mesh->GetBodyInstance(NeckName);
+	if (!Pelvis || !Neck || !Pelvis->IsValidBodyInstance() || !Neck->IsValidBodyInstance())
+	{
+		return false;
+	}
+	const FVector Low = Pelvis->GetUnrealWorldTransform().GetLocation();
+	const FVector Line = Neck->GetUnrealWorldTransform().GetLocation() - Low;
+	if (Line.SizeSquared() < 1.0)
+	{
+		return false;
+	}
+	const double Along = FVector::DotProduct(PointCm - Low, Line) / Line.SizeSquared();
+	if (Along < Tuning.Reactions.DoubleOverFrom || Along > Tuning.Reactions.DoubleOverTo)
+	{
+		return false;
+	}
+	// From the front: the trunk's own forward, which is across the line of the hips (left to right) and the
+	// line of the trunk. A hit that pushes the trunk backward comes from the front.
+	static const FName ThighLeftName(TEXT("thigh_l"));
+	static const FName ThighRightName(TEXT("thigh_r"));
+	const FBodyInstance* ThighLeft = Mesh->GetBodyInstance(ThighLeftName);
+	const FBodyInstance* ThighRight = Mesh->GetBodyInstance(ThighRightName);
+	if (!ThighLeft || !ThighRight || !ThighLeft->IsValidBodyInstance() || !ThighRight->IsValidBodyInstance())
+	{
+		return false;
+	}
+	const FVector Hips = ThighRight->GetUnrealWorldTransform().GetLocation() - ThighLeft->GetUnrealWorldTransform().GetLocation();
+	const FVector Forward = FVector::CrossProduct(Hips, Line).GetSafeNormal();
+	return FVector::DotProduct(HitNs.GetSafeNormal(), Forward) < -0.5;
 }
 
 void USandboxBodyController::FeelFrame(double DeltaTime)
@@ -2874,6 +2935,60 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			TellEvent(Event);
 		}
 
+		// Doubling over: a hit from the front into the belly or the solar plexus, as a sum over one contact of
+		// its own (a punch with weight behind it brings its impulse over a tenth of a second and more). Only an
+		// upright body doubles over; one that falls, lies or gets up feels the hit as it feels any other.
+		if (ElapsedS - BellyFeltS > Tuning.Thresholds.FlinchWindowS)
+		{
+			BellyHitNs = 0.0;
+			bBellyDoubled = false;
+		}
+		if ((HitNs | Felt) > 0.0 && IsIntoBelly(FrameBone, FramePointCm, HitNs))
+		{
+			BellyFeltS = ElapsedS;
+			BellyHitNs += HitNs.Size();
+			MaxBellyHitNs = FMath::Max(MaxBellyHitNs, BellyHitNs);
+			const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch || State == ESandboxBodyState::Stagger;
+			if (Reactions.DoubleOverNs > 0.0 && !bBellyDoubled && bUpright && BellyHitNs >= Reactions.DoubleOverNs)
+			{
+				bBellyDoubled = true;
+				DoubledUntilS = ElapsedS + Reactions.DoubleOverS;
+				++DoubleOvers;
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: doubled over at %.3f s (hit of %.1f N*s into the belly, on %s)"), ElapsedS, BellyHitNs, *FrameBone.ToString());
+				FSandboxBodyEvent Event;
+				Event.Type = ESandboxBodyEventType::DoubledOver;
+				Event.TimeS = ElapsedS;
+				Event.Bone = FrameBone;
+				Event.ImpulseNs = HitNs.GetSafeNormal() * BellyHitNs;
+				Event.State = State;
+				Event.PreviousState = State;
+				TellEvent(Event);
+			}
+		}
+
+		// A knockdown: a hit on the head, from any side, summed over one contact as the belly's is. A kick that
+		// meets the head throws it back on its neck, and the legs go from under the body: it falls. (By momentum
+		// alone a kick felled the body from three points of the head out of nine: the foot slides off.) Only an
+		// upright body is knocked down.
+		if (ElapsedS - HeadFeltS > Tuning.Thresholds.FlinchWindowS)
+		{
+			HeadHitNs = 0.0;
+			bHeadFelled = false;
+		}
+		if ((HitNs | Felt) > 0.0 && FSandboxBodyTuning::GroupOfBone(FrameBone) == ESandboxMuscleGroup::Neck)
+		{
+			HeadFeltS = ElapsedS;
+			HeadHitNs += HitNs.Size();
+			MaxHeadHitNs = FMath::Max(MaxHeadHitNs, HeadHitNs);
+			const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch || State == ESandboxBodyState::Stagger;
+			if (Reactions.KnockdownHeadNs > 0.0 && !bHeadFelled && bUpright && HeadHitNs >= Reactions.KnockdownHeadNs)
+			{
+				bHeadFelled = true;
+				++Knockdowns;
+				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("knocked down by a hit of %.1f N*s on the head"), HeadHitNs));
+			}
+		}
+
 		// What is felt is the hit as a whole: hits that follow each other closely are added up.
 		if (ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS)
 		{
@@ -2906,6 +3021,16 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			UE_LOG(LogSandbox, Display, TEXT("Body controller: hit of %.1f N*s on %s while getting up, at %.3f s"), HitImpulseNs.Size(), *FrameBone.ToString(), ElapsedS);
 			HitImpulseNs = FVector::ZeroVector;
 		}
+	}
+
+	// How much of the doubled-over pose is on: it comes in and goes out by its own clock, never in one step (a
+	// target that jumps puts energy into the body). A body that lies or gets up lets it go.
+	if (DeltaTime > 0.0)
+	{
+		const bool bHeld = ElapsedS < DoubledUntilS && State != ESandboxBodyState::Lying && State != ESandboxBodyState::GetUp;
+		DoubledWeight = bHeld
+			? FMath::Min(DoubledWeight + DeltaTime / Reactions.DoubleOverInS, 1.0)
+			: FMath::Max(DoubledWeight - DeltaTime / Reactions.DoubleOverOutS, 0.0);
 	}
 
 	// The pressure follows the felt force.

@@ -248,6 +248,8 @@ private:
 	bool bTuningRead = false;
 
 	ESandboxTool Tool = ESandboxTool::Hands;
+	/** Sets the hands' reach to what the camera aims at, and a punch's way through it. */
+	void AimReach();
 	bool bPrimaryDown = false;
 	bool bSecondaryDown = false;
 	bool bHandsOpen = false;

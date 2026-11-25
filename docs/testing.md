@@ -3310,6 +3310,196 @@ strong the wrist is, by which a stick's blow becomes a hit; the difference betwe
 body is to read from the contact; the stand of falls among movable furniture. The body's rest criterion for a
 fall onto a thing is 5 s in the scenario, against the 3 s of a fall on the floor.
 
+### M4, the blow: a hand that comes fast has the arm behind it (25 November, the owner's decision)
+
+The owner tried the desktop session and found the punches and the kick weak. What he wants of a punch: into
+the chest the body steps back; into the solar plexus or the belly it also doubles over for a couple of seconds
+(a reaction of the body, the step after this one); a kick there fells it.
+
+**What a punch's strength was made of.** A punch with weight behind it (15 cm into the body, 0.1 s there, back)
+delivered the same 50 N*s at 4 and at 8 m/s: not the 1.5 kg of the fist, but the time the hand pressed with its
+300 N while its target was inside the body. A jab (5 cm in and back at once) was 15 to 17 N*s. Heavier and
+stronger hands for everything (3 kg, 600 to 900 N) give 74 to 107 N*s, but then one hand drags a lying body
+(400 N) and holds a get-up down (450 N), which the grab's two rules stand on.
+
+**The blow.** A hand that meets something after a frame without a touch, having moved faster than
+`effectors.hand.strike_speed_mps` (2) as the step began, has for `strike_s` (0.15) a higher force cap and a
+stiffer spring, up to `strike_force_n` (900) and `strike_stiffness_n_per_m` (9000) at `strike_full_speed_mps`
+(5) and in proportion below it. The cap alone did little (50 to 66 N*s): the spring asks for its stiffness
+times the gap, and a target 15 cm inside the body is 450 N at 3000 N/m. A switch at one speed was tried first
+and made an edge: the push of `effector_push_chest`, which arrives at 2.5 m/s, became a blow of 43 N*s and two
+steps; graded by speed it is 21 N*s and no step, as before (17). One blow at a time; a hand that holds
+something strikes with nothing; the foot has no blow (its own cap is 1800 N).
+
+| A punch (the hand's `contact_impulse_ns`, what the body did) | chest | belly | head |
+| --- | --- | --- | --- |
+| before, with weight, 4 and 8 m/s | 50, 3 steps | 50 to 53, 2 to 3 steps | 25, a flinch |
+| the blow, with weight, 4 m/s (two thirds of it) | 77, 4 steps | 104, 3 steps | 32, 2 steps |
+| the blow, with weight, 8 m/s | 83, 4 steps | 113, 4 steps | 28, 2 steps |
+| before, a jab, 4 and 8 m/s | 15 to 17, a flinch | 17, a flinch | 11 to 14, a flinch |
+| the blow, a jab, 4 m/s | 28, a flinch | 31, a flinch | 19, a flinch |
+| the blow, a jab, 8 m/s | 24, a flinch | 23, a flinch | 14, a flinch |
+
+A jab at 8 m/s gains little: its target is in and out of the body in 12 ms. With the values chosen no joint
+of the body went faster than 21.8 rad/s in the twelve strikes (the limit is 30), none stretched by more than
+0.08 cm, and the hand was at most 0.02 cm inside the body. With 1200 and 1500 N the belly takes 124 to 136 N*s
+and up to seven steps, and a joint reaches 25 rad/s; 900 N is the row for what the owner chose ("the body
+steps", the 80 N*s class of the M3 table).
+
+**What it changed.** Of the 99 scenarios 80 keep their hashes; the 19 that changed are those in which a hand
+arrives at 2 m/s or faster: the punches and slaps (`strike_punch_*` 6, `strike_slap_*` 3, `palm_slap_*` 3,
+`palm_open_close`, `effector_hit_head`), where the impulse grows on the trunk and the legs (torso 29 to 43,
+leg 27 to 38, slap on the leg 29 to 43, slap on the trunk 14 to 20 N*s) and stays what it was on the head, the
+shoulder and the forearm (13, 7 and 10 N*s; why a blow adds nothing there was not looked into); the two pushes that arrive at 2.0 and
+2.5 m/s (`effector_push_chest` 17 to 21 N*s, `effector_push_chest_steps` three steps to five); the two get-ups
+with hands sent at the lying body (`getup_held`, `grab_getup_held`: the same story, other figures); and
+`replay_demo_hands`. One expectation was rewritten: `strike_punch_torso` wanted "a flinch and nothing else" and
+now wants one to four steps and a body that stands (`min_steps`, a new expectation, and `effector_strikes`,
+the number of blows). New: `strike_punch_belly_steps` (111 N*s, four steps), `effector_push_slow_no_blow` (a
+hand that arrives at 1.3 m/s and pushes is no blow).
+
+**Measured again, because written claims rest on the hands:** the grab's pulls 93 of 93 (the joint 294 N on
+average at most); one hand slows a get-up and two hold it, to the figure (from one hand 77 grips of 146 come
+off and 37 bodies stand within the 15 s, from two none; 144 of 150 stand in the end with either).
+
+**The desktop hand** goes at 8 m/s (`tools.hands.reach_speed_mps`, from 3) to what the camera aims at and
+`tools.hands.through_cm` (15) through it. A click is a punch; a button held is a hand that goes on through the
+body, which fells it. With nothing under the crosshair the reach is what it was (the wheel). An open hand (the
+G key) reaches as before, as far as the wheel has set, at `tools.hands.open_reach_speed_mps` (2): no blow when
+it arrives. An open hand that stopped 3 cm past the surface was tried and taken back: the body gives way by
+more than that, out of a grab's reach, and the session of three takes then differed from its replays by 7% of
+the hand's impulse (half a centimetre of the body's stance is a sixth of a push that is 3 cm deep). That
+session's touch is an open hand now; as a fist it had become a punch with steps (the bootstrap's step caught
+it: pelvis 7 and 12 cm apart).
+
+Open: in the headset a blow's strength comes from the speed of the owner's own hand, which no scenario has.
+
+### M4, doubling over, and the kick's strength (25 November, the owner's decisions)
+
+**The rule (the owner's choice of three).** A hit from the front into the belly or the solar plexus that
+brings 40 N*s or more makes an upright body double over for about two seconds: a jab does not, a punch with
+weight behind it and a kick do. A hit into the chest does not.
+
+**How the body knows.** The frame's largest contact has a point (`FeelImpulse`); it is into the belly when it
+is on the trunk, pushes the trunk backward (against the trunk's own forward, which is across the line of the
+hips and the line from the pelvis's joint to the neck's) and lies between two shares of that line
+(`reactions.double_over_from` -0.15 and `double_over_to` 0.53: from the groin, 82 cm on a standing body, to
+just under the chest's centre, 119 cm). What such frames bring beyond the pressure felt already is summed over
+one contact (a new one after `thresholds.flinch_window_s` without a touch there); when the sum reaches
+`reactions.double_over_ns` (40) and the body is Standing, in a Flinch or in a Stagger, it doubles over: once a
+contact. `poses.double_over` (the trunk 25 and 25 degrees forward, the head 20 down, the upper arms turned in
+and the forearms bent across the belly) comes in over `double_over_in_s` (0.2), is held until `double_over_s`
+(2.0) after the hit and goes out over `double_over_out_s` (0.8), by its own clock: it stays on a body that
+staggers, steps or falls, and a body that lies or gets up lets it go. Another such hit while it is on holds it
+for two seconds more. A body that falls, lies or gets up does not double over. The body tells its listeners
+(`double_over` in `control.events`; `control.double_overs`, `control.max_belly_hit_ns`; the expectation
+`double_overs`).
+
+**Where the threshold stands** (what one contact brings into the belly, by the body's own sum, N*s):
+
+| | belly sum | doubles over |
+| --- | --- | --- |
+| a punch with weight at 97, 105, 117 cm, and 8 cm to a side | 53 to 64 | yes |
+| a jab at 105 cm, 4 and 8 m/s | 22 to 26 | no |
+| a hand that pushes the belly (5 and 15 cm deep, 1.3 and 1.5 m/s) | 24 to 28 | no |
+| a punch into the chest at 128 cm | 0 | no |
+| a punch into the back at 105 cm | 0 | no |
+| a kick into the belly | 80 to 205 | yes |
+| a kick into the thigh or the calf | 0 | no |
+
+The body's sum is about half of what the hand delivers (63 of 112 N*s): what the hand goes on pressing with is
+pressure to the body, not hit. The zone's edges were moved twice by what the measurements showed. Its lower
+edge was at 95 cm at first: a punch at 97 cm then summed 37 N*s, because half its frames touched below the
+edge, and a kick that rises into the belly 12 to 15. Its upper edge was at 122 cm: a scripted impulse is felt at
+its body's centre of mass, the chest's is at 121 cm, and every "blow on the chest" of 80 and 200 N*s from the
+front doubled the body over: 20 scenarios changed, among them eight get-ups. With the edge at 119 cm three
+changed, the three in which the belly is struck.
+
+**What it changed.** The push matrix: 160 of 160, every run ends as it did. The knockdowns: 8 of 8. The stand
+on three seeds: 49, 50 and 49 of 50 with 38, 44 and 44 at the first attempt, the figures of before. The suite:
+96 of 101 keep their hashes. Changed by the doubling: `strike_punch_belly_steps` (still two to six steps and
+standing; doubled over once). Changed by the foot (below): the four `strike_kick_*`.
+
+**The kick.** With the foot of the night (5 kg, 1800 N) a kick into the belly was 96 N*s, no more than a
+punch, and the body took two steps. Six feet were tried on six kicks (36 runs, the body able to double over):
+
+| the foot | into the belly | with 0.1 s there | 10 cm deeper | from 40 cm to a side | thigh | calf |
+| --- | --- | --- | --- | --- | --- | --- |
+| 5 kg, 1800 N | 96, 2 steps | 129, 4 steps | 116, 5 steps | 81, 4 steps | 80, 3 steps | 51, a flinch |
+| 8 kg, 2500 N | 134, 3 steps | 150, falls | 159, falls | 113, 7 steps | 111, 4 steps | 65, 2 steps |
+| 8 kg, 3500 N | 170, falls | 175, falls | 204, falls | 143, 5 steps | 143, 5 steps | 72, 5 steps |
+| **10 kg, 3500 N** | 179, falls | 181, falls | 211, falls | 146, 3 steps | 142, 3 steps | 73, 5 steps |
+| 10 kg, 4500 N | 210, falls | 210, falls | 256, falls | 175, falls | 174, 3 steps | 78, 4 steps |
+| 12 kg, 4000 N | 197, falls | 197, falls | 235, falls | 163, 7 steps | 160, 3 steps | 75, 5 steps |
+
+Taken: 10 kg, 3500 N, 24000 N/m, one row past the first that fells with all three straight kicks. No joint
+goes faster than 23.4 rad/s with it (the limit is 30; 31.1 once with 4500 N), none stretches more than 0.11 cm.
+It is the foot's strength that fells, not the folding: with the doubling switched off
+(`reactions.double_over_ns=0`) the three straight kicks of this foot fell the body as well (179, 181 and
+211 N*s, after three to four steps). (The night's "8 kg and 3500 N: 166 N*s, seven steps" was a softer
+spring, 16000 N/m against 24000, and is no comparison.) `strike_kick_torso` (10 cm into the
+belly and back: 130 N*s) wanted a body that stands and now wants one that falls, doubled over, by the fall's
+criteria; the kick into the thigh is 108 N*s and six steps, into the calf 75 N*s and five.
+
+Looked at (`Saved\Films\strike_punch_belly_steps`, `strike_kick_torso`): punched, the body steps back, folds
+with its forearms across its belly and its head down, stands so for two seconds in the stance its steps left it
+in, straightens and brings its feet together; kicked, it folds, sits down backward and rolls onto its back with
+its knees up and its hands at its belly, then lets go.
+
+Open: the doubled-over body stands as well as any other (its legs are not weaker); a blow into the belly of a
+body that is getting up does not double it over; nothing of this has been seen in the headset.
+
+### M4, the desktop's kick as a thrust, and the knockdown by a hit on the head (25 November, after the owner's second look)
+
+The owner tried the punch (good: "looks like a punch") and the kick: weak. What he wants of a kick: straight
+into the head, the head is thrown back and the body falls; into the belly, the body doubles over and falls.
+
+**Why the desktop's kick was weak where the scenarios' was not.** The desktop's foot went in one line from
+where it rests, a metre under the camera, to the point aimed at: into a belly at 54 degrees upward, into a head
+at 65. The night's scenarios kicked at 28 degrees. A kick is now a thrust: the foot comes up to the height of
+the point `tools.kick.chamber_cm` (50) before it and goes level from there, the way the camera looks, to
+`tools.kick.through_cm` (15) through it, and back the same way; a leg reaches 150 cm from where the foot rests
+(`tools.kick.reach_cm`, from 130: a head was just out of it). With the foot of 10 kg and 3500 N, kicked from a
+rest at (12, 75, 60) cm:
+
+| | level thrust | one line from the rest (as it was) |
+| --- | --- | --- |
+| head | 54 N*s, five steps | 39 N*s, three steps |
+| chest | 138 N*s, falls | 93 N*s, falls |
+| belly | 156 N*s, doubles over and falls | 145 N*s, doubles over and falls |
+| thigh | 157 N*s, four steps | 169 N*s, three steps |
+
+**The head does not fall to momentum.** Thrust 30 cm through instead of 15, the kick felled the body from three
+points of nine on the head, 6 to 8 cm apart (68 to 108 N*s), and not from the other six (41 to 73 N*s; from a
+side and from behind: three steps): the head is a small round thing on a soft neck and the foot slides off it. A figure
+that changes with the centimetre is a scenario on an edge; depth was left at 15 cm.
+
+**The knockdown** (`reactions.knockdown_head_ns`, 35). What one contact brings onto the head, by the body's own
+sum as for the belly, takes the legs from under an upright body when it reaches 35 N*s: the body goes into
+Falling at once, falls by the fall's own pose and muscles, lies, and gets up as after any fall. From any side.
+A body that falls, lies or gets up is not knocked down again. Where the threshold stands:
+
+| on the head | the body's sum, N*s | knocked down |
+| --- | --- | --- |
+| a jab, 4 and 8 m/s | 14 to 17 | no |
+| a punch with weight at three heights, a hook from the side | 20 to 27 | no |
+| a scripted blow of 30 N*s (the M3 table's row) | 30 | no |
+| a kick at nine points of the head, from a side, from behind, 15 cm deep | 35 to 76 | yes, all twelve |
+
+One kick of the twelve, a glancing one on the crown, is at 35.4: either way would do for it.
+
+**What it changed.** The suite: the 101 scenarios of before keep their hashes (no scenario brought 35 N*s onto
+a head; the desktop's kick is in no scenario); new `strike_kick_head_knockdown` (the head thrown back, the body
+on its back half a second later; `Saved\Films\strike_kick_head_knockdown`), and the expectation `knockdowns`.
+**The push matrix: 160 of 160 by the owner's M3 rules, but six cells of the 80 N*s row end otherwise: a blow of
+80 N*s on the head now fells the body where it stepped (stepped 35 and fell 2 became stepped 29 and fell 8).**
+The knockdowns of the fall's criteria: 8 of 8, unchanged. The stand on three seeds: 50, 50 and 49 of 50 with
+43, 45 and 44 at the first attempt (49, 50, 49 with 38, 44, 44): those of its falls that begin with a blow on
+the head are other falls now.
+
+Open: a hand's hit on the head in the headset can reach 35 N*s if it stays on the head (a punch here brings
+27 at most); a kick has no source in the headset; a knocked-down body gets up as fast as any other.
+
 ### The machine's reboot of 24 November 2026, 22:03
 
 The fifth launch in the headset that evening ended in a blue screen and a reboot. What the logs say:

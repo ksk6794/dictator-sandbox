@@ -57,7 +57,9 @@ enum class ESandboxBodyEventType : uint8
 	StateChanged,
 	/** Something took hold of a part of the body, or let go of it (USandboxBodyController::TellHolds). */
 	Grabbed,
-	Released
+	Released,
+	/** The body doubled over: a hit into the belly or the solar plexus (reactions.double_over_*). */
+	DoubledOver
 };
 
 /**
@@ -332,6 +334,13 @@ public:
 	 */
 	double GetContactImpulseNs() const { return ContactImpulseNs; }
 	int32 GetContactReportCount() const { return ContactReports; }
+	/** Times the body doubled over (reactions.double_over_*), how much of that pose it has now, 0 to 1, and the largest hit a contact brought into the belly, N*s. */
+	int32 GetDoubleOverCount() const { return DoubleOvers; }
+	double GetDoubledWeight() const { return DoubledWeight; }
+	double GetMaxBellyHitNs() const { return MaxBellyHitNs; }
+	/** Times a hit on the head took the legs from under the body (reactions.knockdown_head_ns), and the largest hit a contact brought onto the head, N*s. */
+	int32 GetKnockdownCount() const { return Knockdowns; }
+	double GetMaxHeadHitNs() const { return MaxHeadHitNs; }
 
 	bool IsStarted() const { return bStarted; }
 	/** The values of the current state, as the tuning files and overrides give them. */
@@ -510,6 +519,27 @@ private:
 	FVector FrameImpulseNs = FVector::ZeroVector;
 	FVector2D FrameMomentNsCm = FVector2D::ZeroVector;
 	FName FrameBone;
+	/** Where that largest contact of the frame touched the body, cm. */
+	FVector FramePointCm = FVector::ZeroVector;
+	/**
+	 * Doubling over: what the contact that is going on has brought into the belly from the front, N*s, when
+	 * the belly last felt it, whether that contact has doubled the body over already; until when the pose is
+	 * held and how much of it is on now; counts for whoever measures.
+	 */
+	double BellyHitNs = 0.0;
+	double BellyFeltS = 0.0;
+	bool bBellyDoubled = false;
+	double DoubledUntilS = -1.0;
+	double DoubledWeight = 0.0;
+	int32 DoubleOvers = 0;
+	double MaxBellyHitNs = 0.0;
+	bool IsIntoBelly(FName Bone, const FVector& PointCm, const FVector& HitNs) const;
+	/** A knockdown: what the contact that is going on has brought onto the head, N*s, when the head last felt it, whether it has felled the body already; counts for whoever measures. */
+	double HeadHitNs = 0.0;
+	double HeadFeltS = 0.0;
+	bool bHeadFelled = false;
+	int32 Knockdowns = 0;
+	double MaxHeadHitNs = 0.0;
 	double FrameBoneImpulseNs = 0.0;
 	/** The felt force smoothed over reactions.pressure_s, N: what an impulse has to exceed to be a hit. */
 	FVector PressureN = FVector::ZeroVector;

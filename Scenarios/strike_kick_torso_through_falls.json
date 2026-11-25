@@ -76,6 +76,7 @@
     "max_effector_penetration_cm": 1,
     "max_energy_gain_j": 40,
     "max_rest_after_fall_s": 3,
-    "max_body_penetration_cm": 2.0
+    "max_body_penetration_cm": 2.0,
+    "double_overs": 1
   }
 }

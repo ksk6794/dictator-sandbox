@@ -932,6 +932,28 @@ All eight verbs on desktop, one- and two-handed grab and drag, the kick effector
 
 Order, decided by the owner on 24 November 2026: the hands reach the headset first.
 
+**The blow (25 November 2026, the owner's decision after his look at the desktop session).** Punches and the
+kick looked weak. Decided: a punch into the chest makes the body step; into the solar plexus or the belly it
+also doubles over for a couple of seconds; a kick there fells it. Step 1, done: a hand that comes fast has, for
+0.15 s, the arm behind it (`effectors.hand.strike_*`: up to 900 N and 9000 N/m, graded by the speed it arrived
+at; pushing, holding and dragging keep the 300 N, so "one hand slows a get-up, two hold it" and "a lying body
+is dragged by two" stand, measured again). A punch with weight behind it: chest 77 to 83 N*s, belly 104 to
+113 N*s, the body steps two to four times; a jab 23 to 31 N*s. The desktop hand goes at 8 m/s to what the
+camera aims at and 15 cm through it. Step 2, done: the reaction "doubled over". A hit from the front into the
+belly or the solar plexus (from the groin to just under the chest's centre) that brings 40 N*s or more makes an
+upright body double over for two seconds (`reactions.double_over_*`, `poses.double_over`): a punch with weight
+behind it and a kick do, a jab, a push and a hit into the chest do not. The push matrix (160 of 160, every run
+ending as before), the knockdowns and the stand (49, 50 and 49 of 50) are as they were. Step 3, done: the foot
+is 10 kg on 3500 N (from 5 kg and 1800 N, which was no more than a punch): a kick into the belly is 130 to
+211 N*s and fells the body, which goes down doubled over; into the thigh 108 N*s and steps. Figures in
+`docs/testing.md`, "M4, the blow" and "M4, doubling over, and the kick's strength". The owner's look on the
+desktop that day: the punch is right; the kick weak. Step 4, done: the desktop's kick is a level thrust (it came
+from a metre under the camera at 54 to 65 degrees upward), and a hit on the head that brings 35 N*s or more
+knocks an upright body down (`reactions.knockdown_head_ns`: every kick into the head of twelve, no punch).
+**This changes six cells of the M3 push matrix, which still passes by its rules: a blow of 80 N*s on the head
+now fells the body where it stepped.** Figures in "M4, the desktop's kick as a thrust, and the knockdown by a
+hit on the head". For the owner to look at on the desktop and in the headset.
+
 **Built on the night of 24 to 25 November 2026 in the owner's absence, on the owner's word to work by the plan and to decide by the data; every item is for the owner to confirm or to take back.** Nothing of it changes a run of before: the 73 scenarios that existed keep their hashes, and what changes behaviour is off until it is switched on. The measurements and what was found on the way are in `docs/testing.md` (the sections of that night); the code was read by an independent reviewer nine times, and what each reading found was fixed.
 
 | What | Part | How it is switched on | State |
@@ -939,7 +961,7 @@ Order, decided by the owner on 24 November 2026: the hands reach the headset fir
 | The open hand as a body | 2 | `effectors.hand.palm_collides` | off; waits for the owner's look at the plate in the headset |
 | The grab: a closing grip takes hold of the body or a thing within 3 cm | 3 | `effectors.hand.grab`; a session: `Tools\play.ps1 -Grab` (G opens the hands on the desktop) | off; 9 scenarios `grab_*`, 93 pulls, the rule "one hand slows a get-up, two hold it" measured on the stand |
 | A thing that is held keeps its direction in the hand, and is taken by its handle if it names one | 4 | with the grab | a stick taken by its end can be swung at the arm |
-| The kick: a foot of 5 kg on a spring capped at 1800 N | 5 | scenarios name `foot_right`; on the desktop the F key | additive; 4 scenarios; no kick in the headset yet |
+| The kick: a foot of 10 kg on a spring capped at 3500 N (5 kg and 1800 N that night) | 5 | scenarios name `foot_right`; on the desktop the F key | additive; 4 scenarios; no kick in the headset yet |
 | Things with mass in a scenario (`"props"`) | 4 | a scenario lists them | additive; 11 scenarios `prop_*` |
 | A thing as support for the body | 4 | `reactions.thing_support` | off; on a movable plate the body then stands, steps and gets up; the rule's limits are listed |
 | A body's event stream has the grab and its release | 3 | always | reporting only |

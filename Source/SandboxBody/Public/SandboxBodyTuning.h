@@ -444,6 +444,28 @@ struct FSandboxReactionTuning
 	/** How far the struck body's joint gives way along the hit at full weight. Degrees. */
 	double FlinchGiveDeg = 0.0;
 	/**
+	 * Doubling over. A hit from the front into the belly or the solar plexus that brings this much, N*s, beyond
+	 * what was pressing already, makes an upright body double over: poses.double_over comes in over
+	 * DoubleOverInS, is held until DoubleOverS after the hit and goes out over DoubleOverOutS, by its own clock
+	 * whatever the body's state. 0: the body does not double over.
+	 */
+	double DoubleOverNs = 0.0;
+	double DoubleOverS = 0.0;
+	double DoubleOverInS = 0.0;
+	double DoubleOverOutS = 0.0;
+	/**
+	 * The belly, as a stretch of the line from the pelvis's joint to the neck's: a hit whose point lies between
+	 * these two shares of it (0 the pelvis, 1 the base of the neck) is one into the belly or the solar plexus.
+	 */
+	double DoubleOverFrom = 0.0;
+	double DoubleOverTo = 0.0;
+	/**
+	 * A knockdown. A hit on the head that brings this much, N*s, beyond what was pressing already, summed over
+	 * one contact, takes the legs from under an upright body: it falls, as it falls when its posture gives
+	 * way, and gets up again as after any fall. A kick does it, a punch does not. 0: never.
+	 */
+	double KnockdownHeadNs = 0.0;
+	/**
 	 * What the body feels is split in two: pressure, the felt force smoothed over this time, and the hit, the
 	 * impulse beyond that pressure. Only a hit makes the body flinch, so a hand held against it is felt once,
 	 * as it lands, and not again for as long as it presses. Seconds.
@@ -505,6 +527,11 @@ struct FSandboxPoseTuning
 	 * reactions.flinch_pose_full_ns: the shoulders rise and the head draws in.
 	 */
 	FSandboxPose Flinch;
+	/**
+	 * Added on top of the pose while the body is doubled over (reactions.double_over_*): the trunk bends
+	 * forward, the head goes down, the forearms come in front of the belly.
+	 */
+	FSandboxPose DoubleOver;
 	/**
 	 * What a body that falls does with itself, by the way it goes down: backward it sits down and curls up with the
 	 * chin on the chest and the hands behind it; forward the hands go out in front and the knees bend; sideways

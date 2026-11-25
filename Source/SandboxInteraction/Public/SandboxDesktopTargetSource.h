@@ -70,8 +70,9 @@ private:
 		/** A kick that was asked for and begins with the next Update, and where it is to go. */
 		bool bAsked = false;
 		FVector AskedPoint = FVector::ZeroVector;
-		/** A kick under way: where it turns back, and how far along it is, 0 to 1 out and 1 to 2 back. */
+		/** A kick under way: where its thrust begins, where it turns back, and how far along it is, 0 to 1 out and 1 to 2 back. */
 		bool bKicking = false;
+		FVector Chamber = FVector::ZeroVector;
 		FVector Strike = FVector::ZeroVector;
 		double Phase = 0.0;
 		/** After a kick: for how long the foot still has its whole strength, s. */

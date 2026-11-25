@@ -54,6 +54,11 @@ namespace
 			Visitor(FString::Printf(TEXT("effectors.%s.grab_hold_max_torque_nm"), Kind), Values.GrabHoldMaxTorqueNm);
 			Visitor(FString::Printf(TEXT("effectors.%s.grab_handle_cm"), Kind), Values.GrabHandleCm);
 			Visitor(FString::Printf(TEXT("effectors.%s.grab_draw_s"), Kind), Values.GrabDrawS);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_force_n"), Kind), Values.StrikeForceN);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_stiffness_n_per_m"), Kind), Values.StrikeStiffnessNPerM);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_s"), Kind), Values.StrikeS);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_speed_mps"), Kind), Values.StrikeSpeedMps);
+			Visitor(FString::Printf(TEXT("effectors.%s.strike_full_speed_mps"), Kind), Values.StrikeFullSpeedMps);
 		};
 		Effector(TEXT("hand"), Tuning.Hand);
 		Body(TEXT("foot"), Tuning.Foot);
@@ -63,11 +68,14 @@ namespace
 		Visitor(FString(TEXT("tools.hands.rest_down_cm")), Tuning.Tools.HandRestDownCm);
 		Visitor(FString(TEXT("tools.hands.reach_cm")), Tuning.Tools.HandReachCm);
 		Visitor(FString(TEXT("tools.hands.reach_speed_mps")), Tuning.Tools.HandReachSpeedMps);
+		Visitor(FString(TEXT("tools.hands.through_cm")), Tuning.Tools.HandThroughCm);
+		Visitor(FString(TEXT("tools.hands.open_reach_speed_mps")), Tuning.Tools.HandOpenReachSpeedMps);
 		Visitor(FString(TEXT("tools.kick.rest_forward_cm")), Tuning.Tools.KickRestForwardCm);
 		Visitor(FString(TEXT("tools.kick.rest_right_cm")), Tuning.Tools.KickRestRightCm);
 		Visitor(FString(TEXT("tools.kick.rest_down_cm")), Tuning.Tools.KickRestDownCm);
 		Visitor(FString(TEXT("tools.kick.speed_mps")), Tuning.Tools.KickSpeedMps);
 		Visitor(FString(TEXT("tools.kick.through_cm")), Tuning.Tools.KickThroughCm);
+		Visitor(FString(TEXT("tools.kick.chamber_cm")), Tuning.Tools.KickChamberCm);
 		Visitor(FString(TEXT("tools.kick.reach_cm")), Tuning.Tools.KickReachCm);
 		Visitor(FString(TEXT("tools.kick.rest_force_n")), Tuning.Tools.KickRestForceN);
 		Visitor(FString(TEXT("tools.kick.settle_s")), Tuning.Tools.KickSettleS);
@@ -194,7 +202,12 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 		!CheckRange(TEXT("effectors.hand.grab_hold_damping_s"), Hand.GrabHoldDampingS, 0.0, 2.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.grab_hold_max_torque_nm"), Hand.GrabHoldMaxTorqueNm, 0.0, 5000.0, true, OutError) ||
 		!CheckRange(TEXT("effectors.hand.grab_handle_cm"), Hand.GrabHandleCm, 0.0, 100.0, false, OutError) ||
-		!CheckRange(TEXT("effectors.hand.grab_draw_s"), Hand.GrabDrawS, 0.0, 5.0, false, OutError))
+		!CheckRange(TEXT("effectors.hand.grab_draw_s"), Hand.GrabDrawS, 0.0, 5.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_force_n"), Hand.StrikeForceN, 0.0, 10000.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_stiffness_n_per_m"), Hand.StrikeStiffnessNPerM, 0.0, 100000.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_s"), Hand.StrikeS, 0.0, 2.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_speed_mps"), Hand.StrikeSpeedMps, 0.0, 30.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.strike_full_speed_mps"), Hand.StrikeFullSpeedMps, 0.0, 30.0, false, OutError))
 	{
 		return false;
 	}
@@ -227,11 +240,14 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 		!CheckRange(TEXT("tools.hands.rest_down_cm"), Tools.HandRestDownCm, 0.0, 200.0, false, OutError) ||
 		!CheckRange(TEXT("tools.hands.reach_cm"), Tools.HandReachCm, 0.0, 300.0, true, OutError) ||
 		!CheckRange(TEXT("tools.hands.reach_speed_mps"), Tools.HandReachSpeedMps, 0.0, 30.0, true, OutError) ||
+		!CheckRange(TEXT("tools.hands.through_cm"), Tools.HandThroughCm, 0.0, 100.0, false, OutError) ||
+		!CheckRange(TEXT("tools.hands.open_reach_speed_mps"), Tools.HandOpenReachSpeedMps, 0.0, 30.0, true, OutError) ||
 		!CheckRange(TEXT("tools.kick.rest_forward_cm"), Tools.KickRestForwardCm, -200.0, 200.0, false, OutError) ||
 		!CheckRange(TEXT("tools.kick.rest_right_cm"), Tools.KickRestRightCm, -200.0, 200.0, false, OutError) ||
 		!CheckRange(TEXT("tools.kick.rest_down_cm"), Tools.KickRestDownCm, 0.0, 300.0, false, OutError) ||
 		!CheckRange(TEXT("tools.kick.speed_mps"), Tools.KickSpeedMps, 0.0, 30.0, true, OutError) ||
 		!CheckRange(TEXT("tools.kick.through_cm"), Tools.KickThroughCm, 0.0, 200.0, false, OutError) ||
+		!CheckRange(TEXT("tools.kick.chamber_cm"), Tools.KickChamberCm, 0.0, 200.0, false, OutError) ||
 		!CheckRange(TEXT("tools.kick.reach_cm"), Tools.KickReachCm, 0.0, 500.0, true, OutError) ||
 		!CheckRange(TEXT("tools.kick.rest_force_n"), Tools.KickRestForceN, 0.0, 10000.0, true, OutError) ||
 		!CheckRange(TEXT("tools.kick.settle_s"), Tools.KickSettleS, 0.0, 5.0, false, OutError) ||

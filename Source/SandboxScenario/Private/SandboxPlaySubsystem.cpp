@@ -461,27 +461,30 @@ void USandboxPlaySubsystem::TickDemo()
 		case 5:
 			Player->SelectTool(ESandboxTool::Hands);
 			Player->SetView(Chest + FVector(0.0, 85.0, 0.0), FRotator(0.0, -90.0, 0.0));
+			// The hands are open for all three takes: a fist that is sent at the body is a punch, and the body
+			// steps; an open hand reaches.
+			Player->SetHandsOpen(true);
 			break;
 		case 60:
 		case 260:
 		case 460:
 			Player->RequestNewTake();
 			break;
-		// A touch, not a shove: the hand turns back as it arrives. A shove leaves the body on the edge of a
+		// A touch, not a shove: an open hand (2 m/s, no blow), which turns back as it arrives. A shove leaves the body on the edge of a
 		// second step, where the smallest difference between the session and its replay tells two stories.
 		// And a second into the take, not at once: a fresh body is still bringing its arms down.
 		case 160:
 		case 560:
 			Player->SetSecondary(true);
 			break;
-		case 174:
-		case 574:
+		case 179:
+		case 579:
 			Player->SetSecondary(false);
 			break;
 		case 360:
 			Player->SetPrimary(true);
 			break;
-		case 374:
+		case 379:
 			Player->SetPrimary(false);
 			break;
 		case 700:

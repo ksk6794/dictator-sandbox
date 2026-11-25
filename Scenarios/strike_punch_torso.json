@@ -1,36 +1,76 @@
 {
   "name": "strike_punch_torso",
-  "duration_s": 6.0,
+  "duration_s": 9.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
     "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
     "attached_meshes": [
       "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
     ],
-    "location_cm": [0, 0, 0],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
     "control": "active"
   },
-  "camera": {"location_cm": [-150, 230, 140], "look_at_cm": [0, 0, 105]},
+  "camera": {
+    "location_cm": [
+      -150,
+      230,
+      140
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      105
+    ]
+  },
   "events": [
     {
       "t": 3.0,
       "type": "effector",
       "effector": "hand_right",
       "path": [
-        {"t": 0.0, "location_cm": [0, 70, 108]},
-        {"t": 0.0875, "location_cm": [0, 0, 108]},
-        {"t": 0.4875, "location_cm": [0, 70, 108]}
+        {
+          "t": 0.0,
+          "location_cm": [
+            0,
+            70,
+            108
+          ]
+        },
+        {
+          "t": 0.0875,
+          "location_cm": [
+            0,
+            0,
+            108
+          ]
+        },
+        {
+          "t": 0.4875,
+          "location_cm": [
+            0,
+            70,
+            108
+          ]
+        }
       ]
     }
   ],
   "expect": {
     "fell": false,
-    "state_sequence": "standing>flinch>standing",
     "min_effector_impact_speed_mps": 8.0,
-    "min_effector_impulse_ns": 5,
+    "min_effector_impulse_ns": 35,
     "max_joint_stretch_cm": 2.0,
     "max_joint_speed_rads": 30,
     "max_effector_penetration_cm": 1,
-    "min_struck_displacement_cm": 3
+    "min_struck_displacement_cm": 3,
+    "min_steps": 1,
+    "max_steps": 4,
+    "end_state": "standing",
+    "effector_strikes": 1,
+    "double_overs": 0
   }
 }

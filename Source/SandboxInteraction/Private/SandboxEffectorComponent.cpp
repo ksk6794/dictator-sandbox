@@ -194,12 +194,12 @@ void USandboxEffectorComponent::ApplyTuning(const FSandboxEffectorTuning& InTuni
 	}
 	SetMassOverrideInKg(NAME_None, static_cast<float>(Tuning.MassKg), /*bOverrideMass*/ true);
 	// (The share is 1 for every effector but a foot at rest, and a product with 1 is the number itself.)
-	Spring.SetLinear(Tuning.StiffnessNPerM, Tuning.DampingS, Tuning.MaxForceN * ForceShare);
+	Spring.SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
 	Spring.SetAngular(Tuning.AngularStiffnessNmPerRad, Tuning.AngularDampingS, Tuning.MaxTorqueNm);
 	if (PalmBody)
 	{
 		PalmBody->SetMassOverrideInKg(NAME_None, static_cast<float>(Tuning.PalmMassKg), /*bOverrideMass*/ true);
-		PalmSpring.SetLinear(Tuning.StiffnessNPerM, Tuning.DampingS, Tuning.MaxForceN * ForceShare);
+		PalmSpring.SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
 		PalmSpring.SetAngular(Tuning.AngularStiffnessNmPerRad, Tuning.AngularDampingS, Tuning.MaxTorqueNm);
 	}
 }
@@ -217,8 +217,24 @@ void USandboxEffectorComponent::SetForceShare(double Share)
 	{
 		// The cap of the spring that holds the hand now; the other one gets it when it takes over (SwitchBody
 		// and ApplyTuning set the whole cap, and an effector that changes its body is never one that rests weak).
-		ActiveSpring().SetLinear(Tuning.StiffnessNPerM, Tuning.DampingS, Tuning.MaxForceN * ForceShare);
+		ActiveSpring().SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
 	}
+}
+
+double USandboxEffectorComponent::StiffnessNow() const
+{
+	// A cap alone does little for a blow: the spring asks for its stiffness times the gap, and a target 15 cm
+	// inside a body is 450 N at the hand's 3000 N/m. A blow has a stiffness of its own.
+	return bStrikeOn && Tuning.StrikeForceN > Tuning.MaxForceN && Tuning.StrikeStiffnessNPerM > Tuning.StiffnessNPerM
+		? Tuning.StiffnessNPerM + StrikeShare * (Tuning.StrikeStiffnessNPerM - Tuning.StiffnessNPerM)
+		: Tuning.StiffnessNPerM;
+}
+
+double USandboxEffectorComponent::CapNow() const
+{
+	// The spring's cap as things are: the hand's own, or a blow's while one lasts, and of that the share a
+	// source gives the effector (1 for all but a resting foot).
+	return (bStrikeOn && Tuning.StrikeForceN > Tuning.MaxForceN ? Tuning.MaxForceN + StrikeShare * (Tuning.StrikeForceN - Tuning.MaxForceN) : Tuning.MaxForceN) * ForceShare;
 }
 
 FBodyInstance* USandboxEffectorComponent::ActiveBody() const
@@ -414,7 +430,7 @@ void USandboxEffectorComponent::SwitchBody(bool bToPalm)
 			Plate->SetLinearVelocity(Linear + FVector::CrossProduct(Angular, Arm), /*bAddToCurrent*/ false);
 			Plate->SetAngularVelocityInRadians(Angular, /*bAddToCurrent*/ false);
 			PalmSpring.Attach(Plate, FTransform(-PalmOffset()), this, /*bAngular*/ true);
-			PalmSpring.SetLinear(Tuning.StiffnessNPerM, Tuning.DampingS, Tuning.MaxForceN * ForceShare);
+			PalmSpring.SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
 			PalmSpring.SetAngular(Tuning.AngularStiffnessNmPerRad, Tuning.AngularDampingS, Tuning.MaxTorqueNm);
 		}
 	}
@@ -433,7 +449,7 @@ void USandboxEffectorComponent::SwitchBody(bool bToPalm)
 			Ball->SetLinearVelocity(Linear, /*bAddToCurrent*/ false);
 			Ball->SetAngularVelocityInRadians(Angular, /*bAddToCurrent*/ false);
 			Spring.Attach(Ball, FTransform::Identity, this, /*bAngular*/ true);
-			Spring.SetLinear(Tuning.StiffnessNPerM, Tuning.DampingS, Tuning.MaxForceN * ForceShare);
+			Spring.SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
 			Spring.SetAngular(Tuning.AngularStiffnessNmPerRad, Tuning.AngularDampingS, Tuning.MaxTorqueNm);
 		}
 	}
@@ -457,6 +473,31 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 	}
 	// How strongly the target is to be followed from this step on (1 for all but a resting foot).
 	SetForceShare(Target.Strength);
+	// A blow. A hand that came fast and has met something has, for a moment, the arm's push behind it: a
+	// higher force cap (effectors.hand.strike_force_n for strike_s). A hand that pushes, holds or drags has
+	// the cap it always had. Without it a punch was as hard as the time it stayed in the body, at 300 N.
+	if (Grab.IsAttached())
+	{
+		// A hand that holds something strikes with nothing, and a blow that was landing as it took hold does
+		// not come back when it lets go.
+		StrikeLeftS = 0.0;
+	}
+	if (StrikeLeftS > 0.0)
+	{
+		if (!bStrikeOn)
+		{
+			bStrikeOn = true;
+			++Stats.Strikes;
+			ActiveSpring().SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
+		}
+		StrikeLeftS -= DeltaTime;
+	}
+	else if (bStrikeOn)
+	{
+		bStrikeOn = false;
+		StrikeLeftS = 0.0;
+		ActiveSpring().SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
+	}
 	// The contacts reported since the last Update belong to the step that has just ended.
 	Stats.LastFrameImpulseNs = ImpulseFrame == Frame ? FrameImpulseNs.Size() : 0.0;
 	++Frame;
@@ -756,6 +797,22 @@ void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent,
 	const double SizeNs = NormalImpulse.Size() * 0.01;
 	if (ImpulseFrame != Frame)
 	{
+		// The first touch after a frame without one, by a hand that was fast as the step began: a blow lands.
+		// How much of one grows with the speed it came at, from none at strike_speed_mps to all of it at
+		// strike_full_speed_mps, so that no speed is an edge between a push and a punch.
+		// One at a time: a hand that leaves what it struck for a frame and meets it again is the same blow.
+		if (ImpulseFrame < Frame - 1 && StrikeLeftS <= 0.0 && !bStrikeOn && Tuning.StrikeForceN > Tuning.MaxForceN && !Grab.IsAttached())
+		{
+			const double SpeedMps = StepStartSpeedCmS * 0.01;
+			const double Share = Tuning.StrikeFullSpeedMps > Tuning.StrikeSpeedMps
+				? FMath::Clamp((SpeedMps - Tuning.StrikeSpeedMps) / (Tuning.StrikeFullSpeedMps - Tuning.StrikeSpeedMps), 0.0, 1.0)
+				: (SpeedMps >= Tuning.StrikeSpeedMps ? 1.0 : 0.0);
+			if (Share > 0.0)
+			{
+				StrikeLeftS = Tuning.StrikeS;
+				StrikeShare = Share;
+			}
+		}
 		ImpulseFrame = Frame;
 		FrameImpulseNs = FVector::ZeroVector;
 		++Stats.ContactFrames;
