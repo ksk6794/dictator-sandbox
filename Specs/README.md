@@ -217,4 +217,8 @@ takes the table's -y side and -x end and the chair's +x side and back to be open
 ]
 ```
 
-Limitations: box shape only, engine grid material, no windows or doors; furniture is static boxes.
+A piece may have `mass_kg`: it is then a thing with mass and no part of the map. A scenario (or a session) that loads the map puts it into the world as a prop of the piece's name (`FScenarioSpec::AddRoomProps`), unless the scenario lists a prop of that name itself; the
+pieces' places are read from the spec in the project's folder, so a change needs no new map, only one for a piece that becomes static or movable.
+`movable_room.json` is `getup_room.json` with a table of 30 kg and a chair of 5 kg (`Tools\getup-stand.ps1 -FurnitureRoom movable_room`).
+
+Limitations: box shape only, engine grid material, no windows or doors; furniture without `mass_kg` is static boxes.

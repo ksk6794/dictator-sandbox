@@ -56,6 +56,7 @@ param(
     [double]$PressFromS = 5.0,
     [double]$PressForS = 20.0,
     [string]$PropsFile,
+    [string]$FurnitureRoom = 'getup_room',
     [int]$HoldHands = 0,
     [string]$HoldBone = 'spine_04',
     [double]$HoldFromS = 5.5,
@@ -93,7 +94,7 @@ function Roll([double]$from, [double]$to) { return $from + ($to - $from) * $dice
 function Pick($items) { return $items[$dice.Next($items.Count)] }
 
 # The room and its furniture, from the spec. A piece's footprint is the rectangle of floor its boxes stand over.
-$roomSpec = Read-JsonFile (Join-Path $RepoRoot 'Specs\rooms\getup_room.json')
+$roomSpec = Read-JsonFile (Join-Path $RepoRoot "Specs\rooms\$FurnitureRoom.json")
 $roomMap = $roomSpec.output
 $halfX = [double]$roomSpec.size_cm[0] / 2.0
 $halfY = [double]$roomSpec.size_cm[1] / 2.0
@@ -123,7 +124,7 @@ foreach ($piece in @($roomSpec.furniture)) {
 $tableAt = $footprints['table']
 $chairAt = $footprints['chair']
 if (-not $tableAt -or -not $chairAt) {
-    Write-Output 'GETUP STAND ERROR: Specs\rooms\getup_room.json has no furniture named "table" and "chair"'
+    Write-Output "GETUP STAND ERROR: Specs\rooms\$FurnitureRoom.json has no furniture named 'table' and 'chair'"
     exit 2
 }
 # How far a point is from the nearest box of the furniture, cm. Further than 60 cm over the floor from a piece

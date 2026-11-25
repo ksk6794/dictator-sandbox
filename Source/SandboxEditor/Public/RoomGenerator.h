@@ -29,6 +29,8 @@ struct FRoomFurnitureSpec
 	FVector LocationCm = FVector::ZeroVector;
 	double YawDeg = 0.0;
 	TArray<FRoomBoxSpec> Boxes;
+	/** "mass_kg": above 0 the piece is a thing with mass, which the scenario or the session puts into the world when it loads this map (FScenarioSpec), and not a static part of the map. */
+	double MassKg = 0.0;
 };
 
 /**

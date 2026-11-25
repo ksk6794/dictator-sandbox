@@ -95,6 +95,10 @@ bool FRoomSpec::LoadFile(const FString& FilePath, FRoomSpec& OutSpec, FString& O
 				}
 				Piece.Boxes.Add(Box);
 			}
+			if (PieceJson->HasField(TEXT("mass_kg")) && (!PieceJson->TryGetNumberField(TEXT("mass_kg"), Piece.MassKg) || Piece.MassKg <= 0.0))
+			{
+				return Fail(Context + TEXT(".mass_kg must be a number above 0"));
+			}
 			OutSpec.Furniture.Add(Piece);
 		}
 	}
@@ -160,6 +164,10 @@ bool FRoomGenerator::Generate(const FRoomSpec& Spec, FString& OutError)
 	// Furniture: static boxes, each piece turned about the vertical where it stands.
 	for (const FRoomFurnitureSpec& Piece : Spec.Furniture)
 	{
+		if (Piece.MassKg > 0.0)
+		{
+			continue; // A thing with mass is put into the world by the scenario, not into the map.
+		}
 		const FRotator Turn(0.0, Piece.YawDeg, 0.0);
 		for (int32 BoxIndex = 0; BoxIndex < Piece.Boxes.Num(); ++BoxIndex)
 		{

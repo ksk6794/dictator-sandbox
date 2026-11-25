@@ -202,7 +202,8 @@ the `state` the body is in, and for a hit the `bone` and `impulse_ns`, for a cha
 A scenario may put things with mass into its world: `"props": [ { "name": "box", "size_cm": [40, 40, 45],
 "mass_kg": 5, "location_cm": [150, 60, 22.5], "rotation_deg": [0, 0, 0] } ]`. A prop may add `"handle_cm": [40, 0, 0]`,
 a point of it from its middle that a hand takes it by when it closes near it (`effectors.hand.grab_handle_cm`;
-a hand's `handle_grabs`, the expectation `effector_handle_grabs`). Each is a box that is
+a hand's `handle_grabs`, the expectation `effector_handle_grabs`). In place of `size_cm` it may list `"boxes": [ { "center_cm": [0, 0, 73],
+"size_cm": [120, 70, 4] }, ... ]`: the thing is these boxes as one body (a table: its top and four legs), and `location_cm` is then its own origin, from which the boxes' middles are measured. Each is a box that is
 simulated from the first step (`location_cm` is its middle; put it on the floor, not in it), collides with the
 floor, the character and the hands, and can be taken hold of by a hand with the grab on (a hand's
 `last_grabbed` then reads `Prop_<name>`). `props` in `metrics.json` has, for each: `mass_kg`,

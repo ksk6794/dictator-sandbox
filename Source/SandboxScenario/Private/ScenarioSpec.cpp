@@ -352,14 +352,35 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			FScenarioProp& Out = OutSpec.Props.AddDefaulted_GetRef();
 			FString Name;
 			if (!(*Props)[Index].IsValid() || !(*Props)[Index]->TryGetObject(Prop) || !(*Prop)->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty() ||
-				!SandboxJson::TryGetVector(*Prop, TEXT("size_cm"), Out.SizeCm) || !(*Prop)->TryGetNumberField(TEXT("mass_kg"), Out.MassKg) ||
-				!SandboxJson::TryGetVector(*Prop, TEXT("location_cm"), Out.LocationCm))
+				!(*Prop)->TryGetNumberField(TEXT("mass_kg"), Out.MassKg) || !SandboxJson::TryGetVector(*Prop, TEXT("location_cm"), Out.LocationCm) ||
+				(*Prop)->HasField(TEXT("boxes")) == (*Prop)->HasField(TEXT("size_cm")) ||
+				((*Prop)->HasField(TEXT("size_cm")) && !SandboxJson::TryGetVector(*Prop, TEXT("size_cm"), Out.SizeCm)))
 			{
-				OutError = FString::Printf(TEXT("props[%d] needs 'name', 'size_cm' [x, y, z], 'mass_kg' and 'location_cm' [x, y, z] (its middle)"), Index);
+				OutError = FString::Printf(TEXT("props[%d] needs 'name', 'mass_kg', 'location_cm' [x, y, z] and either 'size_cm' [x, y, z] (a box, location_cm is its middle) or 'boxes'"), Index);
 				return false;
 			}
 			Out.Name = FName(*Name);
-			if (Out.SizeCm.GetMin() < 1.0 || Out.SizeCm.GetMax() > 1000.0 || Out.MassKg <= 0.0 || Out.MassKg > 1000.0)
+			const TArray<TSharedPtr<FJsonValue>>* Boxes = nullptr;
+			if ((*Prop)->HasField(TEXT("boxes")))
+			{
+				if (!(*Prop)->TryGetArrayField(TEXT("boxes"), Boxes) || Boxes->Num() == 0)
+				{
+					OutError = FString::Printf(TEXT("props[%d] '%s': 'boxes' must list at least one box"), Index, *Name);
+					return false;
+				}
+				for (int32 BoxIndex = 0; BoxIndex < Boxes->Num(); ++BoxIndex)
+				{
+					const TSharedPtr<FJsonObject>* BoxJson = nullptr;
+					FScenarioPropBox& Box = Out.Boxes.AddDefaulted_GetRef();
+					if (!(*Boxes)[BoxIndex].IsValid() || !(*Boxes)[BoxIndex]->TryGetObject(BoxJson) || !SandboxJson::TryGetVector(*BoxJson, TEXT("center_cm"), Box.CenterCm) ||
+						!SandboxJson::TryGetVector(*BoxJson, TEXT("size_cm"), Box.SizeCm) || Box.SizeCm.GetMin() < 1.0 || Box.SizeCm.GetMax() > 1000.0)
+					{
+						OutError = FString::Printf(TEXT("props[%d] '%s': boxes[%d] needs 'center_cm' [x, y, z] (from the thing's origin) and 'size_cm' [x, y, z], edges from 1 to 1000 cm"), Index, *Name, BoxIndex);
+						return false;
+					}
+				}
+			}
+			if ((Out.Boxes.Num() == 0 && (Out.SizeCm.GetMin() < 1.0 || Out.SizeCm.GetMax() > 1000.0)) || Out.MassKg <= 0.0 || Out.MassKg > 1000.0)
 			{
 				OutError = FString::Printf(TEXT("props[%d] '%s': edges from 1 to 1000 cm and a mass above 0 and up to 1000 kg"), Index, *Name);
 				return false;
@@ -393,6 +414,11 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 				}
 			}
 		}
+	}
+
+	if (!OutSpec.AddRoomProps(OutError))
+	{
+		return false;
 	}
 
 	if (Json->HasField(TEXT("recording")))
@@ -739,6 +765,71 @@ bool FScenarioSpec::LoadFile(const FString& FilePath, FScenarioSpec& OutSpec, FS
 	{
 		OutError = FString::Printf(TEXT("%s (in '%s')"), *OutError, *FilePath);
 		return false;
+	}
+	return true;
+}
+
+bool FScenarioSpec::AddRoomProps(FString& OutError)
+{
+	if (MapPath.IsEmpty())
+	{
+		return true;
+	}
+	const FString Dir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Specs"), TEXT("rooms"));
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *FPaths::Combine(Dir, TEXT("*.json")), true, false);
+	Files.Sort();
+	for (const FString& File : Files)
+	{
+		const FString Path = FPaths::Combine(Dir, File);
+		FString Text;
+		TSharedPtr<FJsonObject> Room;
+		if (!FFileHelper::LoadFileToString(Text, *Path) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Room) || !Room.IsValid())
+		{
+			OutError = FString::Printf(TEXT("the room spec '%s' cannot be read"), *Path);
+			return false;
+		}
+		FString Output;
+		const TArray<TSharedPtr<FJsonValue>>* Furniture = nullptr;
+		if (!Room->TryGetStringField(TEXT("output"), Output) || Output != MapPath || !Room->TryGetArrayField(TEXT("furniture"), Furniture))
+		{
+			continue;
+		}
+		for (const TSharedPtr<FJsonValue>& Value : *Furniture)
+		{
+			const TSharedPtr<FJsonObject>* Piece = nullptr;
+			double MassKg = 0.0;
+			FString PieceName;
+			if (!Value.IsValid() || !Value->TryGetObject(Piece) || !(*Piece)->TryGetNumberField(TEXT("mass_kg"), MassKg) || !(*Piece)->TryGetStringField(TEXT("name"), PieceName))
+			{
+				continue; // A static piece: it is part of the map.
+			}
+			FScenarioProp Prop;
+			Prop.Name = FName(*PieceName);
+			Prop.MassKg = MassKg;
+			double YawDeg = 0.0;
+			(*Piece)->TryGetNumberField(TEXT("yaw_deg"), YawDeg);
+			Prop.Rotation = FRotator(0.0, YawDeg, 0.0);
+			const TArray<TSharedPtr<FJsonValue>>* Boxes = nullptr;
+			bool bGood = SandboxJson::TryGetVector(*Piece, TEXT("location_cm"), Prop.LocationCm) && (*Piece)->TryGetArrayField(TEXT("boxes"), Boxes) && Boxes->Num() > 0;
+			for (int32 Index = 0; bGood && Index < Boxes->Num(); ++Index)
+			{
+				const TSharedPtr<FJsonObject>* Box = nullptr;
+				FScenarioPropBox& Out = Prop.Boxes.AddDefaulted_GetRef();
+				bGood = (*Boxes)[Index].IsValid() && (*Boxes)[Index]->TryGetObject(Box) && SandboxJson::TryGetVector(*Box, TEXT("center_cm"), Out.CenterCm) &&
+					SandboxJson::TryGetVector(*Box, TEXT("size_cm"), Out.SizeCm) && Out.SizeCm.GetMin() >= 1.0;
+			}
+			if (!bGood)
+			{
+				OutError = FString::Printf(TEXT("%s: the piece '%s' has mass but no usable 'location_cm' and 'boxes'"), *Path, *PieceName);
+				return false;
+			}
+			const bool bOwn = Props.ContainsByPredicate([&Prop](const FScenarioProp& Each) { return Each.Name == Prop.Name; });
+			if (!bOwn)
+			{
+				Props.Add(Prop);
+			}
+		}
 	}
 	return true;
 }

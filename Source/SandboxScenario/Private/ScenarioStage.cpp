@@ -1,5 +1,7 @@
 #include "ScenarioStage.h"
 
+#include "SandboxPropComponent.h"
+
 #include "Camera/CameraActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/LightComponent.h"
@@ -218,7 +220,24 @@ TArray<AActor*> FScenarioStage::SpawnProps(UWorld& World, const FScenarioSpec& S
 		const FName Wanted(*FString::Printf(TEXT("Prop_%s"), *Prop.Name.ToString()));
 		Params.Name = FindObjectFast<UObject>(World.GetCurrentLevel(), Wanted) ? MakeUniqueObjectName(World.GetCurrentLevel(), AActor::StaticClass(), Wanted) : Wanted;
 		AActor* Actor = World.SpawnActor<AActor>(AActor::StaticClass(), FTransform(Prop.Rotation, Prop.LocationCm), Params);
-		UBoxComponent* Box = Actor ? NewObject<UBoxComponent>(Actor, TEXT("Body")) : nullptr;
+		// A thing made of boxes is one body with several shapes (USandboxPropComponent); a thing of one box is a box component.
+		const bool bMany = Prop.Boxes.Num() > 0;
+		UPrimitiveComponent* Box = nullptr;
+		UBoxComponent* Single = nullptr;
+		USandboxPropComponent* Several = nullptr;
+		if (Actor)
+		{
+			if (bMany)
+			{
+				Several = NewObject<USandboxPropComponent>(Actor, TEXT("Body"));
+				Box = Several;
+			}
+			else
+			{
+				Single = NewObject<UBoxComponent>(Actor, TEXT("Body"));
+				Box = Single;
+			}
+		}
 		if (!Box)
 		{
 			UE_LOG(LogSandbox, Error, TEXT("Scenario: the prop '%s' could not be made"), *Prop.Name.ToString());
@@ -226,7 +245,19 @@ TArray<AActor*> FScenarioStage::SpawnProps(UWorld& World, const FScenarioSpec& S
 			continue;
 		}
 		Box->SetMobility(EComponentMobility::Movable);
-		Box->SetBoxExtent(Prop.SizeCm * 0.5, /*bUpdateOverlaps*/ false);
+		if (Single)
+		{
+			Single->SetBoxExtent(Prop.SizeCm * 0.5, /*bUpdateOverlaps*/ false);
+		}
+		else
+		{
+			TArray<TPair<FVector, FVector>> Boxes;
+			for (const FScenarioPropBox& Each : Prop.Boxes)
+			{
+				Boxes.Emplace(Each.CenterCm, Each.SizeCm);
+			}
+			Several->SetBoxes(Boxes);
+		}
 		Box->SetCollisionProfileName(TEXT("PhysicsActor"));
 		Box->SetGenerateOverlapEvents(false);
 		Box->BodyInstance.bNotifyRigidBodyCollision = true;
@@ -237,15 +268,31 @@ TArray<AActor*> FScenarioStage::SpawnProps(UWorld& World, const FScenarioSpec& S
 		Box->RegisterComponent();
 		Box->SetSimulatePhysics(true);
 		Box->SetMassOverrideInKg(NAME_None, static_cast<float>(Prop.MassKg), /*bOverrideMass*/ true);
-		if (Cube)
+		const auto MakeVisual = [&](const FName& VisualName, const FVector& Offset, const FVector& Size)
 		{
-			UStaticMeshComponent* Visual = NewObject<UStaticMeshComponent>(Actor, TEXT("Visual"));
+			if (!Cube)
+			{
+				return;
+			}
+			UStaticMeshComponent* Visual = NewObject<UStaticMeshComponent>(Actor, VisualName);
 			Visual->SetupAttachment(Box);
+			Visual->SetRelativeLocation(Offset);
 			Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			Visual->SetGenerateOverlapEvents(false);
 			Visual->SetStaticMesh(Cube);
-			Visual->SetRelativeScale3D(Prop.SizeCm / 100.0);
+			Visual->SetRelativeScale3D(Size / 100.0);
 			Visual->RegisterComponent();
+		};
+		if (bMany)
+		{
+			for (int32 Part = 0; Part < Prop.Boxes.Num(); ++Part)
+			{
+				MakeVisual(FName(*FString::Printf(TEXT("Visual%d"), Part)), Prop.Boxes[Part].CenterCm, Prop.Boxes[Part].SizeCm);
+			}
+		}
+		else
+		{
+			MakeVisual(TEXT("Visual"), FVector::ZeroVector, Prop.SizeCm);
 		}
 		if (Prop.HandleCm.IsSet())
 		{

@@ -81,7 +81,7 @@ the owner's two sessions in the headset (25 November, 462 s), is done: the hands
 a slap does not turn the head (a criterion of N8 A) and the get-up ends like a plank over the toes. **The get-up was
 worked on inside M4 that day (three attempts, the toes of N8 D and the ankle's range tried; each below the limit set before its
 runs, all taken out) and is put off with its cause written down:** the clip brings its feet under the body while they are loaded on ours, and a loaded
-foot does not go (`docs/testing.md`, 25 November). The wrist's model moved to N8 A, and part 3 is closed but for what the body does when it is held and the standing leg that does not come (the owner's to say). Part 4: a thing in the hand strikes as a fist does (`effectors.hand.strike_held`, on with `strike_hold_scale` 5 since the owner's decision of 25 November; 21, 25 and 30 N*s at 3, 5 and 7 m/s into the trunk; `prop_stick_blow_torso`; to be tuned after the owner's look in a session); furniture with mass in a room's map and support from things (`reactions.thing_support`, off) are open. The body senses its own balance (standing feet, support polygon, capture
+foot does not go (`docs/testing.md`, 25 November). The wrist's model moved to N8 A, and part 3 is closed but for what the body does when it is held and the standing leg that does not come (the owner's to say). Part 4: a thing in the hand strikes as a fist does (`effectors.hand.strike_held`, on with `strike_hold_scale` 5 since the owner's decision of 25 November; 21, 25 and 30 N*s at 3, 5 and 7 m/s into the trunk; `prop_stick_blow_torso`; to be tuned after the owner's look in a session); a room's furniture can have mass (`mass_kg` in a room spec's piece, `movable_room.json`; `room_movable_*`; `Tools\getup-stand.ps1 -FurnitureRoom movable_room`: 50, 49 and 50 of 50); support from things (`reactions.thing_support`, off) is open. The body senses its own balance (standing feet, support polygon, capture
 point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
@@ -203,7 +203,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 43 s (113 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 55 s), the compliance table 25 s, the pose database 35 s, a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 43 s (115 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 55 s), the compliance table 25 s, the pose database 35 s, a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s (its grab demo 12 s), the whole

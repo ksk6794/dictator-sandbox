@@ -61,11 +61,21 @@ struct FScenarioEvent
 
 /** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
 /** A thing with mass that a scenario puts into its world: a box that can be pushed, taken hold of and fallen on. */
+/** One box of a thing made of several. */
+struct FScenarioPropBox
+{
+	/** Its middle, from the thing's own point of origin, and its edges. cm. */
+	FVector CenterCm = FVector::ZeroVector;
+	FVector SizeCm = FVector::ZeroVector;
+};
+
 struct FScenarioProp
 {
 	FName Name;
-	/** Its edges, cm, along its own axes. */
+	/** Its edges, cm, along its own axes. Not for a thing made of boxes. */
 	FVector SizeCm = FVector::ZeroVector;
+	/** "boxes": the thing is these boxes as one body (a table: its top and four legs), and LocationCm is the place of its own origin. Empty: a single box of SizeCm with its middle there. */
+	TArray<FScenarioPropBox> Boxes;
 	double MassKg = 0.0;
 	/** Where its middle is put, and how it is turned. */
 	FVector LocationCm = FVector::ZeroVector;
@@ -254,6 +264,8 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 
 	/** "props": things with mass put into the world before the first step. */
 	TArray<FScenarioProp> Props;
+	/** Adds the pieces with mass of the room spec whose map this scenario uses (Specs/rooms), but for those whose names the scenario already has. False with a reason if a spec cannot be read. */
+	bool AddRoomProps(FString& OutError);
 
 	FString MeshPath;
 	FString PhysicsAssetPath;

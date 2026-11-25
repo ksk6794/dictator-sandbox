@@ -4046,6 +4046,27 @@ where a fist at 5.5 m/s is 120 into the chest: the stick is 0.8 kg held at one e
 
 **The owner's decision, 25 November: on, with a hold of 5 times** (21, 25 and 30 N*s at 120 cm, half the wrist's torque of x10); the hold is tuned after the owner's ten minutes with a stick in a session. With it: suite 113 of 113 (one other hash, `prop_stick_strike_arm`, the stick), push matrix 160 of 160, grab pulls 93 of 93, session grab demo and record and replay pass. Baseline `held5`.
 
+### M4 part 4: furniture with mass in a room (25 November)
+
+A thing of a scenario can be made of boxes (`"boxes"`): one rigid body with the boxes as its shapes (`USandboxPropComponent`), so a table is its top and four legs. Welded components were tried first and weighed 30.9 kg and 9.7 kg where 30 and 5 were
+asked, because a welded part adds a mass of its own; with one body they are 30 and 5. A room's `furniture` piece may have `mass_kg`: it is then no part of the map but a thing the scenario or the session that loads the map puts there. `movable_room.json` is `getup_room` with a table of 30 kg
+and a chair of 5 kg; its map is baked (Preview). Everything that was there before has the hashes of `held5` (113 of 113).
+
+**The stand of falls, static against movable, three seeds** (`Tools\getup-stand.ps1 -FurnitureRoom movable_room`, the same falls; the switch `thing_support` off):
+
+| | Table and chair only: end standing | at the first attempt | All 50: end standing | at the first attempt |
+| --- | --- | --- | --- | --- |
+| Static (`getup_room`), 3 seeds | 15, 16, 16 of 16 | 7, 8, 11 | 50, 50, 49 | 43, 45, 44 (`through40`) |
+| Movable (`movable_room`) | 16, 16, 16 of 16 | 13, 13, 15 | 50, 49, 50 | 46, 45, 43 |
+
+A falling body shoves the furniture aside: of the 150 the chair went 2.9 m at most and moved at 4 m/s at most; the table tips and slides. A chair and table are in no one's way for long: at the table and the chair it gets up at the first attempt 41 times of 48 against 26. Nothing was launched. The deepest anything goes into the world is 2.5 cm (a wall). The plan's criterion (repeated with movable furniture on three seeds) is met for this furniture.
+The static figures of the whole stand are the present ones of `getup_room`, not measured with this tool's new parameter.
+
+**Seen on the film** (`Saved\Films\furniture_movable.png`, falls 35 and 42 of seed 1): a body that falls over the table's edge keeps its legs straight out in the air for a second (3.6 to 5.0 s), like a plank, because the muscles let go when the trunk meets the *floor* and a table is not
+the floor to it: what `reactions.thing_support` decides (off). And a body that stands against the tipped table bends forward over it (5.5 to 7 s) before it goes down.
+
+Scenarios: `room_movable_rest` (both stay where they are) and `room_movable_fall_gets_up` (fall 42: falls against the furniture and gets up). One unit test. The tool's `-FurnitureRoom` is named so because PowerShell has no case: a `-Room` would have been overwritten by the script's own `$room`.
+
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 
 Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the

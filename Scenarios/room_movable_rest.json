@@ -1,0 +1,26 @@
+{
+  "name": "room_movable_rest",
+  "duration_s": 8.0,
+  "map": "/Game/Generated/Maps/MovableRoom",
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      200,
+      -160,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [],
+  "expect": {
+    "fell": false,
+    "end_state": "standing",
+    "max_prop_travel_cm": 1,
+    "max_prop_speed_mps": 0.2,
+    "max_joint_stretch_cm": 2.0
+  }
+}

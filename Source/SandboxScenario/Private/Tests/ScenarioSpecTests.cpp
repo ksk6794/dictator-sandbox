@@ -270,6 +270,56 @@ bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecPropBoxesTest, "DictatorSandbox.Scenario.Spec.ParsesThingsOfBoxes", SandboxTestFlags)
+bool FScenarioSpecPropBoxesTest::RunTest(const FString& Parameters)
+{
+	// A thing made of boxes, and one box as before. A thing has the one or the other, not both and not neither.
+	FScenarioSpec Spec;
+	FString Error;
+	if (!TestTrue(TEXT("parses"), FScenarioSpec::FromString(TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "props": [
+		{ "name": "table", "mass_kg": 30, "location_cm": [10, 20, 0], "boxes": [ { "center_cm": [0, 0, 73], "size_cm": [120, 70, 4] }, { "center_cm": [-55, -30, 35.5], "size_cm": [5, 5, 71] } ] },
+		{ "name": "box", "mass_kg": 5, "location_cm": [0, 0, 20], "size_cm": [40, 40, 40] } ] })"), Spec, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	if (TestEqual(TEXT("two things"), Spec.Props.Num(), 2))
+	{
+		TestEqual(TEXT("the table's boxes"), Spec.Props[0].Boxes.Num(), 2);
+		TestEqual(TEXT("its leg's middle"), Spec.Props[0].Boxes[1].CenterCm, FVector(-55.0, -30.0, 35.5));
+		TestEqual(TEXT("its leg's edges"), Spec.Props[0].Boxes[1].SizeCm, FVector(5.0, 5.0, 71.0));
+		TestEqual(TEXT("where it stands"), Spec.Props[0].LocationCm, FVector(10.0, 20.0, 0.0));
+		TestEqual(TEXT("a box has none"), Spec.Props[1].Boxes.Num(), 0);
+		TestEqual(TEXT("a box has edges"), Spec.Props[1].SizeCm, FVector(40.0, 40.0, 40.0));
+	}
+	const TCHAR* Bad[] = {
+		TEXT(R"({ "name": "t", "mass_kg": 30, "location_cm": [0, 0, 0] })"),
+		TEXT(R"({ "name": "t", "mass_kg": 30, "location_cm": [0, 0, 0], "size_cm": [10, 10, 10], "boxes": [ { "center_cm": [0, 0, 0], "size_cm": [10, 10, 10] } ] })"),
+		TEXT(R"({ "name": "t", "mass_kg": 30, "location_cm": [0, 0, 0], "boxes": [] })"),
+		TEXT(R"({ "name": "t", "mass_kg": 30, "location_cm": [0, 0, 0], "boxes": [ { "center_cm": [0, 0, 0] } ] })"),
+		TEXT(R"({ "name": "t", "mass_kg": 30, "location_cm": [0, 0, 0], "boxes": [ { "center_cm": [0, 0, 0], "size_cm": [0.1, 10, 10] } ] })"),
+	};
+	for (const TCHAR* Thing : Bad)
+	{
+		FScenarioSpec Refused;
+		TestFalse(FString::Printf(TEXT("rejects: %s"), Thing), FScenarioSpec::FromString(FString::Printf(TEXT(R"({ "name": "a", "duration_s": 1, "body": { "mesh": "/Game/M.M" }, "props": [ %s ] })"), Thing), Refused, Error));
+	}
+
+	// The room with movable furniture: its pieces come with the map, under their own names, unless the scenario has one of the name.
+	FScenarioSpec Room;
+	const TCHAR* Text = TEXT(R"({ "name": "a", "duration_s": 1, "map": "/Game/Generated/Maps/MovableRoom", "body": { "mesh": "/Game/M.M" },
+		"props": [ { "name": "chair", "mass_kg": 8, "location_cm": [0, 0, 20], "size_cm": [40, 40, 40] } ] })");
+	if (TestTrue(TEXT("the room's scenario parses"), FScenarioSpec::FromString(Text, Room, Error)))
+	{
+		TestEqual(TEXT("its own chair and the room's table"), Room.Props.Num(), 2);
+		const FScenarioProp* Table = Room.Props.FindByPredicate([](const FScenarioProp& Each) { return Each.Name == FName(TEXT("table")); });
+		const FScenarioProp* Chair = Room.Props.FindByPredicate([](const FScenarioProp& Each) { return Each.Name == FName(TEXT("chair")); });
+		TestTrue(TEXT("the table has the spec's mass and boxes"), Table && Table->MassKg == 30.0 && Table->Boxes.Num() == 5);
+		TestTrue(TEXT("the scenario's chair is its own"), Chair && Chair->MassKg == 8.0 && Chair->Boxes.Num() == 0);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecInvalidTest, "DictatorSandbox.Scenario.Spec.RejectsInvalidSpecs", SandboxTestFlags)
 bool FScenarioSpecInvalidTest::RunTest(const FString& Parameters)
 {
