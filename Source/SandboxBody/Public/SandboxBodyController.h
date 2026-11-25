@@ -827,6 +827,15 @@ private:
 	FName FootBoneName[2];
 	/** The toes of each foot, if the body has any: the body that hangs on the foot's. */
 	FName ToeBoneName[2];
+	/**
+	 * The thing that carries the feet, over the floor: how fast it goes, cm/s, smoothed, from what pushed up on them (the floor is still). A body on a
+	 * plate that slides is in motion with the plate, and a speed that is the plate's is no loss of balance: the capture point is worked out from the
+	 * velocity relative to it, and the places the body stands at go with it (CarrySupport).
+	 */
+	FVector2D SupportVelocityCmS = FVector2D::ZeroVector;
+	FVector2D SupportVelocitySum = FVector2D::ZeroVector;
+	double SupportVelocityWeight = 0.0;
+	void CarrySupport(double DeltaTime);
 	FName ThighBoneName[2];
 	FName CalfBoneName[2];
 

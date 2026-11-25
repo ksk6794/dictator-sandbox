@@ -7,6 +7,7 @@
 /**
  * A scripted stimulus applied at a fixed simulation time.
  *   "impulse"           an instantaneous impulse on one body
+ *   "prop_move"         a thing with mass is driven at a velocity for a time (a plate that carries the body)
  *   "pin"               fixes one body where it is with a ball joint to the world; the rest hangs from it
  *                       ("lock_rotation": a weld; "follow_clip": the weld goes where a clip has the pelvis)
  *   "console"           runs a console command, as typed in a running session
@@ -25,6 +26,10 @@ struct FScenarioEvent
 	FName Body;
 	/** Impulse magnitude in newton-seconds. */
 	double ImpulseNs = 0.0;
+	/** "prop_move": the thing's name, its horizontal velocity, m/s, and the time over which it comes up to it (from 0). DurationS is how long it is driven. */
+	FName Prop;
+	FVector VelocityMps = FVector::ZeroVector;
+	double RampS = 0.0;
 	/** "impulse": time over which it is delivered, as a steady force. 0 is a single blow. */
 	double DurationS = 0.0;
 	/** Unit direction in world space. */

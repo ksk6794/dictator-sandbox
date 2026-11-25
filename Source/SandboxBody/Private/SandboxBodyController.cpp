@@ -2842,6 +2842,13 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 		OtherComponent->GetPhysicsLinearVelocityAtPoint(Hit.ImpactPoint, Hit.BoneName).Z <= Tuning.Reactions.ThingSupportMaxUpMps * 100.0;
 	if (!bSimulated || bThingSupports)
 	{
+		if (IsFootBone(Hit.MyBoneName))
+		{
+			const FVector ThingCmS = bThingSupports ? OtherComponent->GetPhysicsLinearVelocityAtPoint(Hit.ImpactPoint, Hit.BoneName) : FVector::ZeroVector;
+			const double PushNs = FMath::Max(ImpulseNs.Z, 0.0);
+			SupportVelocitySum += FVector2D(ThingCmS.X, ThingCmS.Y) * PushNs;
+			SupportVelocityWeight += PushNs;
+		}
 		bWorldTouched = true;
 		// The trunk or the head on the floor: what a fall ends with (UpdateState lets the muscles go after it).
 		const ESandboxMuscleGroup Group = FSandboxBodyTuning::GroupOfBone(Hit.MyBoneName);
@@ -3653,8 +3660,63 @@ void USandboxBodyController::SetAssistTarget(const FAssist& Assist)
 	Control->SetControlTarget(Assist.Control, Target);
 }
 
+void USandboxBodyController::CarrySupport(double DeltaTime)
+{
+	// What carried the feet in the step that has just ended, its velocity weighted by how hard each foot was pushed up.
+	const FVector2D Now = SupportVelocityWeight > 0.0 ? SupportVelocitySum / SupportVelocityWeight : FVector2D::ZeroVector;
+	SupportVelocitySum = FVector2D::ZeroVector;
+	SupportVelocityWeight = 0.0;
+	constexpr double StillCmS = 2.0;
+	const FVector2D Wanted = Now.Size() > StillCmS ? Now : FVector2D::ZeroVector;
+	if (Wanted.IsZero() && SupportVelocityCmS.Size() < 0.5)
+	{
+		SupportVelocityCmS = FVector2D::ZeroVector;
+		return;
+	}
+	SupportVelocityCmS += (Wanted - SupportVelocityCmS) * FMath::Min(DeltaTime / 0.05, 1.0);
+	if (!IsUpright())
+	{
+		return;
+	}
+	const FVector Shift(SupportVelocityCmS * DeltaTime, 0.0);
+	for (FAssist& Assist : Assists)
+	{
+		Assist.Target.AddToTranslation(Shift);
+		Assist.FollowFrom.AddToTranslation(Shift);
+		Assist.FollowTo.AddToTranslation(Shift);
+		SetAssistTarget(Assist);
+	}
+	for (FFootPlacement& Foot : Placement)
+	{
+		Foot.Point += Shift;
+		Foot.GlideFrom += Shift;
+		Foot.LastFrame.AddToTranslation(Shift);
+		Foot.FromTransform.AddToTranslation(Shift);
+	}
+	if (Swing.bActive)
+	{
+		Swing.From += Shift;
+		Swing.Target += Shift;
+		Swing.Point += Shift;
+		Swing.PassPoint += FVector2D(Shift);
+		for (TArray<FVector2D>* Sole : { &Swing.TargetSole, &Swing.LiftSole, &LandedSole })
+		{
+			for (FVector2D& Each : *Sole)
+			{
+				Each += FVector2D(Shift);
+			}
+		}
+	}
+	for (FVector2D& Each : LastSupportPolygon)
+	{
+		Each += FVector2D(Shift);
+	}
+	RegroupPoint += FVector2D(Shift);
+}
+
 void USandboxBodyController::FollowSupport(double DeltaTime)
 {
+	CarrySupport(DeltaTime);
 	// Only an upright body plants its feet; a falling or lying one has no assist to move.
 	const bool bUpright = IsUpright();
 	bool bSupportMoved = false;
@@ -3782,6 +3844,8 @@ void USandboxBodyController::MeasureBalance(FSandboxBalanceView& OutView) const
 
 	const double SoleHeightCm = FSandboxBodyProbe::SupportPolygon(Mesh, OutView.StandingFeet, Tuning.Balance.SoleToleranceCm, OutView.SupportPolygon);
 	OutView.SupportHeightCm = OutView.IsSupported() ? SoleHeightCm : LastSupportHeightCm;
+	// The velocity that counts is the one over what carries the body (0 over a floor that is still).
+	OutView.Velocity -= FVector(SupportVelocityCmS, 0.0);
 	OutView.CapturePoint = FSandboxBodyProbe::CapturePoint(OutView.CenterOfMass, OutView.Velocity, OutView.CenterOfMass.Z - OutView.SupportHeightCm, GravityCmS2);
 	if (OutView.IsSupported())
 	{

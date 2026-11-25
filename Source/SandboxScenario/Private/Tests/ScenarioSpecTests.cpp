@@ -270,6 +270,33 @@ bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecPropMoveTest, "DictatorSandbox.Scenario.Spec.ParsesPropMove", SandboxTestFlags)
+bool FScenarioSpecPropMoveTest::RunTest(const FString& Parameters)
+{
+	FScenarioSpec Spec;
+	FString Error;
+	const TCHAR* Good = TEXT(R"({ "name": "a", "duration_s": 5, "body": { "mesh": "/Game/M.M" }, "events": [ { "t": 1, "type": "prop_move", "prop": "plate", "velocity_mps": [0.3, 0, 0], "duration_s": 3, "ramp_s": 1 } ] })");
+	if (TestTrue(TEXT("parses"), FScenarioSpec::FromString(Good, Spec, Error)) && TestEqual(TEXT("one event"), Spec.Events.Num(), 1))
+	{
+		TestEqual(TEXT("the thing"), Spec.Events[0].Prop, FName(TEXT("plate")));
+		TestEqual(TEXT("its velocity"), Spec.Events[0].VelocityMps, FVector(0.3, 0.0, 0.0));
+		TestEqual(TEXT("how long"), Spec.Events[0].DurationS, 3.0);
+		TestEqual(TEXT("the ramp"), Spec.Events[0].RampS, 1.0);
+	}
+	const TCHAR* Bad[] = {
+		TEXT(R"({ "t": 1, "type": "prop_move", "velocity_mps": [0.3, 0, 0], "duration_s": 3 })"),
+		TEXT(R"({ "t": 1, "type": "prop_move", "prop": "plate", "velocity_mps": [0, 0, 1], "duration_s": 3 })"),
+		TEXT(R"({ "t": 1, "type": "prop_move", "prop": "plate", "velocity_mps": [0.3, 0, 0] })"),
+		TEXT(R"({ "t": 1, "type": "prop_move", "prop": "plate", "velocity_mps": [0.3, 0, 0], "duration_s": 3, "ramp_s": -1 })"),
+	};
+	for (const TCHAR* Event : Bad)
+	{
+		FScenarioSpec Refused;
+		TestFalse(FString::Printf(TEXT("rejects: %s"), Event), FScenarioSpec::FromString(FString::Printf(TEXT(R"({ "name": "a", "duration_s": 5, "body": { "mesh": "/Game/M.M" }, "events": [ %s ] })"), Event), Refused, Error));
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioSpecPropBoxesTest, "DictatorSandbox.Scenario.Spec.ParsesThingsOfBoxes", SandboxTestFlags)
 bool FScenarioSpecPropBoxesTest::RunTest(const FString& Parameters)
 {

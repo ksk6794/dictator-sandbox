@@ -1,0 +1,68 @@
+{
+  "name": "prop_ride_plate",
+  "duration_s": 14.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      10
+    ],
+    "control": "active"
+  },
+  "props": [
+    {
+      "name": "plate",
+      "size_cm": [
+        400,
+        400,
+        10
+      ],
+      "mass_kg": 80,
+      "location_cm": [
+        0,
+        0,
+        5
+      ]
+    }
+  ],
+  "camera": {
+    "location_cm": [
+      380,
+      300,
+      170
+    ],
+    "look_at_cm": [
+      0,
+      -40,
+      80
+    ]
+  },
+  "events": [
+    {
+      "t": 3.0,
+      "type": "prop_move",
+      "prop": "plate",
+      "velocity_mps": [
+        0.3,
+        0,
+        0
+      ],
+      "duration_s": 8.0,
+      "ramp_s": 1.0
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "end_state": "standing",
+    "max_steps": 0,
+    "max_joint_stretch_cm": 2.0,
+    "min_prop_travel_cm": 200,
+    "max_prop_speed_mps": 0.5,
+    "hit_events": 0
+  }
+}

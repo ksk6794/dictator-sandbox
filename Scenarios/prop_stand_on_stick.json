@@ -1,0 +1,54 @@
+{
+  "name": "prop_stand_on_stick",
+  "duration_s": 10.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      4.1
+    ],
+    "control": "active"
+  },
+  "props": [
+    {
+      "name": "stick",
+      "size_cm": [
+        60,
+        4,
+        4
+      ],
+      "mass_kg": 0.8,
+      "location_cm": [
+        0,
+        8,
+        2
+      ]
+    }
+  ],
+  "camera": {
+    "location_cm": [
+      380,
+      300,
+      170
+    ],
+    "look_at_cm": [
+      0,
+      -40,
+      80
+    ]
+  },
+  "events": [],
+  "expect": {
+    "fell": false,
+    "end_state": "standing",
+    "max_steps": 0,
+    "hit_events": 0,
+    "max_joint_stretch_cm": 2.0,
+    "max_prop_travel_cm": 2
+  }
+}

@@ -53,6 +53,21 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("prop_move"))
+		{
+			FString PropName;
+			if (!Json->TryGetStringField(TEXT("prop"), PropName) || PropName.IsEmpty() ||
+				!SandboxJson::TryGetVector(Json, TEXT("velocity_mps"), OutEvent.VelocityMps) || OutEvent.VelocityMps.Size2D() <= 0.0 ||
+				!Json->TryGetNumberField(TEXT("duration_s"), OutEvent.DurationS) || OutEvent.DurationS <= 0.0 ||
+				(Json->HasField(TEXT("ramp_s")) && (!Json->TryGetNumberField(TEXT("ramp_s"), OutEvent.RampS) || OutEvent.RampS < 0.0)))
+			{
+				OutError = FString::Printf(TEXT("events[%d]: 'prop_move' needs 'prop', a non-zero 'velocity_mps' [x, y, z] (x and y are used), 'duration_s' above 0 and optionally 'ramp_s'"), Index);
+				return false;
+			}
+			OutEvent.Prop = FName(*PropName);
+			return true;
+		}
+
 		if (OutEvent.Type == TEXT("pin"))
 		{
 			FString Body;

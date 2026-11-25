@@ -6,6 +6,7 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyController.h"
 #include "SandboxBodyProbe.h"
+#include "SandboxWorldSpring.h"
 #include "ScenarioSpec.h"
 #include "Subsystems/WorldSubsystem.h"
 #include <atomic>
@@ -148,6 +149,20 @@ private:
 	/** The scenario's things with mass, in its order, and what each did: where it started, how far it went, how fast. */
 	UPROPERTY()
 	TArray<TObjectPtr<AActor>> Props;
+	/** "prop_move": a thing driven at a velocity, until it ends. */
+	struct FPropMove
+	{
+		int32 Prop = INDEX_NONE;
+		FVector VelocityCmS = FVector::ZeroVector;
+		double StartS = 0.0;
+		double EndS = 0.0;
+		double RampS = 0.0;
+		/** The spring that drives it, made on the first frame, and where its target is. */
+		TSharedPtr<FSandboxWorldSpring> Spring;
+		FVector TargetCm = FVector::ZeroVector;
+	};
+	TArray<FPropMove> PropMoves;
+	void MoveProps(double SimTimeS);
 	struct FPropTrack
 	{
 		FVector Start = FVector::ZeroVector;

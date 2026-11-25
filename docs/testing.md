@@ -4087,7 +4087,30 @@ Off, all but the scenarios that switch it on for themselves have the hashes of `
 
 **The owner's decision, 25 November: on.** `prop_fall_on_box` lost the expectation that the body feels the box (it lies on it now). With it on: suite 115 of 115 (five scenarios with things have other hashes), push matrix 160 of 160, knockdowns 8 of 8 by a blow and by two hands, grab pulls 93 of 93, stand of 150 falls 149 (132 at the first attempt, as off: no things in it), session grab demo, record and replay. Baseline `support`. No limit on hits is set in its place.
 
-Not done: a plate that slides (the capture point takes the support as still), a thing that tips under the feet.
+Afterwards: a plate that slides and a thing that tips under the feet (the next section).
+
+### M4 part 4: a thing that moves under the body, sticks underfoot, sticks fast (25 November)
+
+**A plate that slides.** The body took its support as still: the capture point was worked out from its velocity over the world and its anchors stood in the world. `CarrySupport`: the velocity of what carries the feet (by the contacts, weighted by how hard each foot was pushed up; the floor is still, below 2 cm/s it is 0) is taken off the velocity the
+balance sense uses, and the anchors, foot placements, the step under way and the remembered support go with it. Over a floor that is still it is exactly 0: the hashes of `support` (114 of 115; the other, `prop_step_on_plate`, is on a plate that moves a little). A thing is driven in a scenario by the new event `prop_move` (a strong spring to a point that moves: a velocity set from outside
+is undone by the floor's friction within the step).
+
+A plate of 400 x 400 x 10 cm and 80 kg driven from rest, 8 s, `Saved\Recon\plate`:
+
+| Plate, m/s (ramp 1 s, "jerk" 0.1 s) | Before: recovery steps, end | After |
+| --- | --- | --- |
+| 0.13 | 2, stands | 0, stands; the pelvis goes 96 of 97 cm with the plate |
+| 0.30 | 12, stands | 0, 223 of 225 cm |
+| 0.30, jerk | 8, still in a stagger | 0, 236 of 238 cm |
+| 0.60 | 17, still in a stagger | 0 (4 foot lifts counted from outside), stands |
+| 1.00 | 2, falls | 4, ends in a stagger |
+
+Limit set before: no step at 0.13 and 0.3 m/s, the pelvis within 10 cm of where it would be on the plate: met (2 cm), also with the jerk. 0.6 m/s stands without a recovery step; 1.0 m/s staggers and stays up, where it fell before. `prop_ride_plate` (0.3 m/s).
+
+**Sticks underfoot** (4 x 4 cm, 0.8 kg; the body put on them at its feet): under both feet across (60 cm) it stands, no step, no hit (`prop_stand_on_stick`); under one foot only it steps twice as it comes down 4 cm and stands, no hit. A plank on a roll, 14 or 30 cm off its middle: it stands on it as it tips 4 to 5 degrees. Not run: a chair leant on (the falls among movable furniture lean on it).
+
+**The stick to 12 m/s** (hold x5, the swing of x = 70 made faster): the hand reaches 12 m/s at 9 and 11 m/s asked, the stick's middle 9.5 to 11.5, and nothing goes deeper than 0.8 cm. The impulse grows up to 9 m/s (120 cm: 21, 25, 30, 62 N*s at 3, 5, 7, 9; 140 cm: 20, 24, 29, 37; 95 cm: 22, 26, 29, 33) and at 11 falls in two
+of three places (10 and 8 N*s, and 68 at 95 cm): the hand at its 300 N does not follow and the stick grazes. The head (162 cm) is not reached by the sweep.
 
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 

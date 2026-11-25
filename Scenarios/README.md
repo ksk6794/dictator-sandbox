@@ -212,7 +212,8 @@ furthest it was from where it started) and `max_speed_mps`. Expectations: `min_p
 that went least far), `max_prop_travel_cm` and `max_prop_speed_mps` (of the one that went furthest and
 fastest: nothing was launched), and `min_felt_impulse_ns`: the body felt at least that much from the
 simulated bodies that touched it, hands and things alike (`control.contact_impulse_ns`), which is how a
-scenario says that a thing reached the body at all. A run with props also checks that every one of them is there and simulated
+scenario says that a thing reached the body at all. An event `prop_move` drives a thing: `{ "t": 3, "type": "prop_move", "prop": "plate", "velocity_mps": [0.3, 0, 0], "duration_s": 8, "ramp_s": 1 }` (by a strong spring, over the floor).
+A run with props also checks that every one of them is there and simulated
 (`props_simulated`). Props are part of a run's hash.
 
 The effectors are `hand_left`, `hand_right` and the kicking feet `foot_left` and `foot_right` (heavier and

@@ -378,6 +378,8 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 void UScenarioRunnerSubsystem::Deinitialize()
 {
 	FGameModeEvents::OnGameModeInitializedEvent().Remove(GameModeInitializedHandle);
+	// The springs of things that are driven let go while the bodies still exist.
+	PropMoves.Reset();
 	StopPhysicsTimer();
 	Super::Deinitialize();
 }
@@ -656,6 +658,7 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 	SampleFrame(DeltaTime);
 	ContinuePushes();
 	ApplyDueEvents(SimTimeS);
+	MoveProps(SimTimeS);
 	MovePins();
 
 	// Where the hands should be at the start of the coming step, which begins at SimTimeS.
@@ -1373,6 +1376,36 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 	}
 }
 
+void UScenarioRunnerSubsystem::MoveProps(double SimTimeS)
+{
+	for (int32 Index = PropMoves.Num() - 1; Index >= 0; --Index)
+	{
+		FPropMove& Move = PropMoves[Index];
+		AActor* Prop = Props.IsValidIndex(Move.Prop) ? Props[Move.Prop] : nullptr;
+		UPrimitiveComponent* Box = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;
+		FBodyInstance* PropBody = Box ? Box->GetBodyInstance() : nullptr;
+		if (!PropBody || !PropBody->IsValidBodyInstance() || SimTimeS > Move.EndS + DtToleranceS)
+		{
+			PropMoves.RemoveAt(Index);
+			continue;
+		}
+		// By a strong spring to a point that moves (a velocity set from outside is undone by the floor's friction within the step).
+		const FTransform Now = PropBody->GetUnrealWorldTransform();
+		if (!Move.Spring)
+		{
+			Move.Spring = MakeShared<FSandboxWorldSpring>();
+			Move.Spring->Attach(PropBody, FTransform::Identity, this, /*bAngular*/ true);
+			Move.Spring->SetLinear(200000.0, 0.1, 50000.0);
+			Move.Spring->SetAngular(50000.0, 0.1, 50000.0);
+			Move.TargetCm = Now.GetLocation();
+		}
+		const double Share = Move.RampS > 0.0 ? FMath::Clamp((SimTimeS - Move.StartS) / Move.RampS, 0.0, 1.0) : 1.0;
+		const FVector VelocityCmS(Move.VelocityCmS.X * Share, Move.VelocityCmS.Y * Share, 0.0);
+		Move.TargetCm += VelocityCmS * FixedDt;
+		Move.Spring->SetTarget(FVector(Move.TargetCm.X, Move.TargetCm.Y, Now.GetLocation().Z), FQuat::Identity, VelocityCmS);
+	}
+}
+
 void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 {
 	USkeletalMeshComponent* Mesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
@@ -1391,6 +1424,19 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			{
 				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: console command '%s' was not recognised"), Event.TimeS, *Event.Command);
 			}
+			continue;
+		}
+		if (Event.Type == TEXT("prop_move"))
+		{
+			const int32 PropIndex = Spec.Props.IndexOfByPredicate([&Event](const FScenarioProp& Each) { return Each.Name == Event.Prop; });
+			if (PropIndex == INDEX_NONE)
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: no prop is named '%s'"), Event.TimeS, *Event.Prop.ToString());
+				continue;
+			}
+			PropMoves.Add(FPropMove{ PropIndex, Event.VelocityMps * 100.0, Event.TimeS, Event.TimeS + Event.DurationS, Event.RampS });
+			++EventsApplied;
+			bInputPending = true;
 			continue;
 		}
 		if (Event.Type == TEXT("effector"))
