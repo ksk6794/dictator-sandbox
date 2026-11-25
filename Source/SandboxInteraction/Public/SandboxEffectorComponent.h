@@ -254,6 +254,8 @@ private:
 	/** A blow: how long the higher cap still lasts, s, and whether the spring has it now. */
 	double StrikeLeftS = 0.0;
 	bool bStrikeOn = false;
+	/** The fist springs back from a blow to its target (effectors.hand.strike_return_cm): what it meets is no new blow. */
+	bool bStrikeReturning = false;
 	/** How much of a blow's strength this one has, 0 to 1, by the speed the hand came at. */
 	double StrikeShare = 0.0;
 	double CapNow() const;

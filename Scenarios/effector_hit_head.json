@@ -48,10 +48,10 @@
     }
   ],
   "expect": {
-    "fell": false,
+    "fell": true,
     "min_effector_impulse_ns": 5,
     "max_joint_stretch_cm": 2.0,
-    "end_state": "standing",
+    "end_state": "lying",
     "max_steps": 5,
     "effector_strikes": 1
   }

@@ -56,9 +56,9 @@
     }
   ],
   "expect": {
-    "fell": false,
-    "end_state": "standing",
-    "min_steps": 2,
+    "fell": true,
+    "end_state": "lying",
+    "min_steps": 1,
     "max_steps": 6,
     "effector_strikes": 1,
     "min_effector_impulse_ns": 80,

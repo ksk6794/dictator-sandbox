@@ -496,6 +496,7 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 	{
 		bStrikeOn = false;
 		StrikeLeftS = 0.0;
+		bStrikeReturning = Tuning.StrikeReturnCm > 0.0;
 		ActiveSpring().SetLinear(StiffnessNow(), Tuning.DampingS, CapNow());
 	}
 	// The contacts reported since the last Update belong to the step that has just ended.
@@ -614,6 +615,10 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 	else
 	{
 		ActiveSpring().SetTarget(Target.Location, Target.Rotation, Target.Velocity);
+	}
+	if (bStrikeReturning && ActiveSpring().GetGapCm() < Tuning.StrikeReturnCm)
+	{
+		bStrikeReturning = false;
 	}
 	Stats.MaxGapCm = FMath::Max(Stats.MaxGapCm, ActiveSpring().GetGapCm());
 	Stats.MaxDemandN = FMath::Max(Stats.MaxDemandN, ActiveSpring().GetDemandN());
@@ -822,7 +827,7 @@ void USandboxEffectorComponent::OnEffectorHit(UPrimitiveComponent* HitComponent,
 		// strike_full_speed_mps, so that no speed is an edge between a push and a punch.
 		// One at a time: a hand that leaves what it struck for a frame and meets it again is the same blow.
 		// Only a fist strikes: an open hand that lands is a slap, with the hand's own mass and strength.
-		if (ImpulseFrame < Frame - 1 && StrikeLeftS <= 0.0 && !bStrikeOn && bFist && !bPalmActive && Tuning.StrikeForceN > Tuning.MaxForceN && !Grab.IsAttached())
+		if (ImpulseFrame < Frame - 1 && StrikeLeftS <= 0.0 && !bStrikeOn && !bStrikeReturning && bFist && !bPalmActive && Tuning.StrikeForceN > Tuning.MaxForceN && !Grab.IsAttached())
 		{
 			const double SpeedMps = StepStartSpeedCmS * 0.01;
 			const double Share = Tuning.StrikeFullSpeedMps > Tuning.StrikeSpeedMps

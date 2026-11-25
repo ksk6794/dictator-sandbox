@@ -3787,6 +3787,32 @@ that hangs on the foot's). Today's body: 112 scenarios with the hashes of `pre_g
 - Today's asset was made again by the generator with the new one: its bytes differ (md5 024a087b, was b799ab98), its runs do not (112 hashes).
   Film: `Saved\Films\getup_now_vs_toes.png`.
 
+### The punch, how far a fist is carried: what each value does (25 November, for the owner's decision)
+
+`effectors.hand.strike_through_cm`, by `-Tune`, nothing changed. A fist at a target that stops at the surface (`vr_punch_sweep`), N*s delivered at 3, 4 and 5.5 m/s, head then chest, and the suite of 112:
+
+| cm | head | chest | suite |
+| --- | --- | --- | --- |
+| 25 (now) | 13 27 34 | 33 70 86 | 112 pass |
+| 28 | 14 30 38 | 37 77 94 | 112 pass |
+| 30 | 15 32 40 | 39 82 99 | 112 pass |
+| 32 | 16 34 42 | 42 86 103 | 111, `palm_open_close` fails |
+| 35 | 18 36 45 | 45 92 110 | 112 pass |
+| 40 | 20 41 47 | 51 101 120 | 106, six fail |
+
+At 25 to 35 no fist of 3 to 5.5 m/s fells the body; at 40 the 5.5 m/s one does, into the head and into the chest. At 40 the scripted punch of 8 m/s on the head, the chest and the belly fells it too, where
+five scenarios said "stands": `effector_hit_head`, `strike_punch_head`, `strike_punch_torso`, `strike_punch_belly_steps`, `palm_open_close`. The sixth, `strike_punch_shoulder`, was read wrong at first (as a lower impulse): it
+counted two hits where one is expected. 32 is an edge of one scenario (35 passes). The fastest joint of the strike in `strike_punch_torso` is 32.5 rad/s, a foot of the falling body (33.5 in the knockdowns).
+
+**The owner's decision, 25 November: 40.** Built: `effectors.hand.strike_through_cm` 40, and the new `strike_return_cm` (15).
+- **The return of a fist is no new blow.** When the blow ends (0.15 s) the fist, 40 cm beyond where it landed, springs back to a hand that has gone back, at 6 to 8 m/s, and met the shoulder from behind: `strikes` 2 and a second flinch. The same return was there at
+  25 cm (77 N on the shoulder). Until the fist is within `strike_return_cm` of its target no blow begins (`strikes` 1). With 25 and 0 the suite is `pre_getup` to the digit (112 of 112). The hand still brushes the shoulder as it comes back (5.2 N*s), so that scenario expects two hits: the body is told of a hit, the blow is one.
+- **What was changed in the scenarios:** the five above expect a fall (`end_state` lying), `strike_punch_head` a knockdown, `strike_punch_torso` a joint speed of 40 at most; `strike_punch_shoulder` two hits. Eleven scenarios have other hashes, all of them with a fist.
+- **Measured again:** suite 112 of 112, push matrix 160 of 160 (every cell as `pre_getup`), knockdowns 8 of 8 by a blow and by two hands, grab pulls 93 of 93, stand of 150 falls 149 (as before), record and replay 12 of 12, 42 unit tests. Baseline `through40`.
+- **Impulses, N*s at 3, 4, 5.5 m/s:** head 20, 41, 47; chest 51, 101, 120; belly 60, 127, 154.
+- **Seen on the film** (`Saved\Films\punch_40.png`): in `effector_hit_head` the body lies on its back with its hands 51 cm up at 4.5 s and 30 cm up from 5.5 s on, where the other lying bodies hold theirs at 8 to 24. A matter of the fall's pose and of N7, not of the punch.
+- The recorded sessions were made with 25; their replays are not comparable.
+
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 
 Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the

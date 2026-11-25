@@ -38,7 +38,8 @@
       "grab_draw_s": 0.3,
       "strike_force_n": 900,
       "strike_stiffness_n_per_m": 9000,
-      "strike_through_cm": 25,
+      "strike_through_cm": 40,
+      "strike_return_cm": 15,
       "strike_s": 0.15,
       "strike_speed_mps": 2,
       "strike_full_speed_mps": 4.5
