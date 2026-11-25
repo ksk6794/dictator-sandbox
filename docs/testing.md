@@ -4067,6 +4067,28 @@ the floor to it: what `reactions.thing_support` decides (off). And a body that s
 
 Scenarios: `room_movable_rest` (both stay where they are) and `room_movable_fall_gets_up` (fall 42: falls against the furniture and gets up). One unit test. The tool's `-FurnitureRoom` is named so because PowerShell has no case: a `-Room` would have been overwritten by the script's own `$room`.
 
+### M4 part 4: support from things, the rule made physical (25 November), on by the owner's decision
+
+`reactions.thing_support` was the rule "what pushes up is support unless it pushes hard" (5 N*s a substep for parts other than the feet). It now is: **a simulated thing that has a weight of its own and does not come up faster than `thing_support_max_up_mps` (1 m/s) where it touches** supports what it pushes up on, however hard
+it pushes. A hand has no weight (its gravity is off), so a hand is never support; a fall onto a table is a hard push and is support; a stick swung up is not. `thing_support_max_ns` is gone.
+
+Limits set before the change, and how it did (the switch on for the whole suite of 115):
+
+| Limit | Result |
+| --- | --- |
+| Scenarios without things have the hashes of the switch off | Met: only five with things differ (`prop_fall_on_box`, the three `prop_*_on_plate`, `room_movable_fall_gets_up`); with the old rule `getup_held` and `grab_getup_held` differed too, and `grab_getup_held` failed |
+| Hits told in falls onto things: at most 4 in `room_movable_fall_gets_up` and `prop_getup_on_plate` | `prop_getup_on_plate` 4 (11 off). **`room_movable_fall_gets_up` 7 (12 off): not met**, of which one is the blow, two are the furniture's sides as the body falls and four are the table tipping onto the body as it lies: hits from the side and from above, which the owner's rule makes hits. The limit was too low |
+| A body that falls over the table's edge: feet no higher than the pelvis + 10 cm within 1 s of the trunk touching the table | **Not met by 0.1 s: 1.1 s** (feet 119, pelvis 112 cm at 4.4 s, touch at 3.28). Off it is never, up to the fall off the table (the feet 10 to 50 cm over the pelvis until 5.5 s). The muscles let go 0.5 s after the touch, as on the floor |
+| Stand with movable furniture, three seeds: 147 of 150, 125 at the first attempt | Met: 149 of 150 (50, 50, 49), 130 at the first attempt (134 off) |
+| 115 scenarios pass | 114: `prop_fall_on_box` expects the body to feel 100 N*s of the box; it is support now and felt 0 (its expectation would be dropped) |
+
+Hits a fall over the 150 falls: 2.83 off, 2.51 on; while falling, lying or getting up 1.79 and 1.43. Film: `Saved\Films\thing_support.png` (fall 35). On, the body relaxes over the table's edge and slides down; off it lies stiff on it with its legs in the air.
+Off, all but the scenarios that switch it on for themselves have the hashes of `furn` (one other: a `prop_*_on_plate` scenario, whose rule changed).
+
+**The owner's decision, 25 November: on.** `prop_fall_on_box` lost the expectation that the body feels the box (it lies on it now). With it on: suite 115 of 115 (five scenarios with things have other hashes), push matrix 160 of 160, knockdowns 8 of 8 by a blow and by two hands, grab pulls 93 of 93, stand of 150 falls 149 (132 at the first attempt, as off: no things in it), session grab demo, record and replay. Baseline `support`. No limit on hits is set in its place.
+
+Not done: a plate that slides (the capture point takes the support as still), a thing that tips under the feet.
+
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 
 Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the

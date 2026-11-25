@@ -2834,12 +2834,12 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	// reads the same.
 	const bool bSimulated = OtherComponent->IsSimulatingPhysics(Hit.BoneName);
 	const double SizeNs = ImpulseNs.Size();
-	// A foot is for standing on things: whatever pushes up on it is support, also the landing of a step, as on
-	// the floor. Another part of the body is supported only by a push that stays under the limit; a blow from
-	// below (an uppercut) is above it.
-	const bool bFoot = IsFootBone(Hit.MyBoneName);
-	const bool bThingSupports = bSimulated && Tuning.Reactions.ThingSupport > 0.5 && SizeNs > 0.0 &&
-		(bFoot || SizeNs <= Tuning.Reactions.ThingSupportMaxNs) && ImpulseNs.Z >= 0.7 * SizeNs;
+	// What supports has a weight of its own and is not itself on its way up: a thing that stands, lies or is shoved aside
+	// does, a hand has no weight (its gravity is off) and a thing thrown from below comes up at more than this. How hard
+	// it pushes does not tell them apart: a fall onto a table is a hard push, and so is an uppercut.
+	const bool bHasWeight = bSimulated && OtherComponent->IsGravityEnabled();
+	const bool bThingSupports = bSimulated && Tuning.Reactions.ThingSupport > 0.5 && SizeNs > 0.0 && bHasWeight && ImpulseNs.Z >= 0.7 * SizeNs &&
+		OtherComponent->GetPhysicsLinearVelocityAtPoint(Hit.ImpactPoint, Hit.BoneName).Z <= Tuning.Reactions.ThingSupportMaxUpMps * 100.0;
 	if (!bSimulated || bThingSupports)
 	{
 		bWorldTouched = true;
