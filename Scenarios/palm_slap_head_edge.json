@@ -1,0 +1,79 @@
+{
+  "name": "palm_slap_head_edge",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [
+      -150,
+      230,
+      140
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      105
+    ]
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.palm_collides=1"
+    },
+    {
+      "t": 3.0,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            65,
+            0,
+            160
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.1,
+          "location_cm": [
+            5,
+            0,
+            160
+          ]
+        },
+        {
+          "t": 0.5,
+          "location_cm": [
+            65,
+            0,
+            160
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "hit_events": 1,
+    "effector_shape_changes": 1,
+    "fell": false,
+    "state_sequence": "standing>flinch>standing",
+    "min_effector_impact_speed_mps": 6.0,
+    "min_effector_impulse_ns": 5,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_speed_rads": 30,
+    "max_effector_penetration_cm": 1
+  }
+}

@@ -2416,6 +2416,925 @@ Changed: `SandboxTargetRecording` (new), `SandboxEffectorRig`, `SandboxPawn`, `S
 `-Demo`), `Tools\record-replay.ps1` (new), `Tools\bootstrap.ps1` (a twelfth step); `Recordings\demo_hands.json`,
 `Scenarios\replay_demo_hands.json`, `Scenarios\README.md`.
 
+### M4 part 1, step 2 (the hands' source for a headset), 2026-11-24
+
+The third source of the hands' targets is built and tested on made-up poses, and was then run in the headset
+for a first look. What follows first is what was known from the engine's source and from tests before the
+headset was on; "In the headset" below is what the first sessions showed.
+
+**What was read in the engine (5.8.4), not remembered.** `IMotionController::GetControllerOrientationAndPosition`
+has an overload that returns the linear and angular velocity with the pose; the OpenXR plugin fills it from
+`xrLocateSpace` with a velocity structure chained on, for the time the frame will be shown at
+(`FOpenXRHMD::GetPoseForTime`). The motion sources `LeftGrip` and `RightGrip` are the grip poses. Position and
+linear velocity come in Unreal's axes, scaled by the world-to-metres value passed in; the angular velocity comes
+as an axis times rad/s and is negated on the way, because the change of axes is a reflection, so `v = w x r`
+holds with the engine's cross product as it is. A camera component locked to the headset has its relative
+transform set to the head's pose every frame, so its parent is the origin of tracking space. With no mapping
+context given to it before the session begins, the plugin makes an action of every controller key and sends
+them as key events (`BuildLegacyActions`); its list of interaction profiles has no PlayStation controller, so
+which profile's keys SteamVR fills for the PS VR2 controllers is not known here.
+
+**What is built.**
+
+| Piece | What it does | Knows of a headset |
+| --- | --- | --- |
+| `ISandboxControllerTracker` | "Where is the controller of this hand": pose, velocities, squeeze, in tracking space | no |
+| `FSandboxTrackedTargetSource` | Pose through the play space's origin into the world; the body at an offset from the grip pose; its velocity `v + w x r`; the grip; what was tracked, counted | no |
+| `FSandboxXRControllers` | Answers the interface from the engine: motion controller devices for the pose, the player's input for the squeeze; puts the tracking origin on the floor | yes, the only file |
+| `ASandboxPawn` | A root of its own with the camera under it. In a headset: the origin of the play space, level, no flying and no mouse; the tracked source in place of the desktop one | asks `IsHeadsetOn` once |
+| `USandboxPlaySubsystem` | Puts the play space 80 cm from the character; ends a `-vr` session that has no headset; does not hold the frame rate in a headset, only counts it; writes each hand's tracking into the session file | asks whether stereo is on |
+| `Tools\play.ps1 -VR` | Leaves the OpenXR plugin on, passes `-vr`, prints what was tracked afterwards | |
+
+New tuning values, all in one build with their names: `effectors.hand.offset_thumb_cm`, `offset_palm_cm`,
+`offset_knuckles_cm` (0, 0, 0), `tools.headset.stand_distance_cm` (80), `tools.headset.hands_height_cm` (100).
+
+**The unit test** (`DictatorSandbox.Interaction.Source.TrackedHandsFollowControllers`) gives the source made-up
+controllers: a pose 30 cm ahead and 20 to the right of a play space that faces +y lands where it should in the
+world with its velocity turned; the same three offsets put the two hands at mirrored places; a controller that
+turns on the spot at 2 rad/s moves a body 3.6 cm off its axis at 7.2 cm/s; a controller that flies and spins about
+an axis that is none of the three moves its target, over a step of 0.1 ms, by the velocity the target reports
+(which ties the sense of the angular velocity to the sense of the rotations); a runtime without velocities gets
+the difference of two poses, not across a pause, and the frames are counted; a lost controller leaves its hand
+where it was, at rest, and comes back without a velocity from before; the grip is held to 0..1. With the cross
+product's arguments swapped the test fails in three places, so it can fail.
+
+| Check | Result |
+| --- | --- |
+| Suite with `-Long` against `m4_p1_step1` (saved before the change) | 65 of 65, all with the same hashes |
+| Unit tests | 33 (one new) |
+| Session self-test, without a renderer and rendered | 14 of 14 both; the picture shows the hands in front of the camera as before |
+| `Tools\record-replay.ps1 -Twice` | 10 of 10 comparisons, every figure as in step 1 |
+| `Tools\play.ps1 -VR` with no headset on | `PLAY ERROR` after 37 s: "-vr was asked for and no headset is showing the world" |
+| `Tools\play.ps1 -VR -Smoke` | refused: a headset session has a person in it |
+
+**One thing moved, by a sign of zero.** The pawn's view is now the camera component's pose under a root, not the
+actor's own. The recording of the session without a person differs from the one kept in `Recordings\` in 480
+characters: the hands' rotation has `0` where it had `-0`. Both replay to the same hashes
+(`22131048`, `8c4513fe`), and the session's figures are the ones of step 1 to the last digit shown. The kept
+recording is left as it is.
+
+**What is not known until the headset is on** (step 4 looks at each first; the log line of each hand's first
+pose and the `tracking` block of the session file answer the first three):
+
+- whether SteamVR gives the PS VR2 controllers' grip poses and both velocities through this path;
+- whether the squeeze arrives, and under which profile's key (the largest of four is taken);
+- whether the headset runs at the simulation's 90 frames a second: at 120 the world would run a third faster
+  than the clock, and the session's log has the rate every 900 frames;
+- whether the spheres are where the hands are (the three offsets), and whether 80 cm is where the owner wants to
+  stand;
+- whether the HUD's text shows in the headset; nothing depends on it.
+
+**In the headset, the same evening** (the owner put it on for a first look of a few minutes; four launches).
+
+| Launch | What happened |
+| --- | --- |
+| 1 | The engine crashed 7 s after its start, in `XR_APILAYER_MBUCCHIA_toolkit.dll` (OpenXR Toolkit, an API layer on this machine since January that hooks every OpenXR application), called from the D3D12 RHI. `Tools\common.ps1` now leaves the layer out of a `-VR` run by the variable its own manifest names (`DISABLE_XR_APILAYER_MBUCCHIA_toolkit`), for that process only. M1's headset runs had gone through with the layer in |
+| 2 | Ran; closed by accident after a minute |
+| 3 | 79 s: both controllers tracked with both velocities from the runtime, 89.7 frames a second; hits on the neck and the chest, a fall and a get-up in 4.9 s. **No recording:** `-Record` asked the pawn to record when the session adopted it, before the pawn had made its hands, and the refusal was silent. The path had never been run (step 1 checked the one without a person). The session now starts the recording once the hands exist and says so, or logs an error |
+| 4 | 72 s, recorded from the first frame: `Saved\Recordings\vr_check` (6506 frames, 2.2 MB) |
+
+What the fourth session shows:
+
+| Question of the list above | Answer |
+| --- | --- |
+| Grip poses and both velocities through this path | Yes: 4292 frames each hand, none without a velocity |
+| The squeeze, and under which key | Yes, as `OculusTouch_Left_Grip_Axis` and `OculusTouch_Right_Grip_Axis`. It reads 0 or 1 and nothing between: the grip of these controllers is a button. No trigger key was seen (not known whether one was pressed) |
+| The headset's rate | 89.9 frames a second against the simulation's 90 |
+| A replay against its session | **The same to the last digit shown:** the 36 states of the body in the same frames, the pelvis 0.000 cm apart after being pushed a metre, the hands' impulses 175.92 and 494.48 N*s in both. The session without a person drifts by a frame and a quarter of a centimetre; this recording begins on the frame the hands are made, as a scenario's hands are |
+
+Three things the recording shows that the plan did not expect:
+
+- **The runtime's velocity trails the motion of the runtime's own poses by about 38 ms.** Held against the
+  difference of the recorded positions, the recorded velocity fits best when the positions are taken 3.4 to 3.5
+  frames earlier, and is then still smaller (slope 0.73 to 0.78; correlation 0.92 to 0.94 along x and y, 0.76
+  to 0.84 along z; the axes and signs are right). Read as a pose extrapolated with its velocity, the lead is
+  47 ms. So the pose is predicted for the time the frame is shown at and the velocity is not: the spring's damper
+  is given a velocity that is late for the target it is given. "The velocity from the tracking rather than from
+  the difference of two poses" was the plan's premise; whether the hand follows better with the one or the other
+  is now a measurement, and step 3 makes it on this recording.
+- **A controller out of the cameras' sight is not reported as lost.** From 62 s the right controller's pose
+  wandered a metre and a half over five seconds, up to 199 cm above the floor, with a velocity of 0.01 m/s, and
+  at 67.9 s jumped 116 cm in one frame to where the hand was. No frame counted as lost, the hand went after the
+  jump at 13.1 m/s with the spring asking for 3437 N, and nobody had moved. Following a pose that is given but
+  not marked as tracked was my decision of the afternoon, and it is wrong for this headset.
+- **The two hands touched each other first** (26.7 N*s between them over the session): they are two bodies
+  that collide, as designed, and a person brings them together without meaning to.
+
+Also seen: the hands stood 22 and 25 cm from the controllers when these were first tracked, 24.6 s into the
+session (they were asleep), and went there on their springs.
+
+Mistakes of mine in these launches: after the first one I told the owner the session was running when it had
+crashed 7 s in; I had looked for the line of its start and not at whether the process lived. `Tools\play.ps1`
+reported that crash as "PLAY ENDED"; it now reports a crash as `PLAY ERROR` with the first lines of the stack,
+and says so when `-Record` was asked for and nothing was written. A session can end by itself
+(`-Seconds`, `-PlaySeconds=`), which is also how the recording from the first frame is now checked without a
+person (3 s on the desktop: 270 frames, replayed to the same figures).
+
+Mistakes of mine before the headset: the first unit test of the turning term asked for 0.01 cm/s where the arm's own turn
+changes the answer by 0.09, and failed on its first run; a helper script was first written as a heredoc and broke
+on an apostrophe, the pitfall that is written down.
+
+Changed: `SandboxTrackedTargetSource` and `SandboxXRControllers` (new), `SandboxPawn`, `SandboxInteractionTuning`,
+`SandboxEffectorRig.h` (a comment), `SandboxInteraction.Build.cs` (HeadMountedDisplay), `InteractionTests`,
+`SandboxPlaySubsystem`; `Config/Tuning/effectors.json`, `tools.json` and `README.md`; `Tools\play.ps1` (`-VR`,
+`-Seconds`, a crash and a missing recording reported), `Tools\common.ps1` (the API layer left out of `-VR` runs);
+`Scenarios\README.md`.
+
+### M4 part 1, after the first look in the headset, and step 3 (the hand against its target), 2026-11-24
+
+**What the owner said of the first look** (asked one question at a time): the spheres sit on the fists, no offset
+seen; the place is right, in front of the character at arm's length, the floor where the floor is; the spheres
+follow the hands with no lag or tremble to the eye (the fastest swing was 3.9 m/s); both triggers were pressed
+and neither reached the game, though the grips did; the HUD's text is drawn across both eyes, the left eye sees
+the lines' beginnings and the right eye their ends, and cannot be read. The right controller's wandering pose at
+the end of the session was the controller laid on a table and the headset taken off: no fault during play, and a
+hand behind the back has not been tried yet.
+
+**Changed for it, on the owner's decisions of the same evening.**
+
+- *No text in the headset* (`ASandboxHUD` draws nothing there). The window on the monitor mirrors an eye, so it
+  has no text either; what a session has to say is printed when it ends.
+- *A controller the headset does not see leaves its hand where it was.* Only a pose the runtime marks as tracked
+  is followed (`GetControllerTrackingStatus`); a pose given without that mark is counted (`estimated_frames`).
+  Whether the runtime sets the mark as hoped is not known: the first session did not record it. For that the
+  source also counts tracked frames in which the pose moved faster than 20 cm/s with a velocity under 3 cm/s
+  (`moved_without_velocity_frames`), which is what the untracked pose looked like; on the recording that sign
+  begins at 62.0 s, when the headset came off, and also marks 6 to 18 frames during play, so nothing acts on it.
+- *A target does not jump.* Found again, tracked for the first time away from where the hand waits, or moved
+  further in a frame than a hand moves (`tools.headset.max_hand_speed_mps`, 20), the controller is caught up
+  with at `tools.headset.catch_up_speed_mps` (1.5) on top of its own speed. A velocity is not differenced
+  across such a jump.
+- *Every controller key that reaches the player's input is named at the end of a session* (the first version
+  looked at grips and triggers only), for the trigger that did not arrive and for choosing a button.
+- A run with hands writes `hands.csv`: each hand's gap to its target, its speed, the target's reported speed,
+  the force the spring law asked for and the contact force, frame by frame. Read only: the suite's hashes are
+  the baseline's.
+
+**Step 3: how far the hand is behind its target** (`Tools\swing-lag.ps1`; the hand as it is, 1.5 kg on 3000 N/m
+with a cap of 300 N). The right hand's target travels 60 cm with a minimum-jerk profile; the spring is told the
+target's velocity in four ways. The gap is hand to target at the start of each step, the largest during the swing:
+
+| Peak speed | exact velocity | difference of two poses | as the runtime gave it (38 ms late, 0.78) | none |
+| --- | --- | --- | --- | --- |
+| 2 m/s | 1.9 cm | 2.1 cm | 4.6 cm | 10.4 cm |
+| 4 m/s | 4.5 cm | 5.3 cm | 11.6 cm | 19.3 cm |
+| 6 m/s | 7.4 cm | 8.9 cm | 19.0 cm | 26.4 cm |
+| 8 m/s | 10.5 cm | 13.1 cm | 26.6 cm | 32.1 cm |
+
+After the target has stopped the hand is within 1 cm of it in 0.02 to 0.08 s with the exact velocity, 0.02 to
+0.09 s with the difference, 0.02 to 0.14 s with the runtime's; it is furthest off by 0.2 to 3.0, 0.4 to 5.0 and
+1.0 to 10.1 cm. The spring law asks for 67, 189, 365 and 581 N at the four speeds, more than its cap of 300 N
+from 6 m/s, but only for a frame or two of a swing: the sweep further down shows that the cap is not what
+holds a free hand back.
+
+- **With the true velocity the gap is one frame of the target's travel** (2.2, 4.4, 6.7 and 8.9 cm at 90 frames a
+  second) and little else. The hand is given the place for the start of the coming step and arrives there at
+  its end. That frame is the floor of this design; a target led by its velocity over one step would take it
+  out, and is a choice for part 2.
+- **The difference of two poses is nearly as good as the truth, and the velocity as the runtime gives it is
+  twice as bad.**
+
+The same on the owner's recording (`vr_check`, 26 to 61 s, frames in which the hand touches nothing; the mean gap
+by how fast the target moved):
+
+| Velocity given to the spring | under 0.5 m/s | 0.5 to 1 | 1 to 2 | 2 to 3 | over 3 m/s | 95th percentile | largest |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| The runtime's, as recorded | 0.49 cm | 1.14 cm | 2.27 cm | 5.75 cm | 8.24 cm | 2.17 cm | 10.9 cm |
+| The difference of the recorded positions | 0.23 cm | 0.71 cm | 1.40 cm | 3.18 cm | 4.72 cm | 1.30 cm | 5.9 cm |
+| None | 1.13 cm | 3.53 cm | 5.86 cm | 10.95 cm | 14.06 cm | 5.71 cm | 17.5 cm |
+
+About 5100 to 5600 frames each; 35 to 44 of them over 3 m/s, so the last column of speeds is thin. The three
+replays part after the first contact, so they are not the same frames. Not measured: whether the difference of
+predicted poses makes the hand tremble more (the owner saw no tremble with the runtime's velocity).
+
+**What it means for the plan.** The owner's order for part 1 was "the hand's velocity from the tracking rather
+than from the difference of two poses". On this headset the tracking's velocity trails its own poses, and the
+difference follows them: a hand behind a fast target by 4.7 cm instead of 8.2. The source can take either or a
+mix (`tools.headset.runtime_velocity_share`; 1, the plan's, until the owner decides).
+
+**Starting point for part 2** (the force cap and the mass are tuned there): at a punch's 8 m/s the hand is 10 to
+13 cm behind its target with a good velocity, nearly all of it the one frame. The recordings of step 4 are put
+through the same tool.
+
+**The cap, the mass and the stiffness hardly move a free hand** (the night of 24 November; the same swings, the
+largest gap in cm at 2, 4, 6 and 8 m/s, with the exact velocity / with the difference of poses):
+
+| Hand | 2 m/s | 4 m/s | 6 m/s | 8 m/s | Spring asked for, at 8 m/s |
+| --- | --- | --- | --- | --- | --- |
+| As it is: 1.5 kg, 3000 N/m, cap 300 N | 1.9 / 2.1 | 4.5 / 5.3 | 7.4 / 8.9 | 10.5 / 13.1 | 581 N |
+| Cap 450, 600 or 900 N | 1.9 / 2.1 | 4.5 / 5.3 | 7.4 / 8.9 | 10.3 / 12.7 | 570 N |
+| 1.0 kg (damping 0.0365 s) | 1.8 / 1.9 | 4.1 / 4.7 | 6.6 / 8.0 | 9.1 / 11.3 | 465 N |
+| 1.0 kg, cap 450 N | 1.8 / 1.9 | 4.1 / 4.7 | 6.6 / 8.0 | 9.1 / 11.3 | 465 N |
+| 6000 N/m (damping 0.032 s) | 1.8 / 1.9 | 3.8 / 4.4 | 6.1 / 7.4 | 9.1 / 11.4 | 882 N |
+| 6000 N/m, cap 600 N | 1.8 / 1.9 | 3.8 / 4.4 | 6.1 / 7.4 | 8.5 / 10.4 | 823 N |
+
+Three times the cap takes 0.2 cm off the gap at 8 m/s; a third less mass or twice the stiffness take about a
+centimetre. In free air the hand's lag is the frame, not the hand. I had written "from 6 m/s the cap is what
+holds the hand back" from the force the spring law asked for, without running the sweep: the law asks for more
+than the cap for a frame or two of a swing, and that costs nothing to speak of. What the cap and the mass do
+decide is contact: what a strike delivers and how hard a hand pushes. Part 2 tunes them on that.
+
+| Check | Result |
+| --- | --- |
+| Suite with `-Long` against `m4_p1_step1` | 65 of 65, the same hashes (`hands.csv` is only read) |
+| Unit tests | 33; the tracked source's test now also holds the lost pose, the catching up, a punch at 12 m/s that is not a jump, the waiting pose and the share of the runtime's velocity |
+| Session self-test, `record-replay.ps1 -Twice`, `record-replay.ps1 -Recorded vr_check` | 14 of 14; 10 of 10; 9 of 9 |
+
+Not run in the headset: the lost-pose rule, the catching up and the list of keys. The next launch there is a
+minute of pressing every button, a hand behind the back, and taking the headset off with the session running.
+
+Mistakes of mine here: the catch-up's first version let a differenced velocity of 104 m/s across a jump carry
+the target over the jump in one step (the unit test caught it); the test's count of frames was off by one; a
+string with a line break in it went into C++ through a heredoc, the written pitfall once more.
+
+Changed: `SandboxTrackedTargetSource`, `SandboxXRControllers`, `SandboxPawn`, `SandboxPlayerController` (the
+HUD), `SandboxInteractionTuning`, `InteractionTests`, `SandboxPlaySubsystem`, `ScenarioRunnerSubsystem`
+(`hands.csv`); `Config/Tuning/tools.json` and `README.md`; `Tools\swing-lag.ps1` (new); `Scenarios\README.md`.
+
+### M4 part 1, the night of 24 to 25 November (the owner away; decided by the agent on the data and the plan)
+
+**The target's velocity comes from the poses** (`tools.headset.runtime_velocity_share` 0). The owner chose it for
+the next launch, and the one thing that could speak against it was measured on the recording: whether a hand
+told the difference of predicted poses trembles more. In the frames in which the controller moves under 5 cm/s
+and the hand touches nothing (about 100 a hand: a person seldom holds still), the hand's speed is 3.1 and 3.3
+cm/s on average with the difference of poses and 3.7 and 3.8 with the runtime's velocity (95th percentile 4.7
+and 4.8 against 7.3 and 6.5); its speed changes by 2.6 and 1.8 m/s2 a frame at the 95th percentile against 2.1
+and 1.3. No more tremble, then, on thin data; the owner's eye in the headset has the last word.
+
+**A new take** (the owner's "a button that puts the character back and starts a new recording"). Which buttons
+reach the game is not known (the triggers did not), so the take is asked for by what is known to arrive: both
+grips held closed for a second with both hands raised above the eyes (`tools.headset.new_take_hold_s`,
+`new_take_raise_cm`; closed grips alone would begin takes by themselves, since a person who punches holds both
+closed); the controllers buzz when it begins. On the
+desktop it is the N key. A take ends the recording that runs, puts the character back, makes the hands anew on
+their targets and begins a recording of its own (`<name>`, `<name>_2`, ...), so that each recording starts with
+a fresh body and replays as a scenario of its own.
+
+What it took to make a take begin as a scenario begins:
+
+- *The reset is carried out after the frame's physics* (`USandboxPlaySubsystem::RequestReset`, also for the R
+  key). Put into the world in the middle of a frame, the character had half a frame of its own.
+- *The hands are made anew* (`ASandboxEffectorRig::RemakeEffectors`), after the character, as a scenario's are.
+- *What a take's session file says of the hands is the take's*, not the session's so far.
+
+And how close it comes (`Tools\record-replay.ps1 -Takes`: three takes without a person, a touch of the chest a
+second into each, left hand, right hand, left hand):
+
+| Take | Session | Replay |
+| --- | --- | --- |
+| 1 (left hand) | flinch in frame 107, 22.38 N*s | frame 108, 21.79 N*s: 2.6% off, pelvis 0.55 cm apart |
+| 2 (right hand) | frame 108, 21.90 N*s | frame 108, 21.84 N*s: 0.2% off, 0.71 cm |
+| 3 (left hand) | frame 107, 22.37 N*s | frame 108, 21.79 N*s: 2.6% off, 0.39 cm |
+
+Within the check's limits (a frame, 1 cm, 5%) and not to the digit, where the recording of a session's first
+body, from its first frame, replays to the last digit (`vr_check`). It is not the hand: swapped, the odd takes
+are off again and the even one is not, and the hand arrives at 3.25511 m/s in the session and in the replay. It
+is the body: three frames into its life the pelvis of an odd take's body stands 0.03 cm from where an even
+take's stands, and standing turns that into half a centimetre within a second, before anything touches it.
+What makes every second body of a world differ was not found (the order in which the solver takes bodies that
+are put into a world with a history is the guess; the alternation fits freed handles being used again). A shove
+instead of a touch shows what it can do: the session's body took three steps where the replay's took one, on
+the 4 cm that decide a second step. So a take's replay is a run of its own that begins as the take began: its
+scenario's expectations are written from the replay, as for every recording.
+
+**Toward part 2, without the headset** (the same night; nothing of the body's or the hands' physics changed:
+the suite's 65 scenarios have the baseline's hashes after each of these).
+
+- *The hand has a frame of its own,* whatever moves it: x along the forearm toward the knuckles and the fingers,
+  z toward the thumb, y through the palm. A tracked hand is turned into it from the grip pose
+  (`effectors.hand.grip_pitch_deg` -90, `grip_yaw_deg` 0, `grip_roll_deg` 0: by OpenXR's definition of the grip
+  pose the fingers lie along its -z and the thumb along its x). Whether PS VR2's driver keeps to that definition
+  is not known, which is why the three angles are tuning.
+- *A hand is a fist or open, by its grip* (`effectors.hand.fist_grip` 0.5, with 0.1 to either side before it
+  changes). Desktop and scripted hands are fists, the balls they have always been. An open hand shows a flat
+  plate, 18 by 9 by 3 cm (`effectors.hand.palm_*`), in the hand's frame. **The plate collides with nothing:** it
+  is there so that the owner can say, at the next launch, whether the palm faces the way the real palm does,
+  before the plate becomes a shape. The shape itself was not built tonight: its orientation cannot be checked
+  without the headset, and the runner's measures of a hand's penetration and tunnelling take the hand for a
+  ball.
+- *The controllers vibrate with what their hands press or strike with:* in proportion to the hand's own contact
+  force, full at `tools.headset.haptic_full_n` (300 N, the spring's cap: a hand held against something is at full
+  strength, a blow goes beyond it for a frame). From the hand's contacts, not from the body: the pawn knows
+  nothing of what a hand touches. Not felt by anybody yet.
+- *The body tells what happens to it* (`USandboxBodyController::OnBodyEvent`, `GetEvents`): every hit and every
+  change of state, for sound, a face, a health system, a result file. A hit is told in every state, once a
+  contact, when it has brought what makes a standing body flinch; a new hit is a contact after nothing was felt
+  for the flinch's window, or a blow that lands while something presses already. A run's `control.events` lists
+  them and `control.hit_events` counts the hits; the expectation `hit_events` holds the count (set in six
+  scenarios: one slap is one hit, four punches four, a held force none, a blow on a body that gets up and
+  another on it getting up two).
+
+How the rule for a hit was found, since the first two were wrong: counted as the flinch counts, with the sum
+set back at each telling, a shove of 200 N*s over nine frames was nine hits and a held hand eighteen; counted
+once a stretch of rising force, a hand held at the chest was six hits in six seconds, because a hand presses
+now more and now less. Once a contact, the hand is three: it lands, and the body steps away from it twice and
+meets it again.
+
+**A report on recordings** (`Toolsecording-report.ps1 -Name "takes*"`): every recording that matches is replayed
+and read. On the owner's first recording it finds 13 hits in 72 s: the hand arriving at 0.3 to 4.1 m/s, 432 to 648 N
+in the hardest frame of a strike (the spring's cap is 300 N: a moving hand gives up its momentum too), the neck
+struck eight times, the chest four, the upper arm twice. It was this list that showed one strike told as two
+hits: its force rose over two frames, the sum passed the threshold in the first and the second was a blow by
+itself. A blow into a contact now counts only after the force of the hit told before it has stopped rising.
+The ten minutes of step 4 are read by the same tool, take by take.
+
+**The open hand as a body** (later the same night; behind `effectors.hand.palm_collides`, which is 0: nothing
+of today changes until it is switched on).
+
+Of the three ways to give one hand two shapes, the one taken has only one body in the world at a time and
+leaves the fist's code untouched: the open hand is a second body, a box of the plate's size
+(`USandboxPalmComponent`), made the first time a hand opens. When the grip opens it takes the ball's pose and
+motion, its own spring (held at the point the ball's centre was) and its own mass (`palm_mass_kg`, 1.5 as the
+ball's until part 2 tunes it); the ball stops colliding and being simulated, and follows as a marker. When the
+grip closes the ball takes the hand back the same way. A hand that never opens never has the second body, so
+every scenario of before has its hashes: 65 of 65. Whoever wants the hand asks the hand
+(`GetHandTransform`, `GetHandVelocity`, `GetProbe`), not the component; the runner's measures of penetration
+and tunnelling take the hand's own shape, with half the plate's thickness (1.5 cm) where the ball has its
+radius. A scripted hand's keys say `"grip"` (1 a fist, the default; 0 open), and a turn puts the palm where it
+is wanted.
+
+Four scenarios with an open hand, in the suite:
+
+| Scenario | What happens |
+| --- | --- |
+| `palm_slap_head` | The open left hand, palm leading, on the side of the head at 6.2 m/s: 7.2 N*s to the neck, one hit, a flinch, 0.00 cm in the body |
+| `palm_slap_head_edge` | The same with the plate's thin edge leading: 10.2 N*s, 0.02 cm |
+| `palm_push_chest_both` | Both open hands pushed into the chest and held: 30 and 33 N*s, 355 N at most, the body steps back and stands |
+| `palm_open_close` | A hand that opens and closes in the air and then strikes the chest as a fist at 6.8 m/s: two changes of body, 15.5 N*s |
+
+Tunnelling, as the ball was tried in M2: slaps on the head, the chest and the forearm, palm leading and edge
+leading, with the target's speed raised and the force cap at 6000 N so that the hand can follow (30 runs; the
+hand's speed is what it reached):
+
+| Hand's speed | Deepest in the body | Tunnelled |
+| --- | --- | --- |
+| 6.1 m/s | 0.24 cm (chest, palm leading) | no |
+| 10.0 m/s | 0.03 cm | no |
+| 13.4 to 14.8 m/s | 0.03 cm | no |
+| 17.8 to 19.6 m/s | 0.01 cm | no |
+
+The measure follows the plate's middle, so it cannot see an edge that passes a limb: from 17.8 m/s the slap
+aimed at the forearm with the palm leading touched the trunk first and never the forearm, where at 6 to 13.5
+m/s it touched the forearm. That is twice a punch's speed; noted, not chased.
+
+**A hand changes its body only where the other one has room.** The ball and the plate have other shapes: a
+ball put where a plate lies flat on a chest would be 3 cm inside the chest and be thrown out of it, and the
+fingers of a plate put where a fist rests against something would be 9 cm inside it. Before a change the hand
+asks the world whether the other body, put where the hand is, would lie in anything
+(`USandboxEffectorComponent::WouldOverlap`, a scene query); if it would, the hand keeps the body it has and
+changes when there is room. A grip that closes while the open hand lies on something is counted
+(`grips_on_body`, with `last_gripped`): that hand is not making a fist, and it is what part 3's grab starts
+from. `palm_close_on_chest` holds it: the open hand pushed into the chest closes its grip there, stays a plate
+(0.01 cm in the body at most), and is a fist once it has gone back.
+
+Three more scenarios: `palm_close_on_chest` (above), `palm_slap_leg` (the open hand on the outside of the
+thigh at 6.2 m/s; it meets the character's own hand first, as the ball's slap does, 23.6 N*s) and
+`strike_punch_shoulder` (a fist from the front on the left collarbone at 8.7 m/s: 7.2 N*s, one hit, a flinch;
+aimed 6 cm higher it only grazed, 4.1 N*s and no flinch).
+
+**The owner's recording with open hands as bodies.** The recording of the first session was made before the
+hand had a frame of its own, so a copy of it has its rotations turned by the tuning's quarter turn; replayed
+with `palm_collides` on (`Tools\recording-report.ps1 -Name vr_check_plates -Tune ...`): 72 s of a person's
+wrists, 14 changes between ball and plate (three squeezes a hand), 12 hits, no frame of tunnelling, 0.12 cm in
+the body at most, the body on its feet at the end. The plates reach further than the balls did and land two
+blows the balls missed. It is another run than the session, as it must be; what it shows is that a plate on
+its spring is not thrown about by a real wrist. It assumes the quarter turn is right.
+
+**A recording replayed with another hand is another fight after its first contact.** The owner's recording with
+the force cap at 450 and 600 N and with a hand of 1.0 and 2.5 kg: 12 to 18 hits where the session had 13, the
+hands' totals anywhere from 176 to 957 N*s, one run with a fall. The targets are points of the world; once the
+body has gone another way the hands press on whatever is there now. So the hand's values are tuned on the first
+contact of each take, which is what the takes of step 4 are for (one kind of strike a take, a fresh body each),
+and not on a long recording's totals.
+
+**The triggers that did not arrive: what SteamVR's own files say.** For the session SteamVR made a binding from
+the engine's suggested bindings for the Touch profile and "auto-remapped" it to `playstation_vr2_sense`
+(`Steam\config\openxr\system.generated.openxr.dictatorsandbox.unrealeditor-cmd.exe_oculus_touch_1_binding.json`).
+In it the trigger is bound as the grip is: `/user/hand/left/input/trigger` pull to `oculustouch_left_trigger_axis`,
+click and touch beside it; so are the sticks and the four face buttons. The controller's render model names L2
+and R2 as its triggers and L1 and R1 as its grip buttons. So the runtime had the triggers bound, and the reason
+they were not seen lies after it (the engine's key events, the window's focus at that moment) or in which
+buttons were pressed. The next launch lists every controller key that arrives, which settles it.
+
+On pictures of the bare scenario stage the plate is black on black (a flat face turned from the one light), so
+the overlay's hands layer now draws an open hand's plate as its edges; the slap's picture shows it upright
+beside the head, flat toward it.
+
+Not known without the headset, and the reason the switch is off: whether the plate lies in the real palm
+(the three angles), how an open hand feels against the body, and whether a plate on a spring that can also
+turn (20 N*m) behaves when a person's wrist does what a script's does not.
+
+**A second pair of eyes on the night's code.** With 41 files changed and nobody watching, the whole diff was
+read by an agent that had not written it and was given the code, not my account of it. It found no crash, no
+object used after its end in any order of destruction it traced, and the body's flinch logic untouched by the
+events; and these, all checked against the code and the engine's source before they were fixed:
+
+| Finding | What was done |
+| --- | --- |
+| The engine makes a vibration last one frame (`FOpenXRInput::SetHapticFeedbackValues` gives it the frame's own duration), and the pawn asked for one only when the strength changed: the buzz of a new take would have been an 11 ms tick, and a hand held at full force would have fallen silent after its first frame. The frequency of 1 was handed on as 1 Hz | A vibration is asked for in every frame it is to go on, and once more to stop it; the frequency is left to the runtime (0, OpenXR's "unspecified") |
+| With the open hand a body: when the grip closes on something the hand stays a plate, but the plate was hidden because the grip was closed and the ball was hidden because the plate was the body. Nothing was drawn for as long as the player squeezed | What is seen follows the body that is the hand: the plate is shown while the hand is open or the plate is the body |
+| The guard on a headset run looked for SteamVR's processes, not for a compositor that has finished coming up, which is the very thing that crashed the driver | It also refuses while the compositor is younger than 30 s, and while SteamVR's own log says anything but ready or standby |
+| `play.ps1` took any call stack in the log for a crash; an ensure that the engine survives prints one too | A crash is a fatal error; a call stack is only quoted then |
+| A new take waited for good for a reset that nobody carries out, in a session without the play subsystem | Without a listener the take begins as things are |
+| Three constants of behaviour in code against the rule: the grip's slack, the gesture's grip threshold, the take's buzz | `effectors.hand.fist_grip_slack`, the gesture reads `fist_grip`, `tools.headset.take_buzz_s` and `take_buzz_strength` |
+| A hand's `final_location_cm` was the marker ball's, a step stale, while the plate was the body | It is the hand's |
+
+The reader also saw that a lost controller's target, found again, caught up in its place only and took the
+controller's turn at once; the turn now goes the same share of its way in every frame and arrives with the
+place. The grip is the controller's at once, as a person's squeeze should be.
+
+**Before the next launch: a loss must not freeze a punch.** The rule of the evening leaves a hand where it was
+as soon as the runtime stops marking its controller as tracked. Whether this headset drops that mark for a few
+frames in a fast swing, when the hand leaves the cameras' sight for a moment, is not known: the first session
+did not record it. If it does, the hand would stop in the middle of a punch and come after it at walking pace.
+So a pose the runtime only guesses is followed for 0.15 s after the controller was last tracked
+(`tools.headset.estimated_follow_s`; over such a time a gyroscope carries a pose well) and counts as a loss
+after that, which still stops the wandering by a metre that took five seconds. The session's file counts both
+(`estimated_followed_frames`, `lost_frames`), and the next launch says which of the two this headset needs.
+
+Mistakes of mine on the way: a take's first version put the character back in the middle of a frame; the
+session file of a take first carried the hands' figures of the whole session; I took the difference for the
+hands' order of creation and for the first seconds of a process, and neither was it (a wait of 300 frames
+changed no digit).
+
+### M4 part 3, step 1 (the grab), the night of 24 to 25 November, behind a switch that is off
+
+Built by the agent in the owner's absence, on the plan's own words ("a grip that closes on a body grabs it; one
+that closes in the air is a fist"; "grab creates a constraint between the effector and the touched NPC body; the
+force cap is what makes an 80 kg body heavy to lift and drag"). It is off (`effectors.hand.grab` 0) and every
+scenario of before keeps its hashes (73 of 73 against the baseline `m4_p2_night`; the 82 with the grab's own are kept as `m4_p3_grab`, and a second run repeats all 82); eight scenarios `grab_*`
+switch it on for themselves (nine with `grab_two_hands_one_arm`, added after the code was read by another). With it switched on for the whole suite, one scenario of the 80 changes, the one
+whose grip closes on the chest (`palm_close_on_chest`). The owner's recording from the headset, replayed with
+the grab on, has no grab in it and ends on the same hashes: fists that close in the air stay fists.
+
+**What a grab is.** A joint (`FSandboxGrabJoint`) that keeps the hand's own point and one simulated body
+together, both free to turn about it: a hand without fingers holds a place, not a direction. The joint has no
+force cap of its own; the hand follows its target with its capped spring (300 N) and what it holds follows the
+hand. A hand that holds something collides with no simulated body, and collides again once it has let go and
+lies no deeper in one than `grab_clear_cm` (1). A grip takes hold when it closes (the grip passes `fist_grip` upward) with a simulated body within
+`grab_reach_cm` (3) of the hand's shape, and takes the nearest. It lets go when the grip opens, when the hand has
+been further than `grab_slip_cm` (45) from its target for `grab_slip_s` (0.25: the grip slips), when the joint
+has carried more than `grab_max_force_n` (450) for `grab_overload_s` (0.1: the grip is torn open), and when what
+it held is gone. The controllers vibrate with the force the hand pulls with, as they do with the force it
+presses with.
+
+**Three things the first version got wrong, each found by a run.**
+
+- *Touch as the condition.* The first rule was "the hand touched the body within the last 0.1 s". The head
+  could not be taken: the neck is soft, the head leans back from the hand that arrives, and at the moment the
+  grip closed nothing was touching. A player in a headset has the same trouble from the other side (nothing
+  tells a hand that it touches). The rule is reach now, asked of the world when the grip closes.
+- *A skeletal mesh answers an overlap query as one thing.* The item index of the result, which the engine's
+  comment says is the body's index, was -1; each body of the mesh is asked by itself
+  (`FBodyInstance::OverlapTest`).
+- *A hand that holds one segment of the trunk was caught against the next.* Jointed to `spine_02` and pulled
+  toward the head, the hand's ball pressed against `spine_04`, and the joint carried 556 N of a 300 N hand
+  until the overload rule tore the grip open, within a second. A hand that holds something now collides with
+  no simulated body (it holds a point; what it holds does not move against it anyway) and collides again once
+  it has let go and lies no deeper than a centimetre in one (in none, at first: a hand that had let go then
+  sank into what it had held, toward a target a little way inside it). After that the joint carries the spring's force and no more: 294 N at most on
+  average over a pull, with single frames up to 479 N (the hand's own 1.5 kg thrown about by a head that whips).
+
+**The joint's force, and its unit.** `FConstraintInstance::GetConstraintForce` gives the joint's impulse over
+the last substep, not a force (and not the "force times step squared" a comment in the solver suggests):
+a hand that drags at a steady 231 N of its spring reads 124 kg*cm/s at 180 Hz, which is 223 N, the rest being
+8 N of contact. `FSandboxGrabJoint::GetForceN` divides by the substep.
+
+**The plan's row "grab and drag": lift an arm, pull a standing NPC, drag a fallen NPC 2 m with one and two
+hands; joint stretch under 3 cm, hand force at its cap, no blow-up.**
+
+| Scenario | What happens | Grab's joint | Body's joints |
+| --- | --- | --- | --- |
+| `grab_lift_arm` | The left forearm is taken from the side and lifted forward and up by 40 cm; the body stands, the arm follows and hangs again when it is let go | 0.003 cm, 141 N | 0.01 cm |
+| `grab_palm_lift_arm` | The same with the open hand as a plate (`palm_collides`): the plate takes hold and stays the body while it holds | 0.003 cm, 86 N | 0.04 cm |
+| `grab_pull_standing` | The forearm pulled to the side by 90 cm at 0.9 m/s: the body comes along in five steps, arms out, and stands 71 cm from where it stood | 0.005 cm, 314 N | 0.06 cm |
+| `grab_drag_fallen_two` | A body on its back, two hands on the chest, pulled head first by 2 m in 5 s: it is dragged the 2 m, limbs trailing; each hand pulls with 196 and 171 N on average | 0.000 cm, 227 N | 0.06 cm |
+| `grab_drag_fallen_one` | The same with one hand: the body moves 6 cm, the hand is left behind and its grip slips after 1.9 s | 0.000 cm, 303 N | 0.06 cm |
+| `grab_getup_held` | A body that is to get up, held by the chest from before it begins for 6.9 s: one attempt is given up, it stands 2 s after the hand lets go | 310 N | 0.06 cm |
+| `grab_overload_tears` | The two-handed drag with grips that may carry 150 N: both are torn open as the body begins to resist | 188 N | 0.06 cm |
+| `grab_in_air` | A grip that closes 13 cm from the forearm takes hold of nothing | none | 0.00 cm |
+| `grab_two_hands_one_arm` | Two hands on one forearm; the lower comes up into the upper one's place, the upper lets go there and leaves: it collides again only once it is clear of the other hand, and neither goes faster than 0.9 m/s | 205 N | 0.01 cm |
+
+So M3's figure holds with a grab as it did with a scripted force: a lying body is dragged from about 400 N, one
+hand does not move it and two do.
+
+**`Tools\grab-pulls.ps1`: 93 pulls.** Seven bodies (forearm, hand, upper arm, head, chest, thigh, calf), five
+directions, the hand's target leaving at 1, 2 and 4 m/s for 60 cm and staying there 1.5 s. Where each body's
+surface is, the tool measures first (a hand of 20 N sent to the body's middle shows where it comes to rest),
+so the pulls do not depend on where a change to the body puts an arm. 93 of 93 within the limits: the grab's
+joint stretched 0.020 cm at most, the body's joints 0.16 cm, 17 J gained at most (the one fall), no body faster
+than 5.6 m/s. What the body did: pulled by an arm, the head or the chest sideways, forward or back it comes
+along in 1 to 6 steps and stands (one fall of 93: the upper arm pulled back at 4 m/s); an arm pulled up is
+lifted; nothing pulled straight down or up by the trunk moves an 80 kg body, and the grip slips (43 of 93).
+
+Two more rows of 31 pulls each, both within the limits: with the target leaving at 8 m/s (one fall, the same
+upper arm pulled back; 442 N in the worst frame), and at 2 m/s with a grip that never slips
+(`-Tune "effectors.hand.grab_slip_cm=0"`: the hand stays behind at its 300 N for the whole 1.5 s, nobody falls,
+334 N in the worst frame). So the slip is a matter of where the player's hand is, not of the body's safety.
+
+The reach, on 21 pulls (seven bodies, three directions, 1 m/s): with a reach of 0 cm nine take hold of nothing
+(the upper arm, the head and the chest, which give way to the hand that comes), with 1 cm three (the chest),
+with 3 cm and with 6 cm none, and no pull takes another body than the one it was sent to. 3 cm is the
+smallest of these that takes every body.
+
+**Open, written down for the owner and for part 3 proper.**
+
+- *A standing leg does not come.* A thigh or a calf pulled by one hand in any direction stays where it is and
+  the grip slips; the body does not step. During a pull of 276 N forward on the thigh the centre of mass is
+  8 cm off the support that touches for a moment and the assist carries up to 0.26 of body weight. A person
+  would hop. It is the body's side (what the assist may hold while a force is kept up), not the grab's.
+- *The body does not feel a grab.* It feels contacts; a pull through a joint reaches it only as motion. So it
+  does not lean into a pull as it leans into a push, and a get-up under a holding hand is not "pressed"
+  (`getup.hold_force_n`). The first half of the remedy is built: the run and the session, which know both
+  sides, tell the body every frame which of its parts the hands hold and with what force
+  (`FScenarioStage::TellBodyOfHolds`, `USandboxBodyController::TellHolds`), and the body tells its listeners
+  of a grab and of its end (`control.events`: `grab`, `release`; the expectation `grab_events`). The body does
+  nothing else with it yet: no force, no target and no decision reads the holds, and every hash is as it was. A unit test
+  holds the telling (`DictatorSandbox.Body.Events.HoldsAreToldAsGrabAndRelease`; 34 unit tests).
+  What it should do with them (lean, count a hold as a press on a get-up) changes how the body behaves and is
+  left for the owner to see first.
+- *The stand itself* is as it was at M3's gate at the end of this night: 49, 50 and 49 of 50 on three seeds,
+  38, 44 and 44 at the first attempt.
+
+**One hand slows a get-up, two hold it: measured with hands, on the stand, on three seeds.** M3 left this rule
+to be set again with the grab; it was last measured with a scripted force on the pelvis (52 bodies of 150
+stood under 300 N). Two things were needed to ask it of hands. A scripted hand has to find a body wherever its
+fall has put it: an `effector` event may say `"at_bone"`, and its keys are then measured from where that part
+of the body is when the event begins (`Scenarios\README.md`; `grab_getup_held` uses it). And the stand of falls
+got holding hands (`Tools\getup-stand.ps1 -HoldHands 1` or `2`, `Tools\getup-seeds.ps1 -HoldHands`): with the
+grab on for the trial, one or two hands come down on the chest of the fallen body, close their grips and keep
+their place for 15 s; so that they arrive on a body at rest, a held body begins its get-up after 4 s of lying,
+not 1.5.
+
+| Hands | Bodies taken hold of, of 150 | By the chest itself | A grip came off by itself | Pulled free and stood before the 15 s were up | Stand in the end |
+| --- | --- | --- | --- | --- | --- |
+| one | 146 (48, 48, 50) | 123 | 77 | 37 (12, 7, 18): a quarter | 141 |
+| two | 146 (48, 48, 50) | 107 | 11 | 0 | 140 |
+
+A body cannot stand with a grip on it that keeps its place 12 cm above where the chest lay: the grip slips
+when the hand is left 45 cm behind. So "stood while it was held" is, for hands, "pulled free and stood before
+the time was up", and every such body is also among those whose grip came off. Read that way the rule holds as
+the grab is built, with no rule of the body added for it: from one hand at its 300 N half the bodies pull free
+and a quarter are on their feet within the 15 s; from two hands 11 of 146 pull one grip off and none stands.
+After the hands let go the bodies get up as they do unhindered (144 and 143 of 150 end standing, against
+148). A hand takes the body nearest to it, and for a fifth to a quarter of the falls that was not the chest
+itself but what lay on or beside it (the neck, an arm, the next segment of the trunk); the four bodies of 150
+the hands did not take hold of had moved from where their chest was when the hands set out. One seed with the
+hands sent to the pelvis instead: from one hand 23 of 50 pull free and 3 stand in time, from two 5 and none.
+
+Read by another as well (the fourth reading of the night, of the hand sent to a part of the body and of the
+stand's hands): nothing that could move a hash or crash; fixed were what the summary's words claimed, a
+mistyped part's name that sent the hands to the middle of the room without a word, the two options
+(`-PressN`, `-HoldHands`) given together, and which of two trajectories of one hand that begin together is
+moved.
+
+In the one fall there is a scenario for (`grab_getup_held`), one hand on the chest keeps the body on its hands
+and knees for as long as it holds; the attempt is given up as the hand lets go, and the body stands 8 s later.
+- *On the desktop the G key holds the hands open,* so that the grab can be tried without the headset
+  (`Tools\play.ps1 -Grab`): G held, a mouse button held to reach, G let go while the
+  hand presses on the body, and the hand holds; G again lets go. The grip has to close while the hand still
+  presses: a body that is pushed gives way, and half a second later it stood 3 cm out of the hand's reach (the
+  first run of the check below). The proper verbs are part 5.
+- *In a headset the take's gesture and the grab share the grips.* They do not collide (a grip that closes in
+  the air above the head takes hold of nothing), but a button is still the better way once it is known which
+  ones arrive.
+- *A hand that holds something passes every simulated body,* the other hand and, later, props among them. With
+  held objects (part 4) this becomes a matter of pairs.
+- *The path "what it held is gone"* (a reset or a new take while a hand holds the character) no scenario
+  reaches, since a scenario has no reset. A session without a person does (`Tools\play.ps1 -Demo -Grab`, a step
+  of the bootstrap): the right hand takes hold of the chest, the character is put back while it is held, the
+  hand has lost what it held and holds nothing, comes back, takes hold of the new character, pulls and lets go.
+
+**The code read by another, again.** The same reading as for the evening's code, of the grab alone, before any
+of it was called done. No fault in the lifetimes (every order of destruction traced, the engine's handling of
+a joint whose body is removed checked in its source) and none in the path taken with the grab off. Found and
+fixed: two hands that overlapped were set back to colliding inside each other, because the test for "clear"
+left the whole rig out (it leaves out only the hand's own two bodies now; `grab_two_hands_one_arm`); the force
+a hand reports kept its last value after a snap and would have gone on vibrating the controller; the pulls'
+tool gave 0.5 and 1 m/s the same scenario name, accepted a hold of 0 s and reported "0 of 0" as passed; a prop
+of another object type could have been taken by a hand that still collided with it (only what a holding hand
+passes is taken now); a hold that ended by a slip was counted as a grip that closed on a body. And one thing
+about the engine: a joint's force is kept for the last substep of a frame only, so the "largest force" of a
+grab is the largest at the end of a frame.
+
+**And a third time, for what was written after that reading** (the hold events, the hand that collides again,
+the G key, the session's grab demo, the tools). Nothing that touches a run with the grab off. Found and fixed:
+
+- *The kept recording of the desktop's hands had every grip at 0.* It was made in step 1, before a hand had a
+  grip; since the evening a desktop hand is a fist with a grip of 1. Replayed, the kept recording had open
+  hands for the whole run, which changes nothing while the open hand is only shown, and would have made
+  plates of them with `palm_collides` on. `Recordings\demo_hands.json` is made anew; `replay_demo_hands` keeps
+  its hashes.
+- *A recording carries the grip and not what the grip could do.* A session started with the grab on, replayed
+  from its recording with the tuning files as they are, closed its grips on nothing, and nothing said why. A
+  session's replay scenario now switches on, before its first step, what its own hands had switched on (the
+  grab, the open hand as a body); checked by a session recorded with both on (9 of 9 comparisons hold).
+- *The check `grab_events` promised more than it tested:* "each grab has ended or is still held" was true by
+  the way the body keeps its list. It now holds that what the body was last told is held is what the hands hold
+  at the run's end, and the body is told once more as a run ends (a grip that closed in the last frame was
+  counted by the hand and never told).
+- Smaller: a snap during a hold was counted as a grip closed on a body; the depth at which a hand collides
+  again may be 1.5 cm at most (half the open hand's thickness); the pulls' tool refuses speeds that round to
+  the same tenth and a distance of 0, and prints 0.5 m/s as 0.5; `Tools\play.ps1 -Grab` without `-Demo` did
+  nothing and is now a person's session with the grab on.
+
+### M4, what the hands do as they are tuned, and the leg that does not come (the night of 24 to 25 November)
+
+Two measurements with no value changed, made after the grab, on the question the plan leaves to part 2
+("the fist's mass, the force cap and the stiffness, on the recordings") and on the oddity the grab's pulls found.
+
+**A hand that goes on through the body fells it, as it is tuned.** Scripted hands from 70 cm in front of the
+chest to 150 cm behind it (a shove) at 1, 2 and 4 m/s with one hand and with two, and punches at the head and
+the chest that go 40 cm in and stay a second, at 6 and 10 m/s; each with the hands as tuned (1.5 kg, 300 N),
+with a cap of 600 N, with 600 N and 3 kg, and with 1200 N and 3 kg (40 runs).
+
+| What | As tuned | With the stronger and heavier hands |
+| --- | --- | --- |
+| A shove at 1 m/s, one hand or two | three steps back, then a fall; 262 to 273 N*s | the same; 258 to 272 N*s |
+| A shove at 2 and 4 m/s | one step and a fall; 133 to 154 N*s | none or one step and a fall; 145 to 197 N*s |
+| A punch into the chest that stays in | one step and a fall; 114 to 116 N*s | the same; 130 to 140 N*s |
+| A punch into the head that stays in | two steps, stands; 76 to 77 N*s | two to four steps, stands; 65 to 94 N*s |
+
+So what fells the body is not the hand's strength but how long it goes on pushing: 300 N for half a second is
+150 N*s, and the push matrix has the body fall from 200 N*s and step from 80. A punch that comes back at once
+(the suite's strikes, and every punch of the owner's first recording) delivers 12 to 28 N*s and makes it
+flinch. Twice the cap and twice the mass change the peak force of the contact (up to 3200 N from 1750) and
+not the outcome. For the tuning of part 2 this says: the cap and the mass decide how hard a quick punch is; a
+knockdown is already there for a hand that follows through. Two scenarios hold it, one for each verb of the
+plan that had none with hands: `effector_push_chest_falls` (the push: three steps back, then the fall) and
+`effector_shove_knockdown_gets_up` (the knockdown: two hands, the fall, the get-up).
+
+**A standing leg that is pulled does not come: mostly because a hand is not strong enough.** A foot that
+carries half the body presses on the floor with about 400 N, and at a friction of 0.7 for the soles it takes
+280 N to slide it; the hand has 300. The balance assist adds to that: its pull on the pelvis carried up to
+0.26 of body weight during a pull of 276 N on the thigh. With that pull capped (`assist.pelvis.max_force_n`,
+which is 0, no cap):
+
+| Cap on the pelvis's assist | A thigh pulled forward | A thigh pulled sideways, a calf pulled sideways or forward | Push matrix |
+| --- | --- | --- | --- |
+| none (as tuned) | stands, the grip slips | stand, the grip slips | 160 of 160 |
+| 200 N, 120 N | stands, the grip slips | stand, the grip slips | 160 of 160 (four more shuffles in the 80 N*s row at 120 N) |
+| 80 N | comes along in three steps | stand, the grip slips | 160 of 160 (the same four) |
+
+Not changed: the stand of get-ups and the knockdowns were not run against a cap, and whether a body should
+come along by its thigh under one hand is the owner's to say. If it should, 80 N is where it begins, at no
+cost to the push matrix.
+
+### M4 part 5, a first step: the kicking foot (the night of 24 to 25 November)
+
+The kick was the one verb of the plan with no way to be made at all. It is an effector of a kind of its own:
+`foot_left` and `foot_right`, the same body on the same spring as a hand (`USandboxEffectorComponent`), with a
+leg's mass and strength (`effectors.foot.*`) and none of what makes a hand a hand: it has no grip, no open
+shape and no grab, and is always a ball. A scenario scripts it as it scripts a hand. No scenario of before is
+touched (their hashes are the same).
+
+**The values, and what decided them.** 5 kg (the lower leg and the foot), a ball of 6 cm, a spring of
+10 000 N/m (the hand's natural frequency at this mass), and a force cap that was measured: with 900 N, three
+hands' worth, a kick that goes 30 cm through the trunk and stays 0.15 s delivers 152 N*s and the body takes five
+steps and stands, and 214 N*s into the thigh drive it back ten steps; with 1800 N the same kick through the
+trunk delivers 173 N*s in less time and fells it, with 8 kg and 3000 N likewise. 1800 N is about what a leg
+pushes with, and it is the smallest of the three that gives the plan's "or the NPC falls". Each is the
+owner's to change.
+
+| Scenario | The kick, at 8 m/s | What happens |
+| --- | --- | --- |
+| `strike_kick_thigh` | from the front 10 cm into the left thigh, and back | 61 N*s; the thigh gives 23 cm, three steps, stands |
+| `strike_kick_calf` | from the front 10 cm into the left calf, and back | 51 N*s; the calf gives 30 cm, the body stands without a step |
+| `strike_kick_torso` | from the front 10 cm into the belly, and back | 73 N*s; two steps, stands |
+| `strike_kick_torso_through_falls` | the same, 30 cm through and held 0.15 s | 173 N*s; one step and a fall, at rest after 1.5 s |
+
+All four: no tunnelling, 0.00 cm in the body, the fastest joint 5 to 21 rad/s (the limit is 30), joints
+stretched 0.07 cm at most. Kicks at 4, 6, 8, 10 and 12 m/s into the thigh and the calf from the front and into
+the calf from the side (15 runs): no tunnelling, 2 to 20 rad/s, and the impulse does not grow with the speed
+(24 to 74 N*s): what a kick delivers is the leg's push while the foot is on the body more than the foot's
+momentum, as with the hands. With the cap at 900 N the kick at the calf from the side had the ankle at 50 rad/s
+at 8 m/s and at 5 and 12 rad/s at 6 and 4 m/s: a figure that jumps as the speed changes smoothly; at 1800 N
+it is 5 to 20. It is not in the suite; the calf is kicked from the front there.
+
+**On the desktop the F key kicks.** A desktop session's rig has the right foot as a third effector. It rests
+below the camera (`tools.kick.rest_*`: 20 cm ahead, 12 cm to the right, 100 cm down, the camera taken as
+level), and F sends it in a straight line to what the camera aims at and 15 cm through it, at 8 m/s, and back
+(`tools.kick.speed_mps`, `through_cm`; with nothing aimed at, 110 cm ahead). The foot is in a session's
+recording as the hands are, and a replay kicks as the session did; the kept recordings, made without it, replay
+as before (`replay_demo_hands` and the owner's `vr_check` keep their hashes; a fresh recording of the session
+without a person has three effectors and its two replays agree, 13 of 13 comparisons). In a headset there is
+no foot yet: a kick there waits for a button that is known to arrive. The session without a person
+(`Tools\play.ps1 -Demo -Grab`) ends with a kick at the thighs: the character tells of a hit of 28 N*s, and the
+foot delivers 140 N*s in all.
+
+Read by another, the desktop's kick had three faults, fixed before it was called done. A kick had no limit of
+reach: aimed at a wall across the room, the foot would have gone there, pushing at 1800 N on whatever stood in
+its line; a kick now goes no further than `tools.kick.reach_cm` (130) from where the foot rests. The resting
+foot was an unseen body with a leg's strength under the camera: with a low camera it lay in the floor and
+pressed on it, and over a fallen character it would have pressed on that; at rest the foot is now held with
+`tools.kick.rest_force_n` (40 N) and has its strength only while it kicks. (That strength is part of the
+foot's target, and of a recording, a twelfth number a target; recordings made before have eleven and read as
+full strength. Set on the effector from outside, as it first was, the replay of a session had a foot of 1800 N
+where the session's had 40, and the bootstrap's record-and-replay step said so: the session's foot had brushed
+the floor and the replay's had not. The foot also rests 100 cm below the camera now, not 120.) A second
+reading found what the weak foot had brought with it: its target came home from a kick at 8 m/s and the foot,
+weak again that same frame, would have flown on past its rest (5 kg at 8 m/s against 40 N); it keeps its
+strength for `tools.kick.settle_s` (0.4 s) after a kick, and after any jump of the view, which a weak foot
+crossed by drifting through whatever stood between. The session's demo now also wants the foot home within
+5 cm after the kick, never having been put there. And a take that begins during a kick ends the kick before
+the frame's targets are made, not after. A third reading: "after any jump of the view" was first written as
+"after any frame that follows a pause", which in slow motion is every frame, so that the foot was never weak
+there; a jump is now a rest that has moved further in one step than a kick goes. And a strength of nothing, in
+a recording written by hand, would have been a spring without a cap; an effector keeps a hundredth of its
+strength at the least. And the demo's "the kick landed"
+was true if the foot had touched anything since the session began; it now wants an impulse from the foot after
+the key and a hit told by the character. The three standing kicks of the suite turned their targets at the
+body's surface, where a body a few centimetres further back is touched by a foot already on its way home; they
+go 10 cm in now.
+
+### M4 part 4, a first step: a thing with mass in a scenario (the night of 24 to 25 November)
+
+Part 4 is objects and movable furniture. Its first need is a simulated thing in the world at all, and that is
+what this is: a scenario may list `"props"`, boxes with a name, a size, a mass and a place
+(`Scenarios\README.md`), and the stage puts each into the world before the first step
+(`FScenarioStage::SpawnProps`): a box component that simulates, with a cube attached to be seen. It collides
+with the floor, the character and the hands; a hand can take hold of it, since it is of the kind of body a
+holding hand passes; the character feels it as it feels any simulated body that touches it, a hit or a
+pressure. A run's `props` say where each ended, how far it went, how fast it ever was and how far it is tipped;
+the expectations `min_prop_travel_cm`, `max_prop_travel_cm` and `max_prop_speed_mps` hold them. Scenarios without
+props run as before (82 of 82 hashes).
+
+| Scenario | What is done | What happens |
+| --- | --- | --- |
+| `prop_push_box` | a fist pushes a box of 5 kg along the floor | it slides 129 cm at 1.2 m/s at most; the hand gave it 48 N*s; the character, two paces away, notices nothing |
+| `prop_lift_box` | an open hand comes down on the box, closes, lifts it 70 cm, carries it a metre, sets it down, opens | the box comes along as it was taken and stands where it is set down, 6 cm from the place; the grab's joint carries 51 N on average, the box's weight, and 157 N at most; no slip |
+| `prop_drop_box_on_head` | the same hand lifts a box of 5 kg over the character's head and lets go | it falls 20 cm onto the head: one hit told (15 N*s felt), a flinch, the character stands; the box tumbles to the floor, 5.5 m/s at most |
+| `prop_throw_box` | a box of 2 kg is taken, lifted, swung away from the character and let go in the swing at 5 m/s | it leaves the hand and lands 6 m away (6.9 m/s at most on its way); the joint carried 74 N at most |
+| `prop_lift_heavy_one_hand` | one hand takes a crate of 40 kg by its top and its target rises 60 cm | the crate does not move; the hand is left 55 cm behind its target at its 300 N and the grip slips; nothing is thrown (the crate 0.0 m/s) |
+| `prop_lift_heavy_two_hands` | the same with two hands | the crate is lifted 53 cm and set down again; each hand carries 169 N on average and 253 N at most, no slip |
+| `prop_fall_on_box` | a box of 20 kg stands behind the character, which is knocked over backward onto it | it falls across the box (259 N*s felt), is 0.33 cm in the world at most, gains 25.5 J as in any fall and lies at rest after 4.0 s, where a fall on the bare floor takes 2.2; the box is moved 11 cm |
+
+**A thing that is held keeps its direction in the hand.** A grab on a limb holds a point and lets the limb
+turn; a thing held that way only hangs, and a stick cannot be struck with. So for a thing (whatever is not a
+part of a character) the grab's joint also has a spring with a torque cap that turns the thing toward the way
+it lay in the hand when it was taken (`effectors.hand.grab_hold_nm_per_rad` 150, `grab_hold_damping_s` 0.05,
+`grab_hold_max_torque_nm` 40). The box of `prop_lift_box` swung under the hand before and ended 35 cm from
+where it was set down; now 6 cm. `prop_stick_strike_arm`: a stick of 90 cm and 0.8 kg is taken from the floor
+by one end, lifted to shoulder height, carried to the character's side and swung through its upper arm at
+5.7 m/s. It does not pass through (0.04 cm in the world at most), and the body feels 2.5 N*s, which is not a
+hit to it. Two things about that. A swing whose target leaves at full speed at once does not strike at all:
+the hand is thrown sideways at 130 m/s^2, the wrist has 20 N*m to turn the stick with, and the stick trails
+behind the hand and is drawn past the body lengthwise (seen on the film); the scenario's swing gathers speed
+over 0.4 s. And how hard a held thing hits is the wrist's strength and the thing's mass: with the hand's turning
+spring and the hold at three times their values the same stick delivers 6.7 N*s, a stick of 2 kg 4.0 N*s, both
+7.0 N*s, none of them a hit. The plan's stick, whose end goes at up to 12 m/s and whose blow is a hit, needs
+those values set in part 4; they are as they were.
+
+**A handle.** The owner's rule for held objects: "a handle named in the object's spec draws the hand in when
+it is near; anywhere else the object is held where it was touched". A prop may name one (`"handle_cm"`, a point
+of the thing from its middle); a hand that closes within `effectors.hand.grab_handle_cm` (15) of it takes the
+thing by that point, and the joint draws the handle into the hand. The hand still knows nothing of the thing: it
+looks for a place with a tag on whatever it takes hold of. The stick of `prop_stick_strike_arm` names its end;
+taken 10 cm from there it is held by the end (`handle_grabs` 1, the expectation `effector_handle_grabs`), and
+its swing through the arm is then felt as 12.7 N*s, where held 10 cm further in it was 2.5; the body still
+does not tell of a hit (the stick slides along the arm: no single frame brings what a hit is). By the engine's
+source, read by the reviewer and not measured: the joint closes the distance in one substep, shared by the two
+masses, and the engine's projection moves only the hand; a light stick comes most of the way to the hand, a
+table of 30 kg would have the hand jump to its handle and then hang behind its target while 300 N drag the
+table. Nothing is thrown.
+
+The plan's criterion for the stick ("strikes head, chest, shoulder and forearm at several heights with its
+end at up to 12 m/s: no tunnelling, and the impulse grows with the speed") is not met by this, and the sweep
+says where it stands: the same stick, taken by its handle, swung at 95, 120, 140 and 162 cm at 3, 5 and 7 m/s
+(12 runs; the stick itself reaches 3.7 to 8.3 m/s). It is held in all, no grip slips. The body feels 13 to
+53 N*s at the three lower heights and tells of one hit in the twelve (the forearm, at 120 cm and 7 m/s); what
+it feels does not grow with the speed (13.8, 29.6 and 17.8 N*s at 95 cm); at 140 cm and 7 m/s the stick is
+1.53 cm in the body for a moment and only 3 N*s are felt; at the head's height it passes without touching
+(the stick hangs below where the hand holds it). So: a held thing can be swung and does not go through at
+these speeds, and what a blow with it is, is still to be made: the wrist's strength, the stick's mass, and how
+the body counts a contact that slides along it.
+
+A session puts the things back where the scenario has them whenever the character is put back, so that a
+take's replay starts from the same places, each under the name it had (`Prop_<name>`: what a hand that touches
+or holds it reports); and a run with props has a check of its own, `props_simulated`: a
+limit on how far or how fast a thing went says nothing of a thing that was never made.
+
+Known of the body and things, from the code's reading and one run: to the body every contact with a thing is
+a hit or a press, never support. A trunk that comes down on a box does not count as having met the floor (the
+muscles' let-go waits for the floor), a body that rests on things alone counts as held up, and a thing that
+presses with 450 N or more would keep a get-up waiting. In the one case run, the body that fell across the
+20 kg box got up at the first attempt in 4.5 s and felt no press. A thing that lands on a fallen body is not an
+"input" to the energy watch and would read as energy from nowhere. Nothing refuses a prop that is put inside
+the character or the furniture of a map.
+
+Measured, as the starting point of part 4's step for the body (four runs, nothing changed): a body put on a
+movable plate (120 by 120 by 10 cm, 40 kg) stands on it for the whole run, and its sense of balance has no
+foot on the ground in any of the 720 frames: no support polygon, no margins. It tells of a hit as it lands on
+the plate, and feels its own weight as a press of 799 N. Struck with 30 N*s there it stands without a step
+(13.5 cm of pelvis drift, the assist at 0.15 of body weight at most), a second flinch. A box of 5 kg pushed
+into its shins by a hand is one hit and a press of 282 N (366 N*s felt in all), a box of 20 kg 369 N; it stands
+both, without a step. So the owner's rule for part 4, "a steady force from below is support, a sharp impulse
+from the side or above is a hit", is not there in any part: every simulated thing is a hand to the body. That
+step changes what the body feels and stands on, and is for a day with a baseline before it and three seeds
+after.
+
+**The step, behind a switch that is off** (`reactions.thing_support`). The owner's rule as one condition in
+the place where the body takes a contact (`USandboxBodyController::OnBodyHit`): a simulated body that pushes
+up on a part of the character (the impulse within 45 degrees of straight up) is treated as the floor is: it
+goes to the sense of balance and is not felt. On a foot whatever pushes up is support, the landing of a step
+too; on any other part only a push that is in one substep no harder than `reactions.thing_support_max_ns`
+(5 N*s, which kept up is 900 N; a hand's uppercut at 6 m/s is 9 N*s and stays a hit). Anything from the side or
+from above is felt as before. With the switch off every scenario keeps its hashes (93 of 93). With it on:
+
+| On a movable plate of 40 kg | Switch off | Switch on |
+| --- | --- | --- |
+| standing | no foot on the ground in any frame; its own weight felt as a press of 799 N; one hit told as it lands | both feet in all 720 frames, the centre of mass 8.7 cm inside its support, the assist at 0.0052 of body weight (the floor's figure), no hit when the switch is on from the first frame |
+| struck with 30 N*s | stands, 13.5 cm of pelvis drift, a second flinch | stands, 8.7 cm |
+| struck with 80 N*s | falls (it has no feet to step with) | three steps, stands |
+| knocked down with 200 N*s on a plate of 4 m, to get up | not run | falls, and gets up on the plate at the second attempt; its own fall and get-up are told as nine hits (5 to 36 N*s), the parts that come down on the plate harder than the limit |
+
+Three scenarios switch it on for themselves (`prop_stand_on_plate`, `prop_step_on_plate`,
+`prop_getup_on_plate`). And the plan's "a hand that lifts or presses must keep reading as it does now; that is
+checked, not assumed": the whole suite run with the switch on has 90 of 95 scenarios bit for bit as they are
+without it; the five that differ are the three on the plate, the fall onto the box (the body lies on it) and
+one with a hand, `grab_getup_held`, where the hand that holds the chest of the lying body is under part of
+it. The body cannot tell a hand from a thing, so a hand under a foot is support too. Not measured with it on:
+the push matrix, the knockdowns and the stand (none has a thing in it), a thing that tips or slides away under
+the feet, a body sitting or propped on a thing, a stick underfoot.
+
+**The stand of 50 falls among movable furniture, three seeds** (the plan's criterion for part 4;
+`Tools\getup-stand.ps1 -Only floor -Floor 50 -PropsFile Tools\stand_furniture_props.json`): a table of 30 kg
+110 cm behind the body, a seat of 8 kg a metre to its left and a box of 3 kg at its right, all three simulated.
+
+| Support from things | Falls that end standing | Falls in which a thing was moved | Of those: end standing | Of those: at the first attempt |
+| --- | --- | --- | --- | --- |
+| off (as tuned) | 50, 50, 50 of 50 | 26, 27, 29 | 26, 27, 29 | 25, 24, 26 |
+| on | 50, 50, 50 of 50 | 26, 27, 29 | 26, 27, 29 | 21, 24, 25 |
+
+Every body gets up, with the switch on and off: furniture of this weight is shoved aside by a falling body and
+does not keep it down. With the switch on five more get-ups of 82 need a second attempt, which is the row of
+hits a fall onto a thing is under the rule's limit (below). Heavier furniture, furniture a body gets wedged
+under and furniture of a room's map are not in this.
+
+What the reading by another and the runs showed of the rule's limits, for the owner's decision before it is
+switched on:
+
+- *A fall onto a thing is a row of hits.* The limit that keeps an uppercut a hit also makes a hit of every
+  part that comes down hard on the thing; on the floor nothing of a fall is a hit. Without a limit a blow from
+  below would be support. The contact alone does not tell the two apart; the thing's mass would (a body can
+  lie on 20 kg, not on a hand of 1.5 kg), which is a step toward knowing what touches it.
+- *The support is taken to stand still.* The capture point is worked out from the body's velocity in the
+  world, and the assist's anchors are fixed in the world: a plate that slides at 0.13 m/s puts the capture
+  point 4 cm out and the body steps, and a plate that carries the body 20 cm is pulled against by 300 N at the
+  pelvis and at each foot. No scenario moves the plate: a hand at its 300 N against the plate's edge does not
+  move it with the body on it (120 kg on the floor take about 820 N to slide), and a scenario has no force
+  for a thing.
+- *A hand that lifts is support.* A hand that pushes up on a body in the air counts as the world being
+  touched, so the body is never "held up" (`UpdateHeld`) and keeps the pose of its fall; and an upward touch on
+  a swinging foot ends the step in the air.
+- *A foot that is touched from below is standing.* A body hung up by a hand whose foot something pushes up
+  on no longer counts as held up, and a blow on the sole of a lying body is not felt.
+- *With the grab on as well, a held get-up goes another way.* The suite with every switch of the night on at
+  once (the grab, the open hand as a body, support from things) passes 93 of 95: `palm_close_on_chest`, whose
+  grip closes on the chest and now takes hold of it, and `grab_getup_held`, which does not end standing in
+  its 30 s: the hand that holds the chest is support to the body. The push matrix, the knockdowns and the
+  stand on three seeds are the same with support from things on as off (160 of 160; 8 of 8; 49, 50 and 49 of
+  50 with 38, 44 and 44 at the first attempt): none has a thing in it.
+- *Things are not checked against the space a body needs as it appears* (its arms out, 58 cm to either side),
+  as the stand's furniture of a room is.
+- *The scenarios begin with a flinch:* a console event reaches the body after the first step, in which the
+  landing on the plate was still a hit. With the switch on from the start (`-Tune`) there is none.
+- The first version of `prop_getup_on_plate` passed with a body that had fallen off the plate and got up on
+  the floor; no expectation says where a body stands. The plate is 4 m now, and the run was looked at.
+
+Not done, and what part 4 proper has to decide: furniture of a room spec with mass (this is a scenario's
+own list; the rooms' tables and chairs are still part of the map and static); a grip that opens under overload
+by the thing's own load is the grab's own two rules (the slip and the torn grip) and was not measured on a
+heavy thing; how
+strong the wrist is, by which a stick's blow becomes a hit; the difference between a thing that supports the body and one that hits it, which the
+body is to read from the contact; the stand of falls among movable furniture. The body's rest criterion for a
+fall onto a thing is 5 s in the scenario, against the 3 s of a fall on the floor.
+
+### The machine's reboot of 24 November 2026, 22:03
+
+The fifth launch in the headset that evening ended in a blue screen and a reboot. What the logs say:
+
+| Source | Finding |
+| --- | --- |
+| System log | `Kernel-Power` 41 at 22:03:45; bugcheck `0x0000003b` (SYSTEM_SERVICE_EXCEPTION, access violation `0xc0000005`), "possibly related driver: nvlddmkm.sys"; the first bugcheck in 60 days |
+| SteamVR's logs | The owner shut SteamVR down at 21:50:28. At 22:03:26 `vrserver` is starting again: the launch's own OpenXR instance started it |
+| The engine's log of that launch | `xrCreateInstance` at 22:03:24 to :26, then the D3D12 device: the last lines are "Aftermath initialized" and "Emitting draw events for PIX profiling" at 22:03:27. In a run that goes on, "Aftermath enabled" and the device's interfaces follow within 60 ms |
+| Machine | RTX 5080, driver 32.0.16.2114 (621.14) of 27 October 2026; Windows 11 build 26300.9974; hardware-accelerated GPU scheduling on |
+
+So the graphics driver failed in the kernel while the engine created its device and SteamVR's compositor was
+taking the headset's display at the same moment. The four launches before it found SteamVR running and ready.
+The dump could not be read (no administrator's rights in this session), so the driver's function is not named.
+
+What was done: `Tools\play.ps1 -VR` and `Tools\scenario.ps1 -VR` refuse to start unless SteamVR's server and
+compositor are running, and `Invoke-Editor -VR` refuses as a last guard; a run in the headset is started only
+on the owner's word that the headset is on; in unattended work what is not committed is copied to
+`Saved\Backups` before work goes on. After the reboot: the 27 changed files intact, `git fsck` clean, build,
+33 unit tests, suite 65 of 65 with the baseline's hashes.
+
+What only the owner can do (administrator): read the dump (`C:\Windows\Minidump\112426-16843-01.dmp`) for the
+driver's function; update the NVIDIA driver; consider switching hardware-accelerated GPU scheduling off for the
+headset. None of it is needed for the work to go on.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

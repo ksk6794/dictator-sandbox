@@ -1,0 +1,44 @@
+[
+  {
+    "name": "table",
+    "size_cm": [
+      120,
+      70,
+      75
+    ],
+    "mass_kg": 30,
+    "location_cm": [
+      0,
+      -110,
+      37.5
+    ]
+  },
+  {
+    "name": "chair",
+    "size_cm": [
+      45,
+      45,
+      45
+    ],
+    "mass_kg": 8,
+    "location_cm": [
+      100,
+      0,
+      22.5
+    ]
+  },
+  {
+    "name": "box",
+    "size_cm": [
+      30,
+      30,
+      30
+    ],
+    "mass_kg": 3,
+    "location_cm": [
+      -90,
+      40,
+      15
+    ]
+  }
+]

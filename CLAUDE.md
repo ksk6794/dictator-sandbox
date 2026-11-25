@@ -17,11 +17,55 @@ tunnelling. **M3, balance and recovery, is done: closed on 24 November 2026 with
 review of the clips that the owner handed to the agent; the owner's own look in a session is deferred with M2's
 and does not hold up M4** (the seven parts, the gate's table, the review and the known limits are in
 the M3 section of `docs/PRD.md`). **M4, full interaction and VR, is in progress: part 1 of 6, the hands in the
-headset, has step 1 of 4 done** (its order of parts and what M3 hands over to it are in the M4 section). Step 1:
+headset, has steps 1 and 2 of 4 done** (its order of parts and what M3 hands over to it are in the M4 section). Step 1:
 a session's hands can be recorded (`Tools\play.ps1 -Record`, the K key) and a scenario replays the recording frame
 for frame (`"recording"`; `replay_demo_hands`); `Tools\record-replay.ps1` holds a replay against its session
 (the same states of the body within a frame, the pelvis within 1 cm, the hands' impulses within 5%) and two
-replays against each other by their hashes. Next is step 2, the OpenXR target source. The body senses its own balance (standing feet, support polygon, capture
+replays against each other by their hashes. Step 2: the hands' source for a headset
+(`FSandboxTrackedTargetSource`: the controllers' grip poses with the velocities the runtime tracks, through the
+pawn's origin into the world, the body at `effectors.hand.offset_*` from the grip pose, the grip from the squeeze
+axis), which asks one interface where a controller is (`ISandboxControllerTracker`; `FSandboxXRControllers` is
+the only file that knows of a headset); `Tools\play.ps1 -VR` runs the session in the headset. It is unit-tested
+on made-up poses, and a first look in the headset (72 s, `Saved\Recordings\vr_check`) showed poses, velocities and
+the squeeze arriving, 89.9 frames a second, and a replay that ends as the session did to the last digit; it also
+showed that the runtime's velocity trails its own poses by about 38 ms and that a controller out of sight is not
+reported as lost and jumps back by a metre (`docs/testing.md`, "M4 part 1, step 2"). After that look, on the owner's decisions: a controller the headset does
+not see leaves its hand where it was and a target never jumps (it catches up at `tools.headset.catch_up_speed_mps`),
+and nothing is drawn as text in the headset. Step 3, the hand against its target, is done (`Tools\swing-lag.ps1`):
+behind a swing of 2 to 8 m/s the hand is 1.9 to 10.5 cm with the target's true velocity, 2.1 to 13.1 cm with the
+difference of two poses, and 4.6 to 26.6 cm with the velocity as the runtime gives it; on the owner's recording
+4.7 cm against 8.2 cm, so the velocity is taken from the poses (`tools.headset.runtime_velocity_share` 0). A new
+take (the N key; in the headset both fists raised above the eyes with the grips held for a second) ends the recording that runs, puts the NPC back,
+makes the hands anew and starts a recording of its own, which replays within the check's limits
+(`Tools\record-replay.ps1 -Takes`). Toward part 2, with no physics changed: the hand has a frame of its own
+(`effectors.hand.grip_*_deg`), is a fist or open by its grip and shows an open hand as a plate, the controllers
+vibrate with the hand's contact force, and the body tells of every hit and change of state. The open hand can
+also be the body that collides (`effectors.hand.palm_collides`, off until the owner has seen the plate in the
+headset; four scenarios `palm_*` switch it on for themselves, and a scripted hand's keys say `"grip"`). **Part 3's
+first step, the grab, is built behind a switch that is off** (`effectors.hand.grab`; nine scenarios `grab_*`
+switch it on for themselves; a session has it with `Tools\play.ps1 -Grab`, where on the desktop the G key holds
+the hands open): a grip that closes with a simulated body within 3 cm of the hand takes hold of it
+by a joint at the hand's own point (`FSandboxGrabJoint`), the force is the hand's spring's, and it lets go when
+the grip opens, slips (the hand 45 cm behind its target), is torn open (450 N for 0.1 s) or what it held is
+gone; an arm is lifted, a standing body pulled by an arm comes along in steps, a fallen body is dragged 2 m by
+two hands and not by one (`Tools\grab-pulls.ps1`: 93 pulls within the stretch and force criteria). One hand
+slows a get-up and two hold it, measured on the stand with holding hands (`Tools\getup-stand.ps1 -HoldHands`, three
+seeds: from one hand 37 bodies of 146 pull free and stand within the 15 s, from two none). The body
+does not feel a grab; a hand that goes on through the body fells it as the hands are tuned (300 N for half a
+second is a knockdown; `effector_push_chest_falls`, `effector_shove_knockdown_gets_up`), while a punch that
+comes back delivers 12 to 28 N*s. The kick has its effector (`foot_left`, `foot_right`: a foot of 5 kg on a spring
+capped at 1800 N, `effectors.foot.*`; scenarios `strike_kick_*`: into the thigh three steps, through the trunk a fall; on the desktop the F key kicks at
+what the camera aims at, `tools.kick.*`, and a desktop session's rig and recordings have the foot as a third
+effector; at rest the foot is held with 40 N and a kick reaches 130 cm at most). **Part 4's first step:** a scenario
+can put boxes with mass into its world (`"props"`; `prop_*`: one pushed, one lifted and carried by a grab, one dropped
+on the head, one thrown, one fallen onto, a crate of 40 kg that one hand cannot lift and two can, a stick taken by its end and swung at the arm), and a thing that is held keeps its
+direction in the hand (`effectors.hand.grab_hold_*`) and is taken by its handle if it names one (`"handle_cm"`). To the body every such thing is still a hand (standing on a movable plate it reads no foot on the ground), unless
+`reactions.thing_support` is switched on, which is off: a thing that pushes up on the body steadily is then support, as
+the floor is (`prop_*_on_plate` switch it on for themselves; with it on for the whole suite 90 of 95 scenarios are
+unchanged). A stick's blow is 2.5 N*s, no hit. On the grab: the run and the session tell it what is held (`FScenarioStage::TellBodyOfHolds`) and it
+tells its listeners, but it does nothing else with it yet; and a standing leg that is pulled does not come. Next: a short launch
+in the headset (the controllers' buttons, a lost hand, the way the palm faces, the take's gesture, the
+vibration), then step 4, the owner's ten minutes. The body senses its own balance (standing feet, support polygon, capture
 point); every run measures energy, rest after a fall and penetration of the body
 into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
 and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
@@ -119,15 +163,20 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate; a step is a foot carried 10 cm or more, `-StepMinCm`, and shorter hops are reported as shuffles); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
-| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
+| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; `-PropsFile Tools\stand_furniture_props.json -Only floor -Floor 50` puts movable furniture around every fall on the bare floor; `-HoldHands 1` or `2` has that many hands take hold of the chest of every fallen body for 15 s, with the grab on, and counts the grips that came off and the bodies that pulled free and stood in that time; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
 | The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-Seeds "1,2,3"`, `-PressN`, `-Only`; three engine processes a stand, nine in all; results in `Saved\Matrix\getup_seeds\<name>`) |
 | Friction between the lying body and the floor, by experiment | `powershell -ExecutionPolicy Bypass -File Tools\surface-friction.ps1` (knocks the body down and drags it by the pelvis with `-ForceN 800` for `-PushS 1.0`; the friction from its acceleration; `-Tune` to try values) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,neck_01"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
-| Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen) |
+| Interactive session (a window, for a person) | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1` (`-Name <scenario>` opens that scenario's scene; keys are on the screen; `-Grab` switches the grab on for the session: G holds the hands open, and a hand that closes on the body holds it) |
 | Self-test of the session, no window | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Smoke` (`-Smoke -Shot` renders it and saves `final.png`) |
+| The grab in a session without a person | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Demo -Grab` (the grab switched on: the right hand opens, reaches into the chest and takes hold; the character is put back while it is held; the hand takes hold of the new one, pulls and lets go; a step of the bootstrap) |
 | Record the hands of a session | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -Record <name>` (from the first frame; the K key ends a recording and starts the next; `Saved\Recordings\<name>\`: the recording, a scenario that replays it, what the session saw) |
-| A session's hands recorded and replayed, held against each other | `powershell -ExecutionPolicy Bypass -File Tools\record-replay.ps1` (a session without a person uses the hands alone, `play.ps1 -Demo`; `-Recorded <name>` for a recording a person made; `-Twice` also wants two replays with the same hashes; `-PelvisCm`, `-ImpulsePct`, `-Frames` are the limits) |
+| The session in the headset | `powershell -ExecutionPolicy Bypass -File Tools\play.ps1 -VR` (headset on, SteamVR running, controllers awake; the hands follow the controllers, the player stands 80 cm in front of the NPC, Escape in the window ends it; with `-Record <name>` as on the desktop; `-Seconds 180` ends it by itself and keeps the recording; afterwards it prints what was tracked, which controller keys arrived and how many frames a second went by; without a headset it ends after about 40 s with `PLAY ERROR`) |
+| A session's hands recorded and replayed, held against each other | `powershell -ExecutionPolicy Bypass -File Tools\record-replay.ps1` (a session without a person uses the hands alone, `play.ps1 -Demo`; `-Recorded <name>` for a recording a person made; `-Twice` also wants two replays with the same hashes; `-Takes` runs a session of three takes, `play.ps1 -Demo -Takes`, and holds each take's replay against it; `-PelvisCm`, `-ImpulsePct`, `-Frames` are the limits) |
+| What is in recordings of a person's hands | `powershell -ExecutionPolicy Bypass -File Tools\recording-report.ps1 -Name "takes*"` (every recording under `Saved\Recordings` that matches is replayed and read: how fast each hand's target went, how often its grip closed, what each hand delivered and to which bones, every hit the body told of with the hand's speed as it arrived and the largest contact force, what the body did, and whether the replay ends as the session did; `-Tune` replays with other values; `Saved\Reports\<name>\report.json`) |
+| Grabs on seven bodies, pulled five ways at three speeds, judged by the grab's criteria | `powershell -ExecutionPolicy Bypass -File Tools\grab-pulls.ps1` (`-Bodies "lowerarm_l,neck_01"`, `-Speeds "1,2,4"`, `-Directions "left,front,up"`, `-DistanceCm`, `-HoldS`, `-Tune`; where each body's surface is, it measures first with a hand of 20 N; a row a pull: what the body did, what the grip did, the joint's force, the stretch of the grab and of the body's joints; `Saved\Matrix\grab_pulls`) |
+| How far a hand lags behind its target | `powershell -ExecutionPolicy Bypass -File Tools\swing-lag.ps1` (scripted swings that peak at `-Speeds "2,4,6,8"` over `-DistanceCm 60`, each with the target's velocity given exactly, as the difference of two poses, as the headset's runtime gives it and not at all; `-Recording <file> -FromS 26 -ToS 61` adds a person's recording replayed three ways; `-Tune` for other hands; 35 s with a recording) |
 | Run-to-run deviation | `powershell -ExecutionPolicy Bypass -File Tools\repeatability.ps1 -Name drop_passive -IncludeRendered` |
 | Compare two runs | `powershell -ExecutionPolicy Bypass -File Tools\compare-runs.ps1 -A <dir> -B <dir>` |
 | Regenerate assets from specs | `powershell -ExecutionPolicy Bypass -File Tools\gen-assets.ps1` (`-Force` also rebuilds up-to-date maps) |
@@ -135,11 +184,11 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 25 s (64 scenarios; 85 s with `-Long`), a record and replay 25 s,
-the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the stand of 50 falls 66 s (three seeds side by
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 39 s (98 scenarios; 85 s with `-Long`), a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 66 s (three seeds side by
 side 110 s), regenerating the physics asset 10 s, a film
-of 12 pictures 15 s, the session's self-test 10 s, the whole
-bootstrap about 5 minutes. Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
+of 12 pictures 15 s, the session's self-test 10 s (its grab demo 12 s), the whole
+bootstrap about 5 minutes (14 steps). Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
 processes; `SANDBOX_SEPARATE_PROCESSES=1` goes back to one process per run.
 
 The loop: edit, `build.ps1`, `test.ps1`, `suite.ps1`, read the JSON, repeat. A task is done when its
@@ -154,9 +203,9 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `ApplySurface` gives the bodies their friction and restitution (`surface.*`); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`). |
-| `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand: a sphere with mass) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, recorded, later VR; it can keep the targets of every stepped frame, `SetRecording`); `FSandboxTargetRecording` (what the hands were asked for, frame after frame, as a text file) and `FSandboxRecordedTargetSource` (plays one back frame for frame); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, input made in C++), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
-| `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; it tells whoever listens of every hit and change of state, `OnBodyEvent`, which a run lists under `control.events`, and of a grab and its release, which it does not feel and is told of by the run or the session, `TellHolds`; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `ApplySurface` gives the bodies their friction and restitution (`surface.*`); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`). |
+| `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand, or a kicking foot, which is the same with other tuning and no grip: a sphere with mass, a fist or open by its target's grip; the open hand is shown as a plate and, with `effectors.hand.palm_collides`, is a second body, `USandboxPalmComponent`, that takes the ball's place while the hand is open; ask the hand through `GetHandTransform`, `GetHandVelocity`, `GetProbe`, not the component) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, recorded, tracked; it can keep the targets of every stepped frame, `SetRecording`); `FSandboxTargetRecording` (what the hands were asked for, frame after frame, as a text file) and `FSandboxRecordedTargetSource` (plays one back frame for frame); `FSandboxTrackedTargetSource` (the hands of a player in a headset, as arithmetic on what an `ISandboxControllerTracker` says of each controller) and `FSandboxXRControllers` (that interface answered by the engine's XR system: the only file that knows of a headset); `FSandboxGrabJoint` (a grab: a joint that keeps a hand's own point and another simulated body together, free to turn; the hand takes hold with it when its grip closes within reach of a body, `effectors.hand.grab`, and passes simulated bodies while it holds); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, the kick and the open hands of the desktop, input made in C++; in a headset the origin of the play space, with the camera under it as the head), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
+| `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved, and every frame each hand's gap to its target, written to `hands.csv`; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene, its things with mass among it: `"props"`, boxes that simulate, `SpawnProps`), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
 | `Specs/` | Text specs for generated assets (physics assets, room maps with their furniture); format in `Specs/README.md`. |
 | `Scenarios/` | Scenario JSON files; format in `Scenarios/README.md`. |
@@ -689,6 +738,136 @@ touch must not be in that list, and the ones that are get explained in the part'
   stepped; the session knows on which of them its character was put into the world; the difference is
   `recording_start_s`. A reset during a recording makes a scenario that cannot end as the session did (the
   session says so in its log).
+- **A camera locked to the headset is moved under its parent, so it must have one.** The engine sets the
+  camera component's relative transform to the head's pose in tracking space every frame
+  (`UCameraComponent::HandleXRCamera`). As the root of the pawn, the camera would carry the pawn to the head's
+  place near the world's origin, and the hands' origin with it. The pawn's root is a plain scene component, the
+  origin of the play space, and the camera hangs under it.
+- **The engine hands a controller's angular velocity over as an axis times rad/s, already in its own axes and
+  sense of rotation** (`FOpenXRHMD::GetPoseForTime` negates what OpenXR gives, because the change of axes is a
+  reflection): `v = w x r` holds with `FVector::CrossProduct` as it is. Linear velocity and position are scaled
+  by the world-to-metres value that is passed in (100 for cm). Read from the engine's source; step 4 in the
+  headset is the first measurement.
+- **Without a mapping context given to it before the session begins, the OpenXR plugin makes an action of every
+  controller key** (`BuildLegacyActions`) and sends them as ordinary key events: that is how the squeeze reaches
+  the player's input here (`FSandboxXRControllers::ReadSqueeze`). Such events go through the window's focus, as
+  a keyboard's do, and the plugin logs a deprecation warning at every start.
+- **OpenXR Toolkit (`XR_APILAYER_MBUCCHIA_toolkit`), an API layer installed on this machine, crashed the session
+  in the headset 7 s after its start** (an access violation in its DLL, called from the D3D12 RHI), though M1's
+  headset scenarios had run with it. `Invoke-Editor -VR` sets the variable its manifest names
+  (`DISABLE_XR_APILAYER_MBUCCHIA_toolkit`) for that process. A crash in the headset whose stack starts in a DLL
+  that is not the engine's: list the implicit layers (`HKLM\SOFTWARE\Khronos\OpenXR\1\ApiLayers\Implicit`).
+- **A run in the headset that has to start SteamVR itself rebooted the machine.** On 24 November 2026 the owner
+  had closed SteamVR and left; a `-VR` launch 13 minutes later started SteamVR through the OpenXR instance, the
+  engine created its D3D12 device while SteamVR's compositor was coming up, and the NVIDIA driver took the system
+  down (`nvlddmkm.sys`, bugcheck 0x3B, `Kernel-Power` 41; the engine's log ends between "Emitting draw events
+  for PIX profiling" and "Aftermath enabled"). Every uncommitted change was open; none was lost. The scripts now
+  refuse a `-VR` run unless `vrserver` and `vrcompositor` are running, the compositor has been up for 30 s and
+  SteamVR's own log says ready or standby (`Get-HeadsetBlocker` in `Tools\common.ps1`), and say when it is
+  standby (nobody wears the headset). **A headset run is
+  started only when the owner has said, in that message, that the headset is on and SteamVR is up; never in
+  unattended work.** Before a run that opens the GPU in unattended work, copy what is not committed
+  (`Saved\Backups\backup.ps1`). The dump (`C:\Windows\Minidump`) needs an administrator to read.
+- **A session that has logged its start has not shown that it runs.** The first launch in the headset crashed
+  7 s in; the check looked for the start's line, found it, and the owner was told to put the headset on. Look at
+  whether the process lives some seconds later (and for a session's own lines after the start).
+- **Asked before the pawn has begun to play, the pawn refuses a recording without a word** (it has no hands yet).
+  `-Record` from the first frame never recorded from step 1 until it was first used by a person, in the headset.
+  The session starts it once the hands exist. A path that only a person takes is run once without one before a
+  person's time is spent on it (`Tools\play.ps1 -Record x -Seconds 3`, then `record-replay.ps1 -Recorded x`).
+- **The runtime's velocity of a controller is not the velocity of the pose it gives.** On PS VR2 through SteamVR
+  the pose is predicted for the time the frame is shown at (about 47 ms ahead) and the velocity trails the motion
+  of those poses by about 38 ms, smaller by a quarter. Measured on a recording, by fitting the recorded velocity
+  to the difference of the recorded positions at a shift.
+- **A controller out of the cameras' sight still has a "valid" pose.** It wandered a metre and a half in five
+  seconds with a velocity of zero and jumped back 116 cm in one frame; the hand followed at 13 m/s. A pose that
+  is not marked as tracked is followed for a moment only (`tools.headset.estimated_follow_s`, so that a mark
+  dropped in a swing does not freeze a punch) and is a loss after that, and a target that jumps is not a motion:
+  it is caught up with.
+- **The grip of the PS VR2 controllers arrives as the Touch profile's grip axis and reads 0 or 1.**
+- **Every second body put into a world that has had one is another body from its third frame on.** In a session
+  of takes the pelvis of the first and the third fresh character stands 0.03 cm from where the second's and a
+  scenario's stand, with nothing touching them, and standing makes half a centimetre of it within a second: a
+  touch then lands a frame earlier and 2.6% harder. Not the hands (swapped, it stays with the take), not the
+  first seconds of the process, not the order hands and character are made in. A take replays within limits,
+  not to the digit; only a session's first body does that. And a shove that leaves the body 4 cm from a second
+  step told two stories from that half centimetre: check a wiring with a touch, not with a shove.
+- **A character put into the world in the middle of a frame has half a frame of its own.** The session's reset
+  is carried out in the subsystem's tick, after the frame's physics, and a take begins with the next frame.
+- **Two bodies that stand for one hand have other shapes, and one put where the other lies is inside what that
+  one touched.** A ball where a plate lay flat on the chest is 3 cm in the chest. The hand changes its body only
+  where the other has room (`WouldOverlap`), and a grip that closes on something is counted, not made a fist.
+- **A flat face turned from the stage's one light is black on black.** The open hand's plate did not show on a
+  scenario's picture at all; the overlay's hands layer draws it as its edges (`-Overlay hands`). Before
+  concluding that a thing is not there, draw it.
+- **A hand has to be able to reach the speed a scenario asks for.** With the spring's cap of 300 N a target that
+  goes 60 cm at 15 m/s is there and back before the hand has moved: no contact, no impulse, "no tunnelling". A
+  sweep of speeds raises the cap (6000 N in M2 and here) and reports the speed the hand reached.
+- **The engine makes a controller's vibration last one frame** (`FOpenXRInput::SetHapticFeedbackValues`: its
+  duration is the frame's own), and hands the frequency on as hertz. A vibration that is to go on is asked for
+  in every frame; asked for once when its strength changes, a held press is silent after 11 ms. Found by a
+  reader of the code, not by a test: nothing here can feel a controller.
+- **After a night of unwatched changes, have the diff read by someone who did not write it,** and give them the
+  code, not the account of it. Two real defects of 41 files came out that way, both in paths no test reaches.
+- **A skeletal mesh answers an overlap query as one thing.** `FOverlapResult::ItemIndex`, by the engine's own
+  comment the body's index, came back -1 from `OverlapMultiByObjectType`. To learn which body of a character is
+  near, ask each (`FBodyInstance::OverlapTest`), as `USandboxEffectorComponent::FindGrabbable` and the runner's
+  hand probe do.
+- **A joint's "force" from the engine is its impulse over the last substep** (`FConstraintInstance::
+  GetConstraintForce`): divide by the substep. Calibrated on a hand that drags at a steady 231 N of its spring
+  (124 kg*cm/s at 180 Hz). A comment in the solver speaks of force times the step squared; the number does not.
+- **A soft part retreats from the hand that comes to hold it.** The head leans back on its neck from an
+  arriving hand, and "the hand touched it a moment ago" was false when the grip closed. A grab asks what is
+  within reach when the grip closes, not what was touched.
+- **A hand jointed to one body still collides with its neighbours, and is caught between them.** Holding
+  `spine_02` and pulled toward the head, the hand pressed on `spine_04` and its joint carried 556 N of a 300 N
+  hand. A hand that holds something collides with no simulated body until it has let go and lies in none. When a
+  joint carries more than the force that is put in, look for what else touches the body it is on.
+- **A body that is pushed gives way, and is then out of the reach of the hand that pushed it.** A desktop hand
+  that reached into the chest and closed its grip half a second later closed it on air: the body had leant back
+  3 cm further than the reach. Close a grip while the hand still presses (`Tools\play.ps1 -Demo -Grab`).
+- **The engine keeps a joint's force for the last substep of a frame only.** A largest force read once a frame
+  misses a jolt in the first of two substeps.
+- **A test for "clear of everything" that leaves a whole actor out leaves out the other hand.** Two hands are
+  one actor; a hand that had held something was set back to colliding while it lay inside the other one.
+- **A scripted hand can be sent to a part of the body instead of a point of the world** (`"at_bone"` on an
+  `effector` event: the keys after the first are measured from where that body is when the event begins). A
+  scenario that starts with a fall should use it, and so should any measurement on many falls.
+- **What a source decides about an effector belongs in its target.** The desktop's foot was made weak at rest
+  by the pawn setting the effector's strength from outside: the recording did not have it, and a replay's foot
+  had 1800 N where the session's had 40. The bootstrap's record-and-replay step caught it. The strength is a
+  field of `FSandboxEffectorTarget` now, and a number of a recorded target.
+- **A body that is made weak while it still moves keeps moving.** The foot came home from a kick at 8 m/s and
+  was given its resting 40 N on the frame its target arrived: 40 N*s against 40 N. It keeps its strength for a
+  settling time. The same for a target that jumps: a weak body drifts to it through what stands between.
+- **A limit that a missing thing meets is no check.** `max_prop_travel_cm` passed for a prop that was never
+  made (it had travelled 0 cm). A run with props checks that they are there (`props_simulated`).
+- **A target that leaves at full speed at once makes a held stick trail, not strike.** The hand is thrown
+  sideways at 130 m/s^2 and its wrist has 20 N*m: the stick turns back and is drawn past the body lengthwise.
+  A swing with a thing in the hand gathers speed (`prop_stick_strike_arm`); the film showed it, the figures
+  ("felt 0.7 N*s") did not say why.
+- **A count of hits needs a rule for what one hit is.** Summed as the flinch sums and set back at each telling,
+  a shove of 200 N*s over nine frames was nine hits; once a stretch of rising force, a hand held at the chest
+  was six in six seconds. One contact is one hit, and a blow into a contact another (`FeelFrame`).
+- **A hand is one frame behind its target by design.** It is given the place for the start of the coming step
+  and is there at the step's end: 2.2 cm at 2 m/s, 8.9 cm at 8 m/s, with the best velocity there is. A gap
+  measured at the start of a step has that frame in it; do not tune it away with stiffness. Three times the
+  force cap takes 0.2 cm off the gap at 8 m/s, a third less mass or twice the stiffness a centimetre
+  (`Tools\swing-lag.ps1 -Tune`). "The cap holds the hand back from 6 m/s" was written from the force the spring
+  law asked for and was wrong: a sweep is run before a cause is named.
+- **A velocity differenced across a jump of the target is a blow.** 116 cm in a frame reads as 104 m/s; added to
+  a speed limit it carried the target over the jump at once. Where a target may jump, the jump is found first
+  and no velocity is made of it.
+- **The HUD in the headset is one canvas across both eyes.** Text was cut between them and unreadable; the pawn's
+  HUD draws nothing in a headset. Text for a person in the headset has to be a thing in the world.
+- **A kept recording is of the code that made it.** `Recordings\demo_hands.json` was recorded before a hand had a
+  grip and had 0 in every frame; a desktop hand has had a grip of 1 since. Nothing showed it, because an open
+  hand that is only drawn collides as a fist does. When a recorded value gets a meaning, look at what the kept
+  recordings have in it. And a recording carries what the hands were asked for, not what they could do: a
+  session's replay scenario switches on the grab and the open hand's body if its session had them.
+- **A zero can change its sign and nothing else.** With the camera under a root, the hands' recorded rotation has
+  `0` where it had `-0`; the recording of the session without a person differs from the kept one in those
+  characters only, and both replay to the same hashes. Compare recordings by a replay's hashes, not by bytes.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,

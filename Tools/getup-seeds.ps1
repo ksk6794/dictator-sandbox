@@ -6,7 +6,7 @@
 #   ... -Label friction05       names the output: Saved\Matrix\getup_seeds\<Label>\seed_<n> (and seed_<n>.txt, what
 #                               the stand printed)
 #   ... -Parallel 5             engine processes of each stand; the stands run at the same time
-#   ... -PressN 300, -Only "table,chair", -StopStandingS 0     passed on to every stand
+#   ... -PressN 300, -HoldHands 1, -Only "table,chair", -StopStandingS 0     passed on to every stand
 #
 # Prints, for each seed: the falls that end standing, those at the first attempt, attempts a fall, and the
 # assist's mean share of body weight while getting up; then the sums. Exit code: 0 every stand met its criterion,
@@ -17,6 +17,7 @@ param(
     [string]$Label = 'seeds',
     [int]$Parallel = 5,
     [double]$PressN = 0,
+    [int]$HoldHands = 0,
     [string]$Only,
     [double]$StopStandingS = -1
 )
@@ -35,6 +36,7 @@ foreach ($seedText in ($Seeds -split ',')) {
     $arguments = "-ExecutionPolicy Bypass -File `"$stand`" -Seed $seedNumber -Parallel $Parallel -Out `"$outDir`""
     if ($Tune) { $arguments += " -Tune `"$Tune`"" }
     if ($PressN -gt 0) { $arguments += " -PressN $PressN" }
+    if ($HoldHands -gt 0) { $arguments += " -HoldHands $HoldHands" }
     if ($Only) { $arguments += " -Only `"$Only`"" }
     if ($StopStandingS -ge 0) { $arguments += " -StopStandingS $StopStandingS" }
     $printed = Join-Path $root "seed_$seedNumber.txt"
@@ -63,6 +65,10 @@ foreach ($one in $running) {
     if ($PressN -gt 0) {
         $line = Get-Content $one.printed | Where-Object { $_ -match 'stood while they were pressed' } | Select-Object -First 1
         if ($line) { $pressed = '; ' + $line.Trim() }
+    }
+    if ($HoldHands -gt 0) {
+        $line = Get-Content $one.printed | Where-Object { $_ -match 'pulled free and stood' } | Select-Object -First 1
+        if ($line) { $pressed += '; ' + $line.Trim() }
     }
     $lines += ('  seed {0}: {1} of {2} stand, {3} at the first attempt, {4:N2} attempts a fall, assist share {5:N2}{6}' -f `
         $one.seed, $up.Count, $falls.Count, $first, ($attempts / [Math]::Max($falls.Count, 1)), $share, $pressed)

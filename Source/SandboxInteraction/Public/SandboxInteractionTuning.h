@@ -30,6 +30,67 @@ struct FSandboxEffectorTuning
 	 * left behind a wall. It is not physics, so every use is counted and reported.
 	 */
 	double SnapDistanceCm = 0.0;
+	/**
+	 * Where the body is when a tracked controller moves it, off the controller's grip pose, cm: toward the
+	 * thumb along the handle, the way the palm faces, and toward the knuckles. The same numbers serve both
+	 * hands (FSandboxTrackedTargetSource::BodyOffset mirrors them). Desktop and scripted hands do not read them.
+	 */
+	double OffsetThumbCm = 0.0;
+	double OffsetPalmCm = 0.0;
+	double OffsetKnucklesCm = 0.0;
+	/**
+	 * The turn from a tracked controller's grip pose to the hand's own frame, degrees. The hand's own frame is
+	 * the same whatever moves it: x along the forearm toward the knuckles and the fingers, z toward the thumb,
+	 * y through the palm. A fist strikes along x; an open hand's palm lies in the plane of x and z.
+	 */
+	double GripPitchDeg = 0.0;
+	double GripYawDeg = 0.0;
+	double GripRollDeg = 0.0;
+	/**
+	 * The grip above which the hand is a fist and below which it is open, and how far the grip has to pass it
+	 * to either side before the hand changes: a grip that hovers does not flicker.
+	 */
+	double FistGrip = 0.0;
+	double FistGripSlack = 0.0;
+	/**
+	 * The open hand as a flat plate in the hand's own frame, cm: its length along the fingers, its width
+	 * across the palm, its thickness, and how far ahead of the body's centre its middle is. Always shown
+	 * while the hand is open. With PalmCollides (1 or 0) it is also the body that collides then, in place of
+	 * the ball, with a mass of its own.
+	 */
+	double PalmLengthCm = 0.0;
+	double PalmWidthCm = 0.0;
+	double PalmThicknessCm = 0.0;
+	double PalmForwardCm = 0.0;
+	double PalmCollides = 0.0;
+	/**
+	 * A grab. With Grab (1 or 0), a grip that closes while a simulated body is within GrabReachCm of the hand's
+	 * shape takes hold of the nearest such body. The grip slips when the hand has been further than
+	 * GrabSlipCm from its target for GrabSlipS (0 cm: it never slips), and is torn open when the joint has
+	 * carried more than GrabMaxForceN for GrabOverloadS (0 N: never). A hand that holds something collides
+	 * with no simulated body; having let go, it collides again once it lies no deeper than GrabClearCm in one
+	 * (at most 1.5 cm, half the thickness of the open hand: deeper, its middle could be inside the body).
+	 */
+	double Grab = 0.0;
+	double GrabReachCm = 0.0;
+	double GrabSlipCm = 0.0;
+	double GrabSlipS = 0.0;
+	double GrabMaxForceN = 0.0;
+	double GrabOverloadS = 0.0;
+	double GrabClearCm = 0.0;
+	/**
+	 * A thing that is held (not a limb of a character) keeps the direction it was taken in: a spring of
+	 * GrabHoldNmPerRad with damping GrabHoldDampingS and a torque cap of GrabHoldMaxTorqueNm between the hand
+	 * and the thing. 0 N*m/rad: it only hangs from the hand's point.
+	 */
+	double GrabHoldNmPerRad = 0.0;
+	double GrabHoldDampingS = 0.0;
+	double GrabHoldMaxTorqueNm = 0.0;
+	/** A thing that names a handle is taken by it when the hand closes within this distance of the handle, cm (0: never). */
+	double GrabHandleCm = 0.0;
+	/** For how long after that the two held points may be apart without it counting as the joint's stretch, s: the handle is being drawn in. */
+	double GrabDrawS = 0.0;
+	double PalmMassKg = 0.0;
 };
 
 /** A spring with a force cap, as the drag handle uses it ("tools.drag..."). */
@@ -50,6 +111,22 @@ struct FSandboxToolTuning
 	/** How far in front of the camera a reaching hand goes, cm, and how fast its target travels, m/s. */
 	double HandReachCm = 0.0;
 	double HandReachSpeedMps = 0.0;
+	/**
+	 * The desktop's kick. The foot rests below the camera (forward, to the right and down from it, the camera
+	 * taken as level), and a kick takes it in a straight line to KickThroughCm beyond the point that is aimed
+	 * at, at KickSpeedMps, and back. KickReachCm is as far as a kick goes from where the foot rests: a point
+	 * further away is kicked toward, that far, and with nothing aimed at the kick goes that far ahead.
+	 */
+	double KickRestForwardCm = 0.0;
+	double KickRestRightCm = 0.0;
+	double KickRestDownCm = 0.0;
+	double KickSpeedMps = 0.0;
+	double KickThroughCm = 0.0;
+	double KickReachCm = 0.0;
+	/** The force the foot is held with while it rests, N: it follows the player and pushes nothing. */
+	double KickRestForceN = 0.0;
+	/** For how long after a kick the foot keeps its whole strength, s: it comes home at speed and has to be stopped there. */
+	double KickSettleS = 0.0;
 
 	/** Impulse tool: the impulse a click applies, N*s, and the factor one notch of the wheel changes it by. */
 	double ImpulseNs = 0.0;
@@ -67,6 +144,42 @@ struct FSandboxToolTuning
 
 	/** Slow motion: the world makes one step in this many frames. A whole number. */
 	double SlowMotionDivisor = 0.0;
+
+	/**
+	 * In a headset: how far from what the session looks at the middle of the play space is put, cm, and how
+	 * high above the floor the hands wait until their controllers are tracked, cm.
+	 */
+	double HeadsetStandDistanceCm = 0.0;
+	double HeadsetHandsHeightCm = 0.0;
+	/**
+	 * In a headset: a tracked pose that moves faster than this in one frame, m/s, is a jump of the tracking
+	 * and not a motion of the hand; and the speed, m/s, on top of the controller's own, at which a hand's
+	 * target catches up with a controller that jumped or was found again.
+	 */
+	double HeadsetMaxHandSpeedMps = 0.0;
+	double HeadsetCatchUpSpeedMps = 0.0;
+	/**
+	 * In a headset: for how long, s, a pose that the runtime gives without tracking the controller is still
+	 * followed. A controller that leaves the cameras' sight for a moment in a swing is carried on by its
+	 * gyroscope well enough; one that stays out of sight wanders, and its hand is then left where it was.
+	 */
+	double HeadsetEstimatedFollowS = 0.0;
+	/**
+	 * In a headset: how much of the target's linear velocity is the runtime's (1) and how much the difference
+	 * of the last two poses (0). The runtime's trails its own poses; see docs/testing.md, M4 part 1, step 3.
+	 */
+	double HeadsetRuntimeVelocityShare = 0.0;
+	/**
+	 * In a headset: both grips held closed for this long, s, with both hands this far above the eyes, cm, begin
+	 * a new take (ASandboxPawn::RequestNewTake). A hold of 0: never.
+	 */
+	double HeadsetNewTakeHoldS = 0.0;
+	double HeadsetNewTakeRaiseCm = 0.0;
+	/** In a headset: the contact force of a hand, N, at which its controller vibrates at full strength. */
+	double HeadsetHapticFullN = 0.0;
+	/** In a headset: how long, s, and how strongly, 0 to 1, both controllers vibrate when a take begins. */
+	double HeadsetTakeBuzzS = 0.0;
+	double HeadsetTakeBuzzStrength = 0.0;
 };
 
 /**
@@ -76,6 +189,12 @@ struct FSandboxToolTuning
 struct SANDBOXINTERACTION_API FSandboxInteractionTuning
 {
 	FSandboxEffectorTuning Hand;
+	/**
+	 * The kicking foot: the same body on the same kind of spring, with a leg's mass and strength. Of an
+	 * effector's values it has those of the body and its spring; what makes a hand a hand (the grip, the open
+	 * hand, the grab, the place on a controller) it has not, and those stay 0: a foot is always a fist.
+	 */
+	FSandboxEffectorTuning Foot;
 	FSandboxToolTuning Tools;
 
 	/** Tells a parameter store the names of this module and adds the range checks of Validate to it. */

@@ -203,10 +203,20 @@ namespace
 			FString Effector;
 			if (!Json->TryGetStringField(TEXT("effector"), Effector) || !SandboxEffectors::IsKnown(FName(*Effector)))
 			{
-				OutError = FString::Printf(TEXT("events[%d].effector must be \"hand_left\" or \"hand_right\""), Index);
+				OutError = FString::Printf(TEXT("events[%d].effector must be \"hand_left\", \"hand_right\", \"foot_left\" or \"foot_right\""), Index);
 				return false;
 			}
 			OutEvent.Effector = FName(*Effector);
+			FString AtBone;
+			if (Json->HasField(TEXT("at_bone")))
+			{
+				if (!Json->TryGetStringField(TEXT("at_bone"), AtBone) || AtBone.IsEmpty())
+				{
+					OutError = FString::Printf(TEXT("events[%d].at_bone must be the name of a body of the character"), Index);
+					return false;
+				}
+				OutEvent.AtBone = FName(*AtBone);
+			}
 
 			const TArray<TSharedPtr<FJsonValue>>* Path = nullptr;
 			if (!Json->TryGetArrayField(TEXT("path"), Path) || Path->Num() == 0)
@@ -238,6 +248,21 @@ namespace
 				else if (KeyIndex > 0)
 				{
 					Out.Rotation = OutEvent.Path[KeyIndex - 1].Rotation;
+				}
+				// And so with the grip: 1 a fist, which a scripted hand is unless told, 0 an open hand.
+				if ((*Key)->HasField(TEXT("grip")))
+				{
+					double Grip = 0.0;
+					if (!(*Key)->TryGetNumberField(TEXT("grip"), Grip) || Grip < 0.0 || Grip > 1.0)
+					{
+						OutError = FString::Printf(TEXT("events[%d].path[%d].grip must be a number from 0 (open) to 1 (fist)"), Index, KeyIndex);
+						return false;
+					}
+					Out.Grip = static_cast<float>(Grip);
+				}
+				else if (KeyIndex > 0)
+				{
+					Out.Grip = OutEvent.Path[KeyIndex - 1].Grip;
 				}
 			}
 			// The same checks the source makes when the path is played: first key at 0, times increasing.
@@ -301,6 +326,63 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 	}
 
 	Json->TryGetStringField(TEXT("map"), OutSpec.MapPath);
+
+	if (Json->HasField(TEXT("props")))
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Props = nullptr;
+		if (!Json->TryGetArrayField(TEXT("props"), Props))
+		{
+			OutError = TEXT("'props' must be a list of things with mass");
+			return false;
+		}
+		for (int32 Index = 0; Index < Props->Num(); ++Index)
+		{
+			const TSharedPtr<FJsonObject>* Prop = nullptr;
+			FScenarioProp& Out = OutSpec.Props.AddDefaulted_GetRef();
+			FString Name;
+			if (!(*Props)[Index].IsValid() || !(*Props)[Index]->TryGetObject(Prop) || !(*Prop)->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty() ||
+				!SandboxJson::TryGetVector(*Prop, TEXT("size_cm"), Out.SizeCm) || !(*Prop)->TryGetNumberField(TEXT("mass_kg"), Out.MassKg) ||
+				!SandboxJson::TryGetVector(*Prop, TEXT("location_cm"), Out.LocationCm))
+			{
+				OutError = FString::Printf(TEXT("props[%d] needs 'name', 'size_cm' [x, y, z], 'mass_kg' and 'location_cm' [x, y, z] (its middle)"), Index);
+				return false;
+			}
+			Out.Name = FName(*Name);
+			if (Out.SizeCm.GetMin() < 1.0 || Out.SizeCm.GetMax() > 1000.0 || Out.MassKg <= 0.0 || Out.MassKg > 1000.0)
+			{
+				OutError = FString::Printf(TEXT("props[%d] '%s': edges from 1 to 1000 cm and a mass above 0 and up to 1000 kg"), Index, *Name);
+				return false;
+			}
+			if ((*Prop)->HasField(TEXT("rotation_deg")))
+			{
+				FVector PitchYawRoll;
+				if (!SandboxJson::TryGetVector(*Prop, TEXT("rotation_deg"), PitchYawRoll))
+				{
+					OutError = FString::Printf(TEXT("props[%d].rotation_deg must be [pitch, yaw, roll]"), Index);
+					return false;
+				}
+				Out.Rotation = FRotator(PitchYawRoll.X, PitchYawRoll.Y, PitchYawRoll.Z);
+			}
+			if ((*Prop)->HasField(TEXT("handle_cm")))
+			{
+				FVector Handle;
+				if (!SandboxJson::TryGetVector(*Prop, TEXT("handle_cm"), Handle))
+				{
+					OutError = FString::Printf(TEXT("props[%d].handle_cm must be [x, y, z], a point of the thing from its middle"), Index);
+					return false;
+				}
+				Out.HandleCm = Handle;
+			}
+			for (int32 Other = 0; Other < Index; ++Other)
+			{
+				if (OutSpec.Props[Other].Name == Out.Name)
+				{
+					OutError = FString::Printf(TEXT("props[%d]: there is a prop named '%s' already"), Index, *Name);
+					return false;
+				}
+			}
+		}
+	}
 
 	if (Json->HasField(TEXT("recording")))
 	{
@@ -461,6 +543,10 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_effector_penetration_cm"), &OutSpec.Expect.MaxEffectorPenetrationCm },
 			{ TEXT("min_effector_impact_speed_mps"), &OutSpec.Expect.MinEffectorImpactSpeedMps },
 			{ TEXT("min_struck_displacement_cm"), &OutSpec.Expect.MinStruckDisplacementCm },
+			{ TEXT("min_felt_impulse_ns"), &OutSpec.Expect.MinFeltImpulseNs },
+			{ TEXT("min_prop_travel_cm"), &OutSpec.Expect.MinPropTravelCm },
+			{ TEXT("max_prop_travel_cm"), &OutSpec.Expect.MaxPropTravelCm },
+			{ TEXT("max_prop_speed_mps"), &OutSpec.Expect.MaxPropSpeedMps },
 			{ TEXT("min_com_margin_cm"), &OutSpec.Expect.MinComMarginCm },
 			{ TEXT("min_capture_margin_cm"), &OutSpec.Expect.MinCaptureMarginCm },
 			{ TEXT("max_energy_gain_j"), &OutSpec.Expect.MaxEnergyGainJ },
@@ -480,6 +566,17 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			{ TEXT("max_get_ups"), &OutSpec.Expect.MaxGetUps },
 			{ TEXT("max_get_up_attempts"), &OutSpec.Expect.MaxGetUpAttempts },
 			{ TEXT("min_get_up_attempts"), &OutSpec.Expect.MinGetUpAttempts },
+			{ TEXT("hit_events"), &OutSpec.Expect.HitEvents },
+			{ TEXT("grab_events"), &OutSpec.Expect.GrabEvents },
+			{ TEXT("effector_shape_changes"), &OutSpec.Expect.EffectorShapeChanges },
+			{ TEXT("effector_grips_on_body"), &OutSpec.Expect.EffectorGripsOnBody },
+			{ TEXT("effector_grabs"), &OutSpec.Expect.EffectorGrabs },
+			{ TEXT("effector_grab_slips"), &OutSpec.Expect.EffectorGrabSlips },
+			{ TEXT("max_grab_stretch_cm"), &OutSpec.Expect.MaxGrabStretchCm },
+			{ TEXT("min_grab_frames"), &OutSpec.Expect.MinGrabFrames },
+			{ TEXT("effector_grab_overloads"), &OutSpec.Expect.EffectorGrabOverloads },
+			{ TEXT("effector_handle_grabs"), &OutSpec.Expect.EffectorHandleGrabs },
+			{ TEXT("max_grab_force_n"), &OutSpec.Expect.MaxGrabForceN },
 			{ TEXT("min_pelvis_anchor_shift_cm"), &OutSpec.Expect.MinPelvisAnchorShiftCm },
 			{ TEXT("min_lean_cm"), &OutSpec.Expect.MinLeanCm } };
 

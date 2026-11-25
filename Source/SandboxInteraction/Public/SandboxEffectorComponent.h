@@ -1,13 +1,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
+#include "SandboxGrabJoint.h"
 #include "SandboxInteractionTuning.h"
 #include "SandboxTargetSource.h"
 #include "SandboxWorldSpring.h"
 #include "SandboxEffectorComponent.generated.h"
 
 class UStaticMeshComponent;
+class USandboxEffectorComponent;
+struct FCollisionShape;
 
 /** What one effector has done since it was started. For result files and the HUD. */
 struct FSandboxEffectorStats
@@ -32,6 +36,37 @@ struct FSandboxEffectorStats
 	double MaxDemandN = 0.0;
 	/** Times the body was put back on its target because it was further away than the snap distance. */
 	int32 Snaps = 0;
+	/** Times the hand changed from the ball to the open hand's plate or back (effectors.hand.palm_collides). */
+	int32 ShapeChanges = 0;
+	/**
+	 * Times the grip closed while the open hand lay on something, and what it lay on the last time (named as
+	 * in ImpulseByBody). Such a hand does not become a fist there: it is what a grab starts from (M4 part 3).
+	 */
+	int32 GripsOnBody = 0;
+	FName LastGripped;
+	/**
+	 * Grabs (effectors.hand.grab): times a closing grip took hold of a simulated body, what it held the last
+	 * time (named as in ImpulseByBody), the frames it held something, the times the grip slipped because the
+	 * hand was left too far behind its target, the times what it held ceased to exist, and the furthest the
+	 * two held points came apart, cm.
+	 */
+	int32 Grabs = 0;
+	FName LastGrabbed;
+	int32 GrabFrames = 0;
+	int32 GrabSlips = 0;
+	int32 GrabsLost = 0;
+	double MaxGrabStretchCm = 0.0;
+	/**
+	 * The times the grip was torn open by the joint's own load (effectors.hand.grab_max_force_n), the largest
+	 * force the joint carried at the end of a frame it held, N, and the sum of that force over those frames
+	 * (for a mean). The engine keeps a joint's force of the last substep only: a jolt in a frame's first
+	 * substep is not in these.
+	 */
+	int32 GrabOverloads = 0;
+	double MaxGrabForceN = 0.0;
+	double GrabForceSumN = 0.0;
+	/** Of the grabs, those that took a thing by its handle (a point the thing names; effectors.hand.grab_handle_cm). */
+	int32 HandleGrabs = 0;
 	/**
 	 * The first thing the effector ever touched (named as in ImpulseByBody), and how fast the effector was
 	 * moving at the start of the physics step in which that happened, cm/s: the speed a strike arrived with.
@@ -41,15 +76,46 @@ struct FSandboxEffectorStats
 };
 
 /**
- * One of the player's hands as the physics world sees it: a sphere with real mass, pulled toward a target
- * pose by a spring with a force cap (FSandboxWorldSpring). It is never kinematic: a kinematic hand has
- * infinite mass and launches whatever it touches. What it touches it knows nothing about; the other body
- * feels the contact through its own contact events.
+ * The open hand as a body: a flat box (USandboxEffectorComponent makes one the first time its hand opens).
+ * It exists as a class of its own only to let go of its spring before its body is destroyed.
+ */
+UCLASS()
+class SANDBOXINTERACTION_API USandboxPalmComponent : public UBoxComponent
+{
+	GENERATED_BODY()
+
+public:
+	USandboxPalmComponent();
+
+	virtual void OnDestroyPhysicsState() override;
+
+	TWeakObjectPtr<USandboxEffectorComponent> Hand;
+};
+
+/**
+ * One of the player's hands as the physics world sees it: a body with real mass, pulled toward a target pose
+ * by a spring with a force cap (FSandboxWorldSpring). It is never kinematic while it is the hand: a kinematic
+ * hand has infinite mass and launches whatever it touches. What it touches it knows nothing about; the other
+ * body feels the contact through its own contact events.
  *
  * No gravity acts on it: the arm that would carry the hand is not simulated, and its strength, the force
  * cap, should not be spent on the hand's own weight. Continuous collision detection is on.
  *
- * The collision shape is the sphere itself; a mesh of the same size is attached so that it can be seen.
+ * A fist is a ball: the sphere component itself, with a mesh of the same size attached so that it can be
+ * seen. An open hand (the target's grip below effectors.hand.fist_grip) is shown as a flat plate, and with
+ * effectors.hand.palm_collides it is one: a second body, a box, takes the ball's place, with the ball's pose
+ * and motion, its own spring and its own mass, and gives it back when the hand closes. Only one of the two
+ * collides and is simulated at a time; a hand that never opens never has the second. Whoever wants to know
+ * where the hand is asks GetHandTransform and its like, not the component.
+ *
+ * With effectors.hand.grab, a grip that closes with a simulated body within reach of the hand takes hold of it: a
+ * joint keeps the hand's own point and that body together (FSandboxGrabJoint) until the grip opens, the
+ * hand is left too far behind its target (the grip slips), the joint carries more than it may for too long
+ * (the grip is torn open) or the body is gone. A grip that closes in the
+ * air is a fist. The hand knows nothing of what it holds; the held body is pulled as by any other force,
+ * and the force is the hand's own spring's, with its cap. A hand that holds something collides with no
+ * simulated body (it holds a point), and does again once it has let go and lies no deeper in one than
+ * effectors.hand.grab_clear_cm.
  *
  * The owner gives it a target and calls Update once per frame, before the physics step.
  */
@@ -67,8 +133,14 @@ public:
 	 */
 	bool Start(FName InId, const FSandboxEffectorTuning& InTuning, const FTransform& Pose, FString& OutError);
 
-	/** New mass, spring and caps. The radius cannot change after Start. */
+	/** New mass, spring and caps. The radius and the plate's size cannot change after Start. */
 	void ApplyTuning(const FSandboxEffectorTuning& InTuning);
+
+	/**
+	 * The share of the spring's force cap the effector has from now on, 0 to 1. Update sets it from the
+	 * target's strength (FSandboxEffectorTarget::Strength), which is 1 unless a source says otherwise.
+	 */
+	void SetForceShare(double Share);
 
 	/** The pose to pull toward from the next Update on. */
 	void SetTarget(const FSandboxEffectorTarget& InTarget) { Target = InTarget; }
@@ -78,6 +150,21 @@ public:
 	void Update(float DeltaTime);
 
 	FName GetId() const { return Id; }
+	/** True while the hand is a fist: its target's grip is above the tuning's fist grip. A new hand is a fist. */
+	bool IsFist() const { return bFist; }
+	/** True while the open hand's plate is the body that collides. */
+	bool IsPalmActive() const { return bPalmActive; }
+	/** True while the hand holds a body, and what it holds (the bone of a skeletal body, None otherwise). */
+	bool IsGrabbing() const { return Grab.IsAttached(); }
+	FName GetGrabbedBone() const { return Grab.GetBone(); }
+	/**
+	 * True while the hand does not collide with simulated bodies: while it holds something, and after it has
+	 * let go for as long as it still lies in one. Such a hand is not in anything it could have gone through.
+	 */
+	bool IsPassingBodies() const { return bPassesBodies; }
+	/** The force the hand held on with in the last physics substep, N; 0 while it holds nothing. */
+	double GetGrabForceN() const { return GrabForceN; }
+	UPrimitiveComponent* GetGrabbedComponent() const { return Grab.GetComponent(); }
 	bool IsStarted() const { return bStarted; }
 	const FSandboxEffectorTuning& GetTuning() const { return Tuning; }
 	const FSandboxEffectorStats& GetStats() const { return Stats; }
@@ -86,27 +173,91 @@ public:
 	/** Net contact force over the last completed physics step, N. A hand held against something reads its force cap. */
 	double GetContactForceN() const { return FrameDt > 0.0 ? Stats.LastFrameImpulseNs / FrameDt : 0.0; }
 	/** Distance from the body to its target now, cm. */
-	double GetGapCm() const { return Spring.GetGapCm(); }
+	double GetGapCm() const { return ActiveSpring().GetGapCm(); }
 	/** The force the spring law asked for at the last Update, before its cap, N. */
-	double GetDemandN() const { return Spring.GetDemandN(); }
+	double GetDemandN() const { return ActiveSpring().GetDemandN(); }
+
+	/** The hand's own frame in the world, from the body that is the hand now: the ball's pose, or the plate's held point. */
+	FTransform GetHandTransform() const;
+	/** The velocity of the hand's origin, cm/s. */
+	FVector GetHandVelocity() const;
+	/** The mass of the body that is the hand now, kg. */
+	double GetHandMassKg() const;
+	/**
+	 * The hand's shape for a scene query: the shape, where its middle is and how it is turned, and half its
+	 * smallest extent, cm (the ball's radius, half the plate's thickness): no body can be deeper in another
+	 * than that without having gone through.
+	 */
+	void GetProbe(FCollisionShape& OutShape, FVector& OutCenter, FQuat& OutRotation, double& OutThinHalfCm) const;
 
 	/** The spring lets go here, while the body it holds still exists. */
 	virtual void OnDestroyPhysicsState() override;
+	/** The meshes and the plate that ride on the hand go with it. */
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
+
+	/** For the plate: its spring, and a grab it holds, let go before its body is destroyed. */
+	void ReleasePalmSpring();
 
 private:
 	UFUNCTION()
 	void OnEffectorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
+	const FSandboxWorldSpring& ActiveSpring() const { return bPalmActive ? PalmSpring : Spring; }
+	FSandboxWorldSpring& ActiveSpring() { return bPalmActive ? PalmSpring : Spring; }
+	FBodyInstance* ActiveBody() const;
+	/** The plate's middle in the hand's own frame. */
+	FVector PalmOffset() const { return FVector(Tuning.PalmForwardCm, 0.0, 0.0); }
+	/** Hands the hand over from the ball to the plate or back: pose, motion, spring and mass. */
+	void SwitchBody(bool bToPalm);
+	/** True if the other body, put where the hand is now, would lie in something of the world or of another body. */
+	bool WouldOverlap(bool bAsPalm) const;
+	/** How deep the hand's shape lies in the simulated bodies that a holding hand passes, the other hand among them, cm; 0 if in none. */
+	double DepthInBodiesCm() const;
+	/** Whether the hand's bodies collide with simulated bodies (the character's, a prop's, the other hand). */
+	void SetPassesBodies(bool bPass);
+	bool MakePalmBody();
+	/** Takes hold, lets go and keeps the record of a grab; once per Update, after the grip has been read. */
+	void UpdateGrab(float DeltaTime, bool bGripClosed);
+	/** The simulated body nearest to the hand among those within effectors.hand.grab_reach_cm of its shape; false if there is none. */
+	bool FindGrabbable(UPrimitiveComponent*& OutComponent, FName& OutBone) const;
+
 	/** What is seen of the hand: a sphere mesh without collision that rides on the body. */
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> Visual;
+
+	/** The open hand as it is seen: a flat plate in the hand's own frame, shown while the hand is not a fist. */
+	UPROPERTY()
+	TObjectPtr<UStaticMeshComponent> PalmVisual;
+
+	/** The open hand as a body, once the hand has opened with effectors.hand.palm_collides on. */
+	UPROPERTY()
+	TObjectPtr<USandboxPalmComponent> PalmBody;
 
 	FName Id;
 	FSandboxEffectorTuning Tuning;
 	FSandboxEffectorTarget Target;
 	FSandboxWorldSpring Spring;
+	FSandboxWorldSpring PalmSpring;
+	/** What the hand holds, on whichever of its two bodies was the hand when the grip closed. */
+	FSandboxGrabJoint Grab;
+	/** For how long the hand that holds something has been too far behind its target, s. */
+	double GrabSlipS = 0.0;
+	/** For how long the joint of a grab has carried more than it may, s. */
+	double GrabOverloadS = 0.0;
+	double GrabForceN = 0.0;
+	/** After a thing was taken by its handle: for how long it is still being drawn to the hand, s. */
+	double GrabDrawLeftS = 0.0;
+	bool bPassesBodies = false;
+	double ForceShare = 1.0;
 	FSandboxEffectorStats Stats;
 	bool bStarted = false;
+	bool bFist = true;
+	bool bPalmActive = false;
+	/** A change of body that waits for room, and whether a closing grip that waits has been counted. */
+	bool bGripCounted = false;
+	/** What the hand touched last, and in which of its frames. */
+	FName LastTouched;
+	int64 LastTouchedFrame = -1;
 
 	/** Frames counted by Update, and the frame the contact impulses in FrameImpulseNs belong to. */
 	int64 Frame = 0;

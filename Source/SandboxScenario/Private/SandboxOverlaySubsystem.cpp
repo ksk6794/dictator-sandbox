@@ -733,7 +733,9 @@ void USandboxOverlaySubsystem::DrawHands(const ASandboxEffectorRig& Rig)
 			continue;
 		}
 		Watch(Effector);
-		const FVector At = Effector->GetComponentLocation();
+		// The body that is the hand now: the ball, or the open hand's plate.
+		const FTransform Hand = Effector->GetHandTransform();
+		const FVector At = Hand.GetLocation();
 		const FVector Target = Effector->GetTarget().Location;
 		const double CapN = Effector->GetTuning().MaxForceN;
 		const double Share = CapN > 0.0 ? Effector->GetDemandN() / CapN : 0.0;
@@ -743,11 +745,33 @@ void USandboxOverlaySubsystem::DrawHands(const ASandboxEffectorRig& Rig)
 		Ring(Target, Effector->GetTuning().RadiusCm, Color, ThinCm);
 		Cross(Target, 2.0, Color, ThinCm);
 		Line(At, Target, Color, ThickCm);
+		if (!Effector->IsFist())
+		{
+			// The open hand's plate, as its edges: where it is and which way its palm faces.
+			const FSandboxEffectorTuning& Shape = Effector->GetTuning();
+			const FVector Half(Shape.PalmLengthCm * 0.5, Shape.PalmThicknessCm * 0.5, Shape.PalmWidthCm * 0.5);
+			const FVector Middle(Shape.PalmForwardCm, 0.0, 0.0);
+			const auto Corner = [&Hand, &Half, &Middle](int32 Index)
+			{
+				return Hand.TransformPositionNoScale(Middle + FVector((Index & 1) ? Half.X : -Half.X, (Index & 2) ? Half.Y : -Half.Y, (Index & 4) ? Half.Z : -Half.Z));
+			};
+			for (int32 Index = 0; Index < 8; ++Index)
+			{
+				for (const int32 Bit : { 1, 2, 4 })
+				{
+					if (!(Index & Bit))
+					{
+						Line(Corner(Index), Corner(Index | Bit), Color, ThinCm);
+					}
+				}
+			}
+		}
 		if (Layers & SandboxOverlay::State)
 		{
-			CornerLabel(FString::Printf(TEXT("%s: %.1f cm from its target, spring asks %.0f N of %.0f, presses with %.0f N, %.1f m/s"),
-				*Effector->GetId().ToString(), Effector->GetGapCm(), Effector->GetDemandN(), CapN, Effector->GetContactForceN(),
-				Effector->GetComponentVelocity().Size() * 0.01), Color);
+			const FString Holds = Effector->IsGrabbing() ? FString::Printf(TEXT(", holds %s"), Effector->GetGrabbedBone().IsNone() ? TEXT("a body") : *Effector->GetGrabbedBone().ToString()) : FString();
+			CornerLabel(FString::Printf(TEXT("%s (%s%s): %.1f cm from its target, spring asks %.0f N of %.0f, presses with %.0f N, %.1f m/s"),
+				*Effector->GetId().ToString(), Effector->IsFist() ? TEXT("fist") : Effector->IsPalmActive() ? TEXT("open, a plate") : TEXT("open, shown only"), *Holds,
+				Effector->GetGapCm(), Effector->GetDemandN(), CapN, Effector->GetContactForceN(), Effector->GetHandVelocity().Size() * 0.01), Color);
 		}
 	}
 }

@@ -331,6 +331,12 @@ void UScenarioRunnerSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	FApp::SetUseFixedTimeStep(true);
 
 	Camera = FScenarioStage::SpawnEnvironment(InWorld, Spec, /*bSpawnCamera*/ true);
+	for (AActor* Prop : FScenarioStage::SpawnProps(InWorld, Spec))
+	{
+		Props.Add(Prop);
+		FPropTrack& Track = PropTracks.AddDefaulted_GetRef();
+		Track.Start = Prop ? Prop->GetActorLocation() : FVector::ZeroVector;
+	}
 	if (!SpawnBody(InWorld, Error) || !SpawnEffectors(InWorld, Error))
 	{
 		FailAndExit(Error);
@@ -612,6 +618,25 @@ void UScenarioRunnerSubsystem::Tick(float DeltaTime)
 			RecordedSource->SetFrame(FrameIndex + 1 - RecordingStartFrame);
 		}
 		EffectorRig->UpdateTargets(static_cast<float>(FixedDt));
+
+		// hands.csv: where each hand is against its target at the start of the coming step. Read only.
+		if (HandSeries.IsEmpty())
+		{
+			HandSeries = TEXT("t");
+			for (const USandboxEffectorComponent* Effector : EffectorRig->GetEffectors())
+			{
+				const FString Id = Effector->GetId().ToString();
+				HandSeries += FString::Printf(TEXT(",%s_gap_cm,%s_speed_mps,%s_target_speed_mps,%s_demand_n,%s_contact_n"), *Id, *Id, *Id, *Id, *Id);
+			}
+			HandSeries += TEXT("\n");
+		}
+		HandSeries += FString::Printf(TEXT("%.4f"), SimTimeS);
+		for (const USandboxEffectorComponent* Effector : EffectorRig->GetEffectors())
+		{
+			HandSeries += FString::Printf(TEXT(",%.3f,%.3f,%.3f,%.1f,%.1f"), Effector->GetGapCm(), Effector->GetHandVelocity().Size() * 0.01,
+				Effector->GetTarget().Velocity.Size() * 0.01, Effector->GetDemandN(), Effector->GetContactForceN());
+		}
+		HandSeries += TEXT("\n");
 	}
 
 	// Hot reload: a look at the tuning files' size and time every few frames. It reads no clock and does
@@ -730,8 +755,8 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		const TArray<TObjectPtr<USandboxEffectorComponent>>& Effectors = EffectorRig->GetEffectors();
 		for (int32 Index = 0; Index < Effectors.Num(); ++Index)
 		{
-			const FBodyInstance* Body = Effectors[Index]->GetBodyInstance();
-			const FTransform Transform = Body ? Body->GetUnrealWorldTransform() : FTransform::Identity;
+			// The body that is the hand now: the ball, or the open hand's plate.
+			const FTransform Transform = Effectors[Index]->GetHandTransform();
 			if (Transform.ContainsNaN())
 			{
 				bSawNaN = true;
@@ -749,6 +774,33 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			TrackEffector(Index, *Effectors[Index], Transform.GetLocation(), Bodies);
 		}
 		PreviousBodies = Bodies;
+	}
+	FScenarioStage::TellBodyOfHolds(EffectorRig, Ragdoll);
+
+	// The scenario's things with mass: part of the run and of its hash. (A run without any hashes what it did before.)
+	for (int32 Index = 0; Index < Props.Num(); ++Index)
+	{
+		const AActor* Prop = Props[Index];
+		const UPrimitiveComponent* Box = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;
+		const FBodyInstance* PropBody = Box ? Box->GetBodyInstance() : nullptr;
+		if (!PropBody || !PropBody->IsValidBodyInstance())
+		{
+			continue;
+		}
+		const FTransform Transform = PropBody->GetUnrealWorldTransform();
+		if (Transform.ContainsNaN())
+		{
+			bSawNaN = true;
+			continue;
+		}
+		if (Transform.GetLocation().SizeSquared() > BoundsRadiusCm * BoundsRadiusCm)
+		{
+			bLeftBounds = true;
+		}
+		BodyHash = HashTransform(Transform, BodyHash);
+		FPropTrack& Track = PropTracks[Index];
+		Track.TravelCm = FMath::Max(Track.TravelCm, FVector::Dist(Transform.GetLocation(), Track.Start));
+		Track.MaxSpeedCmS = FMath::Max(Track.MaxSpeedCmS, PropBody->GetUnrealWorldVelocity().Size());
 	}
 
 	if (!bSawNaN)
@@ -1134,10 +1186,15 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 	// nothing, and they do not depend on the solver's contacts: a hand the solver let through is seen here.
 	FEffectorTrack& Track = EffectorTracks[Index];
 	const FSandboxEffectorStats& Stats = Effector.GetStats();
-	const USkeletalMeshComponent* Mesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
+	// A hand that holds something collides with no body, by design: what it lies in then it has not gone through.
+	const USkeletalMeshComponent* Mesh = Ragdoll && !Effector.IsPassingBodies() ? Ragdoll->GetBodyMesh() : nullptr;
 	const UWorld& World = GetWorldRef();
-	const double RadiusCm = Effector.GetScaledSphereRadius();
-	const FCollisionShape Sphere = FCollisionShape::MakeSphere(static_cast<float>(RadiusCm));
+	// The hand's own shape: the ball, or the open hand's plate where it is and as it is turned.
+	FCollisionShape Sphere;
+	FVector ShapeCenter;
+	FQuat ShapeRotation;
+	double RadiusCm = 0.0;
+	Effector.GetProbe(Sphere, ShapeCenter, ShapeRotation, RadiusCm);
 
 	// Penetration: how far the sphere would have to move to be clear of each thing it overlaps.
 	double DepthCm = 0.0;
@@ -1147,7 +1204,7 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 		for (const FBodyInstance* Body : Mesh->Bodies)
 		{
 			FMTDResult Separation;
-			if (Body && Body->IsValidBodyInstance() && Body->OverlapTest(Center, FQuat::Identity, Sphere, &Separation) && Separation.Distance > DepthCm)
+			if (Body && Body->IsValidBodyInstance() && Body->OverlapTest(ShapeCenter, ShapeRotation, Sphere, &Separation) && Separation.Distance > DepthCm)
 			{
 				DepthCm = Separation.Distance;
 				Into = Mesh->GetBoneName(Body->InstanceBoneIndex);
@@ -1157,7 +1214,10 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 	FCollisionObjectQueryParams Objects;
 	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
 	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
-	Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+	if (!Effector.IsPassingBodies())
+	{
+		Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+	}
 	FCollisionQueryParams NotTheHands(SCENE_QUERY_STAT(SandboxEffectorProbe), /*bTraceComplex*/ false);
 	NotTheHands.AddIgnoredActor(EffectorRig);
 	FCollisionQueryParams TheWorld = NotTheHands;
@@ -1167,12 +1227,12 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 		TheWorld.AddIgnoredActor(Ragdoll);
 	}
 	TArray<FOverlapResult> Overlaps;
-	World.OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, Objects, Sphere, TheWorld);
+	World.OverlapMultiByObjectType(Overlaps, ShapeCenter, ShapeRotation, Objects, Sphere, TheWorld);
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		UPrimitiveComponent* Component = Overlap.GetComponent();
 		FMTDResult Separation;
-		if (Component && Component->ComputePenetration(Separation, Sphere, Center, FQuat::Identity) && Separation.Distance > DepthCm)
+		if (Component && Component->ComputePenetration(Separation, Sphere, ShapeCenter, ShapeRotation) && Separation.Distance > DepthCm)
 		{
 			DepthCm = Separation.Distance;
 			Into = Component->GetOwner() ? Component->GetOwner()->GetFName() : Component->GetFName();
@@ -1184,13 +1244,14 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 		Track.DeepestInto = Into;
 	}
 
-	// Tunnelling: the centre of a sphere cannot get closer to a surface than its radius. If the straight
-	// line from where the centre was a frame ago to where it is now crosses a surface, or the centre lies
-	// inside a shape, the hand went through something. A snap is not motion and is left out; it fails the
-	// run on its own.
-	const bool bMoved = Track.bHaveLast && Stats.Snaps == Track.LastSnaps;
+	// Tunnelling: the centre of a sphere cannot get closer to a surface than its radius (nor the middle of the
+	// open hand's plate than half its thickness). If the straight line from where the centre was a frame ago
+	// to where it is now crosses a surface, or the centre lies inside a shape, the hand went through
+	// something. A snap is not motion and is left out; it fails the run on its own. Nor is the frame in
+	// which the hand changes from the ball to the plate or back: the two have their middles in other places.
+	const bool bMoved = Track.bHaveLast && Stats.Snaps == Track.LastSnaps && Stats.ShapeChanges == Track.LastShapeChanges;
 	FHitResult Crossed;
-	const bool bCrossed = bMoved && World.LineTraceSingleByObjectType(Crossed, Track.LastCenter, Center, Objects, NotTheHands);
+	const bool bCrossed = bMoved && World.LineTraceSingleByObjectType(Crossed, Track.LastCenter, ShapeCenter, Objects, NotTheHands);
 	if (bCrossed || DepthCm >= RadiusCm)
 	{
 		++Track.TunnelFrames;
@@ -1200,8 +1261,9 @@ void UScenarioRunnerSubsystem::TrackEffector(int32 Index, const USandboxEffector
 			FirstTunnelled = !bCrossed ? Into : !Crossed.BoneName.IsNone() ? Crossed.BoneName : Crossed.GetActor() ? Crossed.GetActor()->GetFName() : NAME_None;
 		}
 	}
-	Track.LastCenter = Center;
+	Track.LastCenter = ShapeCenter;
 	Track.LastSnaps = Stats.Snaps;
+	Track.LastShapeChanges = Stats.ShapeChanges;
 	Track.bHaveLast = true;
 
 	// The struck body: the body of the character the effector touched first, and how far it moves from
@@ -1248,7 +1310,24 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 		if (Event.Type == TEXT("effector"))
 		{
 			// Nothing to do at this moment: the trajectory is in the hands' target source, which follows
-			// the run's time. The event counts as applied when its hand exists.
+			// the run's time. The event counts as applied when its hand exists. A trajectory written from a
+			// part of the body is put where that part is now.
+			bool bPlaced = true;
+			if (!Event.AtBone.IsNone())
+			{
+				const USkeletalMeshComponent* BodyMesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
+				const FBodyInstance* Part = BodyMesh ? BodyMesh->GetBodyInstance(Event.AtBone) : nullptr;
+				bPlaced = Part && Part->IsValidBodyInstance() && EffectorSource.IsValid() && EffectorSource->ShiftPath(Event.Effector, Event.TimeS, Part->GetCOMPosition());
+				if (!bPlaced)
+				{
+					UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: the hand's trajectory could not be put at '%s': %s"), Event.TimeS, *Event.AtBone.ToString(),
+						Part && Part->IsValidBodyInstance() ? TEXT("it has no key after its first") : TEXT("the character has no such body"));
+				}
+			}
+			if (!bPlaced)
+			{
+				continue;
+			}
 			if (EffectorRig && EffectorRig->FindEffector(Event.Effector))
 			{
 				++EventsApplied;
@@ -1591,6 +1670,9 @@ bool UScenarioRunnerSubsystem::EditTuningFiles(const FScenarioEvent& Event, FStr
 
 void UScenarioRunnerSubsystem::Finish()
 {
+	// The hands were given their last targets after the body was last told what they hold: a grip that closed
+	// or opened in the run's last frame is told now, so that the body's account and the hands' agree.
+	FScenarioStage::TellBodyOfHolds(EffectorRig, Ragdoll);
 	const double WallTimeS = FPlatformTime::Seconds() - WallStartS;
 	const double SimTimeS = TotalFrames * FixedDt;
 	const USkeletalMeshComponent* Mesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
@@ -1779,6 +1861,52 @@ void UScenarioRunnerSubsystem::Finish()
 	{
 		const double Limit = Spec.Expect.MinEffectorImpactSpeedMps.GetValue();
 		AddCheck(TEXT("min_effector_impact_speed_mps"), bAnyImpact && SlowestImpactMps >= Limit, bAnyImpact ? Number(SlowestImpactMps) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.MinFeltImpulseNs.IsSet())
+	{
+		const double Limit = Spec.Expect.MinFeltImpulseNs.GetValue();
+		AddCheck(TEXT("min_felt_impulse_ns"), Controller && Controller->GetContactImpulseNs() >= Limit, Controller ? Number(Controller->GetContactImpulseNs()) : Null(), Number(Limit));
+	}
+	if (Spec.Props.Num() > 0)
+	{
+		// Every thing the scenario lists is there and simulated: a limit on how far or how fast a thing went
+		// says nothing of a thing that was never made.
+		int32 Made = 0;
+		for (const AActor* Prop : Props)
+		{
+			const UPrimitiveComponent* Box = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;
+			const FBodyInstance* PropBody = Box ? Box->GetBodyInstance() : nullptr;
+			Made += PropBody && PropBody->IsValidBodyInstance() && PropBody->IsInstanceSimulatingPhysics() ? 1 : 0;
+		}
+		AddCheck(TEXT("props_simulated"), Made == Spec.Props.Num(), Number(Made), Number(Spec.Props.Num()));
+	}
+	if (Spec.Expect.MinPropTravelCm.IsSet() || Spec.Expect.MaxPropTravelCm.IsSet() || Spec.Expect.MaxPropSpeedMps.IsSet())
+	{
+		double LeastCm = TNumericLimits<double>::Max();
+		double MostCm = 0.0;
+		double FastestCmS = 0.0;
+		for (const FPropTrack& Track : PropTracks)
+		{
+			LeastCm = FMath::Min(LeastCm, Track.TravelCm);
+			MostCm = FMath::Max(MostCm, Track.TravelCm);
+			FastestCmS = FMath::Max(FastestCmS, Track.MaxSpeedCmS);
+		}
+		const bool bAny = PropTracks.Num() > 0;
+		if (Spec.Expect.MinPropTravelCm.IsSet())
+		{
+			const double Limit = Spec.Expect.MinPropTravelCm.GetValue();
+			AddCheck(TEXT("min_prop_travel_cm"), bAny && LeastCm >= Limit, bAny ? Number(LeastCm) : Null(), Number(Limit));
+		}
+		if (Spec.Expect.MaxPropTravelCm.IsSet())
+		{
+			const double Limit = Spec.Expect.MaxPropTravelCm.GetValue();
+			AddCheck(TEXT("max_prop_travel_cm"), bAny && MostCm <= Limit, bAny ? Number(MostCm) : Null(), Number(Limit));
+		}
+		if (Spec.Expect.MaxPropSpeedMps.IsSet())
+		{
+			const double Limit = Spec.Expect.MaxPropSpeedMps.GetValue();
+			AddCheck(TEXT("max_prop_speed_mps"), bAny && FastestCmS * 0.01 <= Limit, bAny ? Number(FastestCmS * 0.01) : Null(), Number(Limit));
+		}
 	}
 	if (Spec.Expect.MinStruckDisplacementCm.IsSet())
 	{
@@ -1977,6 +2105,112 @@ void UScenarioRunnerSubsystem::Finish()
 	{
 		const double Limit = Spec.Expect.MinGetUpAttempts.GetValue();
 		AddCheck(TEXT("min_get_up_attempts"), Controller && Controller->GetGetUpView().Attempts >= Limit, Controller ? Number(Controller->GetGetUpView().Attempts) : Null(), Number(Limit));
+	}
+	if (Spec.Expect.EffectorGripsOnBody.IsSet())
+	{
+		const double Wanted = Spec.Expect.EffectorGripsOnBody.GetValue();
+		int32 Grips = 0;
+		for (const USandboxEffectorComponent* Effector : EffectorRig ? EffectorRig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+		{
+			Grips += Effector->GetStats().GripsOnBody;
+		}
+		AddCheck(TEXT("effector_grips_on_body"), EffectorRig && Grips == Wanted, EffectorRig ? Number(Grips) : Null(), Number(Wanted));
+	}
+	if (Spec.Expect.EffectorGrabs.IsSet() || Spec.Expect.EffectorGrabSlips.IsSet() || Spec.Expect.MaxGrabStretchCm.IsSet() || Spec.Expect.MinGrabFrames.IsSet() ||
+		Spec.Expect.EffectorGrabOverloads.IsSet() || Spec.Expect.MaxGrabForceN.IsSet() || Spec.Expect.EffectorHandleGrabs.IsSet())
+	{
+		int32 Grabs = 0;
+		int32 Slips = 0;
+		int32 Frames = 0;
+		int32 Overloads = 0;
+		double StretchCm = 0.0;
+		double ForceN = 0.0;
+		for (const USandboxEffectorComponent* Effector : EffectorRig ? EffectorRig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+		{
+			Grabs += Effector->GetStats().Grabs;
+			Slips += Effector->GetStats().GrabSlips;
+			Frames += Effector->GetStats().GrabFrames;
+			Overloads += Effector->GetStats().GrabOverloads;
+			StretchCm = FMath::Max(StretchCm, Effector->GetStats().MaxGrabStretchCm);
+			ForceN = FMath::Max(ForceN, Effector->GetStats().MaxGrabForceN);
+		}
+		if (Spec.Expect.EffectorHandleGrabs.IsSet())
+		{
+			const double Wanted = Spec.Expect.EffectorHandleGrabs.GetValue();
+			int32 ByHandle = 0;
+			for (const USandboxEffectorComponent* Effector : EffectorRig ? EffectorRig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+			{
+				ByHandle += Effector->GetStats().HandleGrabs;
+			}
+			AddCheck(TEXT("effector_handle_grabs"), EffectorRig && ByHandle == Wanted, EffectorRig ? Number(ByHandle) : Null(), Number(Wanted));
+		}
+		if (Spec.Expect.EffectorGrabOverloads.IsSet())
+		{
+			const double Wanted = Spec.Expect.EffectorGrabOverloads.GetValue();
+			AddCheck(TEXT("effector_grab_overloads"), EffectorRig && Overloads == Wanted, EffectorRig ? Number(Overloads) : Null(), Number(Wanted));
+		}
+		if (Spec.Expect.MaxGrabForceN.IsSet())
+		{
+			const double Limit = Spec.Expect.MaxGrabForceN.GetValue();
+			AddCheck(TEXT("max_grab_force_n"), EffectorRig && ForceN <= Limit, EffectorRig ? Number(ForceN) : Null(), Number(Limit));
+		}
+		if (Spec.Expect.EffectorGrabs.IsSet())
+		{
+			const double Wanted = Spec.Expect.EffectorGrabs.GetValue();
+			AddCheck(TEXT("effector_grabs"), EffectorRig && Grabs == Wanted, EffectorRig ? Number(Grabs) : Null(), Number(Wanted));
+		}
+		if (Spec.Expect.EffectorGrabSlips.IsSet())
+		{
+			const double Wanted = Spec.Expect.EffectorGrabSlips.GetValue();
+			AddCheck(TEXT("effector_grab_slips"), EffectorRig && Slips == Wanted, EffectorRig ? Number(Slips) : Null(), Number(Wanted));
+		}
+		if (Spec.Expect.MaxGrabStretchCm.IsSet())
+		{
+			const double Limit = Spec.Expect.MaxGrabStretchCm.GetValue();
+			AddCheck(TEXT("max_grab_stretch_cm"), EffectorRig && StretchCm <= Limit, EffectorRig ? Number(StretchCm) : Null(), Number(Limit));
+		}
+		if (Spec.Expect.MinGrabFrames.IsSet())
+		{
+			const double Limit = Spec.Expect.MinGrabFrames.GetValue();
+			AddCheck(TEXT("min_grab_frames"), EffectorRig && Frames >= Limit, EffectorRig ? Number(Frames) : Null(), Number(Limit));
+		}
+	}
+	if (Spec.Expect.EffectorShapeChanges.IsSet())
+	{
+		const double Wanted = Spec.Expect.EffectorShapeChanges.GetValue();
+		int32 Changes = 0;
+		for (const USandboxEffectorComponent* Effector : EffectorRig ? EffectorRig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+		{
+			Changes += Effector->GetStats().ShapeChanges;
+		}
+		AddCheck(TEXT("effector_shape_changes"), EffectorRig && Changes == Wanted, EffectorRig ? Number(Changes) : Null(), Number(Wanted));
+	}
+	if (Spec.Expect.HitEvents.IsSet())
+	{
+		const double Wanted = Spec.Expect.HitEvents.GetValue();
+		int32 Hits = 0;
+		for (const FSandboxBodyEvent& Event : Controller ? Controller->GetEvents() : TArray<FSandboxBodyEvent>())
+		{
+			Hits += Event.Type == ESandboxBodyEventType::Hit ? 1 : 0;
+		}
+		AddCheck(TEXT("hit_events"), Controller && Hits == Wanted, Controller ? Number(Hits) : Null(), Number(Wanted));
+	}
+	if (Spec.Expect.GrabEvents.IsSet())
+	{
+		const double Wanted = Spec.Expect.GrabEvents.GetValue();
+		int32 Grabbed = 0;
+		for (const FSandboxBodyEvent& Event : Controller ? Controller->GetEvents() : TArray<FSandboxBodyEvent>())
+		{
+			Grabbed += Event.Type == ESandboxBodyEventType::Grabbed ? 1 : 0;
+		}
+		// And what the body was last told is what the hands hold of it now: a grab that the hands count and the
+		// body never heard of, or a release it never heard of, shows here.
+		int32 HeldNow = 0;
+		for (const USandboxEffectorComponent* Effector : EffectorRig ? EffectorRig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
+		{
+			HeldNow += Effector && Ragdoll && Effector->IsGrabbing() && Effector->GetGrabbedComponent() == Ragdoll->GetBodyMesh() ? 1 : 0;
+		}
+		AddCheck(TEXT("grab_events"), Controller && Grabbed == Wanted && Controller->GetHolds().Num() == HeldNow, Controller ? Number(Grabbed) : Null(), Number(Wanted));
 	}
 
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
@@ -2484,6 +2718,41 @@ void UScenarioRunnerSubsystem::Finish()
 		// What the body took from contacts with other simulated bodies: the hits it could feel.
 		ControlJson->SetNumberField(TEXT("contact_impulse_ns"), Controller->GetContactImpulseNs());
 		ControlJson->SetNumberField(TEXT("contact_reports"), Controller->GetContactReportCount());
+
+		// What the body told its listeners of: every hit and every change of state, in order.
+		TArray<TSharedPtr<FJsonValue>> EventsJson;
+		int32 HitEvents = 0;
+		int32 GrabEvents = 0;
+		for (const FSandboxBodyEvent& Event : Controller->GetEvents())
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetNumberField(TEXT("t"), Event.TimeS);
+			Entry->SetStringField(TEXT("state"), FSandboxBodyTuning::StateName(Event.State));
+			if (Event.Type == ESandboxBodyEventType::Hit)
+			{
+				++HitEvents;
+				Entry->SetStringField(TEXT("type"), TEXT("hit"));
+				Entry->SetStringField(TEXT("bone"), Event.Bone.ToString());
+				Entry->SetNumberField(TEXT("impulse_ns"), Event.ImpulseNs.Size());
+			}
+			else if (Event.Type == ESandboxBodyEventType::Grabbed || Event.Type == ESandboxBodyEventType::Released)
+			{
+				GrabEvents += Event.Type == ESandboxBodyEventType::Grabbed ? 1 : 0;
+				Entry->SetStringField(TEXT("type"), Event.Type == ESandboxBodyEventType::Grabbed ? TEXT("grab") : TEXT("release"));
+				Entry->SetStringField(TEXT("bone"), Event.Bone.ToString());
+				Entry->SetStringField(TEXT("holder"), Event.Holder.ToString());
+			}
+			else
+			{
+				Entry->SetStringField(TEXT("type"), TEXT("state"));
+				Entry->SetStringField(TEXT("previous_state"), FSandboxBodyTuning::StateName(Event.PreviousState));
+				Entry->SetStringField(TEXT("reason"), Event.Reason);
+			}
+			EventsJson.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		ControlJson->SetNumberField(TEXT("hit_events"), HitEvents);
+		ControlJson->SetNumberField(TEXT("grab_events"), GrabEvents);
+		ControlJson->SetArrayField(TEXT("events"), EventsJson);
 	}
 	Root->SetObjectField(TEXT("control"), ControlJson);
 
@@ -2528,7 +2797,22 @@ void UScenarioRunnerSubsystem::Finish()
 			const USandboxEffectorComponent* Effector = Effectors[Index];
 			const FSandboxEffectorStats& Stats = Effector->GetStats();
 			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
-			Entry->SetNumberField(TEXT("mass_kg"), Effector->GetMass());
+			Entry->SetNumberField(TEXT("mass_kg"), Effector->GetHandMassKg());
+			Entry->SetNumberField(TEXT("shape_changes"), Effector->GetStats().ShapeChanges);
+			Entry->SetNumberField(TEXT("grips_on_body"), Effector->GetStats().GripsOnBody);
+			Entry->SetStringField(TEXT("last_gripped"), Effector->GetStats().LastGripped.IsNone() ? FString() : Effector->GetStats().LastGripped.ToString());
+			Entry->SetBoolField(TEXT("open_hand_at_end"), Effector->IsPalmActive());
+			Entry->SetNumberField(TEXT("grabs"), Stats.Grabs);
+			Entry->SetStringField(TEXT("last_grabbed"), Stats.LastGrabbed.IsNone() ? FString() : Stats.LastGrabbed.ToString());
+			Entry->SetNumberField(TEXT("grab_frames"), Stats.GrabFrames);
+			Entry->SetNumberField(TEXT("grab_slips"), Stats.GrabSlips);
+			Entry->SetNumberField(TEXT("grabs_lost"), Stats.GrabsLost);
+			Entry->SetNumberField(TEXT("max_grab_stretch_cm"), Stats.MaxGrabStretchCm);
+			Entry->SetNumberField(TEXT("grab_overloads"), Stats.GrabOverloads);
+			Entry->SetNumberField(TEXT("handle_grabs"), Stats.HandleGrabs);
+			Entry->SetNumberField(TEXT("max_grab_force_n"), Stats.MaxGrabForceN);
+			Entry->SetField(TEXT("mean_grab_force_n"), Stats.GrabFrames > 0 ? Number(Stats.GrabForceSumN / Stats.GrabFrames) : Null());
+			Entry->SetBoolField(TEXT("grabbing_at_end"), Effector->IsGrabbing());
 			Entry->SetNumberField(TEXT("contact_impulse_ns"), Stats.ContactImpulseNs);
 			Entry->SetNumberField(TEXT("max_contact_force_n"), Effector->GetMaxContactForceN());
 			Entry->SetNumberField(TEXT("final_contact_force_n"), Effector->GetContactForceN());
@@ -2556,11 +2840,35 @@ void UScenarioRunnerSubsystem::Finish()
 			Entry->SetNumberField(TEXT("max_penetration_cm"), Track.MaxPenetrationCm);
 			Entry->SetStringField(TEXT("deepest_into"), Track.DeepestInto.IsNone() ? FString() : Track.DeepestInto.ToString());
 			Entry->SetNumberField(TEXT("tunnel_frames"), Track.TunnelFrames);
-			Entry->SetArrayField(TEXT("final_location_cm"), SandboxJson::VectorToArray(Effector->GetComponentLocation()));
+			Entry->SetArrayField(TEXT("final_location_cm"), SandboxJson::VectorToArray(Effector->GetHandTransform().GetLocation()));
 			List->SetObjectField(Effector->GetId().ToString(), Entry);
 		}
 		EffectorsJson->SetObjectField(TEXT("list"), List);
 		Root->SetObjectField(TEXT("effectors"), EffectorsJson);
+	}
+
+	if (Props.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> PropsJson;
+		for (int32 Index = 0; Index < Props.Num(); ++Index)
+		{
+			const AActor* Prop = Props[Index];
+			const UPrimitiveComponent* Box = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;
+			const FBodyInstance* PropBody = Box ? Box->GetBodyInstance() : nullptr;
+			const bool bBody = PropBody && PropBody->IsValidBodyInstance();
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("name"), Spec.Props[Index].Name.ToString());
+			Entry->SetBoolField(TEXT("simulated"), bBody && PropBody->IsInstanceSimulatingPhysics());
+			Entry->SetNumberField(TEXT("mass_kg"), bBody ? PropBody->GetBodyMass() : 0.0);
+			Entry->SetArrayField(TEXT("start_location_cm"), SandboxJson::VectorToArray(PropTracks[Index].Start));
+			Entry->SetArrayField(TEXT("final_location_cm"), SandboxJson::VectorToArray(bBody ? PropBody->GetUnrealWorldTransform().GetLocation() : FVector::ZeroVector));
+			// How far its own up axis has turned from the world's: 0 upright, 90 on its side.
+			Entry->SetNumberField(TEXT("final_tilt_deg"), bBody ? FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(PropBody->GetUnrealWorldTransform().GetUnitAxis(EAxis::Z).Z, -1.0, 1.0))) : 0.0);
+			Entry->SetNumberField(TEXT("travel_cm"), PropTracks[Index].TravelCm);
+			Entry->SetNumberField(TEXT("max_speed_mps"), PropTracks[Index].MaxSpeedCmS * 0.01);
+			PropsJson.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		Root->SetArrayField(TEXT("props"), PropsJson);
 	}
 
 	if (Spec.bSimulate)
@@ -2660,6 +2968,12 @@ void UScenarioRunnerSubsystem::Finish()
 	if (bSaved && !Series.IsEmpty() && !FFileHelper::SaveStringToFile(Series, *SeriesFile, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 	{
 		Error = FString::Printf(TEXT("Cannot write '%s'"), *SeriesFile);
+		bSaved = false;
+	}
+	const FString HandSeriesFile = FPaths::Combine(OutDir, TEXT("hands.csv"));
+	if (bSaved && !HandSeries.IsEmpty() && !FFileHelper::SaveStringToFile(HandSeries, *HandSeriesFile, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		Error = FString::Printf(TEXT("Cannot write '%s'"), *HandSeriesFile);
 		bSaved = false;
 	}
 	if (!bSaved)

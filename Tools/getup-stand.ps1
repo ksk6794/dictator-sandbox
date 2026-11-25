@@ -11,6 +11,18 @@
 #   ... -PressN 300             every fallen body is pressed down on the pelvis with this force (-PressFromS 5 to
 #                               -PressForS 20 seconds later): what a hand does to a get-up, on 50 falls instead of
 #                               one. The stand then also counts the bodies that stood while they were pressed
+#   ... -HoldHands 1            every fallen body is held by one hand (2: by two) that takes hold of it where it lies
+#                               (-HoldBone spine_04), from -HoldFromS 5.5 for -HoldForS 15 seconds, with the grab
+#                               switched on for the trial. So that the hands come down on a body at rest, a held
+#                               body begins to get up after 4 s of lying, not 1.5 (getup.rest_s, for these trials
+#                               only). The stand then also counts the bodies the hands took hold of, on that
+#                               part itself or on whatever lay nearest, the grips that came off by themselves,
+#                               and the bodies that pulled free and stood before the hold's time was up (a body
+#                               cannot stand with a grip on it that keeps its place near the floor). Not
+#                               together with -PressN
+#   ... -PropsFile <file.json>  a list of things with mass (a scenario's "props") put into every trial on the bare
+#                               floor: the stand among movable furniture (with -Only floor -Floor 50, and
+#                               -Tune "reactions.thing_support=1" for a body that can stand on things)
 #   ... -Tune "name=value,..."  tuning overrides for every run
 #   ... -Film failed            also a sheet of pictures of every trial that did not end standing ("all": of every
 #                               trial; "35,43": of these trials; Saved\Films\getup_stand_<n>)
@@ -43,11 +55,30 @@ param(
     [double]$PressN = 0,
     [double]$PressFromS = 5.0,
     [double]$PressForS = 20.0,
+    [string]$PropsFile,
+    [int]$HoldHands = 0,
+    [string]$HoldBone = 'spine_04',
+    [double]$HoldFromS = 5.5,
+    [double]$HoldForS = 15.0,
     [string]$Tune,
     [string]$Film,
     [string]$Out
 )
 . "$PSScriptRoot\common.ps1"
+$movables = @()
+if ($PropsFile) {
+    $readProps = $null
+    if (Test-Path $PropsFile) { $readProps = Read-JsonFile $PropsFile }
+    if ($null -ne $readProps) { $movables = @($readProps) }
+    $unnamed = @($movables | Where-Object { $null -eq $_ -or -not $_.name -or -not $_.size_cm -or -not $_.location_cm })
+    if ($movables.Count -eq 0 -or $unnamed.Count -gt 0) {
+        Write-Output "GETUP STAND ERROR: '$PropsFile' is not a list of props (each with name, size_cm, mass_kg, location_cm), or cannot be read"
+        exit 2
+    }
+}
+if ($HoldHands -lt 0 -or $HoldHands -gt 2) { Write-Output 'GETUP STAND ERROR: -HoldHands is 0, 1 or 2'; exit 2 }
+if ($HoldHands -gt 0 -and $PressN -gt 0) { Write-Output 'GETUP STAND ERROR: -HoldHands and -PressN each count the bodies that stood in their own time; give one of them'; exit 2 }
+if ($HoldHands -gt 0 -and $HoldForS -lt 2.0) { Write-Output 'GETUP STAND ERROR: -HoldForS has to be 2 s or more (the hands take 1.4 s to come down and close)'; exit 2 }
 
 if (-not $Out) { $Out = Join-Path $RepoRoot 'Saved\Matrix\getup_stand' }
 $Out = [System.IO.Path]::GetFullPath($Out)
@@ -206,6 +237,29 @@ function New-Trial([string]$kind, [int]$number) {
         $happenings += [ordered]@{ t = $PressFromS; type = 'impulse'; body = 'pelvis'; impulse_ns = [Math]::Round($PressN * $PressForS, 3)
             direction = @(0, 0, -1); duration_s = $PressForS }
     }
+    if ($HoldHands -gt 0) {
+        # The grab is on for the trial, the body lies longer before it begins to get up, and one or two hands
+        # come down on it where it lies: fast through the air to above the part, slowly onto it, then the grip.
+        $switches = @(
+            [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune effectors.hand.grab=1' },
+            [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune getup.rest_s=4' })
+        $happenings = $switches + $happenings
+        $handNames = @('hand_left', 'hand_right')
+        $sides = @(0.0)
+        if ($HoldHands -ge 2) { $sides = @(-10.0, 10.0) }
+        for ($h = 0; $h -lt $sides.Count; $h++) {
+            $onIt = @($sides[$h], 0, 12)
+            $happenings += [ordered]@{ t = $HoldFromS; type = 'effector'; effector = $handNames[$h]; at_bone = $HoldBone; path = @(
+                [ordered]@{ t = 0.0; location_cm = @(($body.location_cm[0] + $sides[$h]), $body.location_cm[1], 260); grip = 0 },
+                [ordered]@{ t = 0.4; location_cm = @($sides[$h], 0, 80); grip = 0 },
+                [ordered]@{ t = 1.0; location_cm = $onIt; grip = 0 },
+                [ordered]@{ t = 1.3; location_cm = $onIt; grip = 0 },
+                [ordered]@{ t = 1.4; location_cm = $onIt; grip = 1 },
+                [ordered]@{ t = $HoldForS; location_cm = $onIt; grip = 1 },
+                [ordered]@{ t = ($HoldForS + 0.1); location_cm = $onIt; grip = 0 },
+                [ordered]@{ t = ($HoldForS + 0.6); location_cm = @($sides[$h], 0, 120); grip = 0 }) }
+        }
+    }
     $scenario = [ordered]@{
         name       = $name
         duration_s = $DurationS
@@ -214,6 +268,7 @@ function New-Trial([string]$kind, [int]$number) {
         expect     = [ordered]@{ fell = $true; end_state = 'standing'; min_get_ups = 1 }
     }
     if ($place.map) { $scenario.map = $place.map }
+    elseif ($movables.Count -gt 0) { $scenario.props = $movables }
     if ($StopStandingS -gt 0) { $scenario.end_when_standing_s = $StopStandingS }
     $file = Join-Path $scenarioDir "$name.json"
     Write-JsonFile $file $scenario
@@ -290,6 +345,27 @@ foreach ($trial in $trials) {
             $nearFurniture = [Math]::Round($nearFurniture, 1)
         }
     }
+    # What the holding hands did, if there are any.
+    $tookHold = 0
+    $onThePart = 0
+    $slipped = 0
+    if ($HoldHands -gt 0) {
+        # A hand that could not be sent to the part of the body went to a place of the world instead.
+        if (@($run.checks | Where-Object { $_.name -eq 'all_events_applied' -and -not $_.pass }).Count -gt 0) {
+            Write-Output "GETUP STAND ERROR: in trial $($trial.number) a hand could not be sent to '$HoldBone' (is it a body of the character?). Log: $(Join-Path $trial.dir 'run.log')"
+            exit 2
+        }
+        if ($run.effectors -and $run.effectors.list) {
+            foreach ($handName in @('hand_left', 'hand_right')) {
+                $oneHand = $run.effectors.list.$handName
+                if ($oneHand -and [int]$oneHand.grabs -ge 1) {
+                    $tookHold++
+                    if ([string]$oneHand.last_grabbed -eq $HoldBone) { $onThePart++ }
+                    $slipped += [int]$oneHand.grab_slips + [int]$oneHand.grab_overloads
+                }
+            }
+        }
+    }
     $results += [ordered]@{
         number              = $trial.number
         name                = $trial.name
@@ -300,6 +376,9 @@ foreach ($trial in $trials) {
         push_s              = $trial.push
         location_cm         = $trial.location
         fell                = [bool]$run.metrics.fell
+        hands_took_hold     = $tookHold
+        hands_on_the_part   = $onThePart
+        hands_slipped       = $slipped
         got_up              = $stood
         end_state           = $run.control.end_state
         attempts            = $ups.attempts
@@ -352,6 +431,26 @@ if ($PressN -gt 0) {
         if ($null -ne $firstStood -and $firstStood -lt $pressedUntil) { $under++ }
     }
     Write-Output ('  pressed with {0:N0} N from {1:N0} to {2:N0} s: {3} of {4} bodies stood while they were pressed' -f $PressN, $PressFromS, $pressedUntil, $under, $results.Count)
+}
+if ($HoldHands -gt 0) {
+    # Of the bodies every hand took hold of: how many stood for the first time while they were held, and how
+    # many grips came off by themselves (slipped or torn open).
+    $heldUntil = $HoldFromS + $HoldForS
+    $held = @($results | Where-Object { $_.hands_took_hold -ge $HoldHands })
+    $under = 0
+    foreach ($r in $held) {
+        $log = Join-Path $Out "runs\$($r.name)\run.log"
+        $firstStood = $null
+        if (Test-Path $log) {
+            $line = Get-Content $log | Where-Object { $_ -match 'Body controller: standing at ([\d\.]+) s \(got up' } | Select-Object -First 1
+            if ($line -and $line -match 'standing at ([\d\.]+) s') { $firstStood = [double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture) }
+        }
+        if ($null -ne $firstStood -and $firstStood -lt $heldUntil) { $under++ }
+    }
+    $cameOff = @($held | Where-Object { $_.hands_slipped -gt 0 }).Count
+    $onPart = @($held | Where-Object { $_.hands_on_the_part -ge $HoldHands }).Count
+    Write-Output ('  held by {0} hand(s) sent to {1}, grips closed from {2:N1} to {3:N1} s: the hands took hold of {4} of {5} bodies ({6} by {1} itself); a grip came off by itself on {7} of those, {8} pulled free and stood before the time was up, {9} stand in the end' -f `
+        $HoldHands, $HoldBone, ($HoldFromS + 1.4), $heldUntil, $held.Count, $results.Count, $onPart, $cameOff, $under, @($held | Where-Object { $_.got_up }).Count)
 }
 $atWall = @($results | Where-Object { $null -ne $_.furniture_clearance_cm } | Sort-Object { [double]$_.furniture_clearance_cm })
 if ($atWall.Count -gt 0) {

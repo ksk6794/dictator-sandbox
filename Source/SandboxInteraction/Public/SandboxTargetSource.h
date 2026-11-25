@@ -7,6 +7,9 @@ namespace SandboxEffectors
 {
 	inline const FName HandLeft(TEXT("hand_left"));
 	inline const FName HandRight(TEXT("hand_right"));
+	/** The kicking feet: effectors of the kind "foot", heavier and stronger than a hand, and never open. */
+	inline const FName FootLeft(TEXT("foot_left"));
+	inline const FName FootRight(TEXT("foot_right"));
 
 	/** "hand" for "hand_left": the name of the effector's group in the tuning files. */
 	SANDBOXINTERACTION_API FName KindOf(FName Effector);
@@ -23,6 +26,12 @@ struct FSandboxEffectorTarget
 	FVector Velocity = FVector::ZeroVector;
 	/** 0 open hand to 1 closed. Nothing reads it before grabbing exists (M4). */
 	float Grip = 0.0f;
+	/**
+	 * The share of its force cap the effector is held with, 0 to 1. 1 unless a source says otherwise: the
+	 * desktop's foot between kicks is held weakly, so that it follows the player and pushes on nothing. It is
+	 * part of the target, so that a recording has it and a replay's foot is as strong as the session's was.
+	 */
+	float Strength = 1.0f;
 };
 
 /**

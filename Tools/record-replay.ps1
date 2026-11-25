@@ -7,6 +7,9 @@
 #   ... -PelvisCm 1 -ImpulsePct 5 -Frames 1   how far the replay may be from the session: the pelvis's place,
 #                                   each hand's contact impulse, the frame of each change of state
 #   ... -Twice                      replay a second time and require the two replays to have the same hashes
+#   ... -Takes                      the session of three takes (play.ps1 -Demo -Takes): the character is put back
+#                                   before each, each take is a recording of its own, and each is replayed and held
+#                                   against what the session saw of that take
 # A session and a scenario are not the same run: the session's hands exist from its first frame, and a scenario's
 # hashes are of every frame of its own. So the replay is held to the session by figures, and to itself by hashes.
 # Exit code: 0 the replay ends as the session did, 1 it does not, 2 something could not run.
@@ -16,9 +19,38 @@ param(
     [double]$PelvisCm = 1.0,
     [double]$ImpulsePct = 5.0,
     [int]$Frames = 1,
-    [switch]$Twice
+    [switch]$Twice,
+    [switch]$Takes
 )
 . "$PSScriptRoot\common.ps1"
+
+if ($Takes) {
+    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Takes
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "RECORD REPLAY ERROR: the session of takes did not give its recordings"
+        $demo | ForEach-Object { Write-Output "  $_" }
+        exit 2
+    }
+    $worst = 0
+    $report = @()
+    $good = 0
+    $takeNames = @('demo_takes', 'demo_takes_2', 'demo_takes_3')
+    foreach ($take in $takeNames) {
+        $more = @()
+        if ($Twice) { $more += '-Twice' }
+        $lines = @(& powershell -ExecutionPolicy Bypass -File $PSCommandPath -Name $Name -Recorded $take -PelvisCm $PelvisCm -ImpulsePct $ImpulsePct -Frames $Frames @more)
+        $code = $LASTEXITCODE
+        if ($code -eq 0) { $good++ }
+        if ($code -gt $worst) { $worst = $code }
+        $report += "  $($lines[0])"
+        $report += @($lines | Select-Object -Skip 1 | Where-Object { $_ -match 'FAIL|pelvis|impulse \(' -and $_ -notmatch '0\.00 N\*s\s+replay 0\.00' } | ForEach-Object { "  $_" })
+    }
+    $verdict = 'OK'
+    if ($worst -ne 0) { $verdict = 'FAILED' }
+    Write-Output "RECORD REPLAY TAKES ${verdict}: $good of $($takeNames.Count) takes replay to what the session saw of them"
+    $report | ForEach-Object { Write-Output $_ }
+    exit $worst
+}
 
 $recordName = $Recorded
 if (-not $recordName) {

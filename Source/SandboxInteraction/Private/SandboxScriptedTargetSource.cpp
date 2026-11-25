@@ -76,6 +76,7 @@ bool FSandboxScriptedTargetSource::Evaluate(FName Effector, double AtTimeS, FSan
 	{
 		OutTarget.Location = Keys[0].Location;
 		OutTarget.Rotation = Keys[0].Rotation;
+		OutTarget.Grip = Keys[0].Grip;
 		return true;
 	}
 	for (int32 Index = 0; Index + 1 < Keys.Num(); ++Index)
@@ -89,10 +90,38 @@ bool FSandboxScriptedTargetSource::Evaluate(FName Effector, double AtTimeS, FSan
 			OutTarget.Location = FMath::Lerp(From.Location, To.Location, Alpha);
 			OutTarget.Rotation = FQuat::Slerp(From.Rotation, To.Rotation, Alpha);
 			OutTarget.Velocity = (To.Location - From.Location) / Span;
+			OutTarget.Grip = FMath::Lerp(From.Grip, To.Grip, static_cast<float>(Alpha));
 			return true;
 		}
 	}
 	OutTarget.Location = Keys.Last().Location;
 	OutTarget.Rotation = Keys.Last().Rotation;
+	OutTarget.Grip = Keys.Last().Grip;
 	return true;
+}
+
+bool FSandboxScriptedTargetSource::ShiftPath(FName Effector, double StartS, const FVector& OffsetCm)
+{
+	for (TPair<FName, TArray<FPath>>& Pair : Paths)
+	{
+		if (Pair.Key != Effector)
+		{
+			continue;
+		}
+		// Of two trajectories that start at the same time the later in the list is the one that is played.
+		for (int32 PathIndex = Pair.Value.Num() - 1; PathIndex >= 0; --PathIndex)
+		{
+			FPath& Path = Pair.Value[PathIndex];
+			if (FMath::IsNearlyEqual(Path.StartS, StartS, 1.0e-6))
+			{
+				for (int32 Index = 1; Index < Path.Keys.Num(); ++Index)
+				{
+					Path.Keys[Index].Location += OffsetCm;
+				}
+				// A trajectory of one key has nothing that could be moved: the hand would only wait.
+				return Path.Keys.Num() > 1;
+			}
+		}
+	}
+	return false;
 }

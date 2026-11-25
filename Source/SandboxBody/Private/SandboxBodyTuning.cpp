@@ -135,6 +135,8 @@ namespace
 		Visitor(FString(TEXT("reactions.flinch_give_deg")), Tuning.Reactions.FlinchGiveDeg);
 		Visitor(FString(TEXT("reactions.pressure_s")), Tuning.Reactions.PressureS);
 		Visitor(FString(TEXT("reactions.held_push_s")), Tuning.Reactions.HeldPushS);
+		Visitor(FString(TEXT("reactions.thing_support")), Tuning.Reactions.ThingSupport);
+		Visitor(FString(TEXT("reactions.thing_support_max_ns")), Tuning.Reactions.ThingSupportMaxNs);
 		Visitor(FString(TEXT("poses.blend_s")), Tuning.Poses.BlendS);
 		const auto Pose = [&Visitor](const TCHAR* Name, auto& Values)
 		{
@@ -517,6 +519,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.ArmResponseS, 2.0, TEXT("balance"), TEXT("arm_response_s"), OutError) ||
 		!CheckRange(Reactions.PressureS, 5.0, TEXT("reactions"), TEXT("pressure_s"), OutError) ||
 		!CheckRange(Reactions.HeldPushS, 5.0, TEXT("reactions"), TEXT("held_push_s"), OutError) ||
+		!CheckRange(Reactions.ThingSupport, 1.0, TEXT("reactions"), TEXT("thing_support"), OutError) ||
+		!CheckRange(Reactions.ThingSupportMaxNs, 1000.0, TEXT("reactions"), TEXT("thing_support_max_ns"), OutError) ||
 		!CheckRange(Reactions.FlinchWeakening, 1.0, TEXT("reactions"), TEXT("flinch_weakening"), OutError) ||
 		!CheckRange(Reactions.FlinchRecoveryS, 10.0, TEXT("reactions"), TEXT("flinch_recovery_s"), OutError))
 	{

@@ -36,6 +36,11 @@ struct FScenarioEvent
 	/** "effector": which hand ("hand_left", "hand_right"), and where its target is at times after the event. */
 	FName Effector;
 	TArray<FSandboxPathKey> Path;
+	/**
+	 * "effector" with "at_bone": the keys after the first are measured from where that body of the character
+	 * is (its centre of mass) at the moment the event begins, along the world's axes.
+	 */
+	FName AtBone;
 	/** "pin": also hold the body's orientation, not only its position (a weld instead of a ball joint). */
 	bool bLockRotation = false;
 	/**
@@ -55,6 +60,20 @@ struct FScenarioEvent
 };
 
 /** Optional pass criteria. Unset values are not checked. Field names are listed in Scenarios/README.md. */
+/** A thing with mass that a scenario puts into its world: a box that can be pushed, taken hold of and fallen on. */
+struct FScenarioProp
+{
+	FName Name;
+	/** Its edges, cm, along its own axes. */
+	FVector SizeCm = FVector::ZeroVector;
+	double MassKg = 0.0;
+	/** Where its middle is put, and how it is turned. */
+	FVector LocationCm = FVector::ZeroVector;
+	FRotator Rotation = FRotator::ZeroRotator;
+	/** "handle_cm": a point of the thing, in its own frame from its middle, that a hand takes it by when it closes near it. */
+	TOptional<FVector> HandleCm;
+};
+
 struct FScenarioExpect
 {
 	TOptional<double> RestWithinS;
@@ -105,6 +124,14 @@ struct FScenarioExpect
 	TOptional<double> MinEffectorImpactSpeedMps;
 	/** The body of the character each effector touched first must have moved at least this far from where it was, cm. */
 	TOptional<double> MinStruckDisplacementCm;
+	/** The body felt at least this much from the simulated bodies that touched it, hands and things alike (control.contact_impulse_ns). N*s. Active control only. */
+	TOptional<double> MinFeltImpulseNs;
+	/** The prop that went least far went at least this far from where it was put, at some moment; cm (props[].travel_cm). */
+	TOptional<double> MinPropTravelCm;
+	/** The prop that went furthest went at most this far; cm. */
+	TOptional<double> MaxPropTravelCm;
+	/** No prop was ever faster than this: nothing was launched; m/s (props[].max_speed_mps). */
+	TOptional<double> MaxPropSpeedMps;
 	/** Lowest the centre of mass and the capture point may get inside the support polygon while upright, cm. Active control only. */
 	TOptional<double> MinComMarginCm;
 	TOptional<double> MinCaptureMarginCm;
@@ -141,6 +168,28 @@ struct FScenarioExpect
 	TOptional<double> MaxGetUpAttempts;
 	/** The body began to get up at least this many times: 2 for an attempt that has to be given up and tried again. Active control only. */
 	TOptional<double> MinGetUpAttempts;
+	/** The body told of exactly this many hits (control.hit_events; USandboxBodyController::OnBodyEvent). Active control only. */
+	TOptional<double> HitEvents;
+	/** The body told of exactly this many grabs (control.grab_events), and what it was last told is held is what the hands hold of it at the end. Active control only. */
+	TOptional<double> GrabEvents;
+	/** The hands changed between the ball and the open hand's plate exactly this many times in all (effectors.list.<hand>.shape_changes). */
+	TOptional<double> EffectorShapeChanges;
+	/** The hands' grips closed on something exactly this many times in all (effectors.list.<hand>.grips_on_body). */
+	TOptional<double> EffectorGripsOnBody;
+	/** The hands took hold of a body exactly this many times in all (effectors.list.<hand>.grabs). */
+	TOptional<double> EffectorGrabs;
+	/** The hands' grips slipped exactly this many times in all (effectors.list.<hand>.grab_slips). */
+	TOptional<double> EffectorGrabSlips;
+	/** The two points a grab holds together came at most this far apart (effectors.list.<hand>.max_grab_stretch_cm). cm. */
+	TOptional<double> MaxGrabStretchCm;
+	/** A hand held something for at least this many frames in all (effectors.list.<hand>.grab_frames). */
+	TOptional<double> MinGrabFrames;
+	/** The hands' grips were torn open by their load exactly this many times in all (effectors.list.<hand>.grab_overloads). */
+	TOptional<double> EffectorGrabOverloads;
+	/** The hands took a thing by its handle exactly this many times in all (effectors.list.<hand>.handle_grabs). */
+	TOptional<double> EffectorHandleGrabs;
+	/** The joint of a grab carried at most this force at the end of any frame it held (effectors.list.<hand>.max_grab_force_n; the last substep's). N. */
+	TOptional<double> MaxGrabForceN;
 	/** The pelvis's assist anchor ended at least this far, horizontally, from where it started: it followed the support. cm. */
 	TOptional<double> MinPelvisAnchorShiftCm;
 	/** The body leaned into a held push at least this far at some point (control.balance.lean_max_cm). cm. */
@@ -175,6 +224,9 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 
 	/** Optional map package (e.g. /Game/Generated/Maps/TestRoom). Empty: the runner builds a bare floor. */
 	FString MapPath;
+
+	/** "props": things with mass put into the world before the first step. */
+	TArray<FScenarioProp> Props;
 
 	FString MeshPath;
 	FString PhysicsAssetPath;

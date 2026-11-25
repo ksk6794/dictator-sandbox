@@ -1,0 +1,71 @@
+{
+  "name": "prop_getup_on_plate",
+  "duration_s": 25.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      10
+    ],
+    "control": "active",
+    "get_up": true
+  },
+  "props": [
+    {
+      "name": "plate",
+      "size_cm": [
+        400,
+        400,
+        10
+      ],
+      "mass_kg": 200,
+      "location_cm": [
+        0,
+        0,
+        5
+      ]
+    }
+  ],
+  "camera": {
+    "location_cm": [
+      380,
+      300,
+      170
+    ],
+    "look_at_cm": [
+      0,
+      -40,
+      80
+    ]
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune reactions.thing_support=1"
+    },
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 200,
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    }
+  ],
+  "expect": {
+    "fell": true,
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_joint_stretch_cm": 2.0,
+    "max_prop_speed_mps": 3
+  }
+}

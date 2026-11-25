@@ -144,6 +144,16 @@ private:
 	// with their targets read from the scenario's trajectories.
 	UPROPERTY()
 	TObjectPtr<ASandboxEffectorRig> EffectorRig;
+	/** The scenario's things with mass, in its order, and what each did: where it started, how far it went, how fast. */
+	UPROPERTY()
+	TArray<TObjectPtr<AActor>> Props;
+	struct FPropTrack
+	{
+		FVector Start = FVector::ZeroVector;
+		double TravelCm = 0.0;
+		double MaxSpeedCmS = 0.0;
+	};
+	TArray<FPropTrack> PropTracks;
 	TSharedPtr<FSandboxScriptedTargetSource> EffectorSource;
 	/** Or, with a "recording": the hands of a session, frame for frame, from RecordingStartFrame on. */
 	TSharedPtr<FSandboxRecordedTargetSource> RecordedSource;
@@ -162,6 +172,7 @@ private:
 		FVector LastCenter = FVector::ZeroVector;
 		bool bHaveLast = false;
 		int32 LastSnaps = 0;
+		int32 LastShapeChanges = 0;
 		/** Deepest the sphere was found inside a body of the character or the static world, cm, and what that was. */
 		double MaxPenetrationCm = 0.0;
 		FName DeepestInto;
@@ -371,6 +382,8 @@ private:
 
 	/** series.csv: one line per frame. */
 	FString Series;
+	/** hands.csv: one line per frame of a run with hands: each hand's gap to its target, speeds and forces. */
+	FString HandSeries;
 
 	// Wall-clock time the solver spent on each frame, summed over its substeps. The two callbacks run on
 	// the physics task while the game thread waits for it, hence the atomics.

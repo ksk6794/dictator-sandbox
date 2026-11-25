@@ -48,6 +48,53 @@ struct FSandboxStateChange
 	FString Reason;
 };
 
+/** The kinds of thing that happen to the body and that others may want to know of. */
+enum class ESandboxBodyEventType : uint8
+{
+	/** The body was hit: an impulse beyond what was pressing on it already, as large as makes a standing body flinch. */
+	Hit,
+	/** The body's state changed. */
+	StateChanged,
+	/** Something took hold of a part of the body, or let go of it (USandboxBodyController::TellHolds). */
+	Grabbed,
+	Released
+};
+
+/**
+ * A hold on the body from outside, as whoever knows of both sides tells it: who holds (a hand's name), which
+ * part, and with what force in the last step, N.
+ */
+struct FSandboxBodyHold
+{
+	FName Holder;
+	FName Bone;
+	double ForceN = 0.0;
+};
+
+/**
+ * One thing that happened to the body, for whoever listens (USandboxBodyController::OnBodyEvent): sound, a
+ * face, a health system, a result file. The body tells; it does not know who hears, and a listener changes
+ * nothing of the body. A grab is the one thing the body is told of itself (TellHolds): it feels contacts, and
+ * a hold is a joint.
+ */
+struct FSandboxBodyEvent
+{
+	ESandboxBodyEventType Type = ESandboxBodyEventType::Hit;
+	/** Simulated time since the controller started. */
+	double TimeS = 0.0;
+	/** A hit: the bone that was struck and the hit's impulse, N*s, in the world. A grab and a release: the bone that is held. */
+	FName Bone;
+	FVector ImpulseNs = FVector::ZeroVector;
+	/** A grab and a release: who holds, as it was told. */
+	FName Holder;
+	/** The state the body is in after the event; for a change of state, also the one it left and why. */
+	ESandboxBodyState State = ESandboxBodyState::Standing;
+	ESandboxBodyState PreviousState = ESandboxBodyState::Standing;
+	FString Reason;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSandboxBodyEvent, const FSandboxBodyEvent& /*Event*/);
+
 /** One muscle as an overlay shows it: what it turns its body toward, and how strong it is right now. */
 struct FSandboxMuscleView
 {
@@ -301,6 +348,25 @@ public:
 	}
 	/** Every state the body has been in, the first entry being Standing at time 0. */
 	const TArray<FSandboxStateChange>& GetStateLog() const { return StateLog; }
+
+	/**
+	 * Told of every hit and every change of state as it happens, in the body's own tick. A hit is told in
+	 * every state, when it has brought what makes a standing body flinch (thresholds.flinch_impulse_ns beyond
+	 * the pressure already felt), and once a contact: a hand that lands and keeps pressing is one hit. The
+	 * next is a contact after nothing was felt for thresholds.flinch_window_s, or a blow that lands while
+	 * something is pressing already.
+	 */
+	FOnSandboxBodyEvent OnBodyEvent;
+	/** Every event so far, in order. */
+	const TArray<FSandboxBodyEvent>& GetEvents() const { return Events; }
+	/**
+	 * Which parts of the body are held from outside now. Called once a frame by whoever knows both the body
+	 * and what holds it (a session, a scenario run); the body itself feels a hold only as the motion it
+	 * causes. It tells its listeners when a hold begins and when it ends, and keeps the list. It does nothing
+	 * else with it: no force, no target and no decision reads it.
+	 */
+	void TellHolds(TConstArrayView<FSandboxBodyHold> InHolds);
+	const TArray<FSandboxBodyHold>& GetHolds() const { return Holds; }
 	int32 GetMuscleCount() const { return Muscles.Num(); }
 	int32 GetAssistCount() const { return Assists.Num(); }
 
@@ -639,6 +705,15 @@ private:
 	/** Hits (impulse beyond the pressure) received since HitStartedS, added up: a blow delivered over several frames is one hit. */
 	FVector HitImpulseNs = FVector::ZeroVector;
 	double HitStartedS = 0.0;
+	/** The same sum kept for the stream of events, which counts hits in every state and is read by nothing here. */
+	FVector EventHitNs = FVector::ZeroVector;
+	/** When something was last felt, whether the hit of that contact has been told, and whether its force has stopped rising since. */
+	double EventFeltS = 0.0;
+	bool bEventHitTold = false;
+	bool bEventRiseOver = false;
+	TArray<FSandboxBodyEvent> Events;
+	TArray<FSandboxBodyHold> Holds;
+	void TellEvent(const FSandboxBodyEvent& Event);
 	double ContactImpulseNs = 0.0;
 	int32 ContactReports = 0;
 	/**

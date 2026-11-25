@@ -18,6 +18,13 @@ void ASandboxHUD::DrawHUD()
 	{
 		return;
 	}
+	// In a headset the canvas is laid across both eyes: the left eye saw the lines' beginnings, the right eye
+	// their ends, and nothing could be read (the owner, in the first session). Nothing is drawn there; what a
+	// session has to say is printed when it ends.
+	if (Pawn->IsInHeadset())
+	{
+		return;
+	}
 
 	// The crosshair: the line of sight, which is where the impulse tool and the drag handle aim.
 	const float CenterX = Canvas->ClipX * 0.5f;

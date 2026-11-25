@@ -1,0 +1,73 @@
+{
+  "name": "strike_kick_thigh",
+  "duration_s": 8.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [
+      330,
+      200,
+      110
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      70
+    ]
+  },
+  "events": [
+    {
+      "t": 3.0,
+      "type": "effector",
+      "effector": "foot_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            10,
+            100,
+            30
+          ]
+        },
+        {
+          "t": 0.1325,
+          "location_cm": [
+            10.0,
+            1.73,
+            69.75
+          ]
+        },
+        {
+          "t": 0.5325,
+          "location_cm": [
+            10,
+            100,
+            30
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "end_state": "standing",
+    "min_effector_impact_speed_mps": 7.5,
+    "min_effector_impulse_ns": 40,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_speed_rads": 30,
+    "max_effector_penetration_cm": 1,
+    "min_struck_displacement_cm": 10,
+    "hit_events": 1
+  }
+}

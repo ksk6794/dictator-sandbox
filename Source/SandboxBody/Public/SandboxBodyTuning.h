@@ -454,6 +454,15 @@ struct FSandboxReactionTuning
 	 * tenth of a second is not one: its momentum is in the capture point already. Seconds.
 	 */
 	double HeldPushS = 0.0;
+	/**
+	 * A thing with mass as support (M4 part 4; 1 or 0). With it, a simulated body that pushes up on a part of
+	 * the character is what the character stands or lies on, as the floor is: it goes to the sense of balance
+	 * and is not felt as a hit or a press. On a foot whatever pushes up is support; on any other part only a
+	 * push that is in one substep no harder than ThingSupportMaxNs. Anything sharper there, and anything from
+	 * the side or from above, is felt as before.
+	 */
+	double ThingSupport = 0.0;
+	double ThingSupportMaxNs = 0.0;
 };
 
 /**

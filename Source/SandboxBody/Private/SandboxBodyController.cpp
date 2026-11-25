@@ -1424,6 +1424,48 @@ double USandboxBodyController::MuscleScale(ESandboxMuscleGroup Group) const
 	return FMath::Lerp(Tuning.Reactions.FlinchWeakening, 1.0, Recovered);
 }
 
+void USandboxBodyController::TellEvent(const FSandboxBodyEvent& Event)
+{
+	Events.Add(Event);
+	OnBodyEvent.Broadcast(Event);
+}
+
+void USandboxBodyController::TellHolds(TConstArrayView<FSandboxBodyHold> InHolds)
+{
+	const auto Has = [](TConstArrayView<FSandboxBodyHold> List, const FSandboxBodyHold& Hold)
+	{
+		return List.ContainsByPredicate([&Hold](const FSandboxBodyHold& Other) { return Other.Holder == Hold.Holder && Other.Bone == Hold.Bone; });
+	};
+	const auto Tell = [this](ESandboxBodyEventType Type, const FSandboxBodyHold& Hold)
+	{
+		FSandboxBodyEvent Event;
+		Event.Type = Type;
+		Event.TimeS = ElapsedS;
+		Event.Bone = Hold.Bone;
+		Event.Holder = Hold.Holder;
+		Event.State = State;
+		Event.PreviousState = State;
+		TellEvent(Event);
+	};
+	// Those that ended first, then those that began: a hand that lets go of one part and takes another in
+	// the same frame reads in that order.
+	for (const FSandboxBodyHold& Old : Holds)
+	{
+		if (!Has(InHolds, Old))
+		{
+			Tell(ESandboxBodyEventType::Released, Old);
+		}
+	}
+	for (const FSandboxBodyHold& New : InHolds)
+	{
+		if (!Has(Holds, New))
+		{
+			Tell(ESandboxBodyEventType::Grabbed, New);
+		}
+	}
+	Holds = InHolds;
+}
+
 void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FString& Reason)
 {
 	const ESandboxBodyState OldState = State;
@@ -1432,6 +1474,15 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	RestS = 0.0;
 	StateLog.Add(FSandboxStateChange{ ElapsedS, NewState, Reason });
 	UE_LOG(LogSandbox, Display, TEXT("Body controller: %s at %.3f s (%s)"), FSandboxBodyTuning::StateName(NewState), ElapsedS, *Reason);
+	{
+		FSandboxBodyEvent Event;
+		Event.Type = ESandboxBodyEventType::StateChanged;
+		Event.TimeS = ElapsedS;
+		Event.State = NewState;
+		Event.PreviousState = OldState;
+		Event.Reason = Reason;
+		TellEvent(Event);
+	}
 	if (NewState == ESandboxBodyState::Falling)
 	{
 		// The pose of the fall is chosen once, as the fall starts (ApplyTuning below asks for it).
@@ -2736,7 +2787,19 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	// A hit is a contact with another body that moves under physics: a hand, a thrown prop. The floor
 	// under the feet pushes back with the character's whole weight in every step and is no hit: it is what
 	// the body stands on, and is kept for the sense of balance.
-	if (!OtherComponent->IsSimulatingPhysics(Hit.BoneName))
+	// With reactions.thing_support, so is a thing with mass that pushes up on the body no harder in a substep
+	// than standing or lying on it does (the owner's rule: a steady force from below is support, a sharp
+	// impulse from the side or above is a hit). The body does not know what the thing is; a hand under a foot
+	// reads the same.
+	const bool bSimulated = OtherComponent->IsSimulatingPhysics(Hit.BoneName);
+	const double SizeNs = ImpulseNs.Size();
+	// A foot is for standing on things: whatever pushes up on it is support, also the landing of a step, as on
+	// the floor. Another part of the body is supported only by a push that stays under the limit; a blow from
+	// below (an uppercut) is above it.
+	const bool bFoot = Hit.MyBoneName == FootBoneName[0] || Hit.MyBoneName == FootBoneName[1];
+	const bool bThingSupports = bSimulated && Tuning.Reactions.ThingSupport > 0.5 && SizeNs > 0.0 &&
+		(bFoot || SizeNs <= Tuning.Reactions.ThingSupportMaxNs) && ImpulseNs.Z >= 0.7 * SizeNs;
+	if (!bSimulated || bThingSupports)
 	{
 		bWorldTouched = true;
 		// The trunk or the head on the floor: what a fall ends with (UpdateState lets the muscles go after it).
@@ -2773,8 +2836,44 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 	// The hit: what this frame brought beyond the pressure felt so far. A blow is all hit; a hand that keeps
 	// pressing is hit only while its force rises, and its pressure alone makes nobody flinch.
 	const FVector HitNs = Felt - PressureN * DeltaTime;
+	// A blow: a frame that by itself brings what makes a standing body flinch.
+	const bool bBlowFrame = !Felt.IsZero() && HitNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && (HitNs | Felt) > 0.0;
 	if (!Felt.IsZero())
 	{
+		// For whoever listens: a hit in any state, by the rule of the flinch below, on a sum of its own so that
+		// telling changes nothing of what the body does.
+		// One contact is one hit: a shove of a tenth of a second, or a hand that lands and keeps pressing, is
+		// told once, when it has brought as much as makes a standing body flinch; a hand held against the body
+		// presses now more and now less, and that is not a row of hits. A new hit is a contact after nothing was
+		// felt for the flinch's window, or a blow that lands while something is pressing already: a frame that is
+		// a hit by itself, after the force of the hit told before it has stopped rising.
+		if (ElapsedS - EventFeltS > Tuning.Thresholds.FlinchWindowS)
+		{
+			EventHitNs = FVector::ZeroVector;
+			bEventHitTold = false;
+		}
+		EventFeltS = ElapsedS;
+		EventHitNs += HitNs;
+		if (bEventHitTold && (HitNs | Felt) <= 0.0)
+		{
+			bEventRiseOver = true;
+		}
+		const bool bFirstOfContact = !bEventHitTold && EventHitNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && (EventHitNs | Felt) > 0.0;
+		const bool bBlowIntoContact = bEventHitTold && bBlowFrame && bEventRiseOver;
+		if (bFirstOfContact || bBlowIntoContact)
+		{
+			FSandboxBodyEvent Event;
+			Event.Type = ESandboxBodyEventType::Hit;
+			Event.TimeS = ElapsedS;
+			Event.Bone = FrameBone;
+			Event.ImpulseNs = bBlowIntoContact ? HitNs : EventHitNs;
+			Event.State = State;
+			Event.PreviousState = State;
+			bEventHitTold = true;
+			bEventRiseOver = false;
+			TellEvent(Event);
+		}
+
 		// What is felt is the hit as a whole: hits that follow each other closely are added up.
 		if (ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS)
 		{

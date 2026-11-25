@@ -9,6 +9,8 @@ struct FSandboxPathKey
 	double TimeS = 0.0;
 	FVector Location = FVector::ZeroVector;
 	FQuat Rotation = FQuat::Identity;
+	/** 0 an open hand to 1 a fist. A scripted hand is a fist unless a key says otherwise. */
+	float Grip = 1.0f;
 };
 
 /**
@@ -41,6 +43,14 @@ public:
 
 	/** Every effector that has a trajectory, in the order they were first named. */
 	void GetEffectors(TArray<FName>& OutEffectors) const;
+
+	/**
+	 * Moves every key but the first of the trajectory that starts at StartS by an offset: for a trajectory
+	 * written from a place that is known only when it begins (a part of a body that has fallen somewhere).
+	 * The first key is where the hand waits until then, and stays. False if there is no such trajectory or
+	 * it has no key after its first.
+	 */
+	bool ShiftPath(FName Effector, double StartS, const FVector& OffsetCm);
 
 private:
 	struct FPath

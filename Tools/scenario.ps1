@@ -70,6 +70,11 @@ $queue = New-ScenarioQueue -Jobs @($job)
 $processLog = Join-Path $Out 'process.log'
 $arguments = Get-QueueArguments -Queue $queue -Fps $fps
 if ($VR) {
+    $blocker = Get-HeadsetBlocker
+    if ($blocker) {
+        Write-Output "SCENARIO ERROR: the run in the headset was not started. $blocker."
+        exit 2
+    }
     $arguments += ' -vr -windowed -ResX=1280 -ResY=720'
 } elseif ($Rendered) {
     $arguments += ' -RenderOffscreen -windowed -ResX=1280 -ResY=720'

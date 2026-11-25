@@ -1,0 +1,81 @@
+{
+  "name": "strike_kick_torso_through_falls",
+  "duration_s": 10.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [
+      330,
+      200,
+      110
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      70
+    ]
+  },
+  "events": [
+    {
+      "t": 3.0,
+      "type": "effector",
+      "effector": "foot_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            0,
+            100,
+            45
+          ]
+        },
+        {
+          "t": 0.1672,
+          "location_cm": [
+            0.0,
+            -13.44,
+            115.9
+          ]
+        },
+        {
+          "t": 0.3172,
+          "location_cm": [
+            0.0,
+            -13.44,
+            115.9
+          ]
+        },
+        {
+          "t": 0.7172,
+          "location_cm": [
+            0,
+            100,
+            45
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fell": true,
+    "end_state": "lying",
+    "min_effector_impulse_ns": 120,
+    "max_joint_stretch_cm": 2.0,
+    "max_joint_speed_rads": 30,
+    "max_effector_penetration_cm": 1,
+    "max_energy_gain_j": 40,
+    "max_rest_after_fall_s": 3,
+    "max_body_penetration_cm": 2.0
+  }
+}

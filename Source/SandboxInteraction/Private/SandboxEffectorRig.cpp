@@ -29,7 +29,7 @@ USandboxEffectorComponent* ASandboxEffectorRig::AddEffector(FName Id, const FTra
 	const FSandboxEffectorTuning* EffectorTuning = SandboxEffectors::IsKnown(Id) ? Tuning.Effector(SandboxEffectors::KindOf(Id)) : nullptr;
 	if (!Params || !EffectorTuning)
 	{
-		OutError = Params ? FString::Printf(TEXT("'%s' is not an effector (hand_left, hand_right)"), *Id.ToString()) : FString(TEXT("The effector rig is not started"));
+		OutError = Params ? FString::Printf(TEXT("'%s' is not an effector (hand_left, hand_right, foot_left, foot_right)"), *Id.ToString()) : FString(TEXT("The effector rig is not started"));
 		return nullptr;
 	}
 	if (FindEffector(Id))
@@ -38,7 +38,9 @@ USandboxEffectorComponent* ASandboxEffectorRig::AddEffector(FName Id, const FTra
 		return nullptr;
 	}
 
-	USandboxEffectorComponent* Effector = NewObject<USandboxEffectorComponent>(this, Id);
+	// Named after the effector; an effector made again while its predecessor is still being destroyed gets a
+	// name beside it.
+	USandboxEffectorComponent* Effector = NewObject<USandboxEffectorComponent>(this, MakeUniqueObjectName(this, USandboxEffectorComponent::StaticClass(), Id));
 	Effector->SetWorldTransform(Pose);
 	Effector->RegisterComponent();
 	if (!Effector->Start(Id, *EffectorTuning, Pose, OutError))
@@ -48,6 +50,30 @@ USandboxEffectorComponent* ASandboxEffectorRig::AddEffector(FName Id, const FTra
 	}
 	Effectors.Add(Effector);
 	return Effector;
+}
+
+bool ASandboxEffectorRig::RemakeEffectors(FString& OutError)
+{
+	TArray<TPair<FName, FTransform>> Wanted;
+	for (USandboxEffectorComponent* Effector : Effectors)
+	{
+		FSandboxEffectorTarget Target = Effector->GetTarget();
+		if (Source)
+		{
+			Source->GetTarget(Effector->GetId(), Target);
+		}
+		Wanted.Emplace(Effector->GetId(), FTransform(Target.Rotation, Target.Location));
+		Effector->DestroyComponent();
+	}
+	Effectors.Reset();
+	for (const TPair<FName, FTransform>& Hand : Wanted)
+	{
+		if (!AddEffector(Hand.Key, Hand.Value, OutError))
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 USandboxEffectorComponent* ASandboxEffectorRig::FindEffector(FName Id) const

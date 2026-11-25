@@ -1,6 +1,7 @@
 #include "ScenarioStage.h"
 
 #include "Camera/CameraActor.h"
+#include "Components/BoxComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/DirectionalLight.h"
@@ -15,7 +16,10 @@
 #include "PBDRigidsSolver.h"
 #include "Physics/Experimental/PhysScene_Chaos.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "SandboxBodyController.h"
 #include "SandboxCore.h"
+#include "SandboxEffectorComponent.h"
+#include "SandboxEffectorRig.h"
 #include "SandboxParamStore.h"
 #include "SandboxRagdollActor.h"
 #include "ScenarioSpec.h"
@@ -171,4 +175,93 @@ ASandboxRagdollActor* FScenarioStage::SpawnBody(UWorld& World, const FScenarioSp
 		}
 	}
 	return Ragdoll;
+}
+
+void FScenarioStage::TellBodyOfHolds(const ASandboxEffectorRig* Rig, ASandboxRagdollActor* Body)
+{
+	USandboxBodyController* Controller = Body ? Body->GetController() : nullptr;
+	if (!Controller)
+	{
+		return;
+	}
+	TArray<FSandboxBodyHold, TInlineAllocator<2>> Holds;
+	if (Rig)
+	{
+		for (const USandboxEffectorComponent* Effector : Rig->GetEffectors())
+		{
+			if (Effector && Effector->IsGrabbing() && Effector->GetGrabbedComponent() == Body->GetBodyMesh())
+			{
+				FSandboxBodyHold& Hold = Holds.AddDefaulted_GetRef();
+				Hold.Holder = Effector->GetId();
+				Hold.Bone = Effector->GetGrabbedBone();
+				Hold.ForceN = Effector->GetGrabForceN();
+			}
+		}
+	}
+	// Told also when nothing is held: that is how the body learns that a hold has ended.
+	if (Holds.Num() > 0 || Controller->GetHolds().Num() > 0)
+	{
+		Controller->TellHolds(Holds);
+	}
+}
+
+TArray<AActor*> FScenarioStage::SpawnProps(UWorld& World, const FScenarioSpec& Spec)
+{
+	TArray<AActor*> Props;
+	UStaticMesh* Cube = Spec.Props.Num() > 0 ? LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")) : nullptr;
+	for (const FScenarioProp& Prop : Spec.Props)
+	{
+		// A box component is the body, as a sphere component is a hand's: a static mesh component with one
+		// of the engine's basic shapes did not become a simulating body here. The mesh is only looked at.
+		FActorSpawnParameters Params;
+		// "Prop_<name>", which is what a hand that touches or holds it reports; another name only if that one is taken.
+		const FName Wanted(*FString::Printf(TEXT("Prop_%s"), *Prop.Name.ToString()));
+		Params.Name = FindObjectFast<UObject>(World.GetCurrentLevel(), Wanted) ? MakeUniqueObjectName(World.GetCurrentLevel(), AActor::StaticClass(), Wanted) : Wanted;
+		AActor* Actor = World.SpawnActor<AActor>(AActor::StaticClass(), FTransform(Prop.Rotation, Prop.LocationCm), Params);
+		UBoxComponent* Box = Actor ? NewObject<UBoxComponent>(Actor, TEXT("Body")) : nullptr;
+		if (!Box)
+		{
+			UE_LOG(LogSandbox, Error, TEXT("Scenario: the prop '%s' could not be made"), *Prop.Name.ToString());
+			Props.Add(nullptr);
+			continue;
+		}
+		Box->SetMobility(EComponentMobility::Movable);
+		Box->SetBoxExtent(Prop.SizeCm * 0.5, /*bUpdateOverlaps*/ false);
+		Box->SetCollisionProfileName(TEXT("PhysicsActor"));
+		Box->SetGenerateOverlapEvents(false);
+		Box->BodyInstance.bNotifyRigidBodyCollision = true;
+		// Swept, as the hands are: a stick that is swung is thin and fast.
+		Box->BodyInstance.bUseCCD = true;
+		Actor->SetRootComponent(Box);
+		Box->SetWorldTransform(FTransform(Prop.Rotation, Prop.LocationCm));
+		Box->RegisterComponent();
+		Box->SetSimulatePhysics(true);
+		Box->SetMassOverrideInKg(NAME_None, static_cast<float>(Prop.MassKg), /*bOverrideMass*/ true);
+		if (Cube)
+		{
+			UStaticMeshComponent* Visual = NewObject<UStaticMeshComponent>(Actor, TEXT("Visual"));
+			Visual->SetupAttachment(Box);
+			Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Visual->SetGenerateOverlapEvents(false);
+			Visual->SetStaticMesh(Cube);
+			Visual->SetRelativeScale3D(Prop.SizeCm / 100.0);
+			Visual->RegisterComponent();
+		}
+		if (Prop.HandleCm.IsSet())
+		{
+			// The place the thing is to be held by: a component with a tag, which is all a hand looks for.
+			USceneComponent* Handle = NewObject<USceneComponent>(Actor, TEXT("Handle"));
+			Handle->SetupAttachment(Box);
+			Handle->SetRelativeLocation(Prop.HandleCm.GetValue());
+			Handle->ComponentTags.Add(TEXT("SandboxHandle"));
+			Handle->RegisterComponent();
+		}
+		const FBodyInstance* Body = Box->GetBodyInstance();
+		if (!Body || !Body->IsValidBodyInstance() || !Body->IsInstanceSimulatingPhysics())
+		{
+			UE_LOG(LogSandbox, Error, TEXT("Scenario: the prop '%s' got no simulating body"), *Prop.Name.ToString());
+		}
+		Props.Add(Actor);
+	}
+	return Props;
 }

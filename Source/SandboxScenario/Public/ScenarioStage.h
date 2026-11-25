@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 
 class ACameraActor;
+class ASandboxEffectorRig;
 class ASandboxRagdollActor;
 class UWorld;
 struct FScenarioSpec;
@@ -39,4 +40,18 @@ struct SANDBOXSCENARIO_API FScenarioStage
 	 * the process-wide tuning store, which is loaded if it was not. Null with a reason on failure.
 	 */
 	static ASandboxRagdollActor* SpawnBody(UWorld& World, const FScenarioSpec& Spec, FString& OutError);
+
+	/**
+	 * The scenario's things with mass ("props"): each a box that is simulated from the first step, with its
+	 * mass, that collides with the world, the character and the hands, and that a hand can take hold of. In
+	 * the order of the scenario's list; an entry is null if its box could not be made (logged).
+	 */
+	static TArray<AActor*> SpawnProps(UWorld& World, const FScenarioSpec& Spec);
+
+	/**
+	 * Tells the body which of its parts the hands hold now (USandboxBodyController::TellHolds). The hands do
+	 * not know the character and the character does not know the hands; a run and a session know both, and
+	 * call this once a frame. Either may be null.
+	 */
+	static void TellBodyOfHolds(const ASandboxEffectorRig* Rig, ASandboxRagdollActor* Body);
 };

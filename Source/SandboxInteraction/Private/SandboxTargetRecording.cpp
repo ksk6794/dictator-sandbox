@@ -9,8 +9,8 @@ namespace
 {
 	constexpr int32 FormatVersion = 1;
 	// Place, turn (a quaternion), velocity and grip of one effector in one frame.
-	constexpr int32 NumbersPerTarget = 11;
-	const TCHAR* const Columns = TEXT("x_cm,y_cm,z_cm,qx,qy,qz,qw,vx_cm_s,vy_cm_s,vz_cm_s,grip");
+	constexpr int32 NumbersPerTarget = 12;
+	const TCHAR* const Columns = TEXT("x_cm,y_cm,z_cm,qx,qy,qz,qw,vx_cm_s,vy_cm_s,vz_cm_s,grip,strength");
 }
 
 bool FSandboxTargetRecording::Find(FName Effector, int32 Frame, FSandboxEffectorTarget& OutTarget) const
@@ -54,10 +54,10 @@ bool FSandboxTargetRecording::Save(const FString& FilePath, FString& OutError) c
 		for (int32 Column = 0; Column < Effectors.Num(); ++Column)
 		{
 			const FSandboxEffectorTarget& Target = Targets[Frame * Effectors.Num() + Column];
-			Text += FString::Printf(TEXT("%s[%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.9g]"), Column > 0 ? TEXT(",") : TEXT(""),
+			Text += FString::Printf(TEXT("%s[%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.9g,%.9g]"), Column > 0 ? TEXT(",") : TEXT(""),
 				Target.Location.X, Target.Location.Y, Target.Location.Z,
 				Target.Rotation.X, Target.Rotation.Y, Target.Rotation.Z, Target.Rotation.W,
-				Target.Velocity.X, Target.Velocity.Y, Target.Velocity.Z, static_cast<double>(Target.Grip));
+				Target.Velocity.X, Target.Velocity.Y, Target.Velocity.Z, static_cast<double>(Target.Grip), static_cast<double>(Target.Strength));
 		}
 		Text += Frame + 1 < Frames ? TEXT("],\n") : TEXT("]\n");
 	}
@@ -126,8 +126,10 @@ bool FSandboxTargetRecording::Load(const FString& FilePath, FSandboxTargetRecord
 		{
 			const TArray<TSharedPtr<FJsonValue>>* Numbers = nullptr;
 			double Values[NumbersPerTarget];
-			bool bGood = Entry.IsValid() && Entry->TryGetArray(Numbers) && Numbers->Num() == NumbersPerTarget;
-			for (int32 Index = 0; bGood && Index < NumbersPerTarget; ++Index)
+			// A recording made before a target had a strength has eleven numbers, and its effectors their whole strength.
+			bool bGood = Entry.IsValid() && Entry->TryGetArray(Numbers) && (Numbers->Num() == NumbersPerTarget || Numbers->Num() == NumbersPerTarget - 1);
+			Values[NumbersPerTarget - 1] = 1.0;
+			for (int32 Index = 0; bGood && Index < Numbers->Num(); ++Index)
 			{
 				bGood = (*Numbers)[Index].IsValid() && (*Numbers)[Index]->Type == EJson::Number && (*Numbers)[Index]->TryGetNumber(Values[Index]) && FMath::IsFinite(Values[Index]);
 			}
@@ -145,6 +147,7 @@ bool FSandboxTargetRecording::Load(const FString& FilePath, FSandboxTargetRecord
 			}
 			Target.Velocity = FVector(Values[7], Values[8], Values[9]);
 			Target.Grip = static_cast<float>(Values[10]);
+			Target.Strength = static_cast<float>(FMath::Clamp(Values[11], 0.0, 1.0));
 			Read.Targets.Add(Target);
 		}
 	}

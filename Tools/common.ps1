@@ -85,6 +85,49 @@ function Invoke-Process {
     return @{ ExitCode = $exitCode; Output = $lines; TimedOut = $timedOut }
 }
 
+function Get-HeadsetBlocker {
+    # Why a run in the headset must not be started now, or nothing if it may be.
+    # A -VR launch with SteamVR not running starts SteamVR itself (the OpenXR instance does), and the engine then
+    # creates its graphics device while SteamVR's compositor is taking the headset's display. On 24 November 2026
+    # that ended in a blue screen in the NVIDIA driver (nvlddmkm.sys, bugcheck 0x3B) and a reboot of the machine
+    # with every uncommitted change open. So SteamVR has to be up, with its compositor, before the engine starts.
+    # SANDBOX_VR_UNCHECKED=1 skips the check.
+    if ($env:SANDBOX_VR_UNCHECKED -eq '1') { return $null }
+    $missing = @()
+    foreach ($name in @('vrserver', 'vrcompositor')) {
+        if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) { $missing += $name }
+    }
+    if ($missing.Count -gt 0) {
+        return "SteamVR is not running ($($missing -join ', ') missing). Start SteamVR, put the headset on and wake the controllers first; a launch that has to start SteamVR itself crashed the graphics driver and rebooted the machine"
+    }
+    # Running is not ready: the crash was the engine's graphics device made while the compositor was coming up.
+    # So the compositor has to have been there for a while, and SteamVR must not say that it is starting or going.
+    $compositor = @(Get-Process -Name 'vrcompositor' -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1)
+    if ($compositor.Count -gt 0 -and $compositor[0].StartTime) {
+        $upFor = ((Get-Date) - $compositor[0].StartTime).TotalSeconds
+        if ($upFor -lt 30) {
+            return ("SteamVR's compositor started {0:N0} s ago and may still be taking the headset's display. Wait half a minute and start again" -f $upFor)
+        }
+    }
+    $state = Get-HeadsetState
+    if ($state -and $state -notin @('Ready', 'Standby')) {
+        return "SteamVR reports '$state', neither ready nor standing by. Start SteamVR again and wait until it is ready"
+    }
+    return $null
+}
+
+function Get-HeadsetState {
+    # 'Ready', 'Standby' or another state SteamVR last reported in its monitor's log, or nothing if that is not
+    # known. Standby is a headset nobody is wearing.
+    $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue).SteamPath
+    if (-not $steam) { return $null }
+    $log = Join-Path $steam 'logs\vrmonitor.txt'
+    if (-not (Test-Path $log)) { return $null }
+    $last = Get-Content $log -Tail 400 -ErrorAction SilentlyContinue | Select-String -Pattern "to 'SteamVRSystemState_(\w+)'" | Select-Object -Last 1
+    if ($last) { return $last.Matches[0].Groups[1].Value }
+    return $null
+}
+
 function Invoke-Editor {
     # Runs UnrealEditor-Cmd.exe on the project, unattended, logging to $LogFile.
     # Flat by default: the OpenXR plugin is switched off for the run. -nohmd alone is not enough, because the
@@ -99,7 +142,17 @@ function Invoke-Editor {
     New-Item -ItemType Directory -Force (Split-Path -Parent $LogFile) | Out-Null
     if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
     $hmd = '-nohmd -DisablePlugins=OpenXR'
-    if ($VR) { $hmd = '' }
+    if ($VR) {
+        # The scripts that take -VR have asked already and said why in their own words; this is the last guard.
+        $blocker = Get-HeadsetBlocker
+        if ($blocker) { throw "A run in the headset was not started: $blocker." }
+        $hmd = ''
+        # OpenXR Toolkit, an API layer that hooks every OpenXR application on the machine, crashed the session
+        # 7 s after its start (an access violation in XR_APILAYER_MBUCCHIA_toolkit.dll, called from the D3D12
+        # RHI). Its manifest names this variable as the way to leave it out; it is set for this process and its
+        # children only, and the installation stays as it is.
+        $env:DISABLE_XR_APILAYER_MBUCCHIA_toolkit = '1'
+    }
     $all = "`"$ProjectFile`" $ArgumentString $hmd -unattended -nopause -nosplash -nosound -abslog=`"$LogFile`""
     return (Invoke-Process -FilePath (Get-EditorCmd) -ArgumentString $all -TimeoutSec $TimeoutSec)
 }

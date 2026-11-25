@@ -113,6 +113,13 @@ own contact events, by the same rules as for an `impulse` event, and may flinch.
 - A hand named by any event exists from the start of the run, resting on the first key of its first path.
   A later path of the same hand takes over when it begins.
 - `rotation_deg` is `[pitch, yaw, roll]`; a key without one keeps the rotation of the key before it.
+- `grip` is 1 for a fist and 0 for an open hand; a key without one keeps the grip of the key before it, and a
+  hand whose keys say nothing is a fist, the ball it has always been. An open hand is a flat plate in the hand's
+  own frame (x along the fingers, z toward the thumb, the palm facing along y), shown always and, with
+  `effectors.hand.palm_collides` set to 1, the body that collides. Unturned, a hand's palm faces along the
+  scenario's y, toward or away from an unrotated character; `"rotation_deg": [0, 90, 0]` turns it to face along
+  x, and `[90, 0, 0]` points the fingers up. A scenario switches the plate on with a console event at 0 s
+  (`Sandbox.Tune effectors.hand.palm_collides=1`), as `palm_slap_head` does.
 - In the scenario's own space the character faces +y and its left is +x, when it is spawned unrotated.
 
 `effectors` in `metrics.json` has, for each hand: `contact_impulse_ns` (the sum of all contact impulses),
@@ -120,7 +127,20 @@ own contact events, by the same rules as for an `impulse` event, and may flinch.
 `first_contact_t`, `contact_frames`, `max_contact_force_n` (the largest net contact force over one frame),
 `final_contact_force_n` (the same in the run's last frame), `max_gap_cm` and `final_gap_cm` (distance from
 the hand to its target), `max_speed_mps`, `max_demand_n` (the largest force the spring law asked for before
-its cap) and `snaps`. What the character felt is in `control`: `contact_impulse_ns` and `contact_reports`.
+its cap), `snaps`, `shape_changes` (times the hand changed between the ball and the open hand's plate; the
+expectation `effector_shape_changes` holds the sum over the hands), `grips_on_body` and `last_gripped` (times the grip closed
+while the open hand lay on something, and on what: such a hand stays open until it has room to be a fist; the
+expectation `effector_grips_on_body` holds the sum), `open_hand_at_end` and `mass_kg` of the body that is the
+hand at the end. Of a grab (`effectors.hand.grab`, which a scenario switches on with a `console` event at
+`t` 0: `Sandbox.Tune effectors.hand.grab=1`): `grabs` and `last_grabbed` (times a closing grip took hold of a
+body, and of which), `grab_frames` (frames it held something), `grab_slips` (times the grip slipped because the
+hand was left behind its target), `grab_overloads` (times it was torn open by its load), `grabs_lost` (what it
+held ceased to exist), `max_grab_stretch_cm` (the furthest the two held points came apart), `max_grab_force_n`
+and `mean_grab_force_n` (what the joint carried, in a frame at most and on average while it held) and
+`grabbing_at_end`. The expectations `effector_grabs`, `effector_grab_slips` and `effector_grab_overloads` hold
+the sums over the hands exactly, `min_grab_frames` the sum of the frames, `max_grab_stretch_cm` and
+`max_grab_force_n` the largest of the hands. A hand that holds something collides with no simulated body, and
+its penetration and tunnelling are not measured against the character for as long. What the character felt is in `control`: `contact_impulse_ns` and `contact_reports`.
 
 A strike adds, per hand: `first_touched` and `first_contact_speed_mps` (what it touched first and how fast it
 was moving at the start of the physics step in which it did), `struck_bone` and `struck_displacement_cm`
@@ -153,6 +173,70 @@ a recording and starts the next. Each is written to `Saved\Recordings\<name>\`: 
 lived when the recording ended) and `<name>.session.json` (what the session saw at that moment: the body's
 states and their frames, where the pelvis was, what each hand had touched and with how much). To keep one, copy
 the recording to `Recordings\` and write a scenario for it with expectations, as `replay_demo_hands` is.
+
+A session writes its recording when it ends by Escape or by itself after
+`-Seconds <n>` (simulated seconds); one that is killed or times out loses it. `play.ps1` says so when `-Record`
+was asked for and nothing was written.
+
+In a headset (`Tools\play.ps1 -VR -Record <name>`) the recording is made the same way: it holds what the hands
+were asked for, whichever source asked, so a scenario that replays it needs no headset. The session file then
+has, under each hand, `tracking`: `tracked_frames` and `lost_frames` of its controller, `estimated_frames` (lost
+frames in which the runtime still gave a pose, not marked as tracked), `no_linear_velocity_frames` and
+`no_angular_velocity_frames` (frames in which the runtime gave no velocity and the difference of two poses stood
+in), `moved_without_velocity_frames`, `catch_ups` and `catch_up_frames` (the target on its way to a controller
+that was found again or jumped), `max_target_speed_mps` and `max_grip`, all counted over the whole session up to
+that moment.
+
+A run with hands also writes `hands.csv`, one line a frame: for each hand its distance to its target at the
+start of the coming step (`<hand>_gap_cm`), its speed, the speed its target was reported to have, the force the
+spring law asked for before its cap, and the contact force of the step before. `Tools\swing-lag.ps1` reads it.
+A hand that follows a moving target perfectly still shows one frame of the target's travel as a gap: it is given
+the place for the start of a step and is there at its end.
+
+**What the body told of.** `control.events` in `metrics.json` lists, in order, every hit and every change of
+state the body told its listeners of (`USandboxBodyController::OnBodyEvent`): `t`, `type` (`hit` or `state`),
+the `state` the body is in, and for a hit the `bone` and `impulse_ns`, for a change the `previous_state` and the
+`reason`.
+
+A scenario may put things with mass into its world: `"props": [ { "name": "box", "size_cm": [40, 40, 45],
+"mass_kg": 5, "location_cm": [150, 60, 22.5], "rotation_deg": [0, 0, 0] } ]`. A prop may add `"handle_cm": [40, 0, 0]`,
+a point of it from its middle that a hand takes it by when it closes near it (`effectors.hand.grab_handle_cm`;
+a hand's `handle_grabs`, the expectation `effector_handle_grabs`). Each is a box that is
+simulated from the first step (`location_cm` is its middle; put it on the floor, not in it), collides with the
+floor, the character and the hands, and can be taken hold of by a hand with the grab on (a hand's
+`last_grabbed` then reads `Prop_<name>`). `props` in `metrics.json` has, for each: `mass_kg`,
+`start_location_cm`, `final_location_cm`, `final_tilt_deg` (0 upright, 90 on its side), `travel_cm` (the
+furthest it was from where it started) and `max_speed_mps`. Expectations: `min_prop_travel_cm` (of the prop
+that went least far), `max_prop_travel_cm` and `max_prop_speed_mps` (of the one that went furthest and
+fastest: nothing was launched), and `min_felt_impulse_ns`: the body felt at least that much from the
+simulated bodies that touched it, hands and things alike (`control.contact_impulse_ns`), which is how a
+scenario says that a thing reached the body at all. A run with props also checks that every one of them is there and simulated
+(`props_simulated`). Props are part of a run's hash.
+
+The effectors are `hand_left`, `hand_right` and the kicking feet `foot_left` and `foot_right` (heavier and
+stronger, `effectors.foot.*`; a foot is always a ball and takes no `"grip"`).
+
+An `effector` event may say `"at_bone": "spine_04"`: its keys after the first are then measured from where
+that body of the character is (its centre of mass) at the moment the event begins, along the world's axes, and
+the first key is where the hand waits until then, in the world. For a hand that has to find a body wherever a
+fall has put it (`grab_getup_held`; `Tools\getup-stand.ps1 -HoldHands`). The body's place is read once, as the
+event begins: let the body come to rest first. A later event of the same hand begins, as always, with a jump
+of the target to its own first key, which is a place in the world whether or not that event has `at_bone`: write
+it where the hand will be. A name that is no body of the character is an error in the log and fails the run
+(`all_events_applied`), and the hand then goes to the keys as written.
+
+A grab and its end are events too (`"type": "grab"` and `"release"`, with `bone` and `holder`, the
+hand's name): the body does not feel a hold, it is told of it by the run, which knows both the hands and the
+body. `control.grab_events` counts the grabs, and the expectation `"grab_events": 1` holds the count and that
+what the body was last told is held is what the hands hold of it at the run's end. `control.hit_events` counts the hits, and the expectation `"hit_events": 1` holds the count. A hit is
+one contact that has brought what makes a standing body flinch: a hand that lands and keeps pressing is one, and
+a blow that lands while something is pressing is another.
+
+**Takes.** The N key of a session (in the headset: both fists raised above the eyes with the grips held closed for a second) begins a new take: the
+recording that runs is written, the character is put back, the hands are made anew on their targets, and a new
+recording begins, written as `<name>_2`, `<name>_3` and so on. Each take's scenario starts with a fresh body and
+its recording at 0 s. A take's replay ends as the take did within limits, not to the digit: see
+`docs/testing.md`. `Tools\record-replay.ps1 -Takes` checks three takes made without a person.
 
 `Tools\record-replay.ps1` is the check of the whole way: a session without a person uses the hands alone
 (`play.ps1 -Demo`: the right hand reaches into the chest, then the left), the recording is replayed as a

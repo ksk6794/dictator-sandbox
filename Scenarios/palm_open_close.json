@@ -1,0 +1,114 @@
+{
+  "name": "palm_open_close",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [
+      -150,
+      230,
+      140
+    ],
+    "look_at_cm": [
+      0,
+      0,
+      105
+    ]
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.palm_collides=1"
+    },
+    {
+      "t": 1.0,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            0,
+            70,
+            128
+          ],
+          "grip": 1
+        },
+        {
+          "t": 0.5,
+          "location_cm": [
+            0,
+            70,
+            128
+          ],
+          "grip": 0
+        },
+        {
+          "t": 1.0,
+          "location_cm": [
+            0,
+            60,
+            128
+          ],
+          "grip": 0
+        },
+        {
+          "t": 1.5,
+          "location_cm": [
+            0,
+            70,
+            128
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.0,
+          "location_cm": [
+            0,
+            70,
+            128
+          ]
+        },
+        {
+          "t": 2.1,
+          "location_cm": [
+            0,
+            6,
+            128
+          ]
+        },
+        {
+          "t": 2.5,
+          "location_cm": [
+            0,
+            70,
+            128
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "hit_events": 1,
+    "effector_shape_changes": 2,
+    "fell": false,
+    "state_sequence": "standing>flinch>standing",
+    "min_effector_impact_speed_mps": 6.0,
+    "min_effector_impulse_ns": 10,
+    "max_joint_stretch_cm": 2.0,
+    "max_effector_penetration_cm": 1,
+    "effector_grips_on_body": 0
+  }
+}

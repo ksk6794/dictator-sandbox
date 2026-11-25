@@ -1,0 +1,103 @@
+{
+  "name": "grab_in_air",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [
+      150,
+      260,
+      140
+    ],
+    "look_at_cm": [
+      20,
+      0,
+      100
+    ]
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.grab=1"
+    },
+    {
+      "t": 3.0,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            70,
+            -3,
+            98
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.5,
+          "location_cm": [
+            45,
+            -3,
+            98
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.9,
+          "location_cm": [
+            45,
+            -3,
+            98
+          ],
+          "grip": 0
+        },
+        {
+          "t": 1.0,
+          "location_cm": [
+            45,
+            -3,
+            98
+          ],
+          "grip": 1
+        },
+        {
+          "t": 1.8,
+          "location_cm": [
+            60,
+            25,
+            130
+          ]
+        },
+        {
+          "t": 2.4,
+          "location_cm": [
+            60,
+            25,
+            130
+          ],
+          "grip": 1
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "effector_grabs": 0,
+    "fell": false,
+    "end_state": "standing",
+    "max_joint_stretch_cm": 2.0,
+    "grab_events": 0
+  }
+}

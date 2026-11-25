@@ -19,7 +19,9 @@ $steps = @(
     @{ name = 'knockdowns';          script = 'knockdowns.ps1' },
     @{ name = 'getup-stand';         script = 'getup-stand.ps1' },
     @{ name = 'play-smoke';          script = 'play.ps1'; arguments = @('-Smoke') },
-    @{ name = 'record-replay';       script = 'record-replay.ps1'; arguments = @('-Twice') }
+    @{ name = 'record-replay';       script = 'record-replay.ps1'; arguments = @('-Twice') },
+    @{ name = 'record-replay-takes'; script = 'record-replay.ps1'; arguments = @('-Takes') },
+    @{ name = 'play-grab';           script = 'play.ps1'; arguments = @('-Demo', '-Grab') }
 )
 
 $results = @()

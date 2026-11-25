@@ -17,6 +17,24 @@
 #                                   what the session saw of its outcome
 #   ... -Demo                       no window and no person: the session uses the hands alone and records them
 #                                   (Saved\Recordings\<Record or "demo_hands">). Tools\record-replay.ps1 replays it
+#   ... -Seconds 180                the session ends by itself after that many simulated seconds, as Escape
+#                                   would end it: a recording is written. (A session that is closed by its
+#                                   window, killed or timed out loses its recording.)
+#   ... -Grab                       a session with the grab switched on (effectors.hand.grab=1; also with -VR). On the
+#                                   desktop the G key holds the hands open: reach, let G go while the hand presses on
+#                                   the body, and the hand holds it; G again lets go
+#   ... -Demo -Grab                 the same for the grab (effectors.hand.grab switched on): the hands open, the right
+#                                   one reaches into the chest and its grip takes hold; the character is put back
+#                                   while it is held; the hand takes hold of the new one, pulls and lets go; then
+#                                   the desktop's kick (the F key) at the chest
+#   ... -Demo -Takes                the same in three takes: the character is put back before each (the N key of
+#                                   a session; in the headset both grips held for a second), and each take is a
+#                                   recording of its own (Saved\Recordings\demo_takes, demo_takes_2, demo_takes_3)
+#   ... -VR                         in the headset (headset on, SteamVR running): the same session, the hands
+#                                   follow the controllers' grip poses, the grip is the squeeze, the headset paces
+#                                   the frames. The player stands at arm's length in front of the character; the
+#                                   window shows what the headset sees. With -Record the hands are recorded as on
+#                                   the desktop. Escape in the window ends the session. Not with -Smoke or -Demo
 # Keys are listed on the screen and in Source\SandboxInteraction\Public\SandboxPawn.h. Escape quits.
 # Close the Unreal Editor first. Exit code: 0 the session ended (or the self-test passed), 1 a self-test
 # check failed, 2 the session could not run.
@@ -30,6 +48,10 @@ param(
     [int]$ResY = 900,
     [switch]$Smoke,
     [switch]$Demo,
+    [switch]$Takes,
+    [switch]$Grab,
+    [switch]$VR,
+    [double]$Seconds = 0,
     [string]$Record,
     [switch]$Shot,
     [string]$Out,
@@ -61,12 +83,30 @@ foreach ($stale in @('play.json', 'final.png')) {
     if (Test-Path $path) { Remove-Item $path -Force }
 }
 
+# -Grab is the grab switched on (effectors.hand.grab), whatever else is tuned: for the grab's own demo, and for
+# a person's session, on the desktop (the G key holds the hands open) and in the headset.
+if ($Grab) {
+    if ($Tune) { $Tune = "$Tune,effectors.hand.grab=1" } else { $Tune = 'effectors.hand.grab=1' }
+}
 $arguments = "-game -Play=`"$scenarioFile`" -Out=`"$Out`" -UseFixedTimeStep -FPS=$fps"
 if ($spec.map) { $arguments = "$($spec.map) $arguments" }
 if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
-if ($Demo -and -not $Record) { $Record = 'demo_hands' }
+if ($VR) {
+    $blocker = Get-HeadsetBlocker
+    if ($blocker) {
+        Write-Output "PLAY ERROR: the session in the headset was not started. $blocker."
+        exit 2
+    }
+    $state = Get-HeadsetState
+    if ($state -and $state -ne 'Ready') { Write-Output "PLAY NOTE: SteamVR reports '$state': the headset is not being worn." }
+}
+if ($VR -and ($Demo -or $Smoke)) {
+    Write-Output 'PLAY ERROR: -VR is a session with a person in the headset; -Smoke and -Demo run without one'
+    exit 2
+}
+if ($Demo -and -not $Grab -and -not $Record) { $Record = 'demo_hands'; if ($Takes) { $Record = 'demo_takes' } }
 if ($Record) {
     if ($Record -notmatch '^[A-Za-z0-9_\-]+$') {
         Write-Output "PLAY ERROR: -Record takes a name of letters, digits, '_' and '-', not '$Record'"
@@ -76,7 +116,7 @@ if ($Record) {
 }
 
 if ($Demo) {
-    $arguments += ' -PlayDemo -nullrhi'
+    if ($Grab) { $arguments += ' -PlayDemoGrab -nullrhi' } elseif ($Takes) { $arguments += ' -PlayDemoTakes -nullrhi' } else { $arguments += ' -PlayDemo -nullrhi' }
     if ($TimeoutSec -le 0) { $TimeoutSec = 300 }
     $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
     $result = Read-JsonFile $resultFile
@@ -89,6 +129,17 @@ if ($Demo) {
         exit 2
     }
     $errors = @(Get-LogErrors $logFile | Where-Object { $_ -match 'LogSandbox' })
+    if ($Grab) {
+        $held = $result.grab
+        $told = "took hold $($held.held), lost what it held when the character was put back $($held.lost_on_reset), took hold of the new one $($held.held_again), let go $($held.let_go); $($held.grabs) grab(s), $($held.grabs_lost) lost, $($held.grab_slips) slipped, the joint carried $([Math]::Round([double]$held.max_grab_force_n)) N at most, the hand went $([Math]::Round([double]$held.max_speed_mps, 1)) m/s at most; the kick landed $($held.kick_landed) ($([Math]::Round([double]$held.kick_impulse_ns)) N*s from the foot after the key, and a hit told by the character); the character ends $($held.character_state_at_end)"
+        if (-not $result.pass -or $errors.Count -gt 0) {
+            Write-Output "PLAY GRAB FAILED on '$Name': $told"
+            $errors | ForEach-Object { Write-Output "  log: $_" }
+            exit 1
+        }
+        Write-Output "PLAY GRAB OK on '$Name': $told"
+        exit 0
+    }
     if (-not $result.pass -or $errors.Count -gt 0) {
         Write-Output "PLAY DEMO FAILED: no recording of the hands on '$Name': $($result.error)"
         $errors | ForEach-Object { Write-Output "  log: $_" }
@@ -146,15 +197,47 @@ if ($Smoke) {
     exit 1
 }
 
-# A person's session: a window, the frame rate held to the simulation's, until the window is closed.
+# A person's session: a window, the frame rate held to the simulation's (in the headset: by the headset), until
+# the window is closed.
 $arguments += " -windowed -ResX=$ResX -ResY=$ResY"
+if ($VR) { $arguments += ' -vr' }
+if ($Seconds -gt 0) { $arguments += (' -PlaySeconds={0}' -f $Seconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)) }
 if ($TimeoutSec -le 0) { $TimeoutSec = 6 * 3600 }
-$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
+$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -VR:$VR
 $errors = @(Get-LogErrors $logFile | Where-Object { $_ -match 'LogSandbox' })
 if ($errors.Count -gt 0) {
     Write-Output "PLAY ERROR: the session on '$Name' logged errors. Log: $logFile"
     $errors | ForEach-Object { Write-Output "  $_" }
     exit 2
 }
-Write-Output "PLAY ENDED: session on '$Name' (exit code $($run.ExitCode)). Log: $logFile"
+# A session that crashed is not one that ended: the engine's own errors are not LogSandbox's, and the first
+# crash in the headset was reported as "PLAY ENDED".
+if (Test-Path $logFile) {
+    # A call stack alone is no crash: the engine prints one for an ensure that it survives.
+    $fatal = @(Select-String -Path $logFile -Pattern 'Fatal error!|Unhandled Exception|=== Critical error: ===' | Select-Object -First 1)
+    $crash = @()
+    if ($fatal.Count -gt 0) { $crash = @(Select-String -Path $logFile -Pattern 'Fatal error!|Unhandled Exception|\[Callstack\]' | Select-Object -First 4) }
+    if ($crash.Count -gt 0) {
+        Write-Output "PLAY ERROR: the session on '$Name' crashed (exit code $($run.ExitCode)); a recording that was running is lost. Log: $logFile"
+        $crash | ForEach-Object { Write-Output ("  " + ($_.Line -replace '^\[[^\]]*\]\[[^\]]*\]', '')) }
+        exit 2
+    }
+}
+$where = 'session'
+if ($VR) { $where = 'session in the headset' }
+Write-Output "PLAY ENDED: $where on '$Name' (exit code $($run.ExitCode)). Log: $logFile"
+if ($Record -and (Test-Path $logFile)) {
+    # Asked to record: say what was written, or that nothing was.
+    $saved = @(Select-String -Path $logFile -Pattern 'frames of the hands recorded')
+    if ($saved.Count -eq 0) {
+        Write-Output "  NO RECORDING was written for -Record $Record (a session records until Escape or -Seconds ends it)"
+    }
+    $saved | ForEach-Object { Write-Output ("  " + ($_.Line -replace '^.*LogSandbox: (Display: )?', '')) }
+}
+if ($VR -and (Test-Path $logFile)) {
+    # What the tracking gave: which controllers were tracked, whether the runtime gave their velocities, and
+    # how fast the session's 90 frames a second really went by.
+    Select-String -Path $logFile -Pattern 'LogSandbox: (Display: )?(Headset:|The pawn is in a headset|Play session: in the headset|Play session: \d+ frames in)' |
+        ForEach-Object { Write-Output ("  " + ($_.Line -replace '^.*LogSandbox: (Display: )?', '')) }
+}
 exit 0

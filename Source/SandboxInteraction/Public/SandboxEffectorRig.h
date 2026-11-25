@@ -13,7 +13,7 @@ struct FSandboxTargetRecording;
 /**
  * The player's physical presence: a set of effectors and the source that says where they should be. The
  * desktop pawn owns one and gives it a source that reads the camera and the mouse; a scenario owns one and
- * gives it the trajectories of its file; VR will give it the tracked controllers.
+ * gives it the trajectories of its file, or a recording; in a headset the pawn gives it the tracked controllers.
  *
  * The rig does not tick. Its owner calls UpdateTargets once per frame before the physics step, which keeps
  * the order of work the owner's decision and the same in every run.
@@ -34,6 +34,14 @@ public:
 
 	/** Adds one effector ("hand_left", "hand_right") at a pose. Null with a reason if the name is unknown. */
 	USandboxEffectorComponent* AddEffector(FName Id, const FTransform& Pose, FString& OutError);
+
+	/**
+	 * Destroys the effectors and makes them again, in their order, each where its source now wants it (or on
+	 * the target it had), at rest and with nothing to its name. A take begins so: the hands of a scenario are
+	 * made after its character, and bodies made in another order are solved in another order, which showed as
+	 * a hand's impulse 2% off between a take and its replay.
+	 */
+	bool RemakeEffectors(FString& OutError);
 
 	void SetSource(TSharedPtr<const ISandboxTargetSource> InSource) { Source = MoveTemp(InSource); }
 

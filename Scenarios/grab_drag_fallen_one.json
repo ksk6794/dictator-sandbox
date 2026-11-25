@@ -1,0 +1,146 @@
+{
+  "name": "grab_drag_fallen_one",
+  "duration_s": 18.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [
+      420,
+      -280,
+      160
+    ],
+    "look_at_cm": [
+      0,
+      -280,
+      20
+    ]
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune effectors.hand.grab=1"
+    },
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 200,
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    },
+    {
+      "t": 7.0,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            -4,
+            -177,
+            90
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.6,
+          "location_cm": [
+            -4,
+            -177,
+            27
+          ],
+          "grip": 0
+        },
+        {
+          "t": 1.0,
+          "location_cm": [
+            -4,
+            -177,
+            27
+          ],
+          "grip": 0
+        },
+        {
+          "t": 1.1,
+          "location_cm": [
+            -4,
+            -177,
+            27
+          ],
+          "grip": 1
+        },
+        {
+          "t": 1.6,
+          "location_cm": [
+            -4,
+            -187,
+            38
+          ]
+        },
+        {
+          "t": 6.6,
+          "location_cm": [
+            -4,
+            -387,
+            38
+          ],
+          "grip": 1
+        },
+        {
+          "t": 7.6,
+          "location_cm": [
+            -4,
+            -387,
+            38
+          ],
+          "grip": 1
+        },
+        {
+          "t": 7.7,
+          "location_cm": [
+            -4,
+            -387,
+            38
+          ],
+          "grip": 0
+        },
+        {
+          "t": 8.2,
+          "location_cm": [
+            -4,
+            -387,
+            90
+          ],
+          "grip": 0
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fell": true,
+    "effector_grabs": 1,
+    "effector_grab_slips": 1,
+    "effector_grab_overloads": 0,
+    "max_grab_stretch_cm": 3.0,
+    "max_grab_force_n": 330,
+    "max_joint_stretch_cm": 3.0,
+    "max_pelvis_drift_cm": 215,
+    "max_energy_gain_j": 40,
+    "grab_events": 1
+  }
+}

@@ -22,6 +22,7 @@
       {"t": 0.0, "location_cm": [105, 1.7, 100.4]}, {"t": 0.0938, "location_cm": [30, 1.7, 100.4]}, {"t": 0.4938, "location_cm": [105, 1.7, 100.4]}]}
   ],
   "expect": {
+    "hit_events": 4,
     "fell": false,
     "state_sequence": "standing>flinch>standing>flinch>standing>flinch>standing>flinch>standing",
     "min_effector_impact_speed_mps": 8.0,

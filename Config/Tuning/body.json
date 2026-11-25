@@ -109,7 +109,9 @@
     "flinch_pose_full_ns": 30,
     "flinch_give_deg": 15,
     "pressure_s": 0.1,
-    "held_push_s": 0.3
+    "held_push_s": 0.3,
+    "thing_support": 0,
+    "thing_support_max_ns": 5
   },
   "getup": {
     "rest_s": 1.5,

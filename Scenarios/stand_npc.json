@@ -11,6 +11,7 @@
     "control": "active"
   },
   "expect": {
+    "hit_events": 0,
     "max_assist_force_share_mean": 0.0093,
     "min_capture_margin_cm": 5.0,
     "max_body_penetration_cm": 0.5,

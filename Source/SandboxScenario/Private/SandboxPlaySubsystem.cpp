@@ -21,6 +21,7 @@
 #include "SandboxPawn.h"
 #include "SandboxRagdollActor.h"
 #include "SandboxTargetRecording.h"
+#include "SandboxTrackedTargetSource.h"
 #include "ScenarioStage.h"
 #include "UnrealClient.h"
 
@@ -55,7 +56,7 @@ TStatId USandboxPlaySubsystem::GetStatId() const
 void USandboxPlaySubsystem::Fail(const FString& Message)
 {
 	UE_LOG(LogSandbox, Error, TEXT("Play session cannot start: %s"), *Message);
-	if (bSmoke || bDemo)
+	if (bSmoke || bDemo || bExitOnFail)
 	{
 		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 		Root->SetBoolField(TEXT("ok"), false);
@@ -85,8 +86,11 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	ScenarioFile = FPaths::ConvertRelativePathToFull(ScenarioFile);
 
 	bSmoke = FParse::Param(FCommandLine::Get(), TEXT("PlaySmoke"));
-	bDemo = !bSmoke && FParse::Param(FCommandLine::Get(), TEXT("PlayDemo"));
+	bDemoTakes = !bSmoke && FParse::Param(FCommandLine::Get(), TEXT("PlayDemoTakes"));
+	bDemoGrab = !bSmoke && !bDemoTakes && FParse::Param(FCommandLine::Get(), TEXT("PlayDemoGrab"));
+	bDemo = !bSmoke && (bDemoTakes || bDemoGrab || FParse::Param(FCommandLine::Get(), TEXT("PlayDemo")));
 	bRecordFromStart = FParse::Value(FCommandLine::Get(), TEXT("Record="), RecordName) && !RecordName.IsEmpty() && !bDemo && !bSmoke;
+	FParse::Value(FCommandLine::Get(), TEXT("PlaySeconds="), PlaySeconds);
 	if (!FParse::Value(FCommandLine::Get(), TEXT("Out="), OutDir))
 	{
 		OutDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Play"), FPaths::GetBaseFilename(ScenarioFile));
@@ -104,11 +108,21 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 		return;
 	}
 
+	// Asked for the headset and there is none: a window with desktop hands would look like a session that
+	// worked. The session ends and says why.
+	if (FParse::Param(FCommandLine::Get(), TEXT("vr")) && !FScenarioStage::IsStereo())
+	{
+		bExitOnFail = true;
+		Fail(TEXT("-vr was asked for and no headset is showing the world: is it on, and is its OpenXR runtime (SteamVR) running?"));
+		return;
+	}
+
 	// The same physics timing as a scenario: every frame is one fixed step of the simulation.
 	FApp::SetFixedDeltaTime(Spec.FixedDt());
 	FApp::SetUseFixedTimeStep(true);
 
 	FScenarioStage::SpawnEnvironment(InWorld, Spec, /*bSpawnCamera*/ false);
+	RespawnProps();
 	Character = FScenarioStage::SpawnBody(InWorld, Spec, Error);
 	if (!Character)
 	{
@@ -140,15 +154,30 @@ bool USandboxPlaySubsystem::AdoptPawn(UWorld& World)
 
 	const FVector Location = Spec.bHasCamera ? Spec.CameraLocationCm : Spec.SpawnLocationCm + FVector(-250.0, 150.0, 160.0);
 	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : Spec.SpawnLocationCm + FVector(0.0, 0.0, 110.0);
-	Found->SetView(Location, (LookAt - Location).Rotation());
+	if (FScenarioStage::IsStereo())
+	{
+		// In the headset the pawn is the middle of the play space. It is put on the floor, on the side of the
+		// character the desktop camera starts on, at arm's length from what that camera looks at, facing it.
+		FVector Away = (Location - LookAt).GetSafeNormal2D();
+		if (Away.IsNearlyZero())
+		{
+			Away = FVector(0.0, 1.0, 0.0);
+		}
+		FSandboxInteractionTuning Tuning;
+		FString TuningError;
+		const double DistanceCm = FSandboxInteractionTuning::FromParams(FSandboxParamStore::Get(), Tuning, TuningError) ? Tuning.Tools.HeadsetStandDistanceCm : 0.0;
+		const FVector Floor(LookAt.X + Away.X * DistanceCm, LookAt.Y + Away.Y * DistanceCm, Spec.SpawnLocationCm.Z);
+		Found->SetView(Floor, (-Away).Rotation());
+		UE_LOG(LogSandbox, Display, TEXT("Play session: in the headset, the play space is centred at %.0f, %.0f on the floor, %.0f cm from the character, facing it"), Floor.X, Floor.Y, DistanceCm);
+	}
+	else
+	{
+		Found->SetView(Location, (LookAt - Location).Rotation());
+	}
 
 	Found->OnImpulseRequested.AddUObject(this, &USandboxPlaySubsystem::ApplyImpulse);
-	Found->OnResetRequested.AddUObject(this, &USandboxPlaySubsystem::ResetCharacter);
+	Found->OnResetRequested.AddUObject(this, &USandboxPlaySubsystem::RequestReset);
 	Found->OnRecordingStopped.AddUObject(this, &USandboxPlaySubsystem::SaveRecording);
-	if (bRecordFromStart)
-	{
-		Found->StartRecording();
-	}
 	Found->ExtraHudLines = [WeakThis = TWeakObjectPtr<const USandboxPlaySubsystem>(this)](TArray<FString>& OutLines)
 	{
 		if (WeakThis.IsValid())
@@ -176,12 +205,44 @@ void USandboxPlaySubsystem::ApplyImpulse(const FHitResult& Hit, const FVector& I
 	}
 }
 
+void USandboxPlaySubsystem::RequestReset()
+{
+	// Carried out in this subsystem's tick, which comes after the frame's physics: a character put into the
+	// world there has its first step in the next frame, as a scenario's character has, and not half a frame
+	// of its own in the middle of this one.
+	bResetPending = true;
+}
+
+void USandboxPlaySubsystem::RespawnProps()
+{
+	for (const TWeakObjectPtr<AActor>& Prop : Props)
+	{
+		if (AActor* Old = Prop.Get())
+		{
+			// Out of the way of its own name: the thing that takes its place is to be called as it was, so that
+			// what a hand touched in a take reads the same in the take's replay.
+			Old->Rename(*MakeUniqueObjectName(Old->GetOuter(), AActor::StaticClass(), TEXT("GoneProp")).ToString(), nullptr, REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
+			Old->Destroy();
+		}
+	}
+	Props.Reset();
+	for (AActor* Prop : FScenarioStage::SpawnProps(GetWorldRef(), Spec))
+	{
+		Props.Add(Prop);
+	}
+}
+
 void USandboxPlaySubsystem::ResetCharacter()
 {
 	if (Character)
 	{
 		Character->Destroy();
 		Character = nullptr;
+	}
+	// The things of the scene go back to their places with the character: a replay of what follows starts from them.
+	if (Spec.Props.Num() > 0)
+	{
+		RespawnProps();
 	}
 	FString Error;
 	Character = FScenarioStage::SpawnBody(GetWorldRef(), Spec, Error);
@@ -254,7 +315,30 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 	}
 	Scenario->SetStringField(TEXT("name"), Name);
 	Scenario->SetNumberField(TEXT("duration_s"), static_cast<double>(EndFrame) / Spec.FixedFps);
-	Scenario->SetArrayField(TEXT("events"), TArray<TSharedPtr<FJsonValue>>());
+	// What the session's hands could do that the tuning files do not give them (a session started with -Tune):
+	// the replay switches the same on before its first step, or a grip that took hold in the session would
+	// close on nothing in the replay.
+	TArray<TSharedPtr<FJsonValue>> ReplayEvents;
+	const ASandboxEffectorRig* RecordedRig = Pawn.IsValid() ? Pawn->GetRig() : nullptr;
+	if (RecordedRig)
+	{
+		const FSandboxEffectorTuning& Hand = RecordedRig->GetTuning().Hand;
+		const TPair<const TCHAR*, double> Switches[] = {
+			{ TEXT("effectors.hand.grab"), Hand.Grab },
+			{ TEXT("effectors.hand.palm_collides"), Hand.PalmCollides } };
+		for (const TPair<const TCHAR*, double>& Switch : Switches)
+		{
+			if (Switch.Value > 0.5)
+			{
+				const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
+				Event->SetNumberField(TEXT("t"), 0.0);
+				Event->SetStringField(TEXT("type"), TEXT("console"));
+				Event->SetStringField(TEXT("command"), FString::Printf(TEXT("Sandbox.Tune %s=1"), Switch.Key));
+				ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
+			}
+		}
+	}
+	Scenario->SetArrayField(TEXT("events"), ReplayEvents);
 	Scenario->SetObjectField(TEXT("expect"), MakeShared<FJsonObject>());
 	Scenario->RemoveField(TEXT("end_when_standing_s"));
 	Scenario->SetStringField(TEXT("recording"), RelativeRecording);
@@ -320,6 +404,24 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 		Hand->SetStringField(TEXT("first_touched"), Stats.FirstTouched.IsNone() ? FString() : Stats.FirstTouched.ToString());
 		Hand->SetNumberField(TEXT("first_contact_speed_mps"), Stats.FirstContactSpeedCmS * 0.01);
 		Hand->SetNumberField(TEXT("max_gap_cm"), Stats.MaxGapCm);
+		// In a headset: what the tracking gave for this hand over the whole session so far.
+		const FSandboxTrackedTargetSource* Tracked = Pawn->GetTrackedSource();
+		if (const FSandboxTrackedHandStats* Tracking = Tracked ? Tracked->GetStats(Effector->GetId()) : nullptr)
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetNumberField(TEXT("tracked_frames"), Tracking->TrackedFrames);
+			Entry->SetNumberField(TEXT("lost_frames"), Tracking->LostFrames);
+			Entry->SetNumberField(TEXT("estimated_frames"), Tracking->EstimatedFrames);
+			Entry->SetNumberField(TEXT("estimated_followed_frames"), Tracking->EstimatedFollowedFrames);
+			Entry->SetNumberField(TEXT("moved_without_velocity_frames"), Tracking->MovedWithoutVelocityFrames);
+			Entry->SetNumberField(TEXT("catch_ups"), Tracking->CatchUps);
+			Entry->SetNumberField(TEXT("catch_up_frames"), Tracking->CatchUpFrames);
+			Entry->SetNumberField(TEXT("no_linear_velocity_frames"), Tracking->NoLinearVelocityFrames);
+			Entry->SetNumberField(TEXT("no_angular_velocity_frames"), Tracking->NoAngularVelocityFrames);
+			Entry->SetNumberField(TEXT("max_target_speed_mps"), Tracking->MaxTargetSpeedCmS * 0.01);
+			Entry->SetNumberField(TEXT("max_grip"), Tracking->MaxGrip);
+			Hand->SetObjectField(TEXT("tracking"), Entry);
+		}
 		Hands->SetObjectField(Effector->GetId().ToString(), Hand);
 	}
 	Seen->SetObjectField(TEXT("hands"), Hands);
@@ -350,6 +452,164 @@ void USandboxPlaySubsystem::TickDemo()
 	}
 	// Looking at the character's front from the side it faces (+y), level, at arm's length.
 	const FVector Chest = Spec.SpawnLocationCm + FVector(0.0, 0.0, 128.0);
+	if (bDemoTakes)
+	{
+		// Three takes: each begins with the character put back and the hands made anew, and is recorded by
+		// itself. In the first and the third the left hand touches the chest, in the second the right.
+		switch (DemoFrame)
+		{
+		case 5:
+			Player->SelectTool(ESandboxTool::Hands);
+			Player->SetView(Chest + FVector(0.0, 85.0, 0.0), FRotator(0.0, -90.0, 0.0));
+			break;
+		case 60:
+		case 260:
+		case 460:
+			Player->RequestNewTake();
+			break;
+		// A touch, not a shove: the hand turns back as it arrives. A shove leaves the body on the edge of a
+		// second step, where the smallest difference between the session and its replay tells two stories.
+		// And a second into the take, not at once: a fresh body is still bringing its arms down.
+		case 160:
+		case 560:
+			Player->SetSecondary(true);
+			break;
+		case 174:
+		case 574:
+			Player->SetSecondary(false);
+			break;
+		case 360:
+			Player->SetPrimary(true);
+			break;
+		case 374:
+			Player->SetPrimary(false);
+			break;
+		case 700:
+			Player->StopRecording();
+			if (Player->GetTakes() != 3 || RecordingsSaved != 3)
+			{
+				LastRecordingError = FString::Printf(TEXT("%d takes begun and %d recordings written, 3 of each expected"), Player->GetTakes(), RecordingsSaved);
+			}
+			FinishDemo();
+			return;
+		default:
+			break;
+		}
+		++DemoFrame;
+		return;
+	}
+
+	if (bDemoGrab)
+	{
+		// The desktop's way to hold, and the one path of a grab that no scenario reaches: the hands open, the
+		// right one reaches into the chest, the grip closes and takes hold; the character is put back while
+		// it is held (what the hand held is gone); the hand comes back, takes hold of the new character, pulls
+		// and lets go.
+		const ASandboxEffectorRig* Rig = Player->GetRig();
+		const USandboxEffectorComponent* Hand = Rig ? Rig->FindEffector(SandboxEffectors::HandRight) : nullptr;
+		if (Hand && (DemoFrame % 10 == 0 || DemoFrame == 101 || DemoFrame == 321))
+		{
+			// What the hand is doing, every ninth of a second: the demo's own record in the log.
+			const FSandboxEffectorStats& Seen = Hand->GetStats();
+			UE_LOG(LogSandbox, Display, TEXT("Play demo (grab) frame %d: %s, %s, grabs %d lost %d slipped %d torn %d, %.1f cm from its target, presses with %.0f N, %.1f m/s, passing bodies %d"),
+				DemoFrame, Hand->IsFist() ? TEXT("fist") : TEXT("open"), Hand->IsGrabbing() ? *Hand->GetGrabbedBone().ToString() : TEXT("holds nothing"),
+				Seen.Grabs, Seen.GrabsLost, Seen.GrabSlips, Seen.GrabOverloads, Hand->GetGapCm(), Hand->GetContactForceN(), Hand->GetHandVelocity().Size() * 0.01, Hand->IsPassingBodies() ? 1 : 0);
+		}
+		switch (DemoFrame)
+		{
+		case 5:
+			Player->SelectTool(ESandboxTool::Hands);
+			Player->SetView(Chest + FVector(0.0, 85.0, 0.0), FRotator(0.0, -90.0, 0.0));
+			break;
+		case 60:
+			Player->SetHandsOpen(true);
+			break;
+		case 80:
+			Player->SetPrimary(true);
+			break;
+		// The grip closes while the hand still presses on the chest: a body that is pushed gives way, and a
+		// moment later it is out of the hand's reach.
+		case 100:
+			Player->SetHandsOpen(false);
+			break;
+		case 150:
+			bGrabHeld = Hand && Hand->IsGrabbing();
+			break;
+		case 200:
+			Player->RequestReset();
+			break;
+		case 215:
+			bGrabLostOnReset = Hand && !Hand->IsGrabbing() && Hand->GetStats().GrabsLost == 1;
+			Player->SetPrimary(false);
+			break;
+		case 280:
+			Player->SetHandsOpen(true);
+			break;
+		case 300:
+			Player->SetPrimary(true);
+			break;
+		case 320:
+			Player->SetHandsOpen(false);
+			break;
+		case 370:
+			bGrabHeldAgain = Hand && Hand->IsGrabbing() && Hand->GetStats().Grabs == 2;
+			Player->SetPrimary(false);
+			break;
+		case 440:
+			Player->SetHandsOpen(true);
+			break;
+		case 460:
+			bGrabLetGo = Hand && !Hand->IsGrabbing();
+			Player->SetHandsOpen(false);
+			break;
+		// And the desktop's kick, at what the camera looks at: from the same place, looking down at the thighs.
+		case 480:
+			Player->SetView(Chest + FVector(0.0, 85.0, 0.0), FRotator(-35.0, -90.0, 0.0));
+			break;
+		case 510:
+		{
+			const USandboxEffectorComponent* Foot = Rig ? Rig->FindEffector(SandboxEffectors::FootRight) : nullptr;
+			const USandboxBodyController* Kicked = Character ? Character->GetController() : nullptr;
+			KickImpulseBeforeNs = Foot ? Foot->GetStats().ContactImpulseNs : 0.0;
+			KickHitsBefore = 0;
+			for (const FSandboxBodyEvent& Event : Kicked ? Kicked->GetEvents() : TArray<FSandboxBodyEvent>())
+			{
+				KickHitsBefore += Event.Type == ESandboxBodyEventType::Hit ? 1 : 0;
+			}
+			Player->Kick();
+			break;
+		}
+		case 570:
+		{
+			// Landed: the foot delivered something after the key, and the character told of a hit of its own.
+			const USandboxEffectorComponent* Foot = Rig ? Rig->FindEffector(SandboxEffectors::FootRight) : nullptr;
+			const USandboxBodyController* Kicked = Character ? Character->GetController() : nullptr;
+			int32 Hits = 0;
+			for (const FSandboxBodyEvent& Event : Kicked ? Kicked->GetEvents() : TArray<FSandboxBodyEvent>())
+			{
+				Hits += Event.Type == ESandboxBodyEventType::Hit ? 1 : 0;
+			}
+			KickImpulseNs = Foot ? Foot->GetStats().ContactImpulseNs - KickImpulseBeforeNs : 0.0;
+			bKickLanded = KickImpulseNs > 10.0 && Hits > KickHitsBefore;
+			break;
+		}
+		case 595:
+		{
+			// And the foot is home again, without having been put there: it came back at the kick's speed.
+			const USandboxEffectorComponent* Foot = Rig ? Rig->FindEffector(SandboxEffectors::FootRight) : nullptr;
+			bKickLanded = bKickLanded && Foot && Foot->GetGapCm() < 5.0 && Foot->GetStats().Snaps == 0;
+			break;
+		}
+		case 600:
+			FinishDemo();
+			return;
+		default:
+			break;
+		}
+		++DemoFrame;
+		return;
+	}
+
 	switch (DemoFrame)
 	{
 	case 5:
@@ -390,8 +650,41 @@ void USandboxPlaySubsystem::TickDemo()
 
 void USandboxPlaySubsystem::FinishDemo()
 {
-	const bool bPass = LastRecordingError.IsEmpty() && !LastRecordingScenario.IsEmpty();
+	bool bPass = LastRecordingError.IsEmpty() && !LastRecordingScenario.IsEmpty();
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	if (bDemoGrab)
+	{
+		bPass = bGrabHeld && bGrabLostOnReset && bGrabHeldAgain && bGrabLetGo && bKickLanded;
+		const TSharedRef<FJsonObject> Grab = MakeShared<FJsonObject>();
+		Grab->SetBoolField(TEXT("held"), bGrabHeld);
+		Grab->SetBoolField(TEXT("lost_on_reset"), bGrabLostOnReset);
+		Grab->SetBoolField(TEXT("held_again"), bGrabHeldAgain);
+		Grab->SetBoolField(TEXT("let_go"), bGrabLetGo);
+		Grab->SetBoolField(TEXT("kick_landed"), bKickLanded);
+		const ASandboxEffectorRig* Rig = Pawn.IsValid() ? Pawn->GetRig() : nullptr;
+		if (const USandboxEffectorComponent* Foot = Rig ? Rig->FindEffector(SandboxEffectors::FootRight) : nullptr)
+		{
+			Grab->SetNumberField(TEXT("kick_impulse_ns"), KickImpulseNs);
+			Grab->SetNumberField(TEXT("foot_impulse_before_the_kick_ns"), KickImpulseBeforeNs);
+			Grab->SetNumberField(TEXT("foot_max_speed_mps"), Foot->GetStats().MaxSpeedCmS * 0.01);
+		}
+		if (const USandboxEffectorComponent* Hand = Rig ? Rig->FindEffector(SandboxEffectors::HandRight) : nullptr)
+		{
+			const FSandboxEffectorStats& Stats = Hand->GetStats();
+			Grab->SetNumberField(TEXT("grabs"), Stats.Grabs);
+			Grab->SetNumberField(TEXT("grabs_lost"), Stats.GrabsLost);
+			Grab->SetNumberField(TEXT("grab_slips"), Stats.GrabSlips);
+			Grab->SetNumberField(TEXT("grab_overloads"), Stats.GrabOverloads);
+			Grab->SetNumberField(TEXT("grab_frames"), Stats.GrabFrames);
+			Grab->SetNumberField(TEXT("max_grab_force_n"), Stats.MaxGrabForceN);
+			Grab->SetNumberField(TEXT("max_speed_mps"), Stats.MaxSpeedCmS * 0.01);
+			Grab->SetStringField(TEXT("last_grabbed"), Stats.LastGrabbed.IsNone() ? FString() : Stats.LastGrabbed.ToString());
+			Grab->SetBoolField(TEXT("passing_bodies_at_end"), Hand->IsPassingBodies());
+		}
+		const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
+		Grab->SetStringField(TEXT("character_state_at_end"), Controller ? FSandboxBodyTuning::StateName(Controller->GetState()) : FString());
+		Root->SetObjectField(TEXT("grab"), Grab);
+	}
 	Root->SetBoolField(TEXT("ok"), true);
 	Root->SetBoolField(TEXT("pass"), bPass);
 	Root->SetStringField(TEXT("scenario"), Spec.Name);
@@ -407,29 +700,34 @@ void USandboxPlaySubsystem::FinishDemo()
 	ExitCountdown = 0;
 }
 
-void USandboxPlaySubsystem::HoldFrameRate()
+void USandboxPlaySubsystem::HoldFrameRate(bool bWait)
 {
 	// With a fixed timestep the engine runs as fast as it can. A person needs one simulated second per
 	// second, so each frame waits until it is due. This is the only place that reads the clock, and it
-	// decides when a frame happens, never what happens in it.
-	const double Now = FPlatformTime::Seconds();
-	if (NextFrameS <= 0.0 || Now > NextFrameS + MaxLatenessS)
+	// decides when a frame happens, never what happens in it. In a headset the runtime paces the frames, and
+	// a second wait on top of its own would only beat against it: there the frames are only counted.
+	if (bWait)
 	{
-		NextFrameS = Now;
-	}
-	NextFrameS += Spec.FixedDt();
-	const double Wait = NextFrameS - Now;
-	if (Wait > SleepMarginS)
-	{
-		FPlatformProcess::SleepNoStats(static_cast<float>(Wait - SleepMarginS));
-	}
-	while (FPlatformTime::Seconds() < NextFrameS)
-	{
-		FPlatformProcess::YieldThread();
+		const double Now = FPlatformTime::Seconds();
+		if (NextFrameS <= 0.0 || Now > NextFrameS + MaxLatenessS)
+		{
+			NextFrameS = Now;
+		}
+		NextFrameS += Spec.FixedDt();
+		const double Wait = NextFrameS - Now;
+		if (Wait > SleepMarginS)
+		{
+			FPlatformProcess::SleepNoStats(static_cast<float>(Wait - SleepMarginS));
+		}
+		while (FPlatformTime::Seconds() < NextFrameS)
+		{
+			FPlatformProcess::YieldThread();
+		}
 	}
 
 	// Every ten seconds of frames the log says how long they took: a session that cannot hold the rate
-	// runs slower than the clock, and this is where that shows.
+	// runs slower than the clock, a headset that runs at another rate than the simulation's makes the world
+	// run faster or slower than the clock, and this is where either shows.
 	const double Clock = FPlatformTime::Seconds();
 	if (PacedFrames == 0)
 	{
@@ -466,6 +764,45 @@ void USandboxPlaySubsystem::Tick(float DeltaTime)
 		AdoptPawn(GetWorldRef());
 	}
 
+	if (bResetPending)
+	{
+		bResetPending = false;
+		ResetCharacter();
+		if (Pawn.IsValid() && Pawn->IsTakeWaiting())
+		{
+			Pawn->BeginTake();
+		}
+	}
+	// The character is told what the hands hold of it; neither knows the other.
+	FScenarioStage::TellBodyOfHolds(Pawn.IsValid() ? Pawn->GetRig() : nullptr, Character);
+
+	// A recording from the first frame begins once the pawn has its hands, which it makes when it begins to
+	// play: later than the session adopts it. (Asked for at the adoption, as it first was, the recording never
+	// began and nothing said so.)
+	if (bRecordFromStart && !bRecordStarted && Pawn.IsValid())
+	{
+		bRecordStarted = Pawn->StartRecording();
+		if (bRecordStarted)
+		{
+			UE_LOG(LogSandbox, Display, TEXT("Play session: recording the hands as '%s' from simulated frame %lld"), *RecordName, Pawn->GetSimulatedFrames());
+		}
+		else if (++RecordStartTries == 90)
+		{
+			UE_LOG(LogSandbox, Error, TEXT("Play session: the recording '%s' could not be started in 90 frames: the pawn has no hands"), *RecordName);
+		}
+	}
+
+	// A session with an end of its own: it stops its recording and quits as Escape would. For a person in a
+	// headset, who cannot see the keyboard, and for a check of the whole way without a person.
+	if (PlaySeconds > 0.0 && !bSmoke && !bDemo && Pawn.IsValid() && Pawn->GetSimulatedFrames() >= FMath::RoundToInt64(PlaySeconds * Spec.FixedFps))
+	{
+		UE_LOG(LogSandbox, Display, TEXT("Play session: %.1f s have been simulated; the session ends as it was asked to"), PlaySeconds);
+		Pawn->StopRecording();
+		bSmokePass = true;
+		ExitCountdown = 0;
+		return;
+	}
+
 	if (bSmoke)
 	{
 		TickSmoke();
@@ -476,7 +813,7 @@ void USandboxPlaySubsystem::Tick(float DeltaTime)
 	}
 	else if (FApp::CanEverRender())
 	{
-		HoldFrameRate();
+		HoldFrameRate(/*bWait*/ !FScenarioStage::IsStereo());
 	}
 }
 
@@ -563,11 +900,15 @@ void USandboxPlaySubsystem::TickSmoke()
 
 	case 30:
 	{
-		Check(TEXT("hands_exist"), Rig && Rig->GetEffectors().Num() == 2, FString::Printf(TEXT("%d effectors"), Rig ? Rig->GetEffectors().Num() : 0));
+		Check(TEXT("hands_exist"), Rig && Rig->GetEffectors().Num() == 3 && Rig->FindEffector(SandboxEffectors::FootRight), FString::Printf(TEXT("%d effectors (two hands and the kicking foot)"), Rig ? Rig->GetEffectors().Num() : 0));
 		double WorstGapCm = 0.0;
 		for (const USandboxEffectorComponent* Effector : Rig ? Rig->GetEffectors() : TArray<TObjectPtr<USandboxEffectorComponent>>())
 		{
-			WorstGapCm = FMath::Max(WorstGapCm, Effector->GetGapCm());
+			// The hands: the foot rests weakly below the camera and may lie against the floor of a scene with a low camera.
+			if (SandboxEffectors::KindOf(Effector->GetId()) == FName(TEXT("hand")))
+			{
+				WorstGapCm = FMath::Max(WorstGapCm, Effector->GetGapCm());
+			}
 		}
 		Check(TEXT("hands_rest_on_their_targets"), Rig && WorstGapCm < 1.0, FString::Printf(TEXT("%.2f cm from target"), WorstGapCm));
 		Check(TEXT("character_stands"), Controller && Controller->GetState() == ESandboxBodyState::Standing, StateNames(Controller));
