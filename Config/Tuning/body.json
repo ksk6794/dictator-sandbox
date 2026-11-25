@@ -10,7 +10,8 @@
     "spine": { "stiffness_nm_per_rad": 600, "damping_s": 0.06, "max_torque_nm": 300, "pose_velocity_share": 0 },
     "neck": { "stiffness_nm_per_rad": 40, "damping_s": 0.1, "max_torque_nm": 50, "pose_velocity_share": 0 },
     "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.15, "max_torque_nm": 80, "pose_velocity_share": 0 },
-    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0 }
+    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0 },
+    "toes": { "stiffness_nm_per_rad": 100, "damping_s": 0.06, "max_torque_nm": 40, "pose_velocity_share": 0 }
   },
   "assist": {
     "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
@@ -186,7 +187,8 @@
         "spine": { "stiffness_nm_per_rad": 40, "damping_s": 0.5 },
         "neck": { "stiffness_nm_per_rad": 10, "damping_s": 0.5 },
         "arms": { "stiffness_nm_per_rad": 6, "damping_s": 0.8 },
-        "legs": { "stiffness_nm_per_rad": 10, "damping_s": 1.0 }
+        "legs": { "stiffness_nm_per_rad": 10, "damping_s": 1.0 },
+        "toes": { "stiffness_nm_per_rad": 5, "damping_s": 0.5 }
       },
       "assist": {
         "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 0 },

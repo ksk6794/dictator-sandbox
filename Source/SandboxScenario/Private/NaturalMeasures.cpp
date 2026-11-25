@@ -204,8 +204,6 @@ void FNaturalMeasures::SampleFall(const FNaturalFrame& Frame, ESandboxBodyState 
 	{
 		return;
 	}
-	const FName FootLeft = Frame.Controller->GetTuning().Rig.FootLeft;
-	const FName FootRight = Frame.Controller->GetTuning().Rig.FootRight;
 	const TConstArrayView<FVector> Support = Frame.Controller->GetSupportImpulsesNs();
 	bool bHeadTouches = false;
 	for (const FBodyInstance* Body : Frame.Mesh->Bodies)
@@ -225,7 +223,7 @@ void FNaturalMeasures::SampleFall(const FNaturalFrame& Frame, ESandboxBodyState 
 				Fall.HeadDownMps = FMath::Max(Fall.HeadDownMps, -Before->LinearVelocity.Z * 0.01);
 			}
 		}
-		if (Bone == FootLeft || Bone == FootRight || Fall.Touches.ContainsByPredicate([Bone](const FTouch& Touch) { return Touch.Bone == Bone; }))
+		if (Frame.Controller->IsFootBone(Bone) || Fall.Touches.ContainsByPredicate([Bone](const FTouch& Touch) { return Touch.Bone == Bone; }))
 		{
 			continue;
 		}

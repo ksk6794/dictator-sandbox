@@ -144,18 +144,27 @@ double FSandboxBodyProbe::SupportPolygon(const USkeletalMeshComponent* Mesh, TCo
 
 	for (const FName Bone : StandingBones)
 	{
-		const FBodyInstance* Body = Mesh ? Mesh->GetBodyInstance(Bone) : nullptr;
+		// Candidate points of this foot in world space, of the body itself and of the toes that hang on it: the corners
+		// of its boxes and the undersides of its capsules' end spheres and of its spheres.
+		TArray<FVector, TInlineAllocator<32>> Points;
+		TArray<FName, TInlineAllocator<2>> Parts = { Bone };
+		for (const FConstraintInstance* Joint : Mesh ? Mesh->Constraints : TArray<FConstraintInstance*>())
+		{
+			if (Joint && Joint->GetParentBoneName() == Bone)
+			{
+				Parts.Add(Joint->GetChildBoneName());
+			}
+		}
+		for (const FName Part : Parts)
+		{
+		const FBodyInstance* Body = Mesh ? Mesh->GetBodyInstance(Part) : nullptr;
 		const UBodySetup* Setup = Body && Body->IsValidBodyInstance() ? Body->GetBodySetup() : nullptr;
 		if (!Setup)
 		{
 			continue;
 		}
-
-		// Candidate points of this body in world space: the corners of its boxes and the undersides of its
-		// capsules' end spheres and of its spheres.
 		const FTransform BodyTransform = Body->GetUnrealWorldTransform();
 		const FVector Scale = Body->Scale3D;
-		TArray<FVector, TInlineAllocator<32>> Points;
 		const auto ToWorld = [&BodyTransform, &Scale](const FTransform& Element, const FVector& Local)
 		{
 			return BodyTransform.TransformPositionNoScale(Element.TransformPositionNoScale(Local) * Scale);
@@ -179,6 +188,12 @@ double FSandboxBodyProbe::SupportPolygon(const USkeletalMeshComponent* Mesh, TCo
 		for (const FKSphereElem& Sphere : Setup->AggGeom.SphereElems)
 		{
 			Points.Add(ToWorld(Sphere.GetTransform(), FVector::ZeroVector) - FVector(0.0, 0.0, Sphere.Radius * Scale.GetAbsMax()));
+		}
+
+		}
+		if (Points.Num() == 0)
+		{
+			continue;
 		}
 
 		double BodyLowestCm = TNumericLimits<double>::Max();

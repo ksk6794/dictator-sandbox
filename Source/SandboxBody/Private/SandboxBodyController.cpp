@@ -231,6 +231,14 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		for (int32 Side = 0; Side < 2; ++Side)
 		{
 			FootBoneName[Side] = Feet[Side];
+			ToeBoneName[Side] = NAME_None;
+			for (const FConstraintInstance* Joint : Mesh->Constraints)
+			{
+				if (Joint && Joint->GetParentBoneName() == Feet[Side])
+				{
+					ToeBoneName[Side] = Joint->GetChildBoneName();
+				}
+			}
 			FootBoneIndex[Side] = Skeleton.FindBoneIndex(Feet[Side]);
 			const int32 Calf = FootBoneIndex[Side] != INDEX_NONE ? Skeleton.GetParentIndex(FootBoneIndex[Side]) : INDEX_NONE;
 			ThighBoneIndex[Side] = Calf != INDEX_NONE ? Skeleton.GetParentIndex(Calf) : INDEX_NONE;
@@ -2829,7 +2837,7 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 	// A foot is for standing on things: whatever pushes up on it is support, also the landing of a step, as on
 	// the floor. Another part of the body is supported only by a push that stays under the limit; a blow from
 	// below (an uppercut) is above it.
-	const bool bFoot = Hit.MyBoneName == FootBoneName[0] || Hit.MyBoneName == FootBoneName[1];
+	const bool bFoot = IsFootBone(Hit.MyBoneName);
 	const bool bThingSupports = bSimulated && Tuning.Reactions.ThingSupport > 0.5 && SizeNs > 0.0 &&
 		(bFoot || SizeNs <= Tuning.Reactions.ThingSupportMaxNs) && ImpulseNs.Z >= 0.7 * SizeNs;
 	if (!bSimulated || bThingSupports)
@@ -3362,7 +3370,7 @@ void USandboxBodyController::ApplySurface()
 			continue;
 		}
 		const FName Bone = Mesh->GetBoneName(Body->InstanceBoneIndex);
-		UPhysicalMaterial* Material = (Bone == FootBoneName[0] || Bone == FootBoneName[1]) ? FeetSurfaceMaterial : SurfaceMaterial;
+		UPhysicalMaterial* Material = IsFootBone(Bone) ? FeetSurfaceMaterial : SurfaceMaterial;
 		if (Body->GetPhysMaterialOverride() != Material)
 		{
 			Body->SetPhysMaterialOverride(Material);
@@ -3758,7 +3766,13 @@ void USandboxBodyController::MeasureBalance(FSandboxBalanceView& OutView) const
 		const FBodyInstance* Foot = Mesh->GetBodyInstance(Feet[Side]);
 		if (Foot && SupportImpulseNs.IsValidIndex(Foot->InstanceBodyIndex))
 		{
-			OutView.FootForceN[Side] = SupportImpulseNs[Foot->InstanceBodyIndex].Z / SupportStepS;
+			double PushNs = SupportImpulseNs[Foot->InstanceBodyIndex].Z;
+			if (!ToeBoneName[Side].IsNone())
+			{
+				const FBodyInstance* Toes = Mesh->GetBodyInstance(ToeBoneName[Side]);
+				PushNs += Toes && SupportImpulseNs.IsValidIndex(Toes->InstanceBodyIndex) ? SupportImpulseNs[Toes->InstanceBodyIndex].Z : 0.0;
+			}
+			OutView.FootForceN[Side] = PushNs / SupportStepS;
 			if (OutView.FootForceN[Side] >= Tuning.Balance.FootContactMinN)
 			{
 				OutView.StandingFeet.Add(Feet[Side]);

@@ -3744,6 +3744,49 @@ before the state began, a reference was used after its array had moved, the phys
 the head's impact was the first touch only, sway joined stretches of standing at two places, the database's stamp did not
 cover its poses, and smaller ones.
 
+### N8 D brought forward: a foot with toes, first step (25 November)
+
+The owner's decision: the toes first, then the get-up again, with a film shown at every step. A second physics asset beside
+today's (`Specs/physics/npc_body_toes.json`, `PA_SandboxNPCToes`: 20 bodies, the foot's box cut at the ball, a toe of 0.14 kg on a hinge of 30
+degrees down and 60 up, a muscle group of its own, `muscles.toes`). The sole, the load and the surface of a foot take its toes in (any body
+that hangs on the foot's). Today's body: 112 scenarios with the hashes of `pre_getup`, 42 unit tests. No scenario uses the new asset.
+
+- **Standing:** pelvis drift 0.90 cm (0.91), largest settled turning speed 0.20 rad/s (0.19), assist share 0.0071 (0.0063, an eighth more; a fifth is
+  allowed). The physics step alone on the machine, three runs each: 0.60 ms against 0.56, so 0.04 of the 0.05 that is allowed.
+- **Pushes: the go/no-go is not met.** Push matrix 157 of 160 (today 160): `neck_01` 270 at 30 N*s two steps, `spine_04` 45 at 80 and `pelvis` 90 at 80 a fall;
+  and runs of ten, nine and five steps in cells that pass. Of seven scenarios tried, `push_chest_80_steps`,
+  `push_pelvis_80_side_steps` and `hit_chest_200_falls` fail. Nothing has been tuned for it yet.
+- **The get-up on 150 falls** (the stand, seeds 1 to 3, the same tool for both bodies): 149 end standing on both, at the first attempt 132 today and 126 with toes.
+  Attempt that succeeds: 4.97 and 4.72 s. Centre of mass more than 5 cm off the feet while they carry over 0.8 of the weight:
+  1.45 and 1.24 s on average, 50 and 48 cm at worst on average. By clip: B 1.86 and 1.89 s, F 1.24 and 0.91, L 1.63 and 1.24, R 1.29 and 1.31. Steps made
+  after standing up, in the rest of the run: 1.15 and 1.36. The toes help F and L somewhat and B and R not at all; the plank is still there.
+- **The four falls shown first said more than that, and wrongly.** In three of the four (back, left, right) the body with toes fell otherwise and got up by
+  another clip (R and B, L and F, R and F), so those rows compare clips and not feet. With a toe muscle of 30, 100 and 300 N*m/rad the wait in one fall goes
+  1.1, 0.3, 1.8 s: noise. Four falls are not a sample. The same doubt lies on the short-foot trial above (four falls, the clips not checked, the ankle's range widened with it).
+- **What the clips ask of the foot, key by key** (the first version of this line gave the largest excess on any axis, 18 to 56 degrees, as if
+  it were one thing: the 56 is sideways, swing2, range 10). The toes hardly bend in the clips: 21 degrees at most. The ankle, where the weight comes onto a foot
+  (1.2 to 1.8 s): shin forward over the foot to 22 to 49 degrees, the range gives 30. On the knee, and pushing off: toes down to 64, the range gives 20; sideways
+  to 50 and twisted to 27 (49 at the start of B) while lying and kneeling.
+- **The ankle's range, measured on the 150 falls** (decided before the runs: if the mean stays above 0.7 s, the toes are put off). Wide
+  is swing1 -55 to 45, swing2 -15 to 35, twist +-25. Mean time off the feet, s; by seed; ended standing; first attempt; push matrix:
+
+  | Body | off, s | by seed | stood | first | matrix |
+  | --- | --- | --- | --- | --- | --- |
+  | today | 1.45 | 1.45 1.46 1.44 | 149 | 132 | 160 |
+  | toes | 1.24 | 1.18 1.19 1.34 | 149 | 126 | 157 |
+  | W0 ankle wide, no toes | 1.14 | 1.10 1.10 1.23 | 150 | 128 | 158 |
+  | W1 toes and ankle wide | 1.06 | 1.11 1.09 0.99 | 148 | 125 | 159 |
+  | W2 toes and the shin to 45 only | 1.20 | 1.16 1.21 1.24 | 149 | 127 | not run |
+
+  By clip W1 is 0.67 s in F, 0.82 in L, 1.38 in R and 2.11 in B (15 falls); W0 0.83, 1.07, 1.41 and 1.47. Most of what there is
+  to gain is the ankle's; the toes add a little in F and L. None of them comes to 0.7, and worst cm is 41 to 44 against 50 today. **The toes are put off
+  to N8 D as the order had them.** W0's matrix misses are two blows of 200 N*s on the chest from 45 and 135 degrees that the body steps through
+  where it fell.
+  Film, one fall a clip, the first on seed 1 that all three bodies got up from at the first attempt by the same clip:
+  `Saved\Films\getup_same_clip.png`. The rows look alike.
+- Today's asset was made again by the generator with the new one: its bytes differ (md5 024a087b, was b799ab98), its runs do not (112 hashes).
+  Film: `Saved\Films\getup_now_vs_toes.png`.
+
 ### The natural body, reconnaissance before N8 and N2, 2026-11-25
 
 Two questions of `docs/natural-body.md` answered without changing how the body behaves: what close-ups show of the

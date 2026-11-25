@@ -409,6 +409,8 @@ public:
 	 * event has the one nearest point of a contact, not where its force goes through.)
 	 */
 	TConstArrayView<FVector> GetSupportImpulsesNs() const { return SupportImpulseNs; }
+	/** Whether a bone is one of the feet, toes included. */
+	bool IsFootBone(FName Bone) const { return Bone == FootBoneName[0] || Bone == FootBoneName[1] || (!Bone.IsNone() && (Bone == ToeBoneName[0] || Bone == ToeBoneName[1])); }
 
 	/**
 	 * The targets of every muscle and assist control, as last handed to the solver. The muscles' targets
@@ -823,6 +825,8 @@ private:
 	int32 FootBoneIndex[2] = { INDEX_NONE, INDEX_NONE };
 	int32 ThighBoneIndex[2] = { INDEX_NONE, INDEX_NONE };
 	FName FootBoneName[2];
+	/** The toes of each foot, if the body has any: the body that hangs on the foot's. */
+	FName ToeBoneName[2];
 	FName ThighBoneName[2];
 	FName CalfBoneName[2];
 

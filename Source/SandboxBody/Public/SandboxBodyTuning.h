@@ -10,7 +10,9 @@ enum class ESandboxMuscleGroup : uint8
 	Spine,
 	Neck,
 	Arms,
-	Legs
+	Legs,
+	/** The toes of a body that has them (a body on the ball of the foot). */
+	Toes
 };
 
 /**
@@ -684,6 +686,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxMuscleTuning Neck;
 	FSandboxMuscleTuning Arms;
 	FSandboxMuscleTuning Legs;
+	FSandboxMuscleTuning Toes;
 
 	FSandboxAssistTuning Pelvis;
 	FSandboxAssistTuning Chest;

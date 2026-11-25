@@ -177,7 +177,7 @@ bool FBodyTuningGroupsTest::RunTest(const FString& Parameters)
 		{ TEXT("clavicle_l"), ESandboxMuscleGroup::Spine }, { TEXT("upperarm_r"), ESandboxMuscleGroup::Arms },
 		{ TEXT("lowerarm_l"), ESandboxMuscleGroup::Arms }, { TEXT("hand_r"), ESandboxMuscleGroup::Arms },
 		{ TEXT("thigh_l"), ESandboxMuscleGroup::Legs }, { TEXT("calf_r"), ESandboxMuscleGroup::Legs },
-		{ TEXT("foot_l"), ESandboxMuscleGroup::Legs }, { TEXT("ball_r"), ESandboxMuscleGroup::Legs } };
+		{ TEXT("foot_l"), ESandboxMuscleGroup::Legs }, { TEXT("ball_r"), ESandboxMuscleGroup::Toes } };
 	for (const TPair<const TCHAR*, ESandboxMuscleGroup>& Entry : Expected)
 	{
 		TestEqual(FString::Printf(TEXT("group of %s"), Entry.Key),

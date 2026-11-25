@@ -48,6 +48,7 @@ namespace
 		Muscle(TEXT("neck"), Tuning.Neck);
 		Muscle(TEXT("arms"), Tuning.Arms);
 		Muscle(TEXT("legs"), Tuning.Legs);
+		Muscle(TEXT("toes"), Tuning.Toes);
 		Assist(TEXT("pelvis"), Tuning.Pelvis);
 		Assist(TEXT("chest"), Tuning.Chest);
 		Assist(TEXT("head"), Tuning.Head);
@@ -363,6 +364,7 @@ const FSandboxMuscleTuning& FSandboxBodyTuning::Muscle(ESandboxMuscleGroup Group
 	case ESandboxMuscleGroup::Neck: return Neck;
 	case ESandboxMuscleGroup::Arms: return Arms;
 	case ESandboxMuscleGroup::Legs: return Legs;
+	case ESandboxMuscleGroup::Toes: return Toes;
 	default: return Spine;
 	}
 }
@@ -370,7 +372,7 @@ const FSandboxMuscleTuning& FSandboxBodyTuning::Muscle(ESandboxMuscleGroup Group
 bool FSandboxBodyTuning::Validate(FString& OutError) const
 {
 	const TPair<const TCHAR*, const FSandboxMuscleTuning*> Muscles[] = {
-		{ TEXT("muscles.spine"), &Spine }, { TEXT("muscles.neck"), &Neck }, { TEXT("muscles.arms"), &Arms }, { TEXT("muscles.legs"), &Legs } };
+		{ TEXT("muscles.spine"), &Spine }, { TEXT("muscles.neck"), &Neck }, { TEXT("muscles.arms"), &Arms }, { TEXT("muscles.legs"), &Legs }, { TEXT("muscles.toes"), &Toes } };
 	for (const TPair<const TCHAR*, const FSandboxMuscleTuning*>& Entry : Muscles)
 	{
 		if (!CheckRange(Entry.Value->StiffnessNmPerRad, MaxAngularStiffness, Entry.Key, TEXT("stiffness_nm_per_rad"), OutError) ||
@@ -632,7 +634,11 @@ ESandboxMuscleGroup FSandboxBodyTuning::GroupOfBone(FName ChildBone)
 	{
 		return ESandboxMuscleGroup::Arms;
 	}
-	if (StartsWithAny({ TEXT("thigh"), TEXT("calf"), TEXT("foot"), TEXT("ball") }))
+	if (StartsWithAny({ TEXT("ball") }))
+	{
+		return ESandboxMuscleGroup::Toes;
+	}
+	if (StartsWithAny({ TEXT("thigh"), TEXT("calf"), TEXT("foot") }))
 	{
 		return ESandboxMuscleGroup::Legs;
 	}
@@ -659,6 +665,7 @@ const TCHAR* FSandboxBodyTuning::GroupName(ESandboxMuscleGroup Group)
 	case ESandboxMuscleGroup::Neck: return TEXT("neck");
 	case ESandboxMuscleGroup::Arms: return TEXT("arms");
 	case ESandboxMuscleGroup::Legs: return TEXT("legs");
+	case ESandboxMuscleGroup::Toes: return TEXT("toes");
 	default: return TEXT("spine");
 	}
 }
