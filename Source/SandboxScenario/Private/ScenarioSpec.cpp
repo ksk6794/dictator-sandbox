@@ -316,6 +316,17 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			return false;
 		}
 	}
+	if (Json->HasField(TEXT("pose_prior")) && (!Json->TryGetStringField(TEXT("pose_prior"), OutSpec.PosePrior) || OutSpec.PosePrior.IsEmpty()))
+	{
+		OutError = TEXT("'pose_prior' must be the path of a pose database");
+		return false;
+	}
+	if (Json->HasField(TEXT("pose_prior_clips")) &&
+		(!Json->TryGetStringArrayField(TEXT("pose_prior_clips"), OutSpec.PosePriorClips) || OutSpec.PosePriorClips.Num() == 0 || OutSpec.PosePrior.IsEmpty()))
+	{
+		OutError = TEXT("'pose_prior_clips' must be a list of animation paths, beside the 'pose_prior' to write");
+		return false;
+	}
 	if (Json->HasField(TEXT("checkpoint_interval_s")))
 	{
 		if (!Json->TryGetNumberField(TEXT("checkpoint_interval_s"), OutSpec.CheckpointIntervalS) || OutSpec.CheckpointIntervalS <= 0.0)
@@ -597,6 +608,65 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 					return false;
 				}
 				OutSpec.Expect.Fell = Entry.Value->AsBool();
+				continue;
+			}
+
+			if (Entry.Key == TEXT("measures"))
+			{
+				// Bounds on figures of the result, each by its path: min, max, or what it has to equal.
+				const TSharedPtr<FJsonObject>* Measures = nullptr;
+				if (!Entry.Value.IsValid() || !Entry.Value->TryGetObject(Measures))
+				{
+					OutError = TEXT("'expect.measures' must be an object of paths");
+					return false;
+				}
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Each : (*Measures)->Values)
+				{
+					FScenarioExpect::FMeasure& Measure = OutSpec.Expect.Measures.AddDefaulted_GetRef();
+					Measure.Path = Each.Key;
+					const TSharedPtr<FJsonObject>* Bounds = nullptr;
+					bool bValid = Each.Value.IsValid() && Each.Value->TryGetObject(Bounds) && (*Bounds)->Values.Num() > 0;
+					if (bValid)
+					{
+						for (const TPair<FString, TSharedPtr<FJsonValue>>& Bound : (*Bounds)->Values)
+						{
+							const EJson Kind = Bound.Value.IsValid() ? Bound.Value->Type : EJson::None;
+							if (Bound.Key == TEXT("min") && Kind == EJson::Number)
+							{
+								Measure.Min = Bound.Value->AsNumber();
+							}
+							else if (Bound.Key == TEXT("max") && Kind == EJson::Number)
+							{
+								Measure.Max = Bound.Value->AsNumber();
+							}
+							else if (Bound.Key == TEXT("equals") && Kind == EJson::Boolean)
+							{
+								Measure.Equals = Bound.Value->AsBool();
+							}
+							else if (Bound.Key == TEXT("equals") && Kind == EJson::String)
+							{
+								Measure.EqualsText = Bound.Value->AsString();
+							}
+							else if (Bound.Key == TEXT("equals") && Kind == EJson::Null)
+							{
+								Measure.bNull = true;
+							}
+							else
+							{
+								bValid = false;
+							}
+						}
+					}
+					// A bound and an exact value at once: one of the two would never be checked. And a path needs a name in it.
+					bValid &= !((Measure.Min.IsSet() || Measure.Max.IsSet()) && (Measure.Equals.IsSet() || Measure.EqualsText.IsSet() || Measure.bNull));
+					TArray<FString> Parts;
+					bValid &= Measure.Path.ParseIntoArray(Parts, TEXT(".")) > 0;
+					if (!bValid)
+					{
+						OutError = FString::Printf(TEXT("'expect.measures.%s' must have 'min' and 'max' (numbers) or 'equals' (true, false, a text or null)"), *Each.Key);
+						return false;
+					}
+				}
 				continue;
 			}
 

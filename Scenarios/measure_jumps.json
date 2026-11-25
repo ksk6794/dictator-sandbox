@@ -1,0 +1,66 @@
+{
+  "name": "measure_jumps",
+  "duration_s": 5.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.idle.weight=0,poses.idle.sway_weight=0,poses.blend_s=0.01"
+    },
+    {
+      "t": 3.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.stance.lowerarm_l.swing1_deg=10"
+    },
+    {
+      "t": 4.0,
+      "type": "console",
+      "command": "Sandbox.Tune muscles.arms.stiffness_nm_per_rad=10"
+    }
+  ],
+  "expect": {
+    "tuning_changes": 3,
+    "fell": false,
+    "measures": {
+      "control.pose.target_step_max_deg": {
+        "min": 29.5,
+        "max": 30.5
+      },
+      "control.pose.target_step_joint": {
+        "equals": "lowerarm_l"
+      },
+      "control.pose.target_step_t": {
+        "min": 2.98,
+        "max": 3.05
+      },
+      "control.pose.command_step_max_nm": {
+        "min": 19.5,
+        "max": 22.0
+      },
+      "control.pose.command_step_joint": {
+        "equals": "lowerarm_l"
+      },
+      "control.pose.strength_step_max": {
+        "min": 0.745,
+        "max": 0.755
+      },
+      "control.pose.strength_step_t": {
+        "min": 3.98,
+        "max": 4.02
+      }
+    }
+  }
+}

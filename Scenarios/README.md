@@ -38,6 +38,7 @@ The file name must equal the `name` field (a unit test checks this).
 | `fixed_fps` | no, default 90 | Engine frames per simulated second. Physics substeps come from `Config/DefaultEngine.ini` |
 | `checkpoint_interval_s` | no, default 0.5 | How often body and bone transforms are written to `trace.json` |
 | `end_when_standing_s` | no | The run ends before `duration_s` once every event is over and the body has been in the Standing state for this long without a break (`timing.ended_when_standing`, `timing.frames`). For runs that only ask whether the body ends on its feet, as the stand of get-ups does: `duration_s` is then the time allowed for the slowest. Active control only; the hashes are those of the frame the run ended on |
+| `pose_prior` | no | A pose database (`Tools\pose-prior.ps1 -Build`; a path, relative to the repository unless absolute) that the body's poses are held against: `metrics.pose_prior`. Not for a scenario of the suite: the database is not committed. `pose_prior_clips`, a list of animation paths beside it, makes the run build the database first |
 | `body.mesh` | yes | Skeletal mesh object path |
 | `body.physics_asset` | no | Overrides the mesh's own physics asset |
 | `body.location_cm` | no, default `[0, 0, 150]` | Spawn location of the mesh origin (the feet). The floor's top is at z = 0 |
@@ -302,6 +303,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 
 | Expectation | Passes when |
 | --- | --- |
+| `measures` | Every figure named by its path in `metrics.json` is within its bounds: `{ "control.fall.head_impact_speed_mps": { "max": 2.0 }, "control.fall.hands_first": { "equals": true }, "control.reactions.0.step_lift_s": { "equals": null } }`. A number in a path is an index into a list; `equals` takes `true`, `false`, a text or `null`. A path that is not there fails |
 | `rest_within_s` | The body is at rest by that time and stays at rest |
 | `max_joint_stretch_cm` | No rigid joint's anchors separate by more, measured from the sixth frame on. A body with `"simulate": false` has no stretch (`metrics.max_joint_stretch_cm` is null) and fails this expectation |
 | `max_pelvis_drift_cm` | The pelvis (the root body) never gets further from where it was spawned, over the whole run |
@@ -498,6 +500,64 @@ forearm at four more heights, one every 2 s, so that a scenario cannot pass by l
 
 The player of a scenario run is a spectator without a body: the project's own pawn, with its two physical
 hands, exists only in an interactive session.
+
+## How natural the motion is
+
+Measured in every run of a simulated body since N1 of the natural-body track (`docs/natural-body.md`;
+`FNaturalMeasures`), by reading only: a run has the hashes it had. What each figure is checked against is in
+`docs/testing.md`, "N1"; the `measure_*` scenarios are those checks, each with an answer worked out beforehand, and a
+change that makes one of them fail has broken a measure (or the solver), not the body.
+
+- **How a fall meets the floor** (`control.fall`): `touches` lists every body but the feet the first time the world
+  touched it after the body was let go: its `t` (the start of the step), its `speed_mps` and downward `down_mps` at the
+  start of that step. `first_touch_bone`, `time_to_first_touch_s`, `time_to_hand_s`, `time_to_trunk_s` (pelvis, spine or
+  collarbone), `hands_first` (a hand or a forearm in an earlier step than the trunk; null if neither touched),
+  `hands_ahead_first` (the same of a hand or forearm that lay ahead of the chest along the way the body went over the
+  floor: each touch's `ahead_cm`, null for a body going slower than 0.2 m/s over it; the rule of C14), `hand_ahead_cm`,
+  `head_touched` (also a head that is laid down), `head_struck` (it came down at 0.5 m/s or more, at any of the times it
+  met the floor), `head_impact_speed_mps` (the fastest of those), `pelvis_impact_speed_mps`, `hand_impact_speed_mps` (the
+  first touch). These are the run's first fall; `falls` has every one.
+- **Reaction timing** (`control.reactions`, one entry a hit the body told of): from `hit_t`, the start of the first step
+  after the hit was felt (a scripted impulse acts in that step, a contact acted in the one before), the first frame in
+  which some muscle's target is more than 1 degree from what it was (`first_target_change_s`, `first_target_joint`),
+  some stiffness more than 1% (`first_strength_change_s`), a foot stepped for balance (`step_lift_s`, `step_land_s`), the
+  fall began (`fall_start_s`); null for what did not happen within 1.5 s. `target_speed_before_dps` is the fastest any
+  target turned in the 0.1 s before: with a body that was already moving its targets the first figure means little.
+- **Joint effort** (`control.effort`): each muscle's torque from the spring law, with the state a step ended in and the
+  drive it was made with, capped axis by axis as the solver caps it. Per joint `torque_max_nm`, `torque_p95_nm`,
+  `torque_final_nm` (mean of the last second), `cap_nm`, `at_cap_frames`, `at_cap_upright_share`, `power_max_w`,
+  `work_j`; for the body `at_cap_share` (upright frames in which any muscle is at its cap), `at_cap_joint_share_max` and
+  `at_cap_joint`, `positive_work_j`, `power_peak_w`. **An estimate**: the solver moves the bodies after its drives (joint
+  projection, unfinished iterations) by 0.2 to 0.35 degrees, so a torque is wrong by about 0.005 rad of its stiffness:
+  0.2 N*m at 40 N*m/rad, 3 to 4 N*m at 600 to 1200. `power_peak_w` in an impact is a figure of that kind.
+- **The assist by state** (`control.assist_by_state`): what the world pulls the body with in each state, over the whole
+  run: force over body weight and torque over weight times height, mean and largest (a blow's first frame is in it).
+- **Time beyond a joint's range**: `metrics.limit_excess_share` (joint-frames more than 0.5 degrees outside, of all
+  while the body does not lie), the worst joint's share, and each joint's own in `body.joints`.
+- **Jumps**: the largest turn of a muscle's target in one frame (`control.pose.target_step_max_deg`), the largest
+  relative change of a stiffness (`strength_step_max`), and what the two together change of a muscle's torque on the
+  body as it is (`command_step_max_nm`): a target that jumps while its muscle has no strength (a get-up's start, 127
+  degrees) asks for nothing, and a target that moves fast (a swinging leg's) reads as a jump of that much. `metrics.joint_speed_step_max_rads` is the largest change of a joint's turning speed.
+- **The head** (`metrics.head_accel_max_mps2`, `head_jerk_rms_mps3`): from the velocity of the head body's centre of
+  mass, a mean of three frames.
+- **Stillness** (`metrics.stillness`): a body is still while no part of it has gone further than 0.5 cm in the last
+  second. `longest_still_s` with its time and state, `still_share_by_state`, `longest_still_by_state_s`,
+  `travel_by_state_cm` (how far the part that went furthest went in a second: 1.5 to 5.8 cm with the idle, 0.3 to 4
+  without it), and `target_still_longest_s`: how long the targets stood still (0.02 degrees a frame) while the body
+  neither stood nor lay, with each state's own.
+- **Pushes** (`control.pushes`, one entry for each `impulse` with a `duration_s`): `peak_along_cm` (how far the push took
+  the part) and `peak_stiffness_n_per_cm`, `against_cm` (how far the body went against it: it leans into a held push),
+  `settled_displacement_cm` and `whole_body_cm` (the part and the whole centre of mass over the push's last 0.2 s),
+  `stiffness_n_per_cm`, `local_stiffness_n_per_cm`, `return_s`. `Tools\compliance.ps1` is a table of them.
+- **Sway** (`metrics.sway`, over the longest unbroken stretch of Standing after the settle time): spread and mean speed of the centre of mass
+  and of the centre of pressure, along and across the way the body faces, smoothed over 0.1 s (`cop_speed_raw_cmps` is
+  not), `period_s` (null for a motion that does not come round) with its correlation, `floor_share_mean` (the floor's push
+  over the weight) and `cop_offset_*_cm` (the centre of pressure's mean less the centre of mass's). The pressure is taken
+  from the solver's contact points after every substep.
+- **Likeness of the pose** (`metrics.pose_prior`, with `"pose_prior"`): every third frame, the mean angle over the joints
+  and the pelvis's lean to the nearest pose of the database, by state. The stamp says which database it was.
+
+`Tools\natural.ps1` runs a fixed set and prints these as a row for each criterion of the track.
 
 ## Playing a scenario
 

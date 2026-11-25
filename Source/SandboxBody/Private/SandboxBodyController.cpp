@@ -703,6 +703,21 @@ const FSandboxClipPose* USandboxBodyController::FindOrReadClip(const FString& Cl
 	return Clips.Find(Path);
 }
 
+const FSandboxClipPose* USandboxBodyController::ReadClip(const FString& ClipPath, FString& OutError)
+{
+	FString Path;
+	return FindOrReadClip(ClipPath, Path, OutError);
+}
+
+void USandboxBodyController::GetMuscleJoints(TArray<TPair<FName, FName>>& OutJoints) const
+{
+	OutJoints.Reset();
+	for (const FMuscle& Muscle : Muscles)
+	{
+		OutJoints.Emplace(Muscle.ChildBone, Muscle.ParentBone);
+	}
+}
+
 bool USandboxBodyController::HoldClip(const FString& ClipPath, double TimeS, double Rate, FString& OutError)
 {
 	FString Path;
@@ -3371,7 +3386,7 @@ void USandboxBodyController::PushTuningToControls()
 		}
 	}
 
-	for (const FMuscle& Muscle : Muscles)
+	for (FMuscle& Muscle : Muscles)
 	{
 		const FSandboxMuscleTuning& Group = Tuning.Muscle(Muscle.Group);
 		// The leg of a step under way is stiffer, so that the foot keeps up with its point.
@@ -3399,6 +3414,11 @@ void USandboxBodyController::PushTuningToControls()
 		// The two bodies are jointed and must never collide, whatever this extra constraint says.
 		Data.bDisableCollision = true;
 		Control->SetControlData(Muscle.Control, Data);
+		// The same in physical units, for whoever looks at the controls (GetControlView); nothing here reads it.
+		Muscle.StiffnessNmPerRad = Spring * ChaosAngularDriveScale / TorqueToUnreal;
+		Muscle.DampingNmsPerRad = Muscle.StiffnessNmPerRad * Group.DampingS * SwingDampingScale;
+		Muscle.MaxTorqueNm = Group.MaxTorqueNm;
+		Muscle.PoseVelocityShare = Data.AngularTargetVelocityMultiplier;
 	}
 
 	for (const FAssist& Assist : Assists)
@@ -3790,6 +3810,11 @@ void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) co
 		View.TargetRotation = (Parent->GetUnrealWorldTransform().GetRotation() * Relative).GetNormalized();
 		View.ErrorRad = View.TargetRotation.AngularDistance(Child->GetUnrealWorldTransform().GetRotation());
 		View.TargetOffsetRad = Relative.AngularDistance(Muscle.ReferenceRelative);
+		View.TargetRelative = Relative;
+		View.StiffnessNmPerRad = Muscle.StiffnessNmPerRad;
+		View.DampingNmsPerRad = Muscle.DampingNmsPerRad;
+		View.MaxTorqueNm = Muscle.MaxTorqueNm;
+		View.PoseVelocityShare = Muscle.PoseVelocityShare;
 	}
 
 	for (const FAssist& Assist : Assists)

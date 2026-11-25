@@ -1,0 +1,37 @@
+{
+  "name": "measure_free_fall",
+  "duration_s": 2.0,
+  "settle_s": 0.5,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      4000
+    ]
+  },
+  "expect": {
+    "measures": {
+      "metrics.head_accel_max_mps2": {
+        "min": 9.7,
+        "max": 9.9
+      },
+      "metrics.head_jerk_rms_mps3": {
+        "min": 0,
+        "max": 1
+      },
+      "metrics.joint_speed_step_max_rads": {
+        "min": 0,
+        "max": 0.01
+      },
+      "metrics.stillness.longest_still_s": {
+        "min": 0,
+        "max": 0
+      }
+    }
+  }
+}

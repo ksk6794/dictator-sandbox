@@ -1,0 +1,60 @@
+{
+  "name": "measure_drop_head_first",
+  "duration_s": 3.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      280
+    ],
+    "rotation_deg": [
+      180,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune muscles.spine.stiffness_nm_per_rad=0,muscles.neck.stiffness_nm_per_rad=0,muscles.arms.stiffness_nm_per_rad=0,muscles.legs.stiffness_nm_per_rad=0,states.falling.muscles.spine.stiffness_nm_per_rad=0,states.falling.muscles.neck.stiffness_nm_per_rad=0,states.falling.muscles.arms.stiffness_nm_per_rad=0,states.falling.muscles.legs.stiffness_nm_per_rad=0,assist.pelvis.horizontal_n_per_m=0,assist.pelvis.vertical_n_per_m=0,assist.pelvis.angular_nm_per_rad=0,assist.chest.horizontal_n_per_m=0,assist.chest.vertical_n_per_m=0,assist.chest.angular_nm_per_rad=0,assist.head.horizontal_n_per_m=0,assist.head.vertical_n_per_m=0,assist.head.angular_nm_per_rad=0,assist.feet.horizontal_n_per_m=0,assist.feet.vertical_n_per_m=0,assist.feet.angular_nm_per_rad=0,poses.idle.weight=0,poses.idle.sway_weight=0"
+    }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "measures": {
+      "control.fall.first_touch_bone": {
+        "equals": "neck_01"
+      },
+      "control.fall.head_touched": {
+        "equals": true
+      },
+      "control.fall.head_struck": {
+        "equals": true
+      },
+      "control.fall.head_impact_speed_mps": {
+        "min": 4.25,
+        "max": 4.7
+      },
+      "control.fall.hands_first": {
+        "equals": true
+      },
+      "control.fall.hands_ahead_first": {
+        "equals": false
+      },
+      "control.fall.touches.0.ahead_cm": {
+        "equals": null
+      },
+      "control.fall.touches.0.t": {
+        "min": 0.44,
+        "max": 0.47
+      }
+    }
+  }
+}

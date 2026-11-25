@@ -172,6 +172,32 @@ namespace
 	TSharedPtr<FJsonValue> Boolean(bool bValue) { return MakeShared<FJsonValueBoolean>(bValue); }
 	TSharedPtr<FJsonValue> Null() { return MakeShared<FJsonValueNull>(); }
 
+	/** The value at a dotted path of a result; a number is an index into a list. Null pointer if there is none. */
+	TSharedPtr<FJsonValue> AtPath(const TSharedRef<FJsonObject>& Root, const FString& Path)
+	{
+		TArray<FString> Parts;
+		Path.ParseIntoArray(Parts, TEXT("."));
+		TSharedPtr<FJsonValue> Value = MakeShared<FJsonValueObject>(Root);
+		for (const FString& Part : Parts)
+		{
+			const TSharedPtr<FJsonObject>* Object = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* List = nullptr;
+			if (Value.IsValid() && Value->TryGetObject(Object))
+			{
+				Value = (*Object)->TryGetField(Part);
+			}
+			else if (Value.IsValid() && Value->TryGetArray(List) && Part.IsNumeric() && List->IsValidIndex(FCString::Atoi(*Part)))
+			{
+				Value = (*List)[FCString::Atoi(*Part)];
+			}
+			else
+			{
+				return nullptr;
+			}
+		}
+		return Value;
+	}
+
 	/** One entry of trace.json: world transforms of the bodies and component-space transforms of the bones. */
 	TSharedPtr<FJsonValue> MakeCheckpoint(double TimeS, int32 Frame, const TArray<FSandboxBodySample>& Bodies, const TArray<FTransform>& Bones)
 	{
@@ -370,10 +396,15 @@ void UScenarioRunnerSubsystem::StartPhysicsTimer(UWorld& World)
 	{
 		SolveStartCycles.store(FPlatformTime::Cycles64());
 	}));
-	PostSolveHandle = Solver->AddPostAdvanceCallback(FSolverPostAdvance::FDelegate::CreateWeakLambda(this, [this](Chaos::FReal)
+	PostSolveHandle = Solver->AddPostAdvanceCallback(FSolverPostAdvance::FDelegate::CreateWeakLambda(this, [this](Chaos::FReal SubstepS)
 	{
 		FrameSolveCycles.fetch_add(FPlatformTime::Cycles64() - SolveStartCycles.load());
 		FrameSolveSteps.fetch_add(1);
+		// After the clock: what is measured here is not the solver's time.
+		if (Ragdoll && Spec.bSimulate)
+		{
+			Natural.AddPressure(Ragdoll->GetBodyMesh(), SubstepS);
+		}
 	}));
 }
 
@@ -516,6 +547,28 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 	FSandboxBodyProbe::SampleBodies(BodyMesh, Bodies);
 	ComStartCm = FSandboxBodyProbe::CenterOfMass(Bodies);
 	GravityCmS2 = FMath::Abs(World.GetGravityZ());
+	// Unturned, a character faces +y.
+	Natural.Begin(FixedDt, Spec.SpawnRotation.RotateVector(FVector(0.0, 1.0, 0.0)));
+
+	// The database of recorded poses the body's are held against, made here if the scenario has its clips.
+	if (!Spec.PosePrior.IsEmpty())
+	{
+		const FString File = FPaths::ConvertRelativePathToFull(FPaths::IsRelative(Spec.PosePrior) ? FPaths::Combine(FPaths::ProjectDir(), Spec.PosePrior) : Spec.PosePrior);
+		USandboxBodyController* Controller = Ragdoll->GetController();
+		if (!Controller)
+		{
+			OutError = TEXT("'pose_prior' needs a body under active control");
+			return false;
+		}
+		if (Spec.PosePriorClips.Num() > 0 && !FNaturalMeasures::BuildPrior(*Controller, BodyMesh, Spec.PosePriorClips, File, OutError))
+		{
+			return false;
+		}
+		if (!Natural.UsePrior(*Controller, BodyMesh, File, OutError))
+		{
+			return false;
+		}
+	}
 
 	// Joint angles of the spawn pose against the joint limits.
 	for (const FConstraintInstance* Constraint : BodyMesh->Constraints)
@@ -824,6 +877,10 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			FVector Angles = FVector::ZeroVector;
 			FVector Ranges = FVector::ZeroVector;
 			const double Violation = Constraint ? JointLimitViolationDeg(Mesh, *Constraint, &Angles, &Ranges) : 0.0;
+			if (Constraint)
+			{
+				Natural.NoteLimit(Ragdoll->GetController(), Constraint->JointName, Violation);
+			}
 			if (Violation > MaxJointLimitViolationDeg)
 			{
 				MaxJointLimitViolationDeg = Violation;
@@ -835,6 +892,7 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		}
 	}
 
+	FSandboxBodyControlView View;
 	if (const USandboxBodyController* Controller = Ragdoll->GetController())
 	{
 		if (bSettled)
@@ -873,7 +931,6 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		}
 
 		// The target pose: how far the muscles' targets are from the reference pose, and how well they hold it.
-		FSandboxBodyControlView View;
 		Controller->GetControlView(View);
 		if (StartAnchorsCm.Num() == 0)
 		{
@@ -1129,6 +1186,18 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			*Optional(Controller != nullptr, Controller ? Controller->GetAssistLoad().ForceShare : 0.0, 4),
 			JointSpeed, FrameFastestJoint.IsNone() ? TEXT("") : *FrameFastestJoint.ToString(),
 			*Optional(Controller != nullptr && Balance.bValid, Controller ? Controller->GetDecisionMarginCm() : 0.0, 2));
+	}
+
+	if (Spec.bSimulate && !bSawNaN)
+	{
+		FNaturalFrame NaturalFrame;
+		NaturalFrame.Frame = FrameIndex;
+		NaturalFrame.bSettled = bSettled;
+		NaturalFrame.Mesh = Mesh;
+		NaturalFrame.Controller = Ragdoll->GetController();
+		NaturalFrame.Bodies = &Bodies;
+		NaturalFrame.View = &View;
+		Natural.Sample(NaturalFrame);
 	}
 
 	// A physics asset can be authored with joint anchors that do not coincide in the reference pose.
@@ -1466,6 +1535,9 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			if (Frames > 1)
 			{
 				Pushes.Add(FPush{ Event.Body, ShareNs, Frames - 1 });
+				TArray<FSandboxBodySample> Bodies;
+				FSandboxBodyProbe::SampleBodies(Mesh, Bodies);
+				Natural.NotePush(FrameIndex + 1, Event.Body, ShareNs / FixedDt, Frames, Bodies);
 			}
 		}
 		++EventsApplied;
@@ -2383,6 +2455,7 @@ void UScenarioRunnerSubsystem::Finish()
 				// Gap between the joint's two anchors in the spawn pose; the solver closes it at once.
 				Entry->SetNumberField(TEXT("spawn_anchor_offset_cm"), *Offset);
 			}
+			Natural.WriteJoint(Constraint->JointName, *Entry);
 			JointList.Add(MakeShared<FJsonValueObject>(Entry));
 		}
 	}
@@ -2429,6 +2502,7 @@ void UScenarioRunnerSubsystem::Finish()
 	Metrics->SetArrayField(TEXT("worst_limit_angles_deg"), TArray<TSharedPtr<FJsonValue>>{ Number(WorstLimitAnglesDeg.X), Number(WorstLimitAnglesDeg.Y), Number(WorstLimitAnglesDeg.Z) });
 	Metrics->SetArrayField(TEXT("worst_limit_ranges_deg"), TArray<TSharedPtr<FJsonValue>>{ Number(WorstLimitLimitsDeg.X), Number(WorstLimitLimitsDeg.Y), Number(WorstLimitLimitsDeg.Z) });
 	Metrics->SetNumberField(TEXT("worst_limit_t"), WorstLimitTimeS);
+	Natural.WriteMetrics(*Metrics);
 	Root->SetObjectField(TEXT("metrics"), Metrics);
 
 	const TSharedRef<FJsonObject> ControlJson = MakeShared<FJsonObject>();
@@ -2524,6 +2598,7 @@ void UScenarioRunnerSubsystem::Finish()
 		PoseJson->SetNumberField(TEXT("error_worst_deg"), PoseErrorWorstDeg);
 		PoseJson->SetStringField(TEXT("error_worst_joint"), PoseErrorWorstJoint.IsNone() ? FString() : PoseErrorWorstJoint.ToString());
 		PoseJson->SetNumberField(TEXT("frames"), PoseErrorFrames);
+		Natural.WritePose(*PoseJson);
 		ControlJson->SetObjectField(TEXT("pose"), PoseJson);
 
 		// Feet the target pose was asked to place, and how far each is from its point at the end.
@@ -2755,7 +2830,9 @@ void UScenarioRunnerSubsystem::Finish()
 		FallJson->SetField(TEXT("rest_after_s"), bRestAfterFall ? Number(RestAfterFallS) : Null());
 		FallJson->SetField(TEXT("distance_cm"), bWentDown ? Number(FallWay.Size2D()) : Null());
 		FallJson->SetField(TEXT("direction_deg"), bWentDown ? Number(FMath::Fmod(FMath::RadiansToDegrees(FMath::Atan2(FallWay.Y, FallWay.X)) + 360.0, 360.0)) : Null());
+		Natural.WriteFall(*FallJson);
 		ControlJson->SetObjectField(TEXT("fall"), FallJson);
+		Natural.WriteControl(*ControlJson);
 
 		// What the body took from contacts with other simulated bodies: the hits it could feel.
 		ControlJson->SetNumberField(TEXT("contact_impulse_ns"), Controller->GetContactImpulseNs());
@@ -2968,6 +3045,47 @@ void UScenarioRunnerSubsystem::Finish()
 	Hashes->SetStringField(TEXT("bones"), FString::Printf(TEXT("%08x"), BoneHash));
 	Root->SetObjectField(TEXT("hashes"), Hashes);
 
+	// Bounds on any figure of the result, now that it is all there.
+	for (const FScenarioExpect::FMeasure& Measure : Spec.Expect.Measures)
+	{
+		const TSharedPtr<FJsonValue> Value = AtPath(Root, Measure.Path);
+		const EJson Kind = Value.IsValid() ? Value->Type : EJson::None;
+		bool bMeasured = Kind != EJson::None;
+		TSharedPtr<FJsonValue> Limit;
+		if (Measure.bNull)
+		{
+			bMeasured = Kind == EJson::Null;
+			Limit = Null();
+		}
+		else if (Measure.Equals.IsSet())
+		{
+			bMeasured = Kind == EJson::Boolean && Value->AsBool() == Measure.Equals.GetValue();
+			Limit = Boolean(Measure.Equals.GetValue());
+		}
+		else if (Measure.EqualsText.IsSet())
+		{
+			bMeasured = Kind == EJson::String && Value->AsString() == Measure.EqualsText.GetValue();
+			Limit = Text(Measure.EqualsText.GetValue());
+		}
+		else
+		{
+			const TSharedRef<FJsonObject> Bounds = MakeShared<FJsonObject>();
+			bMeasured = Kind == EJson::Number;
+			if (Measure.Min.IsSet())
+			{
+				bMeasured = bMeasured && Value->AsNumber() >= Measure.Min.GetValue();
+				Bounds->SetNumberField(TEXT("min"), Measure.Min.GetValue());
+			}
+			if (Measure.Max.IsSet())
+			{
+				bMeasured = bMeasured && Value->AsNumber() <= Measure.Max.GetValue();
+				Bounds->SetNumberField(TEXT("max"), Measure.Max.GetValue());
+			}
+			Limit = MakeShared<FJsonValueObject>(Bounds);
+		}
+		AddCheck(Measure.Path, bMeasured, Value.IsValid() ? Value : Null(), Limit);
+	}
+	Root->SetBoolField(TEXT("pass"), bPass);
 	Root->SetArrayField(TEXT("checks"), Checks);
 
 	if (FrameWallMs.Num() > 0)

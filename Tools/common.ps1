@@ -284,6 +284,23 @@ function Invoke-ScenarioQueue {
     }
 }
 
+function Get-ShoveEvents {
+    # Two fists side by side that go from 70 cm before the chest through where it was, along the way given by the angle
+    # (0: +x, 90: +y), wait, and go back over it: the events of a scenario.
+    param([double]$Radians, [double]$At = 3.0, [double]$Mps = 4.0, [double]$Cm = 320.0)
+    $way = @([Math]::Cos($Radians), [Math]::Sin($Radians))
+    $took = [Math]::Round($Cm / 100.0 / $Mps, 3)
+    $events = @()
+    foreach ($hand in @(@('hand_left', 12.0), @('hand_right', -12.0))) {
+        $side = @((-$way[1] * $hand[1]), ($way[0] * $hand[1]))
+        $place = { param([double]$along, [double]$height) return @([Math]::Round($way[0] * $along + $side[0], 3), [Math]::Round($way[1] * $along + $side[1], 3), $height) }
+        $events += [ordered]@{ t = $At; type = 'effector'; effector = $hand[0]; path = @(
+            [ordered]@{ t = 0.0; location_cm = (& $place -70 128) }, [ordered]@{ t = $took; location_cm = (& $place ($Cm - 70) 128) },
+            [ordered]@{ t = ($took + 1.0); location_cm = (& $place ($Cm - 70) 158) }, [ordered]@{ t = ($took + 2.0); location_cm = (& $place -70 198) }) }
+    }
+    return $events
+}
+
 function Format-ScenarioVerdict {
     # The one-line verdict of a run from its metrics.json, as Tools\scenario.ps1 prints it.
     param([string]$Name, $Metrics, [string]$Out)

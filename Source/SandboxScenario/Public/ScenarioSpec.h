@@ -97,6 +97,21 @@ struct FScenarioExpect
 	TOptional<double> MaxJointSpeedRadS;
 	/** Largest allowed mean time of one frame's physics (all substeps), in milliseconds of wall-clock time. */
 	TOptional<double> MaxPhysicsStepMeanMs;
+	/**
+	 * Bounds on any figure of metrics.json, by its path ("control.fall.head_impact_speed_mps"; a number is an index
+	 * into a list: "control.reactions.0.first_target_change_s"). A path that is not there fails the run.
+	 */
+	struct FMeasure
+	{
+		FString Path;
+		TOptional<double> Min;
+		TOptional<double> Max;
+		TOptional<bool> Equals;
+		TOptional<FString> EqualsText;
+		/** The figure has to be null: nothing of the kind happened. */
+		bool bNull = false;
+	};
+	TArray<FMeasure> Measures;
 	/** Whether the body must have fallen (the pelvis below half its starting height) during the run. */
 	TOptional<bool> Fell;
 	/** The body must not have fallen before this time. */
@@ -229,6 +244,10 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	 * get-ups): most of them stand long before the time allowed for the slowest is over.
 	 */
 	double EndWhenStandingS = 0.0;
+	/** A pose database (Tools\\pose-prior.ps1) the body's poses are held against; relative to the repository. Empty: none. Active control only. */
+	FString PosePrior;
+	/** With these clips the run first makes that database of them and writes it, instead of reading it. */
+	TArray<FString> PosePriorClips;
 
 	/** Optional map package (e.g. /Game/Generated/Maps/TestRoom). Empty: the runner builds a bare floor. */
 	FString MapPath;

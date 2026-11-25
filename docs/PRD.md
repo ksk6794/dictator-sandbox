@@ -1093,6 +1093,27 @@ Criteria; the figures are proposals, set by the owner at the milestone's start:
 - [ ] Hit, pushed and grabbed in the middle of every action it answers and nothing blows up; the assist's share is recorded for each action
 - [ ] The owner signs off films of every action
 
+### The natural body: a track beside the milestones (proposed on 25 November 2026)
+
+Asked for by the owner on 25 November 2026: a body that behaves and reacts as a real one does, with live interaction and live reactions. The body passes every gate so far, but nothing measures whether it moves like a living person, and several things say it does not yet: it answers a hit in 11 ms where a person needs 70 to 110, its ankles are about twice as stiff as a person's, it does not see a blow coming or feel a hold, it falls without reaching for the floor, lies without a motion, and gives the same answer to the same push every time.
+
+**The whole plan is `docs/natural-body.md`** (in Claude Docs: the tab "Natural body"): seven rules that define "natural", nine proposed requirements (FR-24 to FR-32), 26 criteria with the human figures they rest on and their sources, and nine parts, each with its design, tuning names, scenarios, what must not change, risks, steps and what closes it. **N1 is done (25 November 2026): no behaviour changed, every run measures how natural it is, `Tools\natural.ps1` is the scorecard and its first report, "before the track", is in `docs/testing.md` (of 26 criteria 3 within the proposed limits, 14 outside, 9 not measured yet). No other part has been started, and every figure in a criterion is the owner's to set.**
+
+| Part | What it builds | Proposed place |
+| --- | --- | --- |
+| N1 | Measures of naturalness and a scorecard (`Tools\natural.ps1`); changes no behaviour | **Done**, beside M4 |
+| N8 A, B | The head as its own body; fingers that are posed | After M4's gate |
+| N2 | Weight carried by joint torques, softer springs, the assist delivered as torques of the legs | Before M4b |
+| N3 | Strength joint by joint and a tone that rises and falls | Before M4b |
+| N6 | The fall with an aim: a hand target, arms that reach and brake, the head kept off the floor | Before M4b |
+| N4 | Mechanics, then reflex, then intent, at a person's delays | Before M4b |
+| N5 | Perception: gaze, bracing before a blow that is seen, the answer to a hold | Before M4b, with a headset session |
+| N8 D | Toes, as an experiment | Just before M4b |
+| N7 | Life on the floor and a get-up that never holds a pose | With M4b |
+| N9, N8 C | Variation from a seed; skin at twisted joints | After M4b, before M5 |
+
+The order differs from the numbering because a change to the physics asset moves every baseline and comes before the muscles are tuned again, and because M4b's walking and sitting would otherwise be tuned twice. Ten decisions are the owner's and are listed in the plan; the first is where the track sits against M4, M4b and M5.
+
 ### M5: Photoreal at 90 FPS (2 to 3 weeks)
 
 Final room art and lighting bake, character shading, soft-tissue motion, impact audio, performance tuning and packaging.

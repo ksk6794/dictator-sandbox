@@ -1,0 +1,71 @@
+{
+  "name": "measure_reaction",
+  "duration_s": 5.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.idle.weight=0,poses.idle.sway_weight=0,assist.pelvis.horizontal_n_per_m=0,assist.pelvis.vertical_n_per_m=0,assist.pelvis.angular_nm_per_rad=0,assist.chest.horizontal_n_per_m=0,assist.chest.vertical_n_per_m=0,assist.chest.angular_nm_per_rad=0,assist.head.horizontal_n_per_m=0,assist.head.vertical_n_per_m=0,assist.head.angular_nm_per_rad=0,assist.feet.horizontal_n_per_m=0,assist.feet.vertical_n_per_m=0,assist.feet.angular_nm_per_rad=0,balance.ankle_gain=0,balance.ankle_max_deg=0,balance.hip_max_deg=0,balance.hip_deg_per_cm=0,balance.arm_dead_cm=99,balance.arm_full_cm=100,reactions.flinch_give_deg=0,reactions.flinch_pose_full_ns=1000,poses.blend_s=0.01"
+    },
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 6,
+      "direction": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "t": 3.3,
+      "type": "console",
+      "command": "Sandbox.Tune poses.stance.lowerarm_l.swing1_deg=20"
+    }
+  ],
+  "expect": {
+    "tuning_changes": 2,
+    "hit_events": 1,
+    "measures": {
+      "control.reactions.0.hit_t": {
+        "min": 2.99,
+        "max": 3.01
+      },
+      "control.reactions.0.first_strength_change_s": {
+        "min": 0,
+        "max": 0.012
+      },
+      "control.reactions.0.first_target_change_s": {
+        "min": 0.295,
+        "max": 0.335
+      },
+      "control.reactions.0.first_target_joint": {
+        "equals": "lowerarm_l"
+      },
+      "control.reactions.0.target_speed_before_dps": {
+        "min": 0,
+        "max": 1
+      },
+      "control.reactions.0.step_lift_s": {
+        "equals": null
+      },
+      "control.reactions.0.fall_start_s": {
+        "equals": null
+      }
+    }
+  }
+}

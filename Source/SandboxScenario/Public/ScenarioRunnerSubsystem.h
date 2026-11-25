@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonValue.h"
+#include "NaturalMeasures.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyController.h"
 #include "SandboxBodyProbe.h"
@@ -379,6 +380,9 @@ private:
 	double SpawnSelfPenetrationCm = 0.0;
 	int32 UnmeasuredShapes = 0;
 	int32 SelfCollisionPairs = 0;
+
+	/** How natural the body moves (docs/natural-body.md, N1): looks on, changes nothing. */
+	FNaturalMeasures Natural;
 
 	/** series.csv: one line per frame. */
 	FString Series;

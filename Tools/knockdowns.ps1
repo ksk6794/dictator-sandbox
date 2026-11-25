@@ -7,6 +7,10 @@
 #   ... -Directions 8                   evenly spaced horizontal directions
 #   ... -Tune "name=value,..."          tuning overrides for every run
 #   ... -CVars "name=value,..."         console variables for every run (p.Chaos.Solver.UseCCD=0 to compare)
+#   ... -ByHand                         felled by two fists that go on through the chest instead of by a blow: the falls
+#                                       a player causes (one row of directions; -Impulses and -Bodies are not used)
+#                                       a shove that fells no one is named and not judged: from a side the body steps it off
+#   ... -ShoveMps 4 -ShoveCm 320        how fast those fists go and how far, from 70 cm before the chest
 #   ... -Film                           also a sheet of pictures of every fall (Saved\Films\knockdown_<...>)
 #   ... -Out <dir>                      output directory (default Saved\Matrix\knockdowns)
 #
@@ -28,6 +32,9 @@ param(
     [int]$Parallel = 8,
     [string]$Tune,
     [string]$CVars,
+    [switch]$ByHand,
+    [double]$ShoveMps = 4.0,
+    [double]$ShoveCm = 320.0,
     [switch]$Film,
     [string]$Out,
     [double]$MaxRestS = 3.0,
@@ -40,7 +47,10 @@ param(
 )
 . "$PSScriptRoot\common.ps1"
 
-if (-not $Out) { $Out = Join-Path $RepoRoot 'Saved\Matrix\knockdowns' }
+if (-not $Out) {
+    $Out = Join-Path $RepoRoot 'Saved\Matrix\knockdowns'
+    if ($ByHand) { $Out = Join-Path $RepoRoot 'Saved\Matrix\knockdowns_by_hand' }
+}
 $Out = [System.IO.Path]::GetFullPath($Out)
 if (Test-Path $Out) { Remove-Item $Out -Recurse -Force }
 $scenarioDir = Join-Path $Out 'scenarios'
@@ -51,6 +61,7 @@ $impulseList = @($Impulses.Split(',') | ForEach-Object { [double]::Parse($_.Trim
 $bodyList = @($Bodies.Split(',') | ForEach-Object { $_.Trim() })
 $base = Read-JsonFile (Join-Path $RepoRoot 'Scenarios\stand_npc.json')
 $hitTime = 3.0
+if ($ByHand) { $bodyList = @('spine_04'); $impulseList = @(0.0) }
 
 $trials = @()
 foreach ($body in $bodyList) {
@@ -59,17 +70,22 @@ foreach ($body in $bodyList) {
             $angle = 360.0 * $d / $Directions
             $name = ('knockdown_{0}_{1:000}_{2:000}' -f $body, $angle, $impulse)
             $radians = $angle * [Math]::PI / 180.0
+            $blow = @([ordered]@{
+                t          = $hitTime
+                type       = 'impulse'
+                body       = $body
+                impulse_ns = $impulse
+                direction  = @([Math]::Round([Math]::Cos($radians), 6), [Math]::Round([Math]::Sin($radians), 6), 0)
+            })
+            if ($ByHand) {
+                $name = ('shove_{0:000}' -f $angle)
+                $blow = @(Get-ShoveEvents -Radians $radians -At $hitTime -Mps $ShoveMps -Cm $ShoveCm)
+            }
             $scenario = [ordered]@{
                 name       = $name
                 duration_s = 10.0
                 body       = $base.body
-                events     = @([ordered]@{
-                    t          = $hitTime
-                    type       = 'impulse'
-                    body       = $body
-                    impulse_ns = $impulse
-                    direction  = @([Math]::Round([Math]::Cos($radians), 6), [Math]::Round([Math]::Sin($radians), 6), 0)
-                })
+                events     = $blow
                 expect     = [ordered]@{
                     fell                     = $true
                     end_state                = 'lying'
@@ -114,6 +130,8 @@ foreach ($trial in $trials) {
     $run = Read-JsonFile (Join-Path $trial.dir 'metrics.json')
     if (-not $run -or -not $run.ok) { $missing += $trial.name; continue }
     $failed = @($run.checks | Where-Object { -not $_.pass } | ForEach-Object { $_.name })
+    $felled = $null -ne $run.control.fall.started_t
+    if ($ByHand -and -not $felled) { $failed = @() }
     if ($MaxLimitViolationDeg -gt 0 -and $run.metrics.max_joint_limit_violation_deg -gt $MaxLimitViolationDeg) { $failed += 'max_joint_limit_violation_deg' }
     if ($MaxJointSpeedRadS -gt 0 -and $run.metrics.max_joint_speed_rads -gt $MaxJointSpeedRadS) { $failed += 'max_joint_speed_rads' }
     $results += [ordered]@{
@@ -122,6 +140,7 @@ foreach ($trial in $trials) {
         angle                = $trial.angle
         impulse_ns           = $trial.impulse
         fell                 = [bool]$run.metrics.fell
+        felled               = $felled
         end_state            = $run.control.end_state
         state_sequence       = $run.control.state_sequence
         way                  = (Get-FallWay $trial.dir)
@@ -137,6 +156,12 @@ foreach ($trial in $trials) {
         joint_stretch_cm     = $run.metrics.max_joint_stretch_cm
         limit_violation_deg  = $run.metrics.max_joint_limit_violation_deg
         limit_joint          = $run.metrics.worst_limit_joint
+        first_touch_bone     = $run.control.fall.first_touch_bone
+        first_touch_s        = $run.control.fall.time_to_first_touch_s
+        hands_first          = $run.control.fall.hands_first
+        head_touched         = $run.control.fall.head_touched
+        head_impact_mps      = $run.control.fall.head_impact_speed_mps
+        pelvis_impact_mps    = $run.control.fall.pelvis_impact_speed_mps
         joint_speed_rads     = $run.metrics.max_joint_speed_rads
         fastest_joint        = $run.metrics.fastest_joint
         physics_step_ms      = $run.physics_step_ms.mean
@@ -150,6 +175,10 @@ if ($missing.Count -gt 0) {
     exit 2
 }
 
+if (@($results | Where-Object { $_.felled }).Count -eq 0) {
+    Write-Output "KNOCKDOWNS ERROR: none of the $($results.Count) runs felled the body"
+    exit 2
+}
 $notPassed = @($results | Where-Object { -not $_.pass })
 $worst = {
     param($field)
@@ -162,23 +191,30 @@ Write-Output ("KNOCKDOWNS {0}: {1} of {2} fall(s) pass in {3} s; slowest to rest
     $verdict, ($results.Count - $notPassed.Count), $results.Count, $seconds,
     [double](& $worst 'rest_after_s').rest_after_s, [double](& $worst 'energy_gain_j').energy_gain_j,
     [double](& $worst 'penetration_cm').penetration_cm, [double](& $worst 'self_penetration_cm').self_penetration_cm)
-Write-Output ('  {0,-10} {1,5} {2,5}  {3,-8} {4,5} {5,6} {6,7} {7,-18} {8,-22} {9,-20} {10,-16} {11}' -f `
-    'body', 'angle', 'N*s', 'way', 'steps', 'rest s', 'gain J', 'in floor cm', 'in itself cm', 'past limit deg', 'fastest rad/s', 'verdict')
+Write-Output ('  {0,-10} {1,5} {2,5}  {3,-8} {4,5} {5,6} {6,7} {7,-18} {8,-22} {9,-20} {10,-16} {11,-18} {12,-10} {13}' -f `
+    'body', 'angle', 'N*s', 'way', 'steps', 'rest s', 'gain J', 'in floor cm', 'in itself cm', 'past limit deg', 'fastest rad/s', 'touched first', 'head m/s', 'verdict')
 foreach ($r in $results) {
     $restText = '-'
     if ($null -ne $r.rest_after_s) { $restText = ('{0:N2}' -f [double]$r.rest_after_s) }
     $verdictText = 'pass'
+    if (-not $r.felled) { $verdictText = 'not felled' }
     if (-not $r.pass) { $verdictText = 'FAIL: ' + ($r.failed_checks -join ', ') }
-    Write-Output ('  {0,-10} {1,5:N0} {2,5:N0}  {3,-8} {4,5} {5,6} {6,7:N1} {7,-18} {8,-22} {9,-20} {10,-16} {11}' -f `
+    # What met the floor first, and how fast the head was going down when it did ('-': it never touched).
+    $touchText = $r.first_touch_bone
+    if ($r.hands_first) { $touchText += ' (hand)' }
+    $headText = '-'
+    if ($null -ne $r.head_impact_mps) { $headText = ('{0:N2}' -f [double]$r.head_impact_mps) }
+    Write-Output ('  {0,-10} {1,5:N0} {2,5:N0}  {3,-8} {4,5} {5,6} {6,7:N1} {7,-18} {8,-22} {9,-20} {10,-16} {11,-18} {12,-10} {13}' -f `
         $r.body, $r.angle, $r.impulse_ns, $r.way, $r.steps, $restText, [double]$r.energy_gain_j,
         ('{0:N2} {1}' -f [double]$r.penetration_cm, $r.penetration_bone),
         ('{0:N2} {1}' -f [double]$r.self_penetration_cm, $r.self_bones),
         ('{0:N1} {1}' -f [double]$r.limit_violation_deg, $r.limit_joint),
-        ('{0:N1} {1}' -f [double]$r.joint_speed_rads, $r.fastest_joint), $verdictText)
+        ('{0:N1} {1}' -f [double]$r.joint_speed_rads, $r.fastest_joint), $touchText, $headText, $verdictText)
 }
 
 $summary = [ordered]@{
     ok          = ($notPassed.Count -eq 0)
+    by_hand     = [bool]$ByHand
     runs        = $results.Count
     seconds     = $seconds
     impulses_ns = $impulseList

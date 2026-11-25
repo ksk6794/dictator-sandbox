@@ -2,6 +2,9 @@
 # so that a motion can be looked at frame by frame: what a body does between a blow and the floor is not in
 # the last frame, and not in the metrics.
 #   powershell -ExecutionPolicy Bypass -File Tools\film.ps1 -Name hit_chest_200_falls -Times "3.0,3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0"
+#   ... -Around 3.0 -Span 0.6 -Every 0.033   instead of -Times: a dense strip from 0.1 s before that time on (a frame is
+#                                            1/90 s), for questions of timing that twelve pictures over six seconds cannot answer
+#   ... -Video                               also Saved\Films\<tag>\film.mp4 (ffmpeg): the pictures as frames, at -VideoFps (default 1/Every, real time)
 #   ... -Camera side|front|back|quarter      where the camera stands (4.2 m from the spawn point, at chest height)
 #   ... -Camera "400,-120,90;0,-120,60"      or its location and the point it looks at, cm
 #   ... -Events <file.json>                  a JSON array of events that replaces the scenario's own
@@ -19,6 +22,11 @@ param(
     [string]$File,
     [string]$Tag,
     [string]$Times = '3.0,3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0',
+    [double]$Around = -1,
+    [double]$Span = 0.6,
+    [double]$Every = 0.033,
+    [switch]$Video,
+    [double]$VideoFps = 0,
     [string]$Camera = 'side',
     [string]$Events,
     [double]$Duration = 0,
@@ -30,6 +38,15 @@ param(
     [string]$Labels
 )
 . "$PSScriptRoot\common.ps1"
+
+if ($Around -ge 0) {
+    # On whole frames, so that no two pictures are of the same one.
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $frames = [math]::Max([int][math]::Round($Every * 90.0), 1)
+    $first = [int][math]::Round([math]::Max($Around - 0.1, 0.0) * 90.0)
+    $count = [int][math]::Floor($Span * 90.0 / $frames) + 1
+    $Times = (@(0..($count - 1)) | ForEach-Object { (($first + $_ * $frames) / 90.0).ToString('F3', $culture) }) -join ','
+}
 
 if ($File -and -not $Name) { $Name = [System.IO.Path]::GetFileNameWithoutExtension($File) }
 if (-not $Name) {
@@ -118,4 +135,21 @@ $sheetFile = Join-Path $outDir 'sheet.png'
 $sheet.Save($sheetFile, [System.Drawing.Imaging.ImageFormat]::Png)
 $sheet.Dispose()
 Write-Output "FILM OK: $($tiles.Count) pictures in $sheetFile"
+if ($Video) {
+    $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if (-not $ffmpeg) { Write-Output 'FILM WARNING: ffmpeg is not installed, no video'; exit 0 }
+    if ($VideoFps -le 0) {
+        $VideoFps = 15
+        if ($tiles.Count -gt 1 -and $tiles[-1].T -gt $tiles[0].T) { $VideoFps = ($tiles.Count - 1) / ($tiles[-1].T - $tiles[0].T) }
+    }
+    $fpsText = $VideoFps.ToString('F3', [System.Globalization.CultureInfo]::InvariantCulture)
+    # The pictures in order, each for one frame; ffmpeg reads the list.
+    $listFile = Join-Path $outDir 'film.txt'
+    $length = (1.0 / $VideoFps).ToString('F5', [System.Globalization.CultureInfo]::InvariantCulture)
+    $lines = @($tiles | ForEach-Object { "file '$(Split-Path -Leaf $_.Path)'"; "duration $length" })
+    [System.IO.File]::WriteAllLines($listFile, $lines)
+    $videoFile = Join-Path $outDir 'film.mp4'
+    $null = Invoke-Process -FilePath $ffmpeg.Source -TimeoutSec 120 -ArgumentString "-y -loglevel error -f concat -safe 0 -i `"$listFile`" -vf `"scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=$fpsText`" -pix_fmt yuv420p `"$videoFile`""
+    if (Test-Path $videoFile) { Write-Output "FILM VIDEO: $videoFile" } else { Write-Output 'FILM WARNING: ffmpeg made no video' }
+}
 exit 0

@@ -3631,6 +3631,119 @@ What only the owner can do (administrator): read the dump (`C:\Windows\Minidump\
 driver's function; update the NVIDIA driver; consider switching hardware-accelerated GPU scheduling off for the
 headset. None of it is needed for the work to go on.
 
+### The natural body, N1: the measures and the first scorecard, 2026-11-25
+
+N1 of `docs/natural-body.md`: measures of how natural the motion is, in every run, and a scorecard
+(`Tools\natural.ps1`). No behaviour changed. What each figure means is in `Scenarios/README.md`, "How natural the
+motion is".
+
+**Nothing moved.** Against the baseline `pre_n1`, taken before the first edit: the suite's 101 scenarios with the same
+two hashes (checked after every step), the push matrix's 160 runs with the same ends, the eight knockdowns with the same
+hashes, the stand on three seeds with the same 50, 50 and 49 of 50. The grab's 93 pulls were run before the change only:
+what they run on is the suite's code with the suite's hashes. The suite takes 43 s with 10 scenarios more
+(40.8 s before), 45 allowed. Unit tests 41, six of them new; the bootstrap passes.
+
+**What each measure was checked against.** The answer was worked out beforehand, from the scenario's own numbers or the
+run's raw trace, and each check was seen to fail with the measure broken on purpose (22 breaks, all caught; one, the
+database mirrored without changing sides, only after a check had been added for it).
+
+| Measure | Check | Answer | Reads | Broken on purpose |
+| --- | --- | --- | --- | --- |
+| How a fall meets the floor | `measure_drop_head_first`: limp, upside down, 1.02 m of free fall | the head at 4.47 m/s | 4.45 | speed after the step: 0.78; the spine taken for the head: 0.26 |
+| Reaction timing | `measure_reaction`: the body's own answers off, a pose asked for 0.3 s after the hit | 0.30 to 0.33 s, the elbow; strength at once | 0.322; 0 | another target at the hit: 0.00; the hit's frame wrong: 0.10 for the strength |
+| Joint effort | `measure_arm_held_out`: the arm's weight about the shoulder, from masses and places in the trace | 9.9 N*m | 9.6 | a factor of 1.5: 14.4 |
+| Time at the cap | `measure_arm_at_cap`: a cap of 4 N*m under 9.9 | all the time | 1.0 | the cap not looked at: 0 |
+| Compliance | `measure_push_neck`: 20 N on the head, chest welded, one spring of 40 N*m/rad | 1.29 cm, 15.6 N/cm | 1.30; 15.4 | the force of one frame: 0.17; another axis: 398 |
+| Jumps | `measure_jumps`: an elbow's target moved by 30 degrees at 40 N*m/rad, then a quarter of the strength | 30.0 degrees, 20.9 N*m, 75% | 30.0; 20.94; 75% | against another pose: 179; of another strength: 99.9% |
+| The head | `measure_free_fall` | 9.8 m/s2, no jerk | 9.79; 0.1 m/s3 | no time step: 0.11 |
+| Stillness | `measure_still` (held by the pelvis, no idle), `measure_stand` (with the idle) | still to the end; never | 7.2 s of 8; 0 | a threshold 5000 times smaller, 100 times larger: 0; 32 s |
+| Beyond a joint's range | a unit test; `measure_stand` | 10 frames of 100; 0 | 0.10; 0 | outside from the middle on: 1.0 |
+| Centre of pressure | `measure_cop`: nothing but the floor holds the body | under the centre of mass (0.1 cm); its weight | 0.005 and 0.063 cm off; 0.995 | unweighted: 11 cm off; one phase of the solver: 0.003 of the weight |
+| Period | `measure_stand`: the idle clip of 7.57 s; unit tests (a loop, a drift, noise) | 7.57 s | 7.60 (a point every 0.067 s) | none found |
+| Likeness of the pose | `pose-prior.ps1 -Build`: each pose found at 0, mirrored twice itself, each side's angles on the other; a clip of the database asked of the body; a pose no one takes | 0; the muscles' error from the clip (3.4 degrees); far | 0; 3.2; 28.8 | joints not compared; mirrored without changing sides: refused |
+
+**Four things the checks found.**
+
+- **A contact event has one point of the contact, not where its force goes through.** The centre of pressure made from
+  the events' points lay 8.6 cm behind the centre of mass. It is the nearest point of the solver's manifold
+  (`CalculateWorldContactLocation`) with the impulse of all of them. The measure now reads the manifold's points with
+  their own impulses, after every substep. N2's plan to take the place of the floor's push from the events would have
+  been 8.6 cm wrong (its torques by 8.6 cm times the body's weight, 67 N*m).
+- **The solver's joint projection and unfinished iterations move the bodies after the drives, by 0.2 to 0.35 degrees.**
+  The spring law read the arm's 10.05 N*m at the shoulder as 9.56 with a stiffness of 100 N*m/rad, 8.97 with 300, 7.87
+  with 600 and 5.94 with 1200, and the collarbone's 16.9 as 20.5. With 200 position iterations and no projection it read
+  10.01 and 17.05: the law is right, and a torque from it is wrong by about 0.005 rad times its stiffness. (Projection
+  is also why the floor's push on a standing body adds up to 0.995 of its weight; without it 0.9999.)
+- **A measure of naturalness can be met by something that is not natural.** C14 (a hand or a forearm before the trunk) reads
+  100% of the falls by hand forward and sideways. On the dense strip (`Saved\Films\n1_hand_090`) the hands do come
+  first, 0.28 s into the fall, and land beside the hips while the head strikes the floor at 4.7 m/s. **The owner's rule of
+  the same day: a hand counts only if it lands ahead of the chest along the way the body goes** (`hands_ahead_first`;
+  `AheadOfChest` is its unit test). By it the share is 86% of 7 by hand (the fall on the strip is the one that does not
+  count) and 80% of 5 by blows: still within the proposed 80%. Hands that land 10 to 20 cm ahead of the chest do not brake
+  anything either; in those seven falls a hand lies 19 cm ahead at most, and the head strikes the floor in most of them.
+  C15 and C16 are what N6 will move.
+- **The body leans past where it stood, into a push that is held.** Under 20 N from the front the chest gives 1.3 cm and
+  is 5.0 cm against the push 1.5 s later. That is the lean of M3 part 3 (`balance.lean_*`), which moves the body until the
+  push's moment is gone; a person under 20 N moves hardly at all.
+
+**What cannot be relied on.** The centre of pressure's side-to-side mean is 0.3 cm off the centre of mass's while the idle
+moves the body (0.06 without it), through every variant of solver iterations and projection tried; 0.3 cm of body weight is
+2.4 N*m of roll that the bodies' momenta do not account for. The cause was not found; C22's side-to-side spread is 4.8 mm
+and holds that much error. `command_step_max_nm` takes a target that moves fast for one that jumps: the swinging leg's, in
+a recovery step. `power_peak_w` in the thousands is the spring law on joints whipped around by a blow. And the pose
+database knows no pose of a body falling freely: 21 degrees there against 11 standing is as much its lack as the fall's.
+
+**The scorecard "before the track"** (`Saved\Natural\before_track`, pose database 2a44916b: 13 564 poses of 224 clips).
+Of 26 criteria 3 are within the proposed limits, 14 outside, 9 not measured before their part or not judged.
+
+| # | The body today | People | Proposed limit | |
+| --- | --- | --- | --- | --- |
+| C1 | Standing 0.0062 of body weight and 3.1 N*m on average; up to 0.18 of body weight in a flinch; no force and up to 328 N*m (pelvis, chest and head added up) in a stagger | nothing | 0 | out |
+| C2 | 0.27 of body weight | nothing | 0.10 | out |
+| C3 | 2.5 (800 N*m/rad a leg; m g h is 637 N*m, not the 785 the plan was written with) | 0.64 to 0.91 | 0.6 to 1.0 | out |
+| C4 | Wrist 40, neck 40 N*m/rad | 3 to 4; 24 | 10; 20 to 30 | out |
+| C5 | 4 of 8: ankle 250 against 112, hip 250 against 178, elbow 80 against 51, wrist 80 against 25 N*m | the table | 0 | out |
+| C6 | No tone yet. 20 N from the front: chest 1.3 cm (15 N/cm), forearm 8.9 cm (2.3 N/cm) | wrist 5 to 20 times | 2 | - |
+| C7 | 1.6% at most (ankle, 80 N*s to the left); 0% standing | - | 5% | in |
+| C8 | Strength changes in the first step after the hit is felt, a target one frame later | trunk 106, head 142 ms | `react_passive_first` | - |
+| C9 | 0.011 s, all 8 hits | 0.07 to 0.11 s | the same | out |
+| C10 | Lifts at 0.033 s, down by 0.30 s (4 of 8 stepped) | 0.24 to 0.33; 0.44 to 0.58 | from 0.20; by 0.58 | out |
+| C11 to C13 | No perception | | | - |
+| C14 | Ahead of the chest: by hand 86% of 7 falls forward and sideways, by blows 80% of 5 (wherever it lands 100% and 80%; see above) | 98% | 80% | in |
+| C15 | Strikes it at 0.5 m/s or more (the owner's rule of 25 November): by hand 67% of 12, by blows 50% of 8; touches it at all: 83% and 75% | 11% | 15% | out |
+| C16 | By hand 4.5 m/s, by blows 2.8 m/s (90th percentile) | 1.7 soft, 3.2 hard | 2.0; 3.2 | out |
+| C17 | Rest after 2.2 s, 25.5 J, 1.2 cm | - | 3; 40; 2 | in |
+| C18 | 5.0 s at most, 3.0 s in the median of 20 falls (runs of 10 s) | breathe 12 to 20 a minute | 1.0 s | out |
+| C19 | One pose asked for 3.6 s at most, the body still for 2.3 s; 24% of 199 attempts given up | - | 1.0 s; 10% | out |
+| C20 | 98 to 100% stand; 43, 45, 44 of 50 at the first attempt (the plan's 38 to 44 was M3's gate) | - | 95%; 45 | out |
+| C21 | 4.7 s in the median of 78 (3.2 to 6.4), first move of the first attempt to standing | 2.6 to 2.9; 4.2 | 2.6 to 4.2 | out |
+| C22 | 12.9 mm/s; side to side 4.8 mm; period 7.6 s | 9.2 +- 1.6; 4.0 +- 1.3 | 6 to 12; 2 to 6; none | out |
+| C23, C24 | No variation | | | - |
+| C25 | 127 degrees of an upper arm's target as a get-up begins, with its muscle at no strength; otherwise 28 degrees of the thigh in the frame after a step's lift; 399 N*m asked of an ankle as a step lands. Standing 1.5 N*m | - | these, less the defects | - |
+| C26 | The get-up has its three scenarios | - | each phase its three | - |
+
+Beside the criteria, distance to the nearest recorded pose in degrees (mean, 95th percentile, worst), time beyond the
+joints' ranges, the head's largest acceleration:
+
+| Set | Runs | Pose | Beyond range | Head |
+| --- | --- | --- | --- | --- |
+| Standing 60 s | 1 | 11.1, 11.4, 11.5 | 0 | 0 m/s2 |
+| 30 and 80 N*s on the chest, four sides | 8 | 10.8, 13.9, 14.1 | 0.08% | 63 |
+| Strikes | 5 | 11.3, 17.7, 18.8 | 0.16% | 38 |
+| Blows of 200 N*s | 8 | 21.1, 25.5, 26.4 | 0.04% | 149 |
+| Two fists at 4 m/s, sixteen sides | 16 | 18.8, 26.6, 26.7 | 0.14% | 153 |
+| Get-ups | 4 | 11.0, 24.8, 26.0 | 0.64% | 149 |
+
+A shove of two fists at 4 m/s fells the body on 12 of 16 ways; straight sideways and 22.5 degrees forward of that, on
+either side, it is stepped off. (At 2 m/s, 4 of 8.)
+
+**The independent reading of the diff** (by one who had the code and not the account of it) found the simulation clean and
+twelve defects in the figures and the scorecard, all fixed before the report above: C1's standing force was never judged
+(a PowerShell comma binds to its first item only), missing data read as 0 and "in", a state's stillness counted time from
+before the state began, a reference was used after its array had moved, the physics step's clock ran over the new measure,
+the head's impact was the first touch only, sway joined stretches of standing at two places, the database's stamp did not
+cover its poses, and smaller ones.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

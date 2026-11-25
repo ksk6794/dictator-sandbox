@@ -113,6 +113,13 @@ struct FSandboxMuscleView
 	double ErrorRad = 0.0;
 	/** How far the target is turned from the reference pose, radians: what the pose asks of this joint. */
 	double TargetOffsetRad = 0.0;
+	/** The child's orientation relative to the parent that the muscle holds. */
+	FQuat TargetRelative = FQuat::Identity;
+	/** The drive as it was last handed to the solver: N*m/rad, N*m*s/rad, N*m, and the share of the target's own turning speed it is damped against. */
+	double StiffnessNmPerRad = 0.0;
+	double DampingNmsPerRad = 0.0;
+	double MaxTorqueNm = 0.0;
+	double PoseVelocityShare = 0.0;
 };
 
 /** One balance-assist control as an overlay shows it. */
@@ -324,6 +331,10 @@ public:
 	 * whoever carries the body's pelvis through the clip. False without a clip.
 	 */
 	bool GetClipPelvis(FTransform& OutPelvis, double& OutWeight) const;
+	/** Reads a clip for this body's joints without asking any pose of it: for whoever measures. Null with a reason if it cannot be read. */
+	const FSandboxClipPose* ReadClip(const FString& ClipPath, FString& OutError);
+	/** Every joint that has a muscle: its body and the body it hangs on, in the muscles' order. */
+	void GetMuscleJoints(TArray<TPair<FName, FName>>& OutJoints) const;
 	/** Every clip read so far, by path: for result files (how each joint of a clip fits the body). */
 	const TMap<FString, FSandboxClipPose>& GetClips() const { return Clips; }
 
@@ -393,6 +404,13 @@ public:
 	void MeasureBalance(FSandboxBalanceView& OutView) const;
 
 	/**
+	 * What the world that does not move has pushed on each body with in the last step, N*s, by the body's index in the
+	 * mesh. For measuring after a step; cleared by the next tick. (Where it pushed is not in the contact events: an
+	 * event has the one nearest point of a contact, not where its force goes through.)
+	 */
+	TConstArrayView<FVector> GetSupportImpulsesNs() const { return SupportImpulseNs; }
+
+	/**
 	 * The targets of every muscle and assist control, as last handed to the solver. The muscles' targets
 	 * are the pose Physics Control has cached, which is the one the drives really use. Read-only and never
 	 * called by the simulation: this is for debug overlays. Empty before the first tick.
@@ -439,6 +457,11 @@ private:
 		ESandboxMuscleGroup Group = ESandboxMuscleGroup::Spine;
 		/** The child's orientation relative to the parent in the reference pose. */
 		FQuat ReferenceRelative = FQuat::Identity;
+		/** The drive as PushTuningToControls last handed it over, for GetControlView. */
+		double StiffnessNmPerRad = 0.0;
+		double DampingNmsPerRad = 0.0;
+		double MaxTorqueNm = 0.0;
+		double PoseVelocityShare = 0.0;
 	};
 
 	enum class EAssistSlot : uint8 { Pelvis, Chest, Head, Feet };

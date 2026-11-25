@@ -1,0 +1,42 @@
+{
+  "name": "measure_cop",
+  "duration_s": 20.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune assist.pelvis.horizontal_n_per_m=0,assist.pelvis.vertical_n_per_m=0,assist.pelvis.angular_nm_per_rad=0,assist.chest.horizontal_n_per_m=0,assist.chest.vertical_n_per_m=0,assist.chest.angular_nm_per_rad=0,assist.head.horizontal_n_per_m=0,assist.head.vertical_n_per_m=0,assist.head.angular_nm_per_rad=0,assist.feet.horizontal_n_per_m=0,assist.feet.vertical_n_per_m=0,assist.feet.angular_nm_per_rad=0,poses.idle.weight=0,poses.idle.sway_weight=0"
+    }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": false,
+    "measures": {
+      "metrics.sway.floor_share_mean": {
+        "min": 0.99,
+        "max": 1.01
+      },
+      "metrics.sway.cop_offset_ap_cm": {
+        "min": -0.1,
+        "max": 0.1
+      },
+      "metrics.sway.cop_offset_ml_cm": {
+        "min": -0.1,
+        "max": 0.1
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "comment": "The clips the pose database is made of (Tools\\pose-prior.ps1 -Build): recorded poses of standing, stepping, crouching, sitting, being pushed and felled, lying and getting up. A chosen part of the sample, by the owner's decision of 25 November 2026. A wider set (sprints, slides, traversal) would make almost any pose look like some recorded one. Patterns are regular expressions on a clip's file name; 'folder' is below Content/Characters (in_project) or below the sample's Animations folder (from_sample, copied by Tools\\fetch-sample-anims.ps1). Every set names the number of clips it is expected to give: another number is an error, since figures from two databases are not to be compared.",
+  "exclude": "Montage|Additive|_add$|^AM_|^PS|^BS|^ABP|^AO_|^CHT",
+  "in_project": [
+    { "folder": "Mannequins/Anims/Unarmed", "pattern": "^(MM_|MF_)", "clips": 26 },
+    { "folder": "Mannequins/Anims/Death", "pattern": "^MM_Death", "clips": 6 },
+    { "folder": "UEFN_Mannequin/Animations/Ragdoll", "pattern": "^M_ragdoll", "clips": 33 }
+  ],
+  "from_sample": [
+    { "folder": "Idle", "pattern": "Stand_Idle|Stand_Turn|Idle_turn|Crouch_Idle", "clips": 44 },
+    { "folder": "Avoidance", "pattern": "^M_", "clips": 12 },
+    { "folder": "Interactions", "pattern": "bench", "clips": 14 },
+    { "folder": "Interactions", "pattern": "shove.*_V$", "clips": 4 },
+    { "folder": "Interactions", "pattern": "tackle.*_V$", "clips": 8 },
+    { "folder": "Interactions", "pattern": "takedown.*_V_$", "clips": 13 },
+    { "folder": "Walk", "pattern": "(Neutral|Relaxed)_Walk_Loop", "clips": 24 },
+    { "folder": "Walk", "pattern": "Neutral_Walk_(Start|Stop)_(F|B|LL|RR)_", "clips": 16 },
+    { "folder": "Walk", "pattern": "Relaxed_Walk_(Start|Stop)", "clips": 16 },
+    { "folder": "Crouch", "pattern": "Crouch_(Walk_)?Loop_(F|B|LL|RR)$", "clips": 8 }
+  ]
+}
