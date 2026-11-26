@@ -1480,6 +1480,7 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	GetUpView.BehindHeldS = 0.0;
 	GetUpView.PlankS = 0.0;
 	GetUpView.PlankMaxCm = 0.0;
+	GetUpView.PlankAfterS = 0.0;
 	GetUpView.RiseFeetCm = -1.0;
 	GetUpView.RiseTrunkDeg = -1.0;
 	GetUpView.RiseBeganS = -1.0;
@@ -5150,6 +5151,13 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateState(DeltaTime);
 	UpdateHeld(DeltaTime);
 	UpdateGetUp(DeltaTime);
+	// The plank after a get-up, measured (read only): the same rule as while getting up, for 3 s after it ended standing.
+	if (State != ESandboxBodyState::GetUp && GetUpView.DurationS >= 0.0 && ElapsedS - (GetUpView.StartedS + GetUpView.DurationS) <= 3.0 &&
+		Balance.bValid && Balance.IsSupported() && WeightN > 0.0 &&
+		Balance.FootForceN[0] + Balance.FootForceN[1] >= 0.8 * WeightN && Balance.CenterOfMassMarginCm < -5.0)
+	{
+		GetUpView.PlankAfterS += DeltaTime;
+	}
 	if (!RiseLeanRad.IsZero() && !(State == ESandboxBodyState::GetUp && GetUpRun.bRising))
 	{
 		// A rise's lean fades by its own clock once the rise is over, however it ended: a turn dropped at once would snap the body.

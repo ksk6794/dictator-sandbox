@@ -4996,6 +4996,24 @@ What it shows: the crouch of a recorded get-up is no place to stand still on thi
 way up by a recorded clip has its centre of mass ahead of its feet; a slow get-up has to get its feet under it first, with the hands
 carrying the front of the body while they come.
 
+**The owner on the side videos: both still rise like a plank at the end.** The plank at the end is the world's: the pelvis's assist
+turns the straight body upright about its feet while the centre of mass is ahead of the toes. A person there catches the lean with a
+step. Tried (`Saved\Recon\n7_handover_plan.md`, limits before the runs): the get-up ends as soon as the pelvis is within 15 cm of its
+standing height and tilted less than 25 or 32 degrees, with both feet on the floor, and the standing balance catches the rest. New
+measure, kept: `plank_after_s`, the plank's rule for 3 s after a get-up ends standing (0.389 s on `getup_back` by the controller and by
+`series.csv`).
+
+| Variant | Stand, first attempt | Plank while getting up + after | Get-up | Suite |
+| --- | --- | --- | --- | --- |
+| Today | 150, 130 | 1.36 + 0.24 = 1.61 s | 5.01 s | 127 |
+| Hand over at 25 degrees | **148, 113** | **1.17 + 0.42 = 1.59** | 4.19 | **3 get-ups fail** |
+| Hand over at 32 degrees | 149, **124** | **0.98 + 0.56 = 1.60** | 3.94 | 127 |
+
+**Not met; taken out** (`Saved\Recon\n7_hand_over.patch`). The get-up is a second shorter and the plank is not: most of it comes while
+the body is tilted more than 25 to 32 degrees, before a hand-over is possible, and what is handed over is held by the stagger's upright
+hold (150 N*m on the pelvis) instead of the get-up's assist. Of the 150 handed over at 25 degrees, the first-attempt ones fell by 17:
+a step does not catch a body that far ahead of its feet.
+
 
 
 

@@ -297,6 +297,8 @@ struct FSandboxGetUpView
 	 */
 	double PlankS = 0.0;
 	double PlankMaxCm = 0.0;
+	/** The same for 3 s after the last attempt ended standing: a plank that the balance holds once the get-up is over. Seconds. */
+	double PlankAfterS = 0.0;
 	/**
 	 * When the pelvis first came 70 cm above the floor: the farther foot from it over the floor, and the trunk (pelvis to chest) from
 	 * vertical. cm, degrees; below 0 until then.
