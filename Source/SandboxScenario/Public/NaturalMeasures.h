@@ -187,6 +187,11 @@ private:
 	bool bHaveHeadAcceleration = false;
 	double HeadAccelMax = 0.0;
 	int32 HeadAccelFrame = -1;
+	/** The head's turn about the vertical against the chest: what it was when the body had settled, the largest since, and when. */
+	FQuat HeadReference = FQuat::Identity;
+	bool bHaveHeadReference = false;
+	double HeadTurnMaxDeg = 0.0;
+	int32 HeadTurnFrame = -1;
 	double HeadJerkSquares = 0.0;
 	int32 HeadJerkFrames = 0;
 	void SampleHead(const FNaturalFrame& Frame);

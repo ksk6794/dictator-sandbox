@@ -20,6 +20,7 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | Name | Unit | Meaning |
 | --- | --- | --- |
 | `rig.pelvis`, `rig.chest`, `rig.head`, `rig.foot_left`, `rig.foot_right` | bone name | Bodies the balance assist holds. Text, read when the body starts; cannot change in a running body |
+| `rig.head_if_own` | bone name | In an asset with a head of its own on top of the body `rig.head` names (`PA_SandboxNPCHead`), the body that carries the head; empty: `rig.head` is the head whatever the asset has |
 | `muscles.<group>.stiffness_nm_per_rad` | N·m/rad | Spring of every joint in the group toward the target pose. 0 switches the muscles off |
 | `muscles.<group>.damping_s` | s | Damping as a time: damping torque = stiffness × this × angular velocity |
 | `muscles.<group>.max_torque_nm` | N·m | Largest torque of a muscle; 0 = no cap. From published peak torques of an adult man: legs 250 (knee and hip extension), spine 300 (trunk extension), arms 80 (shoulder and elbow), neck 50. One figure for a group, so a wrist may ask what an elbow can give. With the caps the push matrix passes as without (160 of 160); they only act in a stagger, a step or a fall |

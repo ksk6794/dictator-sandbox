@@ -3,6 +3,7 @@
     "pelvis": "pelvis",
     "chest": "spine_04",
     "head": "neck_01",
+    "head_if_own": "head",
     "foot_left": "foot_l",
     "foot_right": "foot_r"
   },

@@ -4286,6 +4286,56 @@ changes by itself, no gain. The fastest joint in the first 0.67 s of a get-up fa
 
 **Not established.** What jumps in the 124 joint-frames of a stagger and the 159 of a get-up that have no name above; whether the correctives can be evaluated from the body's pose without an Animation Blueprint of ours.
 
+### The natural body, N8 A: the head as a body, and the wrist (night of 25 to 26 November, the owner away; for the owner to confirm)
+
+Two assets beside today's, which is unchanged (117 scenarios with the hashes of `hold`, also after it was made again by the changed generator): `PA_SandboxNPCHead`
+(`Specs/physics/npc_body_head.json`) and `PA_SandboxNPCWrist` (`npc_body_wrist.json`). No scenario of before uses them; two are new (`head_slap_cheek_turns`, `measure_head_turn`).
+Every tool runs on another body without a file being touched: `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCHead SANDBOX_HEAD_BODY=head` (what a scenario does to `neck_01` it then does to `head`).
+
+**What was made.** The head is a body of 4.44 kg on a joint of its own, the neck one of 1.11 kg (the 6.94% split 80 to 20, **from memory**: McConville's volumes; three pages with the figures
+could not be read, so the split is an open check). The range of the neck is shared between the two joints (nod 40 and 20 forward, 50 and 25 back, sideways 35 and 10, turn 35 and 45). The head has a face: a cranium, a forehead and two cheekbones,
+the cheekbones the widest at the front (fitted to the mesh from two pictures by scale: 22 cm high, 19 deep, 15 wide; before it was a capsule 18 cm wide whose axis passed the joint at 1 cm). A pose's
+angles for the neck are shared out between the two joints by their ranges, so `poses.json` is as it was. The centre of mass of the head is 3 cm ahead of its joint and 6.5 above.
+
+**What held the head back from turning was the world, not the neck.** Over necks of 40 to 1 N*m/rad the same slap turned the head by 6 to 15 degrees: a figure that does not move with its setting. The assist's hold on the head
+(`assist.head` 10 N*m/rad with 0.2 s) is a damper of 2 N*m*s/rad from the world on a head of 0.02 kg*m2. Without it today's own body turns its head by 7 to 9 degrees (4 to 6 with it) and the new one by 14 to 20 (7 to 9). The note of 25 November
+("the head's neck muscle is most of it and the round shape the rest") left the assist out.
+
+**The limits, written before the runs** (`Saved\Recon\window_plan.md`), on the body with the head, `assist.head.angular_nm_per_rad` 0 and `muscles.neck.damping_s` 0.05 (0.1); the neck's stiffness as it is, 40, which is 20 for the two joints together:
+
+| | Limit | Today | Head | |
+| --- | --- | --- | --- | --- |
+| A1 | Standing: drift, feet's turning speed, assist within a tenth | 0.907 cm, 0.108 rad/s, 0.0063 | 0.927, 0.090, 0.0063 | met |
+| A2 | Neck and head stretch 0.5 cm at most under a kick | 0.14 | 0.15 | met |
+| A3 | A slap on the cheek at 6.2 m/s turns the head 20 degrees | 4 to 6 | 17.7 with the fingers pointing forward, 25.8 pointing back, 23.2 pointing up | **met in two ways of three** |
+| A5 | Push matrix | 160 | 160 | met |
+| A6 | Knockdowns by a blow and by hand | 8, 8 | 8, 8 | met |
+| A7 | Stand of 150 falls: 147 stand, 129 at the first attempt | 149, 132 | 150, 134 | met |
+| A8 | Grab pulls (with `head` for `neck_01`), falls at most 3 | 93, 2 | 93, 0 | met |
+| A9 | Physics step 0.05 ms more at most, alone on the machine | 0.555 ms | 0.568 | met |
+| A10 | Suite | 117 | 109 pass, 8 read below | |
+
+- **The test of the slap was changed, and this is how:** its path ended at x = 5, which the narrower head hardly meets (0.5 to 2 N*s); it now ends 4 cm inside the surface (x = 3), as it did in the old head. And the hand is held three ways: in the old one
+  the fingers point forward past the face, and the plate meets it with its rear edge (a lever of 1 to 4 cm). `head_slap_cheek_turns` is the one with the fingers back (23.2 degrees by the new `metrics.head_turn_max_deg`). The criterion by the old way of holding the hand is missed by 2.3 degrees.
+- A damping of 0.025 meets it in all three (20.3, 30.3, 27.4) and a kick then turns the neck at 31 rad/s (30 allowed); a neck of 20 N*m/rad meets it (22.4, 34, 30) and hangs 8.6 degrees forward under the head's weight (1.9 with 40). With the weight carried (N2) the soft neck need not hang.
+- **The eight scenarios:** `effector_hit_head`, `palm_slap_head` end at x = 5 (above); `measure_drop_head_first`, `measure_push_neck` name `neck_01` or have the one joint's answer (the second: 11.4 N/cm for two joints, 15.4 for one); `strike_punch_shoulder` (30.7 rad/s against 30, one hit for two: the fist comes back 1 cm further off); `room_movable_fall_gets_up` ends in its second get-up;
+  `tune_live_file`, `tune_live_override` (a body whose legs are switched off: the neck at 36 to 38 rad/s against 30; 16 today). The light neck is whipped when the head strikes the floor: 37 to 46 rad/s in falls where today has 16 to 36. Four times its inertia cures the last two (15 and 18) and costs the stand 150 to 148 and 134 to 129 and a knockdown its 3 s: not taken.
+- The knockdown's 35 N*s holds: fists at 3, 4 and 5.5 m/s are felt as 13.6, 30.4 and 38.9 N*s (13.8, 29.4, 36.3 today), a kick as 56 (48). `effector_hit_head` was an edge: 35.3.
+- **Seen on the films** (`Saved\Films\n8a_slap_today`, `n8a_slap_head`, `n8a_kick_*`): the head turns away and comes back over half a second. It tilts more than it turns (30 to 35 degrees against 23), and nods down by the flinch's pose as it does so.
+
+**Recommended:** take the head (a new baseline; the eight scenarios set anew); the hold of the world on the head goes with it. **The wrist is not recommended**, by A7:
+
+| Stand, three seeds | stand | first attempt |
+| --- | --- | --- |
+| Today | 149 | 132 |
+| Wrist limited in the hand's own frame, bent back 85 (`PA_SandboxNPCWrist`) | 148 | **113** |
+| The same frame with today's 60 | 148 | 112 |
+| Today's frame with 85 | 148 | 134 |
+| Head and wrist together | 145 | 120 |
+
+It is the frame, not the 85 degrees, that costs twenty first attempts (each tried alone). Why was not looked into; the hand is then asked by the clips to lie flat, bent back 60 to 85 under a turned forearm, where today it is asked for what the 25 degrees of the sideways range let through. The frame is made by a second joint between
+the two bodies that holds only the swings, with the bodies the other way round; a single joint with the bodies exchanged has no projection and stretched 0.80 cm with the body hanging by a hand (0.25 today, and 0.25 with two joints).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

@@ -666,12 +666,17 @@ struct FSandboxBodyRig
 	FName Chest;
 	/** The body that carries the head; in the NPC's physics asset head and neck are one body on neck_01. */
 	FName Head;
+	/**
+	 * The bone whose body carries the head in an asset that has a head of its own on top of the one Head names (the neck);
+	 * none: Head is the head, whatever the asset has.
+	 */
+	FName HeadIfOwn;
 	FName FootLeft;
 	FName FootRight;
 
 	bool operator==(const FSandboxBodyRig& Other) const
 	{
-		return Pelvis == Other.Pelvis && Chest == Other.Chest && Head == Other.Head && FootLeft == Other.FootLeft && FootRight == Other.FootRight;
+		return Pelvis == Other.Pelvis && Chest == Other.Chest && Head == Other.Head && HeadIfOwn == Other.HeadIfOwn && FootLeft == Other.FootLeft && FootRight == Other.FootRight;
 	}
 };
 

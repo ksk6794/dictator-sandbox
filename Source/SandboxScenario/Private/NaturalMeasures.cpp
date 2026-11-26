@@ -505,6 +505,27 @@ void FNaturalMeasures::SampleHead(const FNaturalFrame& Frame)
 	{
 		return;
 	}
+	// How far the head has turned about the vertical against the chest, since the body had settled.
+	if (const FSandboxBodySample* Chest = Frame.Controller ? Find(*Frame.Bodies, Frame.Controller->GetTuning().Rig.Chest) : nullptr)
+	{
+		const FQuat ChestNow = Chest->WorldTransform.GetRotation();
+		const FQuat Relative = ChestNow.Inverse() * Head->WorldTransform.GetRotation();
+		if (!Frame.bSettled || !bHaveHeadReference)
+		{
+			HeadReference = Relative;
+			bHaveHeadReference = true;
+		}
+		else
+		{
+			const FQuat Turned = (ChestNow * Relative * HeadReference.Inverse() * ChestNow.Inverse()).GetNormalized();
+			const double TurnDeg = FMath::RadiansToDegrees(FMath::Abs(FMath::UnwindRadians(Turned.GetTwistAngle(FVector::UpVector))));
+			if (TurnDeg > HeadTurnMaxDeg)
+			{
+				HeadTurnMaxDeg = TurnDeg;
+				HeadTurnFrame = Frame.Frame;
+			}
+		}
+	}
 	// The velocity of the head's centre of mass, a mean of three frames; its differences are the acceleration and the jerk.
 	HeadVelocities.Add(Head->LinearVelocity * 0.01);
 	if (HeadVelocities.Num() < 4)
@@ -1023,6 +1044,8 @@ void FNaturalMeasures::WriteMetrics(FJsonObject& Metrics)
 	Metrics.SetStringField(TEXT("joint_speed_step_joint"), Text(JointSpeedStepJoint));
 	Metrics.SetField(TEXT("joint_speed_step_t"), Optional(JointSpeedStepFrame >= 0, JointSpeedStepFrame * Dt));
 
+	Metrics.SetField(TEXT("head_turn_max_deg"), Optional(bHaveHeadReference, HeadTurnMaxDeg));
+	Metrics.SetField(TEXT("head_turn_max_t"), Optional(HeadTurnFrame >= 0, HeadTurnFrame * Dt));
 	Metrics.SetField(TEXT("head_accel_max_mps2"), Optional(bHaveHeadAcceleration, HeadAccelMax));
 	Metrics.SetField(TEXT("head_accel_max_t"), Optional(HeadAccelFrame >= 0, HeadAccelFrame * Dt));
 	Metrics.SetField(TEXT("head_jerk_rms_mps3"), Optional(HeadJerkFrames > 0, FMath::Sqrt(HeadJerkSquares / FMath::Max(HeadJerkFrames, 1))));

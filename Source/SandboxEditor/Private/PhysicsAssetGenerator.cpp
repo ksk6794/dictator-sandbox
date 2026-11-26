@@ -89,20 +89,20 @@ bool FPhysicsAssetGenerator::ComputeJointFrames(const FPhysicsAssetSpec& Spec, c
 	};
 
 	// Everything is worked out on the written side; a mirrored joint is reflected at the end.
-	FVector JointLocation, AlongLocation, ParentLocation, MirroredLocation;
+	FVector JointLocation, AlongLocation = FVector::ZeroVector, ParentLocation, MirroredLocation;
 	const FName ParentBone = FindParentBodyBone(Spec, Mesh, Joint->Child);
 	if (ParentBone.IsNone())
 	{
 		OutError = FString::Printf(TEXT("Joint '%s' has no parent body: it is the root and must not be listed"), *Joint->Child.ToString());
 		return false;
 	}
-	if (!BoneLocation(Joint->Child, JointLocation) || !BoneLocation(Joint->Along, AlongLocation) || !BoneLocation(ParentBone, ParentLocation) ||
+	if (!BoneLocation(Joint->Child, JointLocation) || (!Joint->Along.IsNone() && !BoneLocation(Joint->Along, AlongLocation)) || !BoneLocation(ParentBone, ParentLocation) ||
 		(bMirrored && !BoneLocation(ChildBone, MirroredLocation)))
 	{
 		return false;
 	}
 
-	const FVector TwistAxis = (AlongLocation - JointLocation).GetSafeNormal();
+	const FVector TwistAxis = Joint->Along.IsNone() ? Joint->AlongDirection : (AlongLocation - JointLocation).GetSafeNormal();
 	if (TwistAxis.IsNearlyZero())
 	{
 		OutError = FString::Printf(TEXT("Joint '%s': bone '%s' sits on the joint and gives no direction"), *Joint->Child.ToString(), *Joint->Along.ToString());
@@ -167,14 +167,26 @@ bool FPhysicsAssetGenerator::ComputeJointFrames(const FPhysicsAssetSpec& Spec, c
 	const auto Middle = [](const FPhysicsAxisSpec& Axis) { return Axis.Motion == ACM_Limited ? FMath::DegreesToRadians(Axis.MidDeg()) : 0.0; };
 	const FQuat ToMiddle =
 		FQuat(FVector::ZAxisVector, Middle(OutFrames.Swing1)) * FQuat(FVector::YAxisVector, Middle(OutFrames.Swing2)) * FQuat(FVector::XAxisVector, Middle(OutFrames.Twist));
-	OutFrames.Child = FTransform(ChildRotation, JointLocation);
+	OutFrames.Plain = FTransform(ChildRotation, JointLocation);
+	OutFrames.Child = OutFrames.Plain;
 	OutFrames.Parent = FTransform(ChildRotation * ToMiddle, JointLocation);
+	OutFrames.bLimitsInChild = Joint->bLimitsInChild;
+	if (Joint->bLimitsInChild)
+	{
+		// The turn of the child from the parent, T then S in the child's own axes, is limited as its inverse, S^-1 T^-1,
+		// a swing in the child's frame and a twist. The range is centred by the child's frame turned back by the middle
+		// of the swings and the parent's turned on by the middle of the twist.
+		const FQuat SwingMiddle = FQuat(FVector::ZAxisVector, Middle(OutFrames.Swing1)) * FQuat(FVector::YAxisVector, Middle(OutFrames.Swing2));
+		OutFrames.Child = FTransform(ChildRotation * SwingMiddle.Inverse(), JointLocation);
+		OutFrames.Parent = FTransform(ChildRotation * FQuat(FVector::XAxisVector, Middle(OutFrames.Twist)), JointLocation);
+	}
 
 	if (bMirrored)
 	{
 		// Reflection in the plane x = 0. A rotation axis is reflected and reversed, which for the three
 		// axes of a frame together is half a turn about x; the ranges then carry over unchanged.
 		const FQuat HalfTurn(FVector::XAxisVector, UE_DOUBLE_PI);
+		OutFrames.Plain = FTransform(HalfTurn * OutFrames.Plain.GetRotation(), MirroredLocation);
 		OutFrames.Child = FTransform(HalfTurn * OutFrames.Child.GetRotation(), MirroredLocation);
 		OutFrames.Parent = FTransform(HalfTurn * OutFrames.Parent.GetRotation(), MirroredLocation);
 	}
@@ -279,6 +291,21 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		// floor is z = 0, so that a sole can be laid flat on it whatever the bone's own orientation is.
 		for (const FPhysicsShapeSpec& Shape : BodySpec.Shapes)
 		{
+			if (Shape.Kind == EPhysicsShapeKind::Sphere)
+			{
+				FKSphereElem Sphere(static_cast<float>(Shape.RadiusCm));
+				Sphere.SetTransform(FTransform(Shape.CenterCm).GetRelativeTransform(BodyBone));
+				Body->AggGeom.SphereElems.Add(Sphere);
+				continue;
+			}
+			if (Shape.Kind == EPhysicsShapeKind::Capsule)
+			{
+				const FVector Way = Shape.ToCm - Shape.FromCm;
+				FKSphylElem Capsule(static_cast<float>(Shape.RadiusCm), static_cast<float>(Way.Size()));
+				Capsule.SetTransform(FTransform(FQuat::FindBetweenVectors(FVector::UpVector, Way), Shape.CenterCm).GetRelativeTransform(BodyBone));
+				Body->AggGeom.SphylElems.Add(Capsule);
+				continue;
+			}
 			const FTransform ShapeInMesh(FRotator(0.0, Shape.YawDeg, 0.0), Shape.CenterCm);
 			FKBoxElem Box(static_cast<float>(Shape.SizeCm.X), static_cast<float>(Shape.SizeCm.Y), static_cast<float>(Shape.SizeCm.Z));
 			Box.SetTransform(ShapeInMesh.GetRelativeTransform(BodyBone));
@@ -288,6 +315,22 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		{
 			OutError = FString::Printf(TEXT("Body '%s' ended up with no collision shapes"), *BodySpec.Bone.ToString());
 			return nullptr;
+		}
+		// What the body collides with, in the space its shapes are written in: the way to see a template's shapes.
+		{
+			FString Shapes;
+			const auto Add = [&Shapes, &BodyBone](const TCHAR* Kind, const FTransform& InBody, const FString& Size)
+			{
+				const FTransform InMesh = InBody * BodyBone;
+				const FVector Center = InMesh.GetLocation();
+				const FVector Up = InMesh.GetRotation().GetUpVector();
+				Shapes += FString::Printf(TEXT(" %s %s at (%.2f, %.2f, %.2f) up (%.2f, %.2f, %.2f);"), Kind, *Size, Center.X, Center.Y, Center.Z, Up.X, Up.Y, Up.Z);
+			};
+			for (const FKSphereElem& Elem : Body->AggGeom.SphereElems) { Add(TEXT("sphere"), Elem.GetTransform(), FString::Printf(TEXT("r %.2f"), Elem.Radius)); }
+			for (const FKSphylElem& Elem : Body->AggGeom.SphylElems) { Add(TEXT("capsule"), Elem.GetTransform(), FString::Printf(TEXT("r %.2f length %.2f"), Elem.Radius, Elem.Length)); }
+			for (const FKBoxElem& Elem : Body->AggGeom.BoxElems) { Add(TEXT("box"), Elem.GetTransform(), FString::Printf(TEXT("%.2f x %.2f x %.2f"), Elem.X, Elem.Y, Elem.Z)); }
+			UE_LOG(LogTemp, Display, TEXT("Physics asset '%s': body '%s' at (%.2f, %.2f, %.2f), %d other shapes:%s"), *Spec.Name, *BodySpec.Bone.ToString(),
+				BodyBone.GetLocation().X, BodyBone.GetLocation().Y, BodyBone.GetLocation().Z, Body->AggGeom.TaperedCapsuleElems.Num() + Body->AggGeom.ConvexElems.Num(), *Shapes);
 		}
 
 		Body->DefaultInstance.SetMassOverride(static_cast<float>(BodySpec.MassFraction * Spec.TotalMassKg), true);
@@ -340,7 +383,7 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 				OutError = FString::Printf(TEXT("Joint '%s': cannot resolve its bones"), *BodySpec.Bone.ToString());
 				return nullptr;
 			}
-			Instance.SetRefFrame(EConstraintFrame::Frame1, Frames.Child.GetRelativeTransform(ChildBone));
+			Instance.SetRefFrame(EConstraintFrame::Frame1, Frames.Plain.GetRelativeTransform(ChildBone));
 			Instance.SetRefFrame(EConstraintFrame::Frame2, Frames.Parent.GetRelativeTransform(NewParentBone));
 		}
 
@@ -352,8 +395,8 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 		Instance.ProfileInstance.LinearDrive = FLinearDriveConstraint();
 
 		Instance.SetLinearLimits(LCM_Locked, LCM_Locked, LCM_Locked, 0.0f);
-		Instance.SetAngularSwing1Limit(Frames.Swing1.Motion, static_cast<float>(Frames.Swing1.HalfRangeDeg()));
-		Instance.SetAngularSwing2Limit(Frames.Swing2.Motion, static_cast<float>(Frames.Swing2.HalfRangeDeg()));
+		Instance.SetAngularSwing1Limit(Frames.bLimitsInChild ? ACM_Free : Frames.Swing1.Motion, static_cast<float>(Frames.Swing1.HalfRangeDeg()));
+		Instance.SetAngularSwing2Limit(Frames.bLimitsInChild ? ACM_Free : Frames.Swing2.Motion, static_cast<float>(Frames.Swing2.HalfRangeDeg()));
 		Instance.SetAngularTwistLimit(Frames.Twist.Motion, static_cast<float>(Frames.Twist.HalfRangeDeg()));
 
 		// What the joint does at the end of its range is the spec's, not the template's. (The stock MetaHuman
@@ -369,6 +412,34 @@ UPhysicsAsset* FPhysicsAssetGenerator::Generate(const FPhysicsAssetSpec& Spec, F
 			}
 		}
 		Joint->SetDefaultProfile(Instance);
+
+		// The swings in the child's frame: a second joint between the two, with the bodies the other way round (the solver
+		// limits the swings in the second body's frame). It holds no place and no twist, and is not projected, which
+		// would move its first body, the parent.
+		if (Frames.bLimitsInChild)
+		{
+			const int32 SwingsIndex = FPhysicsAssetUtils::CreateNewConstraint(Asset, FPhysicsJointFrames::SwingsName(BodySpec.Bone), const_cast<UPhysicsConstraintTemplate*>(TemplateJoint));
+			UPhysicsConstraintTemplate* Swings = Asset->ConstraintSetup[SwingsIndex];
+			FConstraintInstance& SwingsInstance = Swings->DefaultInstance;
+			FTransform ChildBone, NewParentBone;
+			BoneTransform(BodySpec.Bone, ChildBone);
+			BoneTransform(ParentBone, NewParentBone);
+			SwingsInstance.ConstraintBone1 = ParentBone;
+			SwingsInstance.ConstraintBone2 = BodySpec.Bone;
+			SwingsInstance.SetRefFrame(EConstraintFrame::Frame1, Frames.Parent.GetRelativeTransform(NewParentBone));
+			SwingsInstance.SetRefFrame(EConstraintFrame::Frame2, Frames.Child.GetRelativeTransform(ChildBone));
+			SwingsInstance.ProfileInstance.AngularDrive = FAngularDriveConstraint();
+			SwingsInstance.ProfileInstance.LinearDrive = FLinearDriveConstraint();
+			SwingsInstance.ProfileInstance.bEnableProjection = false;
+			SwingsInstance.SetLinearLimits(LCM_Free, LCM_Free, LCM_Free, 0.0f);
+			SwingsInstance.SetAngularSwing1Limit(Frames.Swing1.Motion, static_cast<float>(Frames.Swing1.HalfRangeDeg()));
+			SwingsInstance.SetAngularSwing2Limit(Frames.Swing2.Motion, static_cast<float>(Frames.Swing2.HalfRangeDeg()));
+			SwingsInstance.SetAngularTwistLimit(ACM_Free, 0.0f);
+			SwingsInstance.ProfileInstance.ConeLimit.bSoftConstraint = Instance.ProfileInstance.ConeLimit.bSoftConstraint;
+			SwingsInstance.ProfileInstance.ConeLimit.Stiffness = Instance.ProfileInstance.ConeLimit.Stiffness;
+			SwingsInstance.ProfileInstance.ConeLimit.Damping = Instance.ProfileInstance.ConeLimit.Damping;
+			Swings->SetDefaultProfile(SwingsInstance);
+		}
 
 		JointedPairs.Add(FRigidBodyIndexPair(Asset->FindBodyIndex(BodySpec.Bone), Asset->FindBodyIndex(ParentBone)));
 	}

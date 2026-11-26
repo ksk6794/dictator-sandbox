@@ -955,6 +955,8 @@ private:
 	FVector FlatFootPoint(int32 Side) const;
 	/** Height of each foot's bone over the lowest point of its sole at Start, standing flat, cm. */
 	double FootStandHeightCm[2] = { 0.0, 0.0 };
+	/** The rig as the tuning files give it (Tuning.Rig may carry the head of an asset that has one of its own). */
+	FSandboxBodyRig TunedRig;
 	/** Lets a foot of the controller's go back to the pose, eased out. */
 	void ReleaseFoot(int32 Side, double BlendS);
 	/** Hands every placement its point and frame for this tick. */

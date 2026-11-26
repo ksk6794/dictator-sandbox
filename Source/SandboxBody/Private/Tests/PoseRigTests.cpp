@@ -132,6 +132,54 @@ bool FPoseRigClampRangeTest::RunTest(const FString& Parameters)
 }
 
 /**
+ * A joint whose swings are limited in the child's frame (the wrist): the child turned about its length and then bent about
+ * its own axes is judged by its own ranges. The same limits in the parent's frame judge a hand turned over by the wrong one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPoseRigLimitsInChildTest, "DictatorSandbox.Body.Pose.LimitsInTheChildsFrame",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FPoseRigLimitsInChildTest::RunTest(const FString& Parameters)
+{
+	FSandboxJointLimits Limits;
+	Limits.bValid = true;
+	Limits.bInChild = true;
+	Limits.ParentFrame = FQuat(FVector(0.3, -1.0, 0.4).GetSafeNormal(), 0.5);
+	Limits.ChildFrame = FQuat(FVector(1.0, 0.2, -0.7).GetSafeNormal(), 1.1);
+	Limits.Swing1Deg = 72.5;
+	Limits.Swing2Deg = 25.0;
+	Limits.TwistDeg = 70.0;
+	FSandboxJointLimits InParent = Limits;
+	InParent.bInChild = false;
+	const FQuat Parent = FQuat(FVector(-0.2, 0.5, 1.0).GetSafeNormal(), 0.9);
+	const double Deg = UE_DOUBLE_PI / 180.0;
+	// The child's frame: the parent's, turned about the length, then bent about the child's own axes.
+	const auto ChildAt = [&](double TwistDeg, const FQuat& OwnSwing)
+	{
+		return (Parent * Limits.ParentFrame * FQuat(FVector::XAxisVector, TwistDeg * Deg) * OwnSwing * Limits.ChildFrame.Inverse()).GetNormalized();
+	};
+
+	// A hand turned over by 60 and bent back by 70 about its own axis.
+	const FQuat BentBack = ChildAt(60.0, FQuat(FVector::ZAxisVector, -70.0 * Deg));
+	FVector Angles;
+	TestEqual(TEXT("within the child's own ranges there is no excess"), FSandboxPoseRig::LimitExcessDeg(Parent, BentBack, Limits, &Angles), 0.0, 1.0e-6);
+	TestEqual(TEXT("its twist"), FMath::Abs(Angles.X), 60.0, 1.0e-6);
+	TestEqual(TEXT("its first swing"), FMath::Abs(Angles.Y), 70.0, 1.0e-6);
+	TestEqual(TEXT("and no second swing"), Angles.Z, 0.0, 1.0e-6);
+	TestTrue(TEXT("the same turn judged in the parent's frame is far outside the sideways range"), FSandboxPoseRig::LimitExcessDeg(Parent, BentBack, InParent) > 30.0);
+	const FQuat Same = FSandboxPoseRig::ClampToRange(Parent, BentBack, Limits);
+	TestTrue(TEXT("inside the range the rotation is given back exactly"), Same.X == BentBack.X && Same.Y == BentBack.Y && Same.Z == BentBack.Z && Same.W == BentBack.W);
+
+	// Too far in every one of them.
+	const FQuat Outside = ChildAt(95.0, FQuat(FVector::ZAxisVector, -100.0 * Deg) * FQuat(FVector::YAxisVector, 10.0 * Deg));
+	FVector Before, After;
+	TestTrue(TEXT("a hand bent back by 100 is outside"), FSandboxPoseRig::LimitExcessDeg(Parent, Outside, Limits, &Before) > 20.0);
+	TestEqual(TEXT("and ends inside"), FSandboxPoseRig::LimitExcessDeg(Parent, FSandboxPoseRig::ClampToRange(Parent, Outside, Limits), Limits, &After), 0.0, 1.0e-6);
+	TestEqual(TEXT("its bend at the end of the range"), FMath::Abs(After.Y), 72.5, 1.0e-6);
+	TestEqual(TEXT("its twist at the end of the range"), FMath::Abs(After.X), 70.0, 1.0e-6);
+	TestEqual(TEXT("its sideways bend, inside its own range, as it was"), After.Z, Before.Z, 1.0e-6);
+	return true;
+}
+
+/**
  * A clip's bone carried over to the body: a bone the clip leaves in its reference pose leaves the body's in its own,
  * whatever the two reference poses are; a turn of the clip's bone turns the body's by the same, in the space of the
  * whole body; and a segment that the two skeletons hold differently ends up pointing where the clip's points.

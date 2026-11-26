@@ -2397,6 +2397,7 @@ void UScenarioRunnerSubsystem::Finish()
 
 	const TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("mesh"), Spec.MeshPath);
+	Body->SetStringField(TEXT("physics_asset"), Spec.PhysicsAssetPath);
 	Body->SetNumberField(TEXT("body_count"), Mesh ? Mesh->Bodies.Num() : 0);
 	Body->SetNumberField(TEXT("constraint_count"), Mesh ? Mesh->Constraints.Num() : 0);
 	Body->SetNumberField(TEXT("bone_count"), Mesh ? Mesh->GetComponentSpaceTransforms().Num() : 0);
@@ -2479,8 +2480,19 @@ void UScenarioRunnerSubsystem::Finish()
 			}
 			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
 			Entry->SetStringField(TEXT("name"), Constraint->JointName.ToString());
-			Entry->SetStringField(TEXT("child"), Constraint->GetChildBoneName().ToString());
-			Entry->SetStringField(TEXT("parent"), Constraint->GetParentBoneName().ToString());
+			FName ChildName = Constraint->GetChildBoneName();
+			FName ParentName = Constraint->GetParentBoneName();
+			if (const USkeletalMesh* MeshAsset = Mesh->GetSkeletalMeshAsset())
+			{
+				FName Deeper, Higher;
+				if (FSandboxPoseRig::JointBones(MeshAsset->GetRefSkeleton(), *Constraint, Deeper, Higher))
+				{
+					ChildName = Deeper;
+					ParentName = Higher;
+				}
+			}
+			Entry->SetStringField(TEXT("child"), ChildName.ToString());
+			Entry->SetStringField(TEXT("parent"), ParentName.ToString());
 			Entry->SetBoolField(TEXT("linear_locked"),
 				Constraint->GetLinearXMotion() == LCM_Locked && Constraint->GetLinearYMotion() == LCM_Locked && Constraint->GetLinearZMotion() == LCM_Locked);
 			Entry->SetStringField(TEXT("swing1"), MotionName(Constraint->GetAngularSwing1Motion()));

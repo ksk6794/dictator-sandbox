@@ -6,9 +6,50 @@
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "PhysicsEngine/PhysicsConstraintTemplate.h"
 
+namespace
+{
+	bool IsRigid(const FConstraintInstance& Joint)
+	{
+		return Joint.GetLinearXMotion() == LCM_Locked && Joint.GetLinearYMotion() == LCM_Locked && Joint.GetLinearZMotion() == LCM_Locked;
+	}
+}
+
+bool FSandboxPoseRig::JointBones(const FReferenceSkeleton& Skeleton, const FConstraintInstance& Joint, FName& OutChild, FName& OutParent)
+{
+	OutChild = Joint.ConstraintBone1;
+	OutParent = Joint.ConstraintBone2;
+	const int32 First = Skeleton.FindBoneIndex(OutChild);
+	const int32 Second = Skeleton.FindBoneIndex(OutParent);
+	if (First == INDEX_NONE || Second == INDEX_NONE)
+	{
+		return false;
+	}
+	if (Skeleton.BoneIsChildOf(First, Second))
+	{
+		return true;
+	}
+	Swap(OutChild, OutParent);
+	return Skeleton.BoneIsChildOf(Second, First);
+}
+
+const FSandboxPoseRig::FContinuation* FSandboxPoseRig::FindContinuation(int32 Of) const
+{
+	return Continuations.FindByPredicate([Of](const FContinuation& Each) { return Each.Of == Of; });
+}
+
+FSandboxPoseAngles FSandboxPoseRig::Shared(const FSandboxPoseAngles& Angles, const FSandboxPoseAngles& Share, bool bRest)
+{
+	FSandboxPoseAngles Result;
+	Result.Swing1Deg = Angles.Swing1Deg * (bRest ? 1.0 - Share.Swing1Deg : Share.Swing1Deg);
+	Result.Swing2Deg = Angles.Swing2Deg * (bRest ? 1.0 - Share.Swing2Deg : Share.Swing2Deg);
+	Result.TwistDeg = Angles.TwistDeg * (bRest ? 1.0 - Share.TwistDeg : Share.TwistDeg);
+	return Result;
+}
+
 bool FSandboxPoseRig::Init(const USkeletalMeshComponent* Mesh, FString& OutError)
 {
 	Joints.Reset();
+	Continuations.Reset();
 	const USkeletalMesh* SkeletalMesh = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
 	const UPhysicsAsset* Asset = Mesh ? Mesh->GetPhysicsAsset() : nullptr;
 	if (!SkeletalMesh || !Asset)
@@ -25,7 +66,7 @@ bool FSandboxPoseRig::Init(const USkeletalMeshComponent* Mesh, FString& OutError
 		const FName Bone(SandboxPoseJoints[Index]);
 		for (const UPhysicsConstraintTemplate* Template : Asset->ConstraintSetup)
 		{
-			if (Template && Template->DefaultInstance.ConstraintBone1 == Bone)
+			if (Template && Template->DefaultInstance.ConstraintBone1 == Bone && IsRigid(Template->DefaultInstance))
 			{
 				const int32 MeshBoneIndex = Skeleton.FindBoneIndex(Bone);
 				if (MeshBoneIndex == INDEX_NONE)
@@ -40,6 +81,44 @@ bool FSandboxPoseRig::Init(const USkeletalMeshComponent* Mesh, FString& OutError
 				break;
 			}
 		}
+	}
+
+	// A joint of the trunk that no pose names, on a body that a pose does name: it goes on from that one.
+	for (const UPhysicsConstraintTemplate* Template : Asset->ConstraintSetup)
+	{
+		FName Child, Parent;
+		if (!Template || !IsRigid(Template->DefaultInstance) || !JointBones(Skeleton, Template->DefaultInstance, Child, Parent) ||
+			FSandboxBodyTuning::GroupOfBone(Child) != ESandboxMuscleGroup::Neck)
+		{
+			continue;
+		}
+		const auto IndexOf = [](FName Bone)
+		{
+			for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+			{
+				if (Bone == FName(SandboxPoseJoints[Index]))
+				{
+					return Index;
+				}
+			}
+			return static_cast<int32>(INDEX_NONE);
+		};
+		const int32 Of = IndexOf(Parent);
+		FSandboxJointLimits Own, Before;
+		if (IndexOf(Child) != INDEX_NONE || Of == INDEX_NONE || !ReadJointLimits(Mesh, Child, Own) || !ReadJointLimits(Mesh, Parent, Before))
+		{
+			continue;
+		}
+		const auto Share = [](double Mine, double Theirs) { return Mine + Theirs > 0.0 ? Mine / (Mine + Theirs) : 0.0; };
+		FContinuation& Continuation = Continuations.AddDefaulted_GetRef();
+		Continuation.Bone = Child;
+		Continuation.Of = Of;
+		Continuation.Joint.MeshBoneIndex = Skeleton.FindBoneIndex(Child);
+		Continuation.Joint.Reference = ReferencePose[Continuation.Joint.MeshBoneIndex].GetRotation();
+		Continuation.Joint.Frame = Template->DefaultInstance.GetRefFrame(EConstraintFrame::Frame1).GetRotation();
+		Continuation.Share.Swing1Deg = Share(Own.Swing1Deg, Before.Swing1Deg);
+		Continuation.Share.Swing2Deg = Share(Own.Swing2Deg, Before.Swing2Deg);
+		Continuation.Share.TwistDeg = Share(Own.TwistDeg, Before.TwistDeg);
 	}
 	return true;
 }
@@ -65,7 +144,7 @@ bool FSandboxPoseRig::ReadJointLimits(const USkeletalMeshComponent* Mesh, FName 
 	}
 	for (const UPhysicsConstraintTemplate* Template : Asset->ConstraintSetup)
 	{
-		if (!Template || Template->DefaultInstance.ConstraintBone1 != ChildBone)
+		if (!Template || Template->DefaultInstance.ConstraintBone1 != ChildBone || !IsRigid(Template->DefaultInstance))
 		{
 			continue;
 		}
@@ -81,6 +160,23 @@ bool FSandboxPoseRig::ReadJointLimits(const USkeletalMeshComponent* Mesh, FName 
 		OutLimits.bSwing1Free = Cone.Swing1Motion == ACM_Free;
 		OutLimits.bSwing2Free = Cone.Swing2Motion == ACM_Free;
 		OutLimits.bTwistFree = Twist.TwistMotion == ACM_Free;
+		// The swings in a joint of their own, limited in the child's frame: that one's swings, this one's twist.
+		for (const UPhysicsConstraintTemplate* Other : Asset->ConstraintSetup)
+		{
+			if (!Other || Other->DefaultInstance.ConstraintBone1 != Joint.ConstraintBone2 || Other->DefaultInstance.ConstraintBone2 != ChildBone)
+			{
+				continue;
+			}
+			const FConeConstraint& Swings = Other->DefaultInstance.ProfileInstance.ConeLimit;
+			OutLimits.bInChild = true;
+			OutLimits.ChildFrame = Other->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2).GetRotation();
+			OutLimits.ParentFrame = Other->DefaultInstance.GetRefFrame(EConstraintFrame::Frame1).GetRotation();
+			OutLimits.Swing1Deg = Swings.Swing1Motion == ACM_Locked ? 0.0 : Swings.Swing1LimitDegrees;
+			OutLimits.Swing2Deg = Swings.Swing2Motion == ACM_Locked ? 0.0 : Swings.Swing2LimitDegrees;
+			OutLimits.bSwing1Free = Swings.Swing1Motion == ACM_Free;
+			OutLimits.bSwing2Free = Swings.Swing2Motion == ACM_Free;
+			break;
+		}
 		return true;
 	}
 	return false;
@@ -101,7 +197,8 @@ double FSandboxPoseRig::LimitExcessDeg(const FQuat& ParentBone, const FQuat& Chi
 	// itself: the twist, and the swing's two angles 4 atan2(z, 1 + w) and 4 atan2(y, 1 + w)
 	// (FPBDJointCachedSolver::InitPyramidSwingConstraint). A box, not an ellipse.
 	const FQuat Parent = ParentBone * Limits.ParentFrame;
-	const FQuat Relative = (Parent.Inverse() * (ChildBone * Limits.ChildFrame)).GetNormalized();
+	const FQuat OfChild = ChildBone * Limits.ChildFrame;
+	const FQuat Relative = (Limits.bInChild ? OfChild.Inverse() * Parent : Parent.Inverse() * OfChild).GetNormalized();
 	FQuat Swing, Twist;
 	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
 	if (Swing.W < 0.0)
@@ -133,7 +230,8 @@ FQuat FSandboxPoseRig::ClampToRange(const FQuat& ParentBone, const FQuat& ChildB
 	}
 	// The same three angles as LimitExcessDeg measures.
 	const FQuat Parent = ParentBone * Limits.ParentFrame;
-	const FQuat Relative = (Parent.Inverse() * (ChildBone * Limits.ChildFrame)).GetNormalized();
+	const FQuat OfChild = ChildBone * Limits.ChildFrame;
+	const FQuat Relative = (Limits.bInChild ? OfChild.Inverse() * Parent : Parent.Inverse() * OfChild).GetNormalized();
 	FQuat Swing, Twist;
 	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
 	if (Swing.W < 0.0)
@@ -167,7 +265,7 @@ FQuat FSandboxPoseRig::ClampToRange(const FQuat& ParentBone, const FQuat& ChildB
 	const double K = A * A + B * B;
 	const FQuat NewSwing(0.0, 2.0 * B / (1.0 + K), 2.0 * A / (1.0 + K), (1.0 - K) / (1.0 + K));
 	const FQuat NewRelative = NewSwing * FQuat(FVector::XAxisVector, TwistRad);
-	return ((Parent * NewRelative) * Limits.ChildFrame.Inverse()).GetNormalized();
+	return ((Parent * (Limits.bInChild ? NewRelative.Inverse() : NewRelative)) * Limits.ChildFrame.Inverse()).GetNormalized();
 }
 
 FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits)
@@ -178,7 +276,8 @@ FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& Child
 	}
 	// The child's frame relative to the parent's: twist about X, then a swing whose axis lies in Y and Z.
 	const FQuat Parent = ParentBone * Limits.ParentFrame;
-	const FQuat Relative = (Parent.Inverse() * (ChildBone * Limits.ChildFrame)).GetNormalized();
+	const FQuat OfChild = ChildBone * Limits.ChildFrame;
+	const FQuat Relative = (Limits.bInChild ? OfChild.Inverse() * Parent : Parent.Inverse() * OfChild).GetNormalized();
 	FQuat Swing, Twist;
 	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
 
@@ -234,7 +333,7 @@ FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& Child
 	const double Angle = SwingVector.Size();
 	const FQuat NewSwing = Angle > UE_SMALL_NUMBER ? FQuat(SwingVector / Angle, Angle) : FQuat::Identity;
 	const FQuat NewRelative = NewSwing * FQuat(FVector::XAxisVector, TwistRad);
-	return ((Parent * NewRelative) * Limits.ChildFrame.Inverse()).GetNormalized();
+	return ((Parent * (Limits.bInChild ? NewRelative.Inverse() : NewRelative)) * Limits.ChildFrame.Inverse()).GetNormalized();
 }
 
 void FSandboxPoseRig::BuildTurns(const FSandboxPose& Pose, double Weight, TArray<FSandboxPoseTurn>& OutTurns) const
@@ -256,6 +355,12 @@ void FSandboxPoseRig::BuildTurns(const FSandboxPose& Pose, double Weight, TArray
 		Scaled.Swing1Deg = Angles.Swing1Deg * Weight;
 		Scaled.Swing2Deg = Angles.Swing2Deg * Weight;
 		Scaled.TwistDeg = Angles.TwistDeg * Weight;
+		if (const FContinuation* Continuation = FindContinuation(Index))
+		{
+			OutTurns.Add(FSandboxPoseTurn{ Joint.MeshBoneIndex, JointTurn(Joint.Frame, Shared(Scaled, Continuation->Share, true)) });
+			OutTurns.Add(FSandboxPoseTurn{ Continuation->Joint.MeshBoneIndex, JointTurn(Continuation->Joint.Frame, Shared(Scaled, Continuation->Share, false)) });
+			continue;
+		}
 		OutTurns.Add(FSandboxPoseTurn{ Joint.MeshBoneIndex, JointTurn(Joint.Frame, Scaled) });
 	}
 }
@@ -267,6 +372,13 @@ int32 FSandboxPoseRig::MeshBoneIndexOf(FName JointBone) const
 		if (JointBone == FName(SandboxPoseJoints[Index]))
 		{
 			return Joints[Index].MeshBoneIndex;
+		}
+	}
+	for (const FContinuation& Continuation : Continuations)
+	{
+		if (JointBone == Continuation.Bone)
+		{
+			return Continuation.Joint.MeshBoneIndex;
 		}
 	}
 	return INDEX_NONE;
@@ -293,7 +405,16 @@ bool FSandboxPoseRig::Build(const FSandboxPose& Pose, TArray<FSandboxPoseBone>& 
 		Bone.Reference = Joint.Reference;
 		// Where the pose leaves a joint alone, the bone keeps the reference rotation exactly, not a rotation
 		// that only rounds to it: a pose of zeros must change nothing in a run.
-		Bone.Rotation = Angles.IsZero() ? Joint.Reference : (Joint.Reference * JointTurn(Joint.Frame, Angles)).GetNormalized();
+		const FContinuation* Continuation = FindContinuation(Index);
+		const FSandboxPoseAngles Own = Continuation ? Shared(Angles, Continuation->Share, true) : Angles;
+		Bone.Rotation = Angles.IsZero() ? Joint.Reference : (Joint.Reference * JointTurn(Joint.Frame, Own)).GetNormalized();
+		if (Continuation)
+		{
+			FSandboxPoseBone& Next = OutBones.AddDefaulted_GetRef();
+			Next.MeshBoneIndex = Continuation->Joint.MeshBoneIndex;
+			Next.Reference = Continuation->Joint.Reference;
+			Next.Rotation = Angles.IsZero() ? Next.Reference : (Next.Reference * JointTurn(Continuation->Joint.Frame, Shared(Angles, Continuation->Share, false))).GetNormalized();
+		}
 	}
 	return true;
 }

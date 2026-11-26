@@ -216,6 +216,22 @@ function New-ScenarioQueue {
         }
         Get-ChildItem $out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
         if ($job.File) { $scenario = [System.IO.Path]::GetFullPath($job.File) } else { $scenario = Join-Path $RepoRoot "Scenarios\$($job.Name).json" }
+        # Another body for every run of a tool, without touching a scenario: SANDBOX_PHYSICS_ASSET=PA_SandboxNPCHead puts
+        # that asset in the place of PA_SandboxNPC in a copy of each scenario, and where its head is a body of its own
+        # (SANDBOX_HEAD_BODY=head) what a scenario does to neck_01 it does to that.
+        if ($env:SANDBOX_PHYSICS_ASSET) {
+            if ($number -eq 0) { Write-Host "QUEUE NOTE: SANDBOX_PHYSICS_ASSET is set: every scenario of this queue runs on $($env:SANDBOX_PHYSICS_ASSET)" }
+            $copy = Join-Path $queue ('scenario_{0:D5}' -f $number)
+            New-Item -ItemType Directory -Force $copy | Out-Null
+            $copyFile = Join-Path $copy ([System.IO.Path]::GetFileName($scenario))
+            $scenarioText = [System.IO.File]::ReadAllText($scenario)
+            $scenarioText = $scenarioText -creplace 'PA_SandboxNPC\.PA_SandboxNPC"', "$($env:SANDBOX_PHYSICS_ASSET).$($env:SANDBOX_PHYSICS_ASSET)`""
+            if ($env:SANDBOX_HEAD_BODY) {
+                $scenarioText = $scenarioText -creplace '("(?:body|at_bone|bone)"\s*:\s*)"neck_01"', "`$1`"$($env:SANDBOX_HEAD_BODY)`""
+            }
+            [System.IO.File]::WriteAllText($copyFile, $scenarioText, (New-Object System.Text.UTF8Encoding($false)))
+            $scenario = $copyFile
+        }
         $entry = [ordered]@{ scenario = $scenario; out = $out }
         if ($job.Tune) { $entry.tune = [string]$job.Tune }
         if ($job.TuningDir) { $entry.tuning_dir = [System.IO.Path]::GetFullPath($job.TuningDir) }
@@ -243,9 +259,12 @@ function Invoke-ScenarioQueue {
     param([array]$Jobs, [int]$Parallel = 8)
     $queueRoot = Join-Path $RepoRoot 'Saved\Queue'
     New-Item -ItemType Directory -Force $queueRoot | Out-Null
-    # Queues of earlier calls that are an hour old are left-overs.
-    Get-ChildItem $queueRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-1) } |
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    # Queues of earlier calls that are an hour old are left-overs. Several tools may clean at the same time (the seeds of
+    # the stand do): a folder another one has just taken away ends the removal, and must not end the run.
+    try {
+        Get-ChildItem $queueRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-1) } |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    } catch { }
     $groups = [ordered]@{}
     foreach ($job in $Jobs) {
         $key = [string]$job.CVars

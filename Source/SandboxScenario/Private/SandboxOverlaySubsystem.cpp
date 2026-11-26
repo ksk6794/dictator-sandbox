@@ -22,6 +22,7 @@
 #include "SandboxEffectorComponent.h"
 #include "SandboxEffectorRig.h"
 #include "SandboxPawn.h"
+#include "SandboxPoseRig.h"
 #include "SandboxRagdollActor.h"
 #include "ScenarioStage.h"
 
@@ -625,7 +626,9 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 			TArray<FVector, TInlineAllocator<4>> Tips;
 			for (const FConstraintInstance* Constraint : Mesh->Constraints)
 			{
-				const FBodyInstance* Next = Constraint && Constraint->GetParentBoneName() == Muscle.ChildBone ? Mesh->GetBodyInstance(Constraint->GetChildBoneName()) : nullptr;
+				FName NextBone, OnBone;
+				const bool bNext = Constraint && FSandboxPoseRig::JointBones(Mesh->GetSkeletalMeshAsset()->GetRefSkeleton(), *Constraint, NextBone, OnBone) && OnBone == Muscle.ChildBone;
+				const FBodyInstance* Next = bNext ? Mesh->GetBodyInstance(NextBone) : nullptr;
 				if (Next && Next->IsValidBodyInstance())
 				{
 					Tips.Add(Next->GetUnrealWorldTransform().GetLocation());

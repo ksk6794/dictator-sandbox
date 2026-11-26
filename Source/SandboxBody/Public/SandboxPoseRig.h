@@ -4,6 +4,8 @@
 #include "SandboxBodyTuning.h"
 
 class USkeletalMeshComponent;
+struct FConstraintInstance;
+struct FReferenceSkeleton;
 
 /** One bone of a built pose: its rotation relative to its parent bone, as an animation pose holds it. */
 struct FSandboxPoseBone
@@ -40,6 +42,11 @@ struct FSandboxJointLimits
 	bool bSwing1Free = false;
 	bool bSwing2Free = false;
 	bool bTwistFree = false;
+	/**
+	 * The swings are limited in the child's frame, after the twist, and the middle of their ranges is in it ("limits_in":
+	 * "child" in the spec: a joint of its own for the swings, with the two bodies the other way round).
+	 */
+	bool bInChild = false;
 };
 
 /**
@@ -47,10 +54,20 @@ struct FSandboxJointLimits
  * joints' own, read from the physics asset: the generator puts the child-side frame of every joint on the
  * anatomical axes of its spec in the reference pose (X twist, Z swing1, Y swing2; mirrored on the right),
  * so a pose and the joint limits count angles the same way.
+ *
+ * A body may have one joint more than a pose names, on a body that hangs on a named one: the head's on the neck's. It
+ * has no angles of its own: the angles a pose gives the neck are shared out between the two joints, each axis in
+ * proportion to their ranges.
  */
 class SANDBOXBODY_API FSandboxPoseRig
 {
 public:
+	/**
+	 * The two bones of a joint, whichever way round the asset has them: the child is the one further from the root.
+	 * False if neither bone is above the other.
+	 */
+	static bool JointBones(const FReferenceSkeleton& Skeleton, const FConstraintInstance& Joint, FName& OutChild, FName& OutParent);
+
 	/** Reads the joints of the mesh's physics asset. False with a reason if the mesh has none. */
 	bool Init(const USkeletalMeshComponent* Mesh, FString& OutError);
 
@@ -113,4 +130,18 @@ private:
 	};
 	/** In the order of SandboxPoseJoints. */
 	TArray<FJoint> Joints;
+	/** The joint that goes on from one of those with no angles of its own: which it takes a share of, and the share of each axis. */
+	struct FContinuation
+	{
+		FName Bone;
+		int32 Of = INDEX_NONE;
+		FJoint Joint;
+		FSandboxPoseAngles Share;
+	};
+	TArray<FContinuation> Continuations;
+
+	/** The continuation of a joint, null if it has none. */
+	const FContinuation* FindContinuation(int32 Of) const;
+	/** Angles times a share for each axis; with bRest times what the share leaves. */
+	static FSandboxPoseAngles Shared(const FSandboxPoseAngles& Angles, const FSandboxPoseAngles& Share, bool bRest);
 };

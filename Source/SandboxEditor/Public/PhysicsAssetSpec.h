@@ -18,17 +18,30 @@ struct FPhysicsAxisSpec
 	double MidDeg() const { return (MaxDeg + MinDeg) * 0.5; }
 };
 
+enum class EPhysicsShapeKind : uint8
+{
+	Box,
+	Sphere,
+	Capsule
+};
+
 /**
- * A collision box written out in the spec, in the mesh's reference-pose space (floor at z = 0, z up).
- * Used where the template's shapes do not do the job: a foot needs a flat sole on the floor.
+ * A collision shape written out in the spec, in the mesh's reference-pose space (floor at z = 0, z up).
+ * Used where the template's shapes do not do the job: a foot needs a flat sole on the floor, a head needs a face.
  */
 struct FPhysicsShapeSpec
 {
+	EPhysicsShapeKind Kind = EPhysicsShapeKind::Box;
 	FVector CenterCm = FVector::ZeroVector;
-	/** Full lengths along the box's own x, y and z. */
+	/** Box: full lengths along the box's own x, y and z. */
 	FVector SizeCm = FVector::ZeroVector;
-	/** Rotation of the box about the vertical axis, degrees. */
+	/** Box: rotation about the vertical axis, degrees. */
 	double YawDeg = 0.0;
+	/** Sphere and capsule. */
+	double RadiusCm = 0.0;
+	/** Capsule: the ends of the line its round side is drawn around; the centre is the middle of the two. */
+	FVector FromCm = FVector::ZeroVector;
+	FVector ToCm = FVector::ZeroVector;
 };
 
 struct FPhysicsBodySpec
@@ -77,8 +90,10 @@ struct FPhysicsJointSpec
 	FName Child;
 	/** Child bone of the mirrored joint on the other side of the body; none for joints on the midline. */
 	FName Mirror;
-	/** The twist axis points from the child bone toward this bone. */
+	/** The twist axis points from the child bone toward this bone. None if a direction is given instead. */
 	FName Along;
+	/** The twist axis as a direction in the mesh's reference-pose space, for a limb with no bone beyond it (the head). */
+	FVector AlongDirection = FVector::ZeroVector;
 
 	EPhysicsSwingAxis Swing1AxisKind = EPhysicsSwingAxis::Vector;
 	FVector Swing1Axis = FVector::ZeroVector;
@@ -97,6 +112,15 @@ struct FPhysicsJointSpec
 	bool bSoftLimit = false;
 	double LimitStiffness = 0.0;
 	double LimitDamping = 0.0;
+
+	/**
+	 * "limits_in": "child". The two swings are limited about the child's own axes, after the twist, instead of about
+	 * the parent's, before it: a hand turned palm down bends back by its own range and not by the range of the
+	 * sideways bend. The engine's solver limits the swings in the frame of the joint's second body. So the asset gets two
+	 * joints for this one: the rigid one as any other, which limits the twist and leaves the swings free, and beside it
+	 * one that holds no place, only the two swings, with the bodies the other way round ("<child>_swings").
+	 */
+	bool bLimitsInChild = false;
 };
 
 /**

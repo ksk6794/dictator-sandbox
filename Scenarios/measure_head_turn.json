@@ -1,0 +1,48 @@
+{
+  "name": "measure_head_turn",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.idle.weight=0,poses.idle.sway_weight=0,assist.pelvis.horizontal_n_per_m=0,assist.pelvis.vertical_n_per_m=0,assist.pelvis.angular_nm_per_rad=0,assist.chest.horizontal_n_per_m=0,assist.chest.vertical_n_per_m=0,assist.chest.angular_nm_per_rad=0,assist.head.horizontal_n_per_m=0,assist.head.vertical_n_per_m=0,assist.head.angular_nm_per_rad=0,assist.feet.horizontal_n_per_m=0,assist.feet.vertical_n_per_m=0,assist.feet.angular_nm_per_rad=0,thresholds.flinch_impulse_ns=100"
+    },
+    {
+      "t": 0.1,
+      "type": "pin",
+      "body": "spine_04",
+      "lock_rotation": true
+    },
+    {
+      "t": 3.0,
+      "type": "console",
+      "command": "Sandbox.Tune poses.stance.neck_01.twist_deg=30"
+    }
+  ],
+  "expect": {
+    "tuning_changes": 2,
+    "measures": {
+      "metrics.head_turn_max_deg": {
+        "min": 29.0,
+        "max": 31.0
+      },
+      "metrics.head_turn_max_t": {
+        "min": 3.2,
+        "max": 6.0
+      }
+    }
+  }
+}

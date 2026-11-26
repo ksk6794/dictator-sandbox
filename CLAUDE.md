@@ -957,6 +957,15 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **The largest change of a command in a frame is not its largest jump.** A swinging leg's is 65 N*m, and 4 of them are a
   jump: read `command_jump_max_nm`. And a frame can have several causes: of 365 N*m 333, 333 and 140 were left with each of
   three put right alone, 26 with all.
+- **What held the head back from turning was the world.** "A slap does not turn the head because the neck is stiff and the head
+  round" was written on 25 November; over necks of 40 down to 1 N*m/rad the turn went from 6 to 15 degrees only. The assist's hold
+  on the head (10 N*m/rad, 0.2 s: a damper of 2 N*m*s/rad on 0.02 kg*m2) took most of it. When a figure hardly moves with the
+  setting that should move it, list every force on the body, the world's among them.
+- **A test that strikes at a point of the world is written for the shape that was there.** The slap's path ended 4 cm inside the
+  old head; the new, narrower head met it at the end of its path, at 1.4 m/s. And the plate of the open hand reaches 18 cm past the
+  hand's own point: held with the fingers forward, it met the face with its rear edge. Change the body and these change with it.
+- **Every tool runs on another physics asset without a file changed:** `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCHead` (and
+  `SANDBOX_HEAD_BODY=head` for a body whose head is its own) puts that asset into a copy of each scenario in the queue.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,

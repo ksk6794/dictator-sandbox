@@ -50,7 +50,13 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 		FAnimationRuntime::FillUpComponentSpaceTransforms(Skeleton, Skeleton.GetRefBonePose(), ComponentSpace);
 
 		TestEqual(Label + TEXT(": body count"), Asset->SkeletalBodySetups.Num(), Spec.Bodies.Num());
-		TestEqual(Label + TEXT(": joint count"), Asset->ConstraintSetup.Num(), Spec.Bodies.Num() - 1);
+		// A joint whose swings are limited in the child is two joints in the asset.
+		int32 SwingJoints = 0;
+		for (const FPhysicsJointSpec& Joint : Spec.Joints)
+		{
+			SwingJoints += Joint.bLimitsInChild ? (Joint.Mirror.IsNone() ? 1 : 2) : 0;
+		}
+		TestEqual(Label + TEXT(": joint count"), Asset->ConstraintSetup.Num(), Spec.Bodies.Num() - 1 + SwingJoints);
 
 		// The body must be able to collide with itself. An asset with every pair switched off passes through
 		// itself (an arm through the chest), and nothing else here would notice: that is how the asset was
@@ -78,7 +84,7 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 		}
 		// Every pair collides except the jointed ones and those the spec switches off.
 		const int32 Bodies = Asset->SkeletalBodySetups.Num();
-		TestEqual(Label + TEXT(": pairs of bodies that can collide"), CollidingPairs, Bodies * (Bodies - 1) / 2 - Asset->ConstraintSetup.Num() - Spec.DisableCollision.Num());
+		TestEqual(Label + TEXT(": pairs of bodies that can collide"), CollidingPairs, Bodies * (Bodies - 1) / 2 - (Spec.Bodies.Num() - 1) - Spec.DisableCollision.Num());
 		for (const TPair<FName, FName>& Pair : Spec.DisableCollision)
 		{
 			TestFalse(FString::Printf(TEXT("%s: %s and %s do not collide, as the spec says"), *Label, *Pair.Key.ToString(), *Pair.Value.ToString()),
@@ -100,7 +106,7 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 			TestEqual(BodyLabel + TEXT(" inertia scale"), FVector(Body->DefaultInstance.InertiaTensorScale), FVector(BodySpec.InertiaScale), 1.0e-6f);
 			TestEqual(BodyLabel + TEXT(" continuous collision detection"), Body->DefaultInstance.bUseCCD != 0, BodySpec.bCcd);
 			TestTrue(BodyLabel + TEXT(" has collision shapes"), Body->AggGeom.GetElementCount() > 0);
-			TestTrue(BodyLabel + TEXT(" has every box written out in the spec"), Body->AggGeom.BoxElems.Num() >= BodySpec.Shapes.Num());
+			TestTrue(BodyLabel + TEXT(" has every shape written out in the spec"), Body->AggGeom.GetElementCount() >= BodySpec.Shapes.Num());
 			if (BodySpec.ShapesFrom.Num() == 0)
 			{
 				TestEqual(BodyLabel + TEXT(" has only the shapes written out in the spec"), Body->AggGeom.GetElementCount(), BodySpec.Shapes.Num());
@@ -126,17 +132,41 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 				continue;
 			}
 			const FConstraintInstance& Instance = Asset->ConstraintSetup[Index]->DefaultInstance;
+			const FName ParentName = FPhysicsAssetGenerator::FindParentBodyBone(Spec, Mesh, ChildName);
 			TestEqual(JointLabel + TEXT(" child"), Instance.ConstraintBone1, ChildName);
-			TestEqual(JointLabel + TEXT(" parent"), Instance.ConstraintBone2, FPhysicsAssetGenerator::FindParentBodyBone(Spec, Mesh, ChildName));
+			TestEqual(JointLabel + TEXT(" parent"), Instance.ConstraintBone2, ParentName);
+			// The solver limits the swings in the second body's frame: the parent's, or the child's where the spec says so,
+			// by a joint of its own that holds no place and is not projected (a projection moves the first body, the parent there).
+			if (Frames.bLimitsInChild)
+			{
+				const int32 SwingsIndex = Asset->FindConstraintIndex(FPhysicsJointFrames::SwingsName(ChildName));
+				if (TestTrue(JointLabel + TEXT(" has a joint for its swings"), SwingsIndex != INDEX_NONE))
+				{
+					const FConstraintInstance& Swings = Asset->ConstraintSetup[SwingsIndex]->DefaultInstance;
+					TestEqual(JointLabel + TEXT(" swings: first bone"), Swings.ConstraintBone1, ParentName);
+					TestEqual(JointLabel + TEXT(" swings: second bone"), Swings.ConstraintBone2, ChildName);
+					TestFalse(JointLabel + TEXT(" swings: not projected"), Swings.ProfileInstance.bEnableProjection != 0);
+					TestTrue(JointLabel + TEXT(" swings: hold no place and no twist"), Swings.GetLinearXMotion() == LCM_Free && Swings.GetLinearYMotion() == LCM_Free &&
+						Swings.GetLinearZMotion() == LCM_Free && Swings.GetAngularTwistMotion() == ACM_Free);
+					TestEqual(JointLabel + TEXT(" swings: swing1 limit"), static_cast<double>(Swings.GetAngularSwing1Limit()), Frames.Swing1.HalfRangeDeg(), 1.0e-3);
+					TestEqual(JointLabel + TEXT(" swings: swing2 limit"), static_cast<double>(Swings.GetAngularSwing2Limit()), Frames.Swing2.HalfRangeDeg(), 1.0e-3);
+					const int32 SwingsChild = Skeleton.FindBoneIndex(ChildName);
+					const int32 SwingsParent = Skeleton.FindBoneIndex(ParentName);
+					const FQuat InChild = (Swings.GetRefFrame(EConstraintFrame::Frame2) * ComponentSpace[SwingsChild]).GetRotation();
+					const FQuat InParent = (Swings.GetRefFrame(EConstraintFrame::Frame1) * ComponentSpace[SwingsParent]).GetRotation();
+					TestEqual(JointLabel + TEXT(" swings: child frame differs from the spec, degrees"), FMath::RadiansToDegrees(InChild.AngularDistance(Frames.Child.GetRotation())), 0.0, 0.05);
+					TestEqual(JointLabel + TEXT(" swings: parent frame differs from the spec, degrees"), FMath::RadiansToDegrees(InParent.AngularDistance(Frames.Parent.GetRotation())), 0.0, 0.05);
+				}
+			}
 			TestTrue(JointLabel + TEXT(" is rigid"),
 				Instance.GetLinearXMotion() == LCM_Locked && Instance.GetLinearYMotion() == LCM_Locked && Instance.GetLinearZMotion() == LCM_Locked);
 
 			// The engine's limit is half the range, around the parent-side frame.
-			TestEqual(JointLabel + TEXT(" swing1 motion"), static_cast<int32>(Instance.GetAngularSwing1Motion()), static_cast<int32>(Frames.Swing1.Motion));
-			TestEqual(JointLabel + TEXT(" swing2 motion"), static_cast<int32>(Instance.GetAngularSwing2Motion()), static_cast<int32>(Frames.Swing2.Motion));
+			TestEqual(JointLabel + TEXT(" swing1 motion"), static_cast<int32>(Instance.GetAngularSwing1Motion()), static_cast<int32>(Frames.bLimitsInChild ? ACM_Free : Frames.Swing1.Motion));
+			TestEqual(JointLabel + TEXT(" swing2 motion"), static_cast<int32>(Instance.GetAngularSwing2Motion()), static_cast<int32>(Frames.bLimitsInChild ? ACM_Free : Frames.Swing2.Motion));
 			TestEqual(JointLabel + TEXT(" twist motion"), static_cast<int32>(Instance.GetAngularTwistMotion()), static_cast<int32>(Frames.Twist.Motion));
-			if (Frames.Swing1.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing1 limit"), static_cast<double>(Instance.GetAngularSwing1Limit()), Frames.Swing1.HalfRangeDeg(), 1.0e-3); }
-			if (Frames.Swing2.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing2 limit"), static_cast<double>(Instance.GetAngularSwing2Limit()), Frames.Swing2.HalfRangeDeg(), 1.0e-3); }
+			if (!Frames.bLimitsInChild && Frames.Swing1.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing1 limit"), static_cast<double>(Instance.GetAngularSwing1Limit()), Frames.Swing1.HalfRangeDeg(), 1.0e-3); }
+			if (!Frames.bLimitsInChild && Frames.Swing2.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" swing2 limit"), static_cast<double>(Instance.GetAngularSwing2Limit()), Frames.Swing2.HalfRangeDeg(), 1.0e-3); }
 			if (Frames.Twist.Motion == ACM_Limited) { TestEqual(JointLabel + TEXT(" twist limit"), static_cast<double>(Instance.GetAngularTwistLimit()), Frames.Twist.HalfRangeDeg(), 1.0e-3); }
 
 			// What the joint does at the end of its range is the spec's: hard, or soft with its stiffness and damping.
@@ -163,8 +193,8 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 
 			// The two anchors of a joint must coincide in the mesh's reference pose. A gap would be closed
 			// by the solver in the first step and deform the skeleton.
-			const int32 ChildBone = Skeleton.FindBoneIndex(Instance.ConstraintBone1);
-			const int32 ParentBone = Skeleton.FindBoneIndex(Instance.ConstraintBone2);
+			const int32 ChildBone = Skeleton.FindBoneIndex(ChildName);
+			const int32 ParentBone = Skeleton.FindBoneIndex(ParentName);
 			if (TestTrue(JointLabel + TEXT(" bones exist"), ChildBone != INDEX_NONE && ParentBone != INDEX_NONE))
 			{
 				const FVector ChildAnchor = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ComponentSpace[ChildBone]).GetLocation();
@@ -174,7 +204,7 @@ bool FGeneratedPhysicsAssetMatchesSpecTest::RunTest(const FString& Parameters)
 				// The asset's frames are the ones the spec describes.
 				const FQuat ChildFrame = (Instance.GetRefFrame(EConstraintFrame::Frame1) * ComponentSpace[ChildBone]).GetRotation();
 				const FQuat ParentFrame = (Instance.GetRefFrame(EConstraintFrame::Frame2) * ComponentSpace[ParentBone]).GetRotation();
-				TestEqual(JointLabel + TEXT(" child frame differs from the spec, degrees"), FMath::RadiansToDegrees(ChildFrame.AngularDistance(Frames.Child.GetRotation())), 0.0, 0.05);
+				TestEqual(JointLabel + TEXT(" child frame differs from the spec, degrees"), FMath::RadiansToDegrees(ChildFrame.AngularDistance(Frames.Plain.GetRotation())), 0.0, 0.05);
 				TestEqual(JointLabel + TEXT(" parent frame differs from the spec, degrees"), FMath::RadiansToDegrees(ParentFrame.AngularDistance(Frames.Parent.GetRotation())), 0.0, 0.05);
 			}
 
@@ -241,9 +271,9 @@ bool FPhysicsJointAnatomyTest::RunTest(const FString& Parameters)
 			}
 
 			// The twist axis runs along the limb.
-			const FVector Limb = BoneLocation(Joint.Along) - BoneLocation(Joint.Child);
+			const FVector Limb = Joint.Along.IsNone() ? Joint.AlongDirection : BoneLocation(Joint.Along) - BoneLocation(Joint.Child);
 			TestEqual(JointLabel + TEXT(" twist axis off the limb, degrees"),
-				FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Left.Child.GetRotation().GetAxisX(), Limb.GetSafeNormal()), -1.0, 1.0))), 0.0, 0.05);
+				FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Left.Plain.GetRotation().GetAxisX(), Limb.GetSafeNormal()), -1.0, 1.0))), 0.0, 0.05);
 
 			if (Joint.Mirror.IsNone())
 			{
@@ -272,8 +302,9 @@ bool FPhysicsJointAnatomyTest::RunTest(const FString& Parameters)
 			}
 
 			// The middle of the ranges is a mirror-image pose too.
-			const FVector LeftEnd = AtMiddle(Left, BoneLocation(Joint.Along));
-			const FVector RightEnd = AtMiddle(Right, Mirror(BoneLocation(Joint.Along)));
+			const FVector AlongPoint = Joint.Along.IsNone() ? BoneLocation(Joint.Child) + Joint.AlongDirection * 10.0 : BoneLocation(Joint.Along);
+			const FVector LeftEnd = AtMiddle(Left, AlongPoint);
+			const FVector RightEnd = AtMiddle(Right, Mirror(AlongPoint));
 			TestEqual(JointLabel + TEXT(" mirror: limb at the middle of the ranges is off the mirror image, cm"), FVector::Dist(RightEnd, Mirror(LeftEnd)), 0.0, 0.05);
 		}
 

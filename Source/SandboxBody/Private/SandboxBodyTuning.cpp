@@ -269,6 +269,7 @@ namespace
 		Visitor(TEXT("rig.pelvis"), Rig.Pelvis);
 		Visitor(TEXT("rig.chest"), Rig.Chest);
 		Visitor(TEXT("rig.head"), Rig.Head);
+		Visitor(TEXT("rig.head_if_own"), Rig.HeadIfOwn);
 		Visitor(TEXT("rig.foot_left"), Rig.FootLeft);
 		Visitor(TEXT("rig.foot_right"), Rig.FootRight);
 	}

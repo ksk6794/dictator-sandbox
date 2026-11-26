@@ -174,12 +174,36 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 				const TSharedPtr<FJsonObject> ShapeJson = (*Shapes)[ShapeIndex].IsValid() ? (*Shapes)[ShapeIndex]->AsObject() : nullptr;
 				const FString ShapeContext = FString::Printf(TEXT("%s.shapes[%d]"), *Context, ShapeIndex);
 				FString Type;
-				if (!ShapeJson.IsValid() || !ShapeJson->TryGetStringField(TEXT("type"), Type) || Type != TEXT("box")) { return Fail(ShapeContext + TEXT(".type must be \"box\"")); }
+				if (!ShapeJson.IsValid() || !ShapeJson->TryGetStringField(TEXT("type"), Type) || (Type != TEXT("box") && Type != TEXT("sphere") && Type != TEXT("capsule")))
+				{
+					return Fail(ShapeContext + TEXT(".type must be \"box\", \"sphere\" or \"capsule\""));
+				}
 
 				FPhysicsShapeSpec Shape;
-				if (!SandboxJson::TryGetVector(ShapeJson, TEXT("center_cm"), Shape.CenterCm)) { return Fail(ShapeContext + TEXT(".center_cm must be [x, y, z]")); }
-				if (!SandboxJson::TryGetVector(ShapeJson, TEXT("size_cm"), Shape.SizeCm) || Shape.SizeCm.GetMin() <= 0.0) { return Fail(ShapeContext + TEXT(".size_cm must be three lengths > 0")); }
-				if (ShapeJson->HasField(TEXT("yaw_deg")) && !ShapeJson->TryGetNumberField(TEXT("yaw_deg"), Shape.YawDeg)) { return Fail(ShapeContext + TEXT(".yaw_deg must be a number")); }
+				if (Type == TEXT("box"))
+				{
+					if (!SandboxJson::TryGetVector(ShapeJson, TEXT("center_cm"), Shape.CenterCm)) { return Fail(ShapeContext + TEXT(".center_cm must be [x, y, z]")); }
+					if (!SandboxJson::TryGetVector(ShapeJson, TEXT("size_cm"), Shape.SizeCm) || Shape.SizeCm.GetMin() <= 0.0) { return Fail(ShapeContext + TEXT(".size_cm must be three lengths > 0")); }
+					if (ShapeJson->HasField(TEXT("yaw_deg")) && !ShapeJson->TryGetNumberField(TEXT("yaw_deg"), Shape.YawDeg)) { return Fail(ShapeContext + TEXT(".yaw_deg must be a number")); }
+				}
+				else
+				{
+					if (!ShapeJson->TryGetNumberField(TEXT("radius_cm"), Shape.RadiusCm) || Shape.RadiusCm <= 0.0) { return Fail(ShapeContext + TEXT(".radius_cm must be a length > 0")); }
+					if (Type == TEXT("sphere"))
+					{
+						Shape.Kind = EPhysicsShapeKind::Sphere;
+						if (!SandboxJson::TryGetVector(ShapeJson, TEXT("center_cm"), Shape.CenterCm)) { return Fail(ShapeContext + TEXT(".center_cm must be [x, y, z]")); }
+					}
+					else
+					{
+						Shape.Kind = EPhysicsShapeKind::Capsule;
+						if (!SandboxJson::TryGetVector(ShapeJson, TEXT("from_cm"), Shape.FromCm) || !SandboxJson::TryGetVector(ShapeJson, TEXT("to_cm"), Shape.ToCm) || Shape.FromCm.Equals(Shape.ToCm, 0.01))
+						{
+							return Fail(ShapeContext + TEXT(": a capsule needs from_cm and to_cm, two different points"));
+						}
+						Shape.CenterCm = (Shape.FromCm + Shape.ToCm) * 0.5;
+					}
+				}
 				Body.Shapes.Add(Shape);
 			}
 		}
@@ -225,8 +249,26 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 		}
 
 		FString Along;
-		if (!JointJson->TryGetStringField(TEXT("along"), Along) || Along.IsEmpty() || Along == Child) { return Fail(Context + TEXT(".along must name the bone the limb runs toward")); }
-		Joint.Along = FName(*Along);
+		const TSharedPtr<FJsonValue> AlongValue = JointJson->TryGetField(TEXT("along"));
+		if (AlongValue.IsValid() && AlongValue->Type == EJson::Array)
+		{
+			if (!SandboxJson::TryGetVector(JointJson, TEXT("along"), Joint.AlongDirection) || !Joint.AlongDirection.Normalize())
+			{
+				return Fail(Context + TEXT(".along must be a bone or a non-zero [x, y, z]"));
+			}
+		}
+		else if (!JointJson->TryGetStringField(TEXT("along"), Along) || Along.IsEmpty() || Along == Child) { return Fail(Context + TEXT(".along must name the bone the limb runs toward, or be a direction [x, y, z]")); }
+		else
+		{
+			Joint.Along = FName(*Along);
+		}
+
+		FString LimitsIn;
+		if (JointJson->HasField(TEXT("limits_in")))
+		{
+			if (!JointJson->TryGetStringField(TEXT("limits_in"), LimitsIn) || (LimitsIn != TEXT("child") && LimitsIn != TEXT("parent"))) { return Fail(Context + TEXT(".limits_in must be \"parent\" (the default) or \"child\"")); }
+			Joint.bLimitsInChild = LimitsIn == TEXT("child");
+		}
 
 		FString AxisError;
 		if (!ParseSwingAxis(JointJson, Context, Joint, AxisError) ||

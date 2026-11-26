@@ -87,6 +87,22 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 		return false;
 	}
 
+	// A body whose head is a body of its own on top of the one the rig names (the neck's): that one carries the head
+	// (rig.head_if_own; none names nothing). The rig as the files have it is kept, to tell a change of the files from this.
+	TunedRig = InTuning.Rig;
+	if (!InTuning.Rig.HeadIfOwn.IsNone() && InTuning.Rig.HeadIfOwn != InTuning.Rig.Head)
+	{
+		const FBodyInstance* OwnHead = InMesh->GetBodyInstance(InTuning.Rig.HeadIfOwn);
+		const FReferenceSkeleton& Skeleton = InMesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		const int32 OwnIndex = Skeleton.FindBoneIndex(InTuning.Rig.HeadIfOwn);
+		const int32 NeckIndex = Skeleton.FindBoneIndex(InTuning.Rig.Head);
+		if (OwnHead && OwnHead->IsValidBodyInstance() && InMesh->GetBoneName(OwnHead->InstanceBoneIndex) == InTuning.Rig.HeadIfOwn &&
+			OwnIndex != INDEX_NONE && NeckIndex != INDEX_NONE && Skeleton.BoneIsChildOf(OwnIndex, NeckIndex))
+		{
+			InTuning.Rig.Head = InTuning.Rig.HeadIfOwn;
+		}
+	}
+
 	const TPair<FName, EAssistSlot> AssistBones[] = {
 		{ InTuning.Rig.Pelvis, EAssistSlot::Pelvis },
 		{ InTuning.Rig.Chest, EAssistSlot::Chest },
@@ -3338,7 +3354,7 @@ void USandboxBodyController::FollowParams()
 		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its tuning: %s"), *Error);
 		return;
 	}
-	if (!(NewTuning.Rig == Tuning.Rig))
+	if (!(NewTuning.Rig == TunedRig))
 	{
 		UE_LOG(LogSandbox, Warning, TEXT("Body controller: the rig bones changed in the tuning files; that takes effect when the body is next started"));
 	}
