@@ -1,5 +1,5 @@
 {
-  "name": "strike_punch_belly_steps",
+  "name": "strike_punch_belly_falls",
   "duration_s": 9.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",

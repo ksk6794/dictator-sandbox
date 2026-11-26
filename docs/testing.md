@@ -26,6 +26,8 @@ contacts and simulation islands, which is where parallel solving could start to 
 
 **How this journal is kept** (the owner's rule, 26 November 2026): it is a record of measurements, and its history is not rewritten. A section that a later section or a decision of the owner supersedes gets a dated note under its heading; a figure later found wrong gets a dated correction beside it, with a reference. Nothing else is changed.
 
+**Where the files it names are** (the owner's decision of 26 November 2026). `Saved\` is not in git. The plans, patches and the one script that this journal and the plans cite as `Saved\Recon\<name>.md`, `.patch` or `.py` are kept in `docs/recon/<name>` since 26 November 2026; the paths below are left as they were written. Everything else under `Saved\` that the journal names (runs, batches such as `Saved\Recon\bat_*`, films, suites, baselines, backups) is on the reference machine only and is not on a clean clone.
+
 ## Measurements
 
 ### M0, 2026-11-22
@@ -5193,6 +5195,19 @@ No code, value or scenario changed; read from the engine's source and the projec
 - **Times, on the reference machine:** `Tools\getup-seeds.ps1` with three processes a stand (nine in all) 92 s, 149 of 150 standing,
   139 at the first attempt, assist share 1.16, the figures of R1 (`CLAUDE.md` had 110 s, of a run not recorded here);
   `Tools\natural.ps1 -Quick` 56 s.
+- **`strike_punch_belly_steps` falls by a threshold, not by losing its feet.** The fist at 6 m/s, 0.1 s in the belly: the body
+  feels 79 N*s on `spine_04` (78.6 into the belly), flinches at 3.10 s, doubles over at 3.14, needs a step at 3.16 (capture point
+  16.6 cm out), steps back 43 cm with the left foot (3.19 to 3.33), and is Falling at 3.41 because "pelvis tilted by 36.9 degrees"
+  (`thresholds.fall_tilt_deg` 35): the doubled-over pose tilts the pelvis itself. Lying at 4.47. The same run with
+  `-Tune "thresholds.fall_tilt_deg=45"` does not fall: doubled over, a step, Standing at 4.23, a step that brings the feet
+  together, Standing at 5.56 (four steps in all; hashes `a95dcc09` against `bb7cb4a7`). Videos from the side, real time, 3.0 to
+  7.5 s: `Saved\Films\belly_punch_side` and `belly_punch_side_tilt45`. The name says "steps" since the scenario was made (111 N*s,
+  four steps, standing); it has fallen since the owner's decision of 25 November for `effectors.hand.strike_through_cm` 40, and its
+  expectations were rewritten then.
+- **What the world gives a led get-up, on the stand of 150** (the same run as the times above, `Saved\Matrix\getup_seeds\timing_1126`):
+  the mean share of each fall's get-up, of the body's weight, 1.16 on average, 1.07 in the median, 0.92 at the 10th percentile, 1.63 at
+  the 90th, 2.20 at most; the peak within an attempt 2.25 in the median, 3.01 at the 90th percentile, 3.35 at most. R1's "peaks of 2.5"
+  was not the stand's.
 
 
 

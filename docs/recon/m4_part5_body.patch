@@ -1,0 +1,230 @@
+diff --git a/Config/Tuning/effectors.json b/Config/Tuning/effectors.json
+index 15cef1a..ccfb6af 100644
+--- a/Config/Tuning/effectors.json
++++ b/Config/Tuning/effectors.json
+@@ -57,6 +57,18 @@
+       "angular_damping_s": 0.05,
+       "max_torque_nm": 20,
+       "snap_distance_cm": 150
++    },
++    "body": {
++      "mass_kg": 70,
++      "radius_cm": 22,
++      "half_height_cm": 80,
++      "stiffness_n_per_m": 6000,
++      "damping_s": 0.08,
++      "max_force_n": 300,
++      "angular_stiffness_nm_per_rad": 3000,
++      "angular_damping_s": 0.1,
++      "max_torque_nm": 3000,
++      "snap_distance_cm": 300
+     }
+   }
+ }
+diff --git a/Source/SandboxInteraction/Private/SandboxEffectorComponent.cpp b/Source/SandboxInteraction/Private/SandboxEffectorComponent.cpp
+index afdca5e..44a1f13 100644
+--- a/Source/SandboxInteraction/Private/SandboxEffectorComponent.cpp
++++ b/Source/SandboxInteraction/Private/SandboxEffectorComponent.cpp
+@@ -29,7 +29,7 @@ FName SandboxEffectors::KindOf(FName Effector)
+ 
+ bool SandboxEffectors::IsKnown(FName Effector)
+ {
+-	return Effector == HandLeft || Effector == HandRight || Effector == FootLeft || Effector == FootRight;
++	return Effector == HandLeft || Effector == HandRight || Effector == FootLeft || Effector == FootRight || Effector == Body;
+ }
+ 
+ USandboxPalmComponent::USandboxPalmComponent()
+@@ -142,6 +142,16 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning&
+ 	Visual->SetGenerateOverlapEvents(false);
+ 	Visual->SetStaticMesh(Sphere);
+ 	Visual->SetRelativeScale3D(FVector(Tuning.RadiusCm / SphereMeshRadiusCm));
++	if (Tuning.HalfHeightCm > Tuning.RadiusCm)
++	{
++		// The engine's cylinder is 100 cm across and 100 cm high. Looked at only in pictures of a scenario: a player is inside it.
++		if (UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
++		{
++			Visual->SetStaticMesh(Cylinder);
++			Visual->SetRelativeScale3D(FVector(Tuning.RadiusCm / SphereMeshRadiusCm, Tuning.RadiusCm / SphereMeshRadiusCm, Tuning.HalfHeightCm / SphereMeshRadiusCm));
++		}
++		Visual->SetOwnerNoSee(true);
++	}
+ 	Visual->RegisterComponent();
+ 
+ 	// The open hand, for the eye. Without the engine's cube there is none, and nothing else changes.
+@@ -178,12 +188,35 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning&
+ 	return true;
+ }
+ 
++void USandboxEffectorComponent::UpdateBodySetup()
++{
++	Super::UpdateBodySetup();
++	if (Tuning.HalfHeightCm > Tuning.RadiusCm)
++	{
++		// The player's body is an upright capsule and not a ball. (The ball's shape may be one that all balls share.)
++		bUseArchetypeBodySetup = false;
++		ShapeBodySetup = NewObject<UBodySetup>(this);
++		ShapeBodySetup->CollisionTraceFlag = CTF_UseSimpleAsComplex;
++		ShapeBodySetup->bNeverNeedsCookedCollisionData = true;
++		FKSphylElem Capsule(static_cast<float>(Tuning.RadiusCm), static_cast<float>(2.0 * (Tuning.HalfHeightCm - Tuning.RadiusCm)));
++		ShapeBodySetup->AggGeom.SphylElems.Add(Capsule);
++	}
++}
++
++FBoxSphereBounds USandboxEffectorComponent::CalcBounds(const FTransform& LocalToWorld) const
++{
++	return Tuning.HalfHeightCm > Tuning.RadiusCm
++		? FBoxSphereBounds(FBox(FVector(-Tuning.RadiusCm, -Tuning.RadiusCm, -Tuning.HalfHeightCm), FVector(Tuning.RadiusCm, Tuning.RadiusCm, Tuning.HalfHeightCm))).TransformBy(LocalToWorld)
++		: Super::CalcBounds(LocalToWorld);
++}
++
+ void USandboxEffectorComponent::ApplyTuning(const FSandboxEffectorTuning& InTuning)
+ {
+ 	// The radius and the plate are the sizes of bodies that already exist.
+ 	const FSandboxEffectorTuning Made = Tuning;
+ 	Tuning = InTuning;
+ 	Tuning.RadiusCm = Made.RadiusCm;
++	Tuning.HalfHeightCm = Made.HalfHeightCm;
+ 	Tuning.PalmLengthCm = Made.PalmLengthCm;
+ 	Tuning.PalmWidthCm = Made.PalmWidthCm;
+ 	Tuning.PalmThicknessCm = Made.PalmThicknessCm;
+@@ -290,8 +323,8 @@ void USandboxEffectorComponent::GetProbe(FCollisionShape& OutShape, FVector& Out
+ 	else
+ 	{
+ 		// A ball looks the same however it is turned.
+-		OutShape = FCollisionShape::MakeSphere(GetScaledSphereRadius());
+-		OutRotation = FQuat::Identity;
++		OutShape = Tuning.HalfHeightCm > Tuning.RadiusCm ? FCollisionShape::MakeCapsule(static_cast<float>(Tuning.RadiusCm), static_cast<float>(Tuning.HalfHeightCm)) : FCollisionShape::MakeSphere(GetScaledSphereRadius());
++		OutRotation = Tuning.HalfHeightCm > Tuning.RadiusCm ? BodyPose.GetRotation() : FQuat::Identity;
+ 		OutThinHalfCm = GetScaledSphereRadius();
+ 	}
+ }
+diff --git a/Source/SandboxInteraction/Private/SandboxEffectorRig.cpp b/Source/SandboxInteraction/Private/SandboxEffectorRig.cpp
+index 724e3a2..086dc21 100644
+--- a/Source/SandboxInteraction/Private/SandboxEffectorRig.cpp
++++ b/Source/SandboxInteraction/Private/SandboxEffectorRig.cpp
+@@ -49,6 +49,25 @@ USandboxEffectorComponent* ASandboxEffectorRig::AddEffector(FName Id, const FTra
+ 		return nullptr;
+ 	}
+ 	Effectors.Add(Effector);
++	// The player's own hands and feet do not meet the player's body. (Bodies whose filter masks share a bit ignore each other;
++	// a rig without a body has no masks, and its hands meet each other as they always did.)
++	const auto SetMask = [](USandboxEffectorComponent* Each, uint8 Mask) { Each->SetMaskFilterOnBodyInstance(FMaskFilter(Mask)); };
++	USandboxEffectorComponent* Body = FindEffector(SandboxEffectors::Body);
++	if (Body)
++	{
++		uint8 Bit = 1;
++		uint8 Others = 0;
++		for (USandboxEffectorComponent* Each : Effectors)
++		{
++			if (Each != Body)
++			{
++				SetMask(Each, Bit);
++				Others |= Bit;
++				Bit <<= 1;
++			}
++		}
++		SetMask(Body, Others);
++	}
+ 	return Effector;
+ }
+ 
+diff --git a/Source/SandboxInteraction/Private/SandboxInteractionTuning.cpp b/Source/SandboxInteraction/Private/SandboxInteractionTuning.cpp
+index e166364..e1179c8 100644
+--- a/Source/SandboxInteraction/Private/SandboxInteractionTuning.cpp
++++ b/Source/SandboxInteraction/Private/SandboxInteractionTuning.cpp
+@@ -6,6 +6,7 @@ namespace
+ {
+ 	const FName HandKind(TEXT("hand"));
+ 	const FName FootKind(TEXT("foot"));
++	const FName BodyKind(TEXT("body"));
+ 
+ 	/** Calls Visitor(name, value) for every tunable number. TuningType is the tuning, const or not. */
+ 	template <typename TuningType, typename VisitorType>
+@@ -67,6 +68,8 @@ namespace
+ 		};
+ 		Effector(TEXT("hand"), Tuning.Hand);
+ 		Body(TEXT("foot"), Tuning.Foot);
++		Body(TEXT("body"), Tuning.Body);
++		Visitor(FString(TEXT("effectors.body.half_height_cm")), Tuning.Body.HalfHeightCm);
+ 
+ 		Visitor(FString(TEXT("tools.hands.rest_forward_cm")), Tuning.Tools.HandRestForwardCm);
+ 		Visitor(FString(TEXT("tools.hands.rest_side_cm")), Tuning.Tools.HandRestSideCm);
+@@ -135,7 +138,7 @@ bool FSandboxInteractionTuning::HasSameValues(const FSandboxInteractionTuning& O
+ 
+ const FSandboxEffectorTuning* FSandboxInteractionTuning::Effector(FName Kind) const
+ {
+-	return Kind == HandKind ? &Hand : Kind == FootKind ? &Foot : nullptr;
++	return Kind == HandKind ? &Hand : Kind == FootKind ? &Foot : Kind == BodyKind ? &Body : nullptr;
+ }
+ 
+ void FSandboxInteractionTuning::DeclareParams(FSandboxParamStore& Params)
+@@ -222,6 +225,19 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
+ 		return false;
+ 	}
+ 	// The foot: the same reasons as for the hand's body and spring.
++	if (!CheckRange(TEXT("effectors.body.mass_kg"), Body.MassKg, 0.0, 300.0, true, OutError) ||
++		!CheckRange(TEXT("effectors.body.radius_cm"), Body.RadiusCm, 5.0, 60.0, false, OutError) ||
++		!CheckRange(TEXT("effectors.body.half_height_cm"), Body.HalfHeightCm, 0.0, 120.0, false, OutError) ||
++		!CheckRange(TEXT("effectors.body.stiffness_n_per_m"), Body.StiffnessNPerM, 0.0, 200000.0, true, OutError) ||
++		!CheckRange(TEXT("effectors.body.damping_s"), Body.DampingS, 0.0, 2.0, false, OutError) ||
++		!CheckRange(TEXT("effectors.body.max_force_n"), Body.MaxForceN, 0.0, 10000.0, true, OutError) ||
++		!CheckRange(TEXT("effectors.body.angular_stiffness_nm_per_rad"), Body.AngularStiffnessNmPerRad, 0.0, 50000.0, false, OutError) ||
++		!CheckRange(TEXT("effectors.body.angular_damping_s"), Body.AngularDampingS, 0.0, 2.0, false, OutError) ||
++		!CheckRange(TEXT("effectors.body.max_torque_nm"), Body.MaxTorqueNm, 0.0, 50000.0, true, OutError) ||
++		!CheckRange(TEXT("effectors.body.snap_distance_cm"), Body.SnapDistanceCm, 0.0, 5000.0, true, OutError))
++	{
++		return false;
++	}
+ 	if (!CheckRange(TEXT("effectors.foot.mass_kg"), Foot.MassKg, 0.0, 50.0, true, OutError) ||
+ 		!CheckRange(TEXT("effectors.foot.radius_cm"), Foot.RadiusCm, 0.5, 30.0, false, OutError) ||
+ 		!CheckRange(TEXT("effectors.foot.stiffness_n_per_m"), Foot.StiffnessNPerM, 0.0, 200000.0, true, OutError) ||
+diff --git a/Source/SandboxInteraction/Public/SandboxEffectorComponent.h b/Source/SandboxInteraction/Public/SandboxEffectorComponent.h
+index 92bcf1f..fdad908 100644
+--- a/Source/SandboxInteraction/Public/SandboxEffectorComponent.h
++++ b/Source/SandboxInteraction/Public/SandboxEffectorComponent.h
+@@ -194,6 +194,10 @@ public:
+ 	 */
+ 	void GetProbe(FCollisionShape& OutShape, FVector& OutCenter, FQuat& OutRotation, double& OutThinHalfCm) const;
+ 
++	/** A ball, or for the player's body an upright capsule (effectors.body.half_height_cm). */
++	virtual void UpdateBodySetup() override;
++	virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
++
+ 	/** The spring lets go here, while the body it holds still exists. */
+ 	virtual void OnDestroyPhysicsState() override;
+ 	/** The meshes and the plate that ride on the hand go with it. */
+diff --git a/Source/SandboxInteraction/Public/SandboxInteractionTuning.h b/Source/SandboxInteraction/Public/SandboxInteractionTuning.h
+index 0352ba0..95d6520 100644
+--- a/Source/SandboxInteraction/Public/SandboxInteractionTuning.h
++++ b/Source/SandboxInteraction/Public/SandboxInteractionTuning.h
+@@ -117,6 +117,8 @@ struct FSandboxEffectorTuning
+ 	double StrikeSpeedMps = 0.0;
+ 	double StrikeFullSpeedMps = 0.0;
+ 	double PalmMassKg = 0.0;
++	/** Above the radius: the effector is an upright capsule of this half height, cm (the player's body). 0: a ball. */
++	double HalfHeightCm = 0.0;
+ };
+ 
+ /** A spring with a force cap, as the drag handle uses it ("tools.drag..."). */
+@@ -227,6 +229,8 @@ struct SANDBOXINTERACTION_API FSandboxInteractionTuning
+ 	 * hand, the grab, the place on a controller) it has not, and those stay 0: a foot is always a fist.
+ 	 */
+ 	FSandboxEffectorTuning Foot;
++	/** The player's own body: an upright capsule on a spring with a force cap, that pushes what is in its way instead of passing through it. */
++	FSandboxEffectorTuning Body;
+ 	FSandboxToolTuning Tools;
+ 
+ 	/** Tells a parameter store the names of this module and adds the range checks of Validate to it. */
+diff --git a/Source/SandboxInteraction/Public/SandboxTargetSource.h b/Source/SandboxInteraction/Public/SandboxTargetSource.h
+index f32a72f..f423fff 100644
+--- a/Source/SandboxInteraction/Public/SandboxTargetSource.h
++++ b/Source/SandboxInteraction/Public/SandboxTargetSource.h
+@@ -10,6 +10,8 @@ namespace SandboxEffectors
+ 	/** The kicking feet: effectors of the kind "foot", heavier and stronger than a hand, and never open. */
+ 	inline const FName FootLeft(TEXT("foot_left"));
+ 	inline const FName FootRight(TEXT("foot_right"));
++	/** The player's own body, as far as it is felt: an upright capsule that pushes what stands in its way with a capped force. */
++	inline const FName Body(TEXT("body"));
+ 
+ 	/** "hand" for "hand_left": the name of the effector's group in the tuning files. */
+ 	SANDBOXINTERACTION_API FName KindOf(FName Effector);

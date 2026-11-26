@@ -1,0 +1,149 @@
+﻿diff --git a/Config/Tuning/README.md b/Config/Tuning/README.md
+index 8726037..78fc541 100644
+--- a/Config/Tuning/README.md
++++ b/Config/Tuning/README.md
+@@ -77,6 +77,7 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
+ | `getup.gather_s`, `getup.gather_rate` | s, share | N7: while the clip waits for the body its time goes back by up to `gather_s` and comes again, at `gather_rate` of its rate, never past where the wait began: the body gathers itself instead of freezing. 0: the clip stands still |
+ | `getup.rise`, `getup.rise_clip_back`, `getup.rise_at_back_s`, `getup.rise_s`, `getup.rise_com_cm` | 0 or 1, path, s, s, cm | N7, a get-up made for this body: from the back the body follows `rise_clip_back` (a get-up to a crouch) only to its crouch at `rise_at_back_s`, then rises by itself over `rise_s`: muscles from the crouch to the stance, the pelvis's assist up to the standing height and upright, the centre of mass kept over the middle of the feet; it waits while the pelvis lags or the centre of mass is more than `rise_com_cm` outside the feet. 0: the clip to its end |
+ | `getup.rise_lean_s`, `getup.rise_lean_max_deg` | s, degrees | While it rises (`getup.rise`), the body moves its own centre of mass over the feet as the ankle strategy does standing: everything above the feet leans toward where it should be, by the error over the centre of mass's height per `rise_lean_s`, at most `rise_lean_max_deg`; after the rise the lean fades over `poses.blend_s` |
++| `getup.hand_over`, `getup.hand_over_drop_cm`, `getup.hand_over_tilt_deg` | 0 or 1, cm, degrees | N7, the lean caught with a step: a get-up ends as soon as the pelvis is within `hand_over_drop_cm` of its standing height and tilted less than `hand_over_tilt_deg`, both feet on the floor and not held down; the standing balance catches the rest (a step if it must). 0: the get-up ends at the clip's end, the world turning the leaning body upright like a plank |
+ | `getup.reached_feet` | 0 or 1 | N7: 1 aims the feet's assist, and measures a foot's lag, at where the foot is with the legs' joints as the muscles are asked for them (held to their ranges, on the mesh's proportions), not where the clip's own foot is (which the body's foot stayed 17 to 18 cm from while the clip waited for it). 0: the clip's own foot |
+ | `getup.progress_cm`, `getup.progress_window_s`, `getup.progress_pelvis` | cm, s, 0 or 1 | N7: above 0 the clip waits for a foot in the air (with `progress_pelvis` 1 for the pelvis too) only while it comes this much closer in every window; one that does not come is not waited for until it is within its bound again (the clip had asked for where the body cannot reach and stood until `foot_wait_s` ran out). 0: as before |
+ | `getup.slow_from`, `getup.rate_follow_s` | share, s | N7: above 0 the clip slows as the body falls behind, from this share of the lags that stop it (`lag_cm`, `side_lag_cm`, `foot_lag_cm`) to a stop at the whole of them, and runs while the body eases in; each change of its speed is smoothed over `rate_follow_s`. 0, 0: the clip runs or stands still, as before |
+diff --git a/Config/Tuning/body.json b/Config/Tuning/body.json
+index fdafcd0..e167b66 100644
+--- a/Config/Tuning/body.json
++++ b/Config/Tuning/body.json
+@@ -239,6 +239,9 @@
+     "rise_com_cm": 3,
+     "rise_lean_s": 0.3,
+     "rise_lean_max_deg": 30,
++    "hand_over": 0,
++    "hand_over_drop_cm": 15,
++    "hand_over_tilt_deg": 25,
+     "rise_clip_back": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_crouch_B.M_ragdoll_getup_crouch_B",
+     "clip_back": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_B.M_ragdoll_getup_stand_B",
+     "clip_front": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_F.M_ragdoll_getup_stand_F",
+diff --git a/Source/SandboxBody/Private/SandboxBodyController.cpp b/Source/SandboxBody/Private/SandboxBodyController.cpp
+index 49b2245..ed5879b 100644
+--- a/Source/SandboxBody/Private/SandboxBodyController.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyController.cpp
+@@ -1480,6 +1480,7 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
+ 	GetUpView.BehindHeldS = 0.0;
+ 	GetUpView.PlankS = 0.0;
+ 	GetUpView.PlankMaxCm = 0.0;
++	GetUpView.PlankAfterS = 0.0;
+ 	GetUpView.RiseFeetCm = -1.0;
+ 	GetUpView.RiseTrunkDeg = -1.0;
+ 	GetUpView.RiseBeganS = -1.0;
+@@ -1874,6 +1875,25 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 	{
+ 		GetUpRun.StallS = 0.0;
+ 	}
++	if (Limits.HandOver > 0.5 && Ease >= 1.0 && !bHeldDown)
++	{
++		// N7 (getup.hand_over): nearly up is up. The rest of the lean is the standing balance's to catch, with a step if it must; the
++		// clip to its end had the world turn a leaning body upright about its feet, like a plank (the owner's look of 26 November).
++		const double DropCm = StandPelvisHeightCm - (Now.GetLocation().Z - LastSupportHeightCm);
++		const FVector Up = Now.GetRotation().RotateVector(Pelvis->SupportRotation.UnrotateVector(FVector::UpVector));
++		const double TiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Up.Z, -1.0, 1.0)));
++		const bool bOnFeet = Balance.bValid && Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0;
++		if (DropCm <= Limits.HandOverDropCm && TiltDeg <= Limits.HandOverTiltDeg && bOnFeet)
++		{
++			++GetUpView.Successes;
++			GetUpView.DurationS = ElapsedS - GetUpView.StartedS;
++			GivenUpClip.Reset();
++			ReleaseClipPose();
++			EnterState(ESandboxBodyState::Standing, FString::Printf(TEXT("got up in %.2f s (handed over at clip %.2f s, pelvis %.0f cm low, tilted %.0f degrees)"),
++				GetUpView.DurationS, ClipHold.TimeS, DropCm, TiltDeg));
++			return;
++		}
++	}
+ 	if (bThrough && GetUpRun.RiseAtS >= 0.0)
+ 	{
+ 		// N7 (getup.rise): at the clip's crouch, with the body caught up and on both feet, the body takes over and rises by itself.
+@@ -5150,6 +5170,13 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
+ 	UpdateState(DeltaTime);
+ 	UpdateHeld(DeltaTime);
+ 	UpdateGetUp(DeltaTime);
++	// The plank after a get-up, measured (read only): the same rule as while getting up, for 3 s after it ended standing.
++	if (State != ESandboxBodyState::GetUp && GetUpView.DurationS >= 0.0 && ElapsedS - (GetUpView.StartedS + GetUpView.DurationS) <= 3.0 &&
++		Balance.bValid && Balance.IsSupported() && WeightN > 0.0 &&
++		Balance.FootForceN[0] + Balance.FootForceN[1] >= 0.8 * WeightN && Balance.CenterOfMassMarginCm < -5.0)
++	{
++		GetUpView.PlankAfterS += DeltaTime;
++	}
+ 	if (!RiseLeanRad.IsZero() && !(State == ESandboxBodyState::GetUp && GetUpRun.bRising))
+ 	{
+ 		// A rise's lean fades by its own clock once the rise is over, however it ended: a turn dropped at once would snap the body.
+diff --git a/Source/SandboxBody/Private/SandboxBodyTuning.cpp b/Source/SandboxBody/Private/SandboxBodyTuning.cpp
+index 4188121..f702c0d 100644
+--- a/Source/SandboxBody/Private/SandboxBodyTuning.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyTuning.cpp
+@@ -296,6 +296,9 @@ namespace
+ 		Visitor(FString(TEXT("getup.rise_com_cm")), Tuning.GetUp.RiseComCm);
+ 		Visitor(FString(TEXT("getup.rise_lean_s")), Tuning.GetUp.RiseLeanS);
+ 		Visitor(FString(TEXT("getup.rise_lean_max_deg")), Tuning.GetUp.RiseLeanMaxDeg);
++		Visitor(FString(TEXT("getup.hand_over")), Tuning.GetUp.HandOver);
++		Visitor(FString(TEXT("getup.hand_over_drop_cm")), Tuning.GetUp.HandOverDropCm);
++		Visitor(FString(TEXT("getup.hand_over_tilt_deg")), Tuning.GetUp.HandOverTiltDeg);
+ 	}
+ 
+ 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
+@@ -649,7 +652,10 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
+ 		!CheckRange(GetUp.RiseS, 10.0, TEXT("getup"), TEXT("rise_s"), OutError) ||
+ 		!CheckRange(GetUp.RiseComCm, 100.0, TEXT("getup"), TEXT("rise_com_cm"), OutError) ||
+ 		!CheckRange(GetUp.RiseLeanS, 10.0, TEXT("getup"), TEXT("rise_lean_s"), OutError) ||
+-		!CheckRange(GetUp.RiseLeanMaxDeg, 60.0, TEXT("getup"), TEXT("rise_lean_max_deg"), OutError))
++		!CheckRange(GetUp.RiseLeanMaxDeg, 60.0, TEXT("getup"), TEXT("rise_lean_max_deg"), OutError) ||
++		!CheckRange(GetUp.HandOver, 1.0, TEXT("getup"), TEXT("hand_over"), OutError) ||
++		!CheckRange(GetUp.HandOverDropCm, 100.0, TEXT("getup"), TEXT("hand_over_drop_cm"), OutError) ||
++		!CheckRange(GetUp.HandOverTiltDeg, 90.0, TEXT("getup"), TEXT("hand_over_tilt_deg"), OutError))
+ 	{
+ 		return false;
+ 	}
+diff --git a/Source/SandboxBody/Public/SandboxBodyController.h b/Source/SandboxBody/Public/SandboxBodyController.h
+index 8e1e691..5c39ac6 100644
+--- a/Source/SandboxBody/Public/SandboxBodyController.h
++++ b/Source/SandboxBody/Public/SandboxBodyController.h
+@@ -297,6 +297,8 @@ struct FSandboxGetUpView
+ 	 */
+ 	double PlankS = 0.0;
+ 	double PlankMaxCm = 0.0;
++	/** The same for 3 s after the last attempt ended standing: a plank that the balance holds once the get-up is over. Seconds. */
++	double PlankAfterS = 0.0;
+ 	/**
+ 	 * When the pelvis first came 70 cm above the floor: the farther foot from it over the floor, and the trunk (pelvis to chest) from
+ 	 * vertical. cm, degrees; below 0 until then.
+diff --git a/Source/SandboxBody/Public/SandboxBodyTuning.h b/Source/SandboxBody/Public/SandboxBodyTuning.h
+index ba61ed9..0086e7b 100644
+--- a/Source/SandboxBody/Public/SandboxBodyTuning.h
++++ b/Source/SandboxBody/Public/SandboxBodyTuning.h
+@@ -916,6 +916,15 @@ struct FSandboxGetUpTuning
+ 	double RiseLeanS = 0.0;
+ 	double RiseLeanMaxDeg = 0.0;
+ 	FString RiseClipBack;
++	/**
++	 * N7, the lean caught with a step (the owner's decision of 26 November). 1: a get-up ends as soon as the pelvis is within
++	 * HandOverDropCm of its standing height and tilted less than HandOverTiltDeg from upright, with both feet on the floor and not held
++	 * down, and the standing balance catches the rest of the lean (with a step, if it must). 0: the get-up ends at the clip's end (the
++	 * world turned the leaning body upright about its feet, like a plank). 0 or 1, cm, degrees.
++	 */
++	double HandOver = 0.0;
++	double HandOverDropCm = 0.0;
++	double HandOverTiltDeg = 0.0;
+ 	/**
+ 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
+ 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
+diff --git a/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp b/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp
+index 00f1c30..b406576 100644
+--- a/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp
++++ b/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp
+@@ -2757,6 +2757,7 @@ void UScenarioRunnerSubsystem::Finish()
+ 			GetUpJson->SetNumberField(TEXT("behind_held_s"), GetUps.BehindHeldS);
+ 			GetUpJson->SetNumberField(TEXT("plank_s"), GetUps.PlankS);
+ 			GetUpJson->SetNumberField(TEXT("plank_max_cm"), GetUps.PlankMaxCm);
++			GetUpJson->SetNumberField(TEXT("plank_after_s"), GetUps.PlankAfterS);
+ 			GetUpJson->SetNumberField(TEXT("rise_feet_cm"), GetUps.RiseFeetCm);
+ 			GetUpJson->SetNumberField(TEXT("rise_trunk_deg"), GetUps.RiseTrunkDeg);
+ 			GetUpJson->SetNumberField(TEXT("rise_began_s"), GetUps.RiseBeganS);

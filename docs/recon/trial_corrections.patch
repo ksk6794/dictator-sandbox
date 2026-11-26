@@ -1,0 +1,178 @@
+diff --git a/Source/SandboxBody/Private/SandboxAnimInstance.cpp b/Source/SandboxBody/Private/SandboxAnimInstance.cpp
+index d6c196d..9cf6b3a 100644
+--- a/Source/SandboxBody/Private/SandboxAnimInstance.cpp
++++ b/Source/SandboxBody/Private/SandboxAnimInstance.cpp
+@@ -189,7 +189,10 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
+ 		if (Limb.ReachShare > 0.0)
+ 		{
+ 			// Within reach (FSandboxLimbTarget::ReachShare), along the line from the root.
+-			const double ReachCm = Limb.ReachShare * (FVector::Dist(RootTransform.GetLocation(), MiddleTransform.GetLocation()) +
++			// RECON-TEMP
++			static const int32 ReconBits = FCString::Atoi(*FPlatformMisc::GetEnvironmentVariable(TEXT("RECON_FIX")));
++			const double Share = (ReconBits & 32) ? FMath::Lerp(1.0, Limb.ReachShare, FMath::Clamp(Limb.Weight, 0.0, 1.0)) : Limb.ReachShare;
++			const double ReachCm = Share * (FVector::Dist(RootTransform.GetLocation(), MiddleTransform.GetLocation()) +
+ 				FVector::Dist(MiddleTransform.GetLocation(), EndTransform.GetLocation()));
+ 			const FVector FromRoot = Effector - RootTransform.GetLocation();
+ 			if (FromRoot.SizeSquared() > ReachCm * ReachCm)
+diff --git a/Source/SandboxBody/Private/SandboxBodyController.cpp b/Source/SandboxBody/Private/SandboxBodyController.cpp
+index cd1feaa..037cac2 100644
+--- a/Source/SandboxBody/Private/SandboxBodyController.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyController.cpp
+@@ -38,6 +38,14 @@ namespace
+ 	// 1 N/m = 1 kg/s^2 in Unreal units as well (force in kg*cm/s^2 per cm), and Chaos does not scale it.
+ }
+ 
++// RECON-TEMP
++static int32 ReconBitsAt(double TimeS)
++{
++	static const int32 Bits = FCString::Atoi(*FPlatformMisc::GetEnvironmentVariable(TEXT("RECON_FIX")));
++	static const double From = FCString::Atod(*FPlatformMisc::GetEnvironmentVariable(TEXT("RECON_FROM")));
++	return TimeS >= From ? Bits : 0;
++}
++
+ USandboxBodyController::USandboxBodyController()
+ {
+ 	PrimaryComponentTick.bCanEverTick = true;
+@@ -1226,7 +1234,7 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
+ 		return false;
+ 	}
+ 	// At once and whole: it is the strength of the muscles that comes up from nothing, not the pose that comes in.
+-	ClipHold.Share = 1.0;
++	ClipHold.Share = (ReconBitsAt(ElapsedS) & 64) ? 0.0 : 1.0; // RECON-TEMP
+ 	ClipHold.CrossShare = 1.0;
+ 	GetUpRun = FGetUpRun();
+ 	GetUpRun.Path = BestPath;
+@@ -1930,8 +1938,25 @@ void USandboxBodyController::UpdatePlacements(double DeltaTime)
+ 		// A foot in the air is kept level, as it would be under an upright pelvis, so that it lands flat.
+ 		const FQuat Level = FrameTransform(EFrame::Here, -1).GetRotation();
+ 		const FQuat* EndFrame = Foot.Mode == EPlacement::Swing ? &Level : nullptr;
++		// RECON-TEMP
++		FQuat Eased = Level;
++		const double LiftEase = Foot.Mode == EPlacement::Swing ? FMath::SmoothStep(0.0, 1.0, FMath::Min(Swing.ElapsedS / Tuning.Balance.StepEaseS, 1.0)) : Foot.SettleLeft();
++		if (ReconBitsAt(ElapsedS) & 2)
++		{
++			Eased = FQuat::Slerp(Mesh->GetComponentQuat(), Level, LiftEase).GetNormalized();
++			EndFrame = LiftEase > 0.0 ? &Eased : nullptr;
++		}
+ 		// Held to the ankle's range in the air, let go of it as the foot settles on the floor.
+-		const double EndLimitWeight = Foot.Mode == EPlacement::Swing ? 1.0 : Foot.SettleLeft();
++		const double EndLimitWeight = Foot.Mode == EPlacement::Swing ? ((ReconBitsAt(ElapsedS) & 4) ? LiftEase : 1.0) : Foot.SettleLeft();
++		{ // RECON-TEMP
++			const FTransform Was = Foot.LastFrame;
++			const FTransform Full = FrameTransform(Foot.Frame, Side);
++			const FQuat Comp = Mesh->GetComponentQuat();
++			UE_LOG(LogSandbox, Display, TEXT("RECON,P,%.4f,%d,mode %d,frame %d,from %d,w %.3f,point %.2f %.2f %.2f,settle %.3f,limbw %.3f,levelVsComp %.2f deg,fullVsLast %.2f deg %.2f cm,lower %.2f,force %.0f,endlimit %.3f"),
++				ElapsedS, Side, static_cast<int32>(Foot.Mode), static_cast<int32>(Foot.Frame), static_cast<int32>(Foot.FromFrame), Weight, Point.X, Point.Y, Point.Z, Foot.SettleLeft(),
++				Animation->GetLimbWeight(FootBoneIndex[Side]), FMath::RadiansToDegrees(Level.AngularDistance(Comp)), FMath::RadiansToDegrees(Full.GetRotation().AngularDistance(Was.GetRotation())),
++				FVector::Dist(Full.GetLocation(), Was.GetLocation()), LowerCm, Balance.FootForceN[Side], EndLimitWeight);
++		}
+ 		if (Weight >= 1.0 && Foot.Frame == EFrame::Actual)
+ 		{
+ 			// The component as the animation sees it when it evaluates: the most recent there is.
+@@ -2367,7 +2392,7 @@ void USandboxBodyController::StartSwing(const FSandboxStepRecord& Plan, const TA
+ 		const FVector StanceAt = Mesh->GetBodyInstance(FootBoneName[Other])->GetUnrealWorldTransform().GetLocation();
+ 		Swing.PassPoint = FVector2D(StanceAt.X, StanceAt.Y) + CrossForward(Other) * (Swing.Pass * Limits.CrossOffsetCm);
+ 	}
+-	PlaceFoot(Side, EPlacement::Swing, Swing.Point, EFrame::Actual, Limits.StepEaseS);
++	PlaceFoot(Side, EPlacement::Swing, Swing.Point, EFrame::Actual, Limits.StepEaseS, nullptr, (ReconBitsAt(ElapsedS) & 1) != 0);
+ 	// The other leg carries the body while the foot is in the air.
+ 	const FVector StancePoint = Placement[Other].Mode != EPlacement::None ? Placement[Other].Point : FlatFootPoint(Other);
+ 	PlaceFoot(Other, EPlacement::Planted, StancePoint, EFrame::Stance, Limits.StepEaseS);
+@@ -2766,7 +2791,7 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
+ 		const bool bWasPlaced[2] = { Placement[0].Mode != EPlacement::None, Placement[1].Mode != EPlacement::None };
+ 		PlaceFoot(Swing.Side, EPlacement::Planted, FVector(Record.Landed.X, Record.Landed.Y, Swing.Target.Z), Planted, Limits.AnchorFollowS, nullptr, true);
+ 		// From the height the bone touched at down to the planted one: the sole comes down onto the floor.
+-		Placement[Swing.Side].SettleCm = FMath::Max(Record.Landed.Z - Swing.Target.Z, 0.0);
++		Placement[Swing.Side].SettleCm = (ReconBitsAt(ElapsedS) & 16) ? WasPoint[Swing.Side].Z - Swing.Target.Z : FMath::Max(Record.Landed.Z - Swing.Target.Z, 0.0); // RECON-TEMP
+ 		Placement[Swing.Side].SettleS = Limits.StepSettleS;
+ 		// The planned sole where the foot landed: what the decisions count as its support while it settles.
+ 		LandedSole = Swing.TargetSole;
+@@ -3392,11 +3417,26 @@ void USandboxBodyController::PushTuningToControls()
+ 		// The leg of a step under way is stiffer, so that the foot keeps up with its point.
+ 		const bool bSwingLeg = Swing.bActive &&
+ 			(Muscle.ChildBone == ThighBoneName[Swing.Side] || Muscle.ChildBone == CalfBoneName[Swing.Side] || Muscle.ChildBone == FootBoneName[Swing.Side]);
++		// RECON-TEMP
++		const int32 EasedSide = Muscle.ChildBone == ThighBoneName[0] || Muscle.ChildBone == CalfBoneName[0] || Muscle.ChildBone == FootBoneName[0] ? 0
++			: Muscle.ChildBone == ThighBoneName[1] || Muscle.ChildBone == CalfBoneName[1] || Muscle.ChildBone == FootBoneName[1] ? 1 : -1;
++		double LandEase = 0.0;
++		if ((ReconBitsAt(ElapsedS) & 8) && EasedSide >= 0 && !bSwingLeg && IsUpright())
++		{
++			for (int32 Each = StepLog.Num() - 1; Each >= 0; --Each)
++			{
++				if (StepLog[Each].Side == EasedSide && StepLog[Each].LandS >= 0.0)
++				{
++					LandEase = 1.0 - FMath::SmoothStep(0.0, 1.0, FMath::Clamp((ElapsedS - StepLog[Each].LandS) / Tuning.Balance.StepEaseS, 0.0, 1.0));
++					break;
++				}
++			}
++		}
+ 		// Eased in from the lift over balance.step_ease_s: doubled at once, the error the leg had while it carried weight
+ 		// was pushed twice as hard into the floor.
+ 		const double SwingEase = Tuning.Balance.StepEaseS > 0.0 ? FMath::SmoothStep(0.0, 1.0, FMath::Min(Swing.ElapsedS / Tuning.Balance.StepEaseS, 1.0)) : 1.0;
+-		const double SwingScale = bSwingLeg ? FMath::Lerp(1.0, FMath::Max(Tuning.Balance.SwingStiffnessScale, 1.0), SwingEase) : 1.0;
+-		const double SwingDampingScale = bSwingLeg ? FMath::Lerp(1.0, Tuning.Balance.SwingDampingScale, SwingEase) : 1.0;
++		const double SwingScale = FMath::Lerp(1.0, FMath::Max(Tuning.Balance.SwingStiffnessScale, 1.0), bSwingLeg ? SwingEase : LandEase);
++		const double SwingDampingScale = FMath::Lerp(1.0, Tuning.Balance.SwingDampingScale, bSwingLeg ? SwingEase : LandEase);
+ 		const double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+ 		FPhysicsControlData Data;
+ 		// Force mode: the spring is a real torque per radian. In the plugin's default (acceleration) mode
+@@ -3409,7 +3449,7 @@ void USandboxBodyController::PushTuningToControls()
+ 		Data.AngularExtraDamping = static_cast<float>(Spring * Group.DampingS * SwingDampingScale);
+ 		Data.MaxTorque = static_cast<float>(Group.MaxTorqueNm * TorqueToUnreal);
+ 		Data.AngularTargetVelocityMultiplier = static_cast<float>(bSwingLeg
+-			? FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingEase) : Group.PoseVelocityShare);
++			? FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingEase) : LandEase > 0.0 ? FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, LandEase) : Group.PoseVelocityShare);
+ 		Data.bUseSkeletalAnimation = true;
+ 		// The two bodies are jointed and must never collide, whatever this extra constraint says.
+ 		Data.bDisableCollision = true;
+@@ -3512,6 +3552,17 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
+ 	UpdateGetUp(DeltaTime);
+ 	UpdateRegroup(DeltaTime);
+ 	UpdateStep(DeltaTime);
++	if ((ReconBitsAt(ElapsedS) & 8) && IsUpright() && StepLog.Num() > 0) // RECON-TEMP
++	{
++		for (int32 Each = FMath::Max(StepLog.Num() - 2, 0); Each < StepLog.Num(); ++Each)
++		{
++			if (StepLog[Each].LandS >= 0.0 && ElapsedS - StepLog[Each].LandS <= Tuning.Balance.StepEaseS + 2.0 * DeltaTime)
++			{
++				PushTuningToControls();
++				break;
++			}
++		}
++	}
+ 	UpdateShift(DeltaTime);
+ 	UpdateLowering(DeltaTime);
+ 	UpdateIdle(DeltaTime);
+diff --git a/Source/SandboxBody/Private/SandboxRagdollActor.cpp b/Source/SandboxBody/Private/SandboxRagdollActor.cpp
+index d8a9517..e8fa93e 100644
+--- a/Source/SandboxBody/Private/SandboxRagdollActor.cpp
++++ b/Source/SandboxBody/Private/SandboxRagdollActor.cpp
+@@ -19,6 +19,7 @@ ASandboxRagdollActor::ASandboxRagdollActor()
+ 	// engine would skip pose updates there and bone transforms would differ from a rendered run.
+ 	BodyMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+ 	BodyMesh->bEnableUpdateRateOptimizations = false;
++	BodyMesh->SetDisablePostProcessBlueprint(FCString::Atoi(*FPlatformMisc::GetEnvironmentVariable(TEXT("RECON_NOPP"))) != 0); // RECON-TEMP
+ }
+ 
+ bool ASandboxRagdollActor::InitBody(USkeletalMesh* Mesh, UPhysicsAsset* PhysicsAssetOverride, bool bSimulate, FString& OutError)
+diff --git a/Source/SandboxScenario/Private/NaturalMeasures.cpp b/Source/SandboxScenario/Private/NaturalMeasures.cpp
+index 4125599..0fc82f0 100644
+--- a/Source/SandboxScenario/Private/NaturalMeasures.cpp
++++ b/Source/SandboxScenario/Private/NaturalMeasures.cpp
+@@ -396,6 +396,16 @@ void FNaturalMeasures::SampleMuscles(const FNaturalFrame& Frame, ESandboxBodySta
+ 						ParentBefore->AngularVelocityRad, ChildBefore->AngularVelocityRad, FVector::ZeroVector, Asked.StiffnessNmPerRad, Asked.DampingNmsPerRad, Asked.MaxTorqueNm, bUnused);
+ 				};
+ 				const double CommandStepNm = (Command(Muscle) - Command(LastMuscles[Index])).Size();
++				// RECON-TEMP
++				{
++					const FQuat PB = ParentBefore->WorldTransform.GetRotation();
++					const FQuat CB = ChildBefore->WorldTransform.GetRotation();
++					const FVector WP = ParentBefore->AngularVelocityRad;
++					const FVector WC = ChildBefore->AngularVelocityRad;
++					UE_LOG(LogSandbox, Display, TEXT("RECON,M,%d,%s,%.9f,%.9f,%.9f,%.9f,%.4f,%.4f,%.2f,%.3f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.3f,%d"), Frame.Frame, *Muscle.ChildBone.ToString(),
++						Muscle.TargetRelative.X, Muscle.TargetRelative.Y, Muscle.TargetRelative.Z, Muscle.TargetRelative.W, Muscle.StiffnessNmPerRad, Muscle.DampingNmsPerRad, Muscle.MaxTorqueNm, Muscle.PoseVelocityShare,
++						PB.X, PB.Y, PB.Z, PB.W, CB.X, CB.Y, CB.Z, CB.W, WP.X, WP.Y, WP.Z, WC.X, WC.Y, WC.Z, CommandStepNm, static_cast<int32>(State));
++				}
+ 				if (CommandStepNm > CommandStepMaxNm)
+ 				{
+ 					CommandStepMaxNm = CommandStepNm;

@@ -1,0 +1,396 @@
+﻿diff --git a/Config/Tuning/README.md b/Config/Tuning/README.md
+index 3c8b5d9..cb1d9e6 100644
+--- a/Config/Tuning/README.md
++++ b/Config/Tuning/README.md
+@@ -75,6 +75,7 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
+ | `getup.upright_deg` | degrees | The body stands again once the clip is through and its pelvis is within this of upright, with both feet on the floor |
+ | `getup.rest_per_ns_s`, `getup.rest_max_s` | s per N*s, s | N7: the body lies `getup.rest_s` plus this per newton-second of the hardest hit felt from a second before its fall, at most `rest_max_s` (0: no bound). 0: `rest_s` for every fall |
+ | `getup.gather_s`, `getup.gather_rate` | s, share | N7: while the clip waits for the body its time goes back by up to `gather_s` and comes again, at `gather_rate` of its rate, never past where the wait began: the body gathers itself instead of freezing. 0: the clip stands still |
++| `getup.unload_step`, `getup.step_lag_cm`, `getup.unload_share`, `getup.step_lift_cm`, `getup.step_max_s`, `getup.shift_max_cm` | 0 or 1, cm, share, cm, s, cm | N7, unload and then step: a foot that carries weight and is further than `step_lag_cm` over the floor from the clip's owes a step (if the other foot carries weight); the clip waits, the pelvis's assist takes the centre of mass over the other foot (at most `shift_max_cm`), and once the foot carries no more than `unload_share` of the weight it is carried to the clip's foot, raised by `step_lift_cm`; let go after `step_max_s`. 0: the body rose like a plank over feet left behind |
+ | `getup.reached_feet` | 0 or 1 | N7: 1 aims the feet's assist, and measures a foot's lag, at where the foot is with the legs' joints as the muscles are asked for them (held to their ranges, on the mesh's proportions), not where the clip's own foot is (which the body's foot stayed 17 to 18 cm from while the clip waited for it). 0: the clip's own foot |
+ | `getup.progress_cm`, `getup.progress_window_s`, `getup.progress_pelvis` | cm, s, 0 or 1 | N7: above 0 the clip waits for a foot in the air (with `progress_pelvis` 1 for the pelvis too) only while it comes this much closer in every window; one that does not come is not waited for until it is within its bound again (the clip had asked for where the body cannot reach and stood until `foot_wait_s` ran out). 0: as before |
+ | `getup.slow_from`, `getup.rate_follow_s` | share, s | N7: above 0 the clip slows as the body falls behind, from this share of the lags that stop it (`lag_cm`, `side_lag_cm`, `foot_lag_cm`) to a stop at the whole of them, and runs while the body eases in; each change of its speed is smoothed over `rate_follow_s`. 0, 0: the clip runs or stands still, as before |
+diff --git a/Config/Tuning/body.json b/Config/Tuning/body.json
+index 3e99034..0aa287e 100644
+--- a/Config/Tuning/body.json
++++ b/Config/Tuning/body.json
+@@ -233,6 +233,12 @@
+     "reached_feet": 0,
+     "gather_s": 0,
+     "gather_rate": 0.5,
++    "unload_step": 0,
++    "step_lag_cm": 20,
++    "unload_share": 0.15,
++    "step_lift_cm": 8,
++    "step_max_s": 1.2,
++    "shift_max_cm": 25,
+     "clip_back": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_B.M_ragdoll_getup_stand_B",
+     "clip_front": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_F.M_ragdoll_getup_stand_F",
+     "clip_left": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_L.M_ragdoll_getup_stand_L",
+diff --git a/Source/SandboxBody/Private/SandboxBodyController.cpp b/Source/SandboxBody/Private/SandboxBodyController.cpp
+index 4336eaf..fa4cb0f 100644
+--- a/Source/SandboxBody/Private/SandboxBodyController.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyController.cpp
+@@ -1430,7 +1430,15 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
+ 	GetUpView.BehindSideS = 0.0;
+ 	GetUpView.BehindFootS = 0.0;
+ 	GetUpView.BehindHeldS = 0.0;
+-	GetUpView.LayS = State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
++	GetUpView.BehindStepS = 0.0;
++	GetUpView.Steps = 0;
++	GetUpView.StepsDone = 0;
++	GetUpView.StepsLetGo = 0;
++	GetUpView.PlankS = 0.0;
++	GetUpView.PlankMaxCm = 0.0;
++	GetUpView.RiseFeetCm = -1.0;
++	GetUpView.RiseTrunkDeg = -1.0;
++	GetUpView.LayS =State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
+ 	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; by '%s' (likeness %.2f)"), GetUpRestS(), *FPaths::GetBaseFilename(BestPath), BestLikeness));
+ 	return true;
+ }
+@@ -1494,6 +1502,12 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 	FTransform Goal = Clip->PelvisAt(ClipHold.TimeS) * GetUpRun.Frame;
+ 	Goal.SetScale3D(FVector::OneVector);
+ 	Pelvis->Target = Goal;
++	const bool bUnloadStep = Limits.UnloadStep > 0.5;
++	if (bUnloadStep)
++	{
++		// N7, unload and then step: while a foot owes a step the pelvis is aimed to take the weight off it (below).
++		Pelvis->Target.AddToTranslation(FVector(GetUpRun.ShiftCm.X, GetUpRun.ShiftCm.Y, 0.0));
++	}
+ 	SetAssistTarget(*Pelvis);
+ 	for (FAssist& Assist : Assists)
+ 	{
+@@ -1503,12 +1517,23 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 		{
+ 			Assist.Target = InClip * GetUpRun.Frame;
+ 			Assist.Target.SetScale3D(FVector::OneVector);
++			if (bUnloadStep && GetUpRun.StepSide >= 0 && Assist.Side == GetUpRun.StepSide && GetUpRun.bStepUnloaded)
++			{
++				// A foot that has been unloaded is carried to the clip's, raised on its way so that it does not drag over the floor.
++				const FBodyInstance* Foot = Mesh->GetBodyInstance(Assist.Bone);
++				if (Foot && Foot->IsValidBodyInstance() &&
++					FVector::Dist2D(Foot->GetUnrealWorldTransform().GetLocation(), Assist.Target.GetLocation()) > Limits.FootLagCm)
++				{
++					Assist.Target.AddToTranslation(FVector(0.0, 0.0, Limits.StepLiftCm));
++				}
++			}
+ 			SetAssistTarget(Assist);
+ 		}
+ 	}
+ 
+ 	const FTransform Now = Body->GetUnrealWorldTransform();
+-	const double LagCm = FVector::Dist(Now.GetLocation(), Goal.GetLocation());
++	// Lost is judged against where the pelvis is asked to be: the clip's pelvis, moved while a step is owed.
++	const double LagCm = FVector::Dist(Now.GetLocation(), (bUnloadStep ? Pelvis->Target : Goal).GetLocation());
+ 	if (LagCm > Limits.LostCm)
+ 	{
+ 		GiveUpGetUp(FString::Printf(TEXT("the pelvis is %.0f cm from where the clip has it"), LagCm));
+@@ -1518,21 +1543,37 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 	// it. A foot the body stands on is where it is: the clip is laid over it instead, its root following the feet in
+ 	// proportion to the weight they carry (getup.frame_follow_s).
+ 	double FootLagCm[2] = { 0.0, 0.0 };
++	double FootFloorLagCm[2] = { 0.0, 0.0 };
++	double FootLoadN[2] = { 0.0, 0.0 };
++	FVector FootAt[2] = { FVector::ZeroVector, FVector::ZeroVector };
++	FVector FootMassAt[2] = { FVector::ZeroVector, FVector::ZeroVector };
+ 	double AirLagCm = 0.0;
+ 	FVector2D CarriedOff = FVector2D::ZeroVector;
+ 	double CarriedN = 0.0;
++	// What the clip's root follows: the loaded feet, but not one that owes a step and is about to go.
++	FVector2D FollowOff = FVector2D::ZeroVector;
++	double FollowN = 0.0;
+ 	for (const FAssist& Assist : Assists)
+ 	{
+ 		const FBodyInstance* Foot = Assist.Slot == EAssistSlot::Feet && Assist.Side >= 0 ? Mesh->GetBodyInstance(Assist.Bone) : nullptr;
+ 		if (Foot && Foot->IsValidBodyInstance())
+ 		{
+-			const FVector Off = Foot->GetUnrealWorldTransform().GetLocation() - Assist.Target.GetLocation();
++			FootAt[Assist.Side] = Foot->GetUnrealWorldTransform().GetLocation();
++			FootMassAt[Assist.Side] = Foot->GetCOMPosition();
++			const FVector Off = FootAt[Assist.Side] - Assist.Target.GetLocation();
+ 			FootLagCm[Assist.Side] = Off.Size();
++			FootFloorLagCm[Assist.Side] = Off.Size2D();
+ 			const double LoadN = Balance.bValid ? Balance.FootForceN[Assist.Side] : 0.0;
++			FootLoadN[Assist.Side] = LoadN;
+ 			if (LoadN > 0.0)
+ 			{
+ 				CarriedOff += FVector2D(Off.X, Off.Y) * LoadN;
+ 				CarriedN += LoadN;
++				if (!bUnloadStep || Assist.Side != GetUpRun.StepSide)
++				{
++					FollowOff += FVector2D(Off.X, Off.Y) * LoadN;
++					FollowN += LoadN;
++				}
+ 			}
+ 			else
+ 			{
+@@ -1540,10 +1581,15 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 			}
+ 		}
+ 	}
+-	if (CarriedN > 0.0 && Limits.FrameFollowS > 0.0 && WeightN > 0.0)
++	if (bUnloadStep)
+ 	{
+-		const double Share = FMath::Clamp(CarriedN / WeightN, 0.0, 1.0);
+-		const FVector2D Shift = (CarriedOff / CarriedN) * FMath::Min(Share * DeltaTime / Limits.FrameFollowS, 1.0);
++		CarriedOff = FollowOff;
++	}
++	const double FollowCarriedN = bUnloadStep ? FollowN : CarriedN;
++	if (FollowCarriedN > 0.0 && Limits.FrameFollowS > 0.0 && WeightN > 0.0)
++	{
++		const double Share = FMath::Clamp(FollowCarriedN / WeightN, 0.0, 1.0);
++		const FVector2D Shift = (CarriedOff / FollowCarriedN) * FMath::Min(Share * DeltaTime / Limits.FrameFollowS, 1.0);
+ 		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
+ 	}
+ 	// And over the body itself where the feet carry nothing: a body that turns into the clip's first pose, rolls onto
+@@ -1569,6 +1615,99 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 		const FVector2D Shift = FVector2D(Off.X, Off.Y) * (Share * FMath::Min(DeltaTime / Limits.PelvisFollowS, 1.0));
+ 		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
+ 	}
++	// N7, unload and then step (getup.unload_step). A foot the body stands on does not go where the clip steps it to; the clip went on
++	// rising over it, and the body rose like a plank over feet left behind it, held by the assist. A person takes the weight off the
++	// foot first and then steps.
++	bool bStepWaited = false;
++	if (bUnloadStep && Ease >= 1.0 && Balance.bValid && WeightN > 0.0)
++	{
++		for (int32 Side = 0; Side < 2; ++Side)
++		{
++			if (GetUpRun.bStepBarred[Side] && FootFloorLagCm[Side] < Limits.StepLagCm)
++			{
++				GetUpRun.bStepBarred[Side] = false;
++			}
++		}
++		if (GetUpRun.StepSide < 0)
++		{
++			for (int32 Side = 0; Side < 2; ++Side)
++			{
++				const int32 Other = 1 - Side;
++				if (FootLoadN[Side] > 0.0 && FootLoadN[Other] > 0.0 && !GetUpRun.bStepBarred[Side] && FootFloorLagCm[Side] > Limits.StepLagCm &&
++					(GetUpRun.StepSide < 0 || FootFloorLagCm[Side] > FootFloorLagCm[GetUpRun.StepSide]))
++				{
++					GetUpRun.StepSide = Side;
++				}
++			}
++			if (GetUpRun.StepSide >= 0)
++			{
++				GetUpRun.StepS = 0.0;
++				GetUpRun.bStepUnloaded = false;
++				++GetUpView.Steps;
++				UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up at %.2f s: the %s foot owes a step (%.0f cm off over the floor, %.0f N on it, clip %.2f s)"),
++					ElapsedS, GetUpRun.StepSide == 0 ? TEXT("left") : TEXT("right"), FootFloorLagCm[GetUpRun.StepSide], FootLoadN[GetUpRun.StepSide], ClipHold.TimeS);
++			}
++		}
++		if (GetUpRun.StepSide >= 0)
++		{
++			const int32 Side = GetUpRun.StepSide;
++			GetUpRun.StepS += DeltaTime;
++			if (!GetUpRun.bStepUnloaded && FootLoadN[Side] <= Limits.UnloadShare * WeightN)
++			{
++				GetUpRun.bStepUnloaded = true;
++			}
++			const bool bThere = FootFloorLagCm[Side] <= Limits.FootLagCm && (FootLoadN[Side] > 0.0 || !GetUpRun.bStepUnloaded);
++			if (bThere || GetUpRun.StepS > Limits.StepMaxS)
++			{
++				++(bThere ? GetUpView.StepsDone : GetUpView.StepsLetGo);
++				GetUpRun.bStepBarred[Side] = !bThere;
++				UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up at %.2f s: the %s foot's step is %s after %.2f s (%.0f cm off, %.0f N on it)"),
++					ElapsedS, Side == 0 ? TEXT("left") : TEXT("right"), bThere ? TEXT("done") : TEXT("let go"), GetUpRun.StepS, FootFloorLagCm[Side], FootLoadN[Side]);
++				GetUpRun.StepSide = -1;
++				GetUpRun.bStepUnloaded = false;
++			}
++			else
++			{
++				bStepWaited = true;
++			}
++		}
++	}
++	else if (bUnloadStep && GetUpRun.StepSide >= 0)
++	{
++		// Eased out by a hit, or the balance not sensed: the step is let go.
++		GetUpRun.StepSide = -1;
++		GetUpRun.bStepUnloaded = false;
++	}
++	if (bUnloadStep)
++	{
++		// The pelvis's aim while a step is owed: where the pelvis is, moved by what takes the centre of mass over the other foot (at
++		// most shift_max_cm); and back to the clip's pelvis after it. It glides either way.
++		FVector2D Wanted = FVector2D::ZeroVector;
++		if (bStepWaited)
++		{
++			const FVector ToOther = FootMassAt[1 - GetUpRun.StepSide] - Balance.CenterOfMass;
++			Wanted = FVector2D(Now.GetLocation() - Goal.GetLocation()) + FVector2D(ToOther).GetClampedToMaxSize(Limits.ShiftMaxCm);
++		}
++		GetUpRun.ShiftCm += (Wanted - GetUpRun.ShiftCm) * (Limits.FrameFollowS > 0.0 ? FMath::Min(DeltaTime / Limits.FrameFollowS, 1.0) : 1.0);
++	}
++	// The plank, measured (read only): the feet carry the body while its centre of mass is outside them; and the body's shape as the
++	// pelvis comes up through 70 cm.
++	if (Ease >= 1.0 && Balance.bValid && Balance.IsSupported() && WeightN > 0.0 &&
++		Balance.FootForceN[0] + Balance.FootForceN[1] >= 0.8 * WeightN && Balance.CenterOfMassMarginCm < -5.0)
++	{
++		GetUpView.PlankS += DeltaTime;
++		GetUpView.PlankMaxCm = FMath::Max(GetUpView.PlankMaxCm, -Balance.CenterOfMassMarginCm);
++	}
++	if (GetUpView.RiseFeetCm < 0.0 && Now.GetLocation().Z - LastSupportHeightCm >= 70.0)
++	{
++		const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
++		if (Chest && Chest->IsValidBodyInstance())
++		{
++			const FVector Trunk = Chest->GetUnrealWorldTransform().GetLocation() - Now.GetLocation();
++			GetUpView.RiseTrunkDeg = FMath::RadiansToDegrees(FMath::Atan2(Trunk.Size2D(), Trunk.Z));
++			GetUpView.RiseFeetCm = FMath::Max(FVector::Dist2D(FootAt[0], Now.GetLocation()), FVector::Dist2D(FootAt[1], Now.GetLocation()));
++		}
++	}
+ 	// A line of the log four times a second: where the body is against the clip.
+ 	if (FMath::FloorToInt32(ElapsedS * 4.0) != FMath::FloorToInt32((ElapsedS - DeltaTime) * 4.0))
+ 	{
+@@ -1618,7 +1757,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 			bPelvisBehind = bPelvisBehind && !GetUpRun.bPelvisNotWaited;
+ 		}
+ 	}
+-	const bool bBehind = bHeldDown || bPelvisBehind || bFootWaited;
++	const bool bBehind = bHeldDown || bPelvisBehind || bFootWaited || bStepWaited;
+ 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
+ 	double RateGoal = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
+ 	if (Limits.SlowFrom > 0.0 && !bBehind && !bThrough)
+@@ -1664,6 +1803,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 		GetUpView.BehindSideS += bPelvisBehind && PelvisOff.Size2D() > Limits.SideLagCm ? DeltaTime : 0.0;
+ 		GetUpView.BehindFootS += bFootWaited ? DeltaTime : 0.0;
+ 		GetUpView.BehindHeldS += bHeldDown ? DeltaTime : 0.0;
++		GetUpView.BehindStepS += bStepWaited ? DeltaTime : 0.0;
+ 	}
+ 	if (Ease >= 1.0 && (bBehind || bThrough))
+ 	{
+diff --git a/Source/SandboxBody/Private/SandboxBodyTuning.cpp b/Source/SandboxBody/Private/SandboxBodyTuning.cpp
+index 4b4b927..ec5e43d 100644
+--- a/Source/SandboxBody/Private/SandboxBodyTuning.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyTuning.cpp
+@@ -290,6 +290,12 @@ namespace
+ 		Visitor(FString(TEXT("getup.reached_feet")), Tuning.GetUp.ReachedFeet);
+ 		Visitor(FString(TEXT("getup.gather_s")), Tuning.GetUp.GatherS);
+ 		Visitor(FString(TEXT("getup.gather_rate")), Tuning.GetUp.GatherRate);
++		Visitor(FString(TEXT("getup.unload_step")), Tuning.GetUp.UnloadStep);
++		Visitor(FString(TEXT("getup.step_lag_cm")), Tuning.GetUp.StepLagCm);
++		Visitor(FString(TEXT("getup.unload_share")), Tuning.GetUp.UnloadShare);
++		Visitor(FString(TEXT("getup.step_lift_cm")), Tuning.GetUp.StepLiftCm);
++		Visitor(FString(TEXT("getup.step_max_s")), Tuning.GetUp.StepMaxS);
++		Visitor(FString(TEXT("getup.shift_max_cm")), Tuning.GetUp.ShiftMaxCm);
+ 	}
+ 
+ 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
+@@ -636,7 +642,13 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
+ 		!CheckRange(GetUp.ProgressPelvis, 1.0, TEXT("getup"), TEXT("progress_pelvis"), OutError) ||
+ 		!CheckRange(GetUp.ReachedFeet, 1.0, TEXT("getup"), TEXT("reached_feet"), OutError) ||
+ 		!CheckRange(GetUp.GatherS, 2.0, TEXT("getup"), TEXT("gather_s"), OutError) ||
+-		!CheckRange(GetUp.GatherRate, 2.0, TEXT("getup"), TEXT("gather_rate"), OutError))
++		!CheckRange(GetUp.GatherRate, 2.0, TEXT("getup"), TEXT("gather_rate"), OutError) ||
++		!CheckRange(GetUp.UnloadStep, 1.0, TEXT("getup"), TEXT("unload_step"), OutError) ||
++		!CheckRange(GetUp.StepLagCm, 200.0, TEXT("getup"), TEXT("step_lag_cm"), OutError) ||
++		!CheckRange(GetUp.UnloadShare, 1.0, TEXT("getup"), TEXT("unload_share"), OutError) ||
++		!CheckRange(GetUp.StepLiftCm, 50.0, TEXT("getup"), TEXT("step_lift_cm"), OutError) ||
++		!CheckRange(GetUp.StepMaxS, 10.0, TEXT("getup"), TEXT("step_max_s"), OutError) ||
++		!CheckRange(GetUp.ShiftMaxCm, 100.0, TEXT("getup"), TEXT("shift_max_cm"), OutError))
+ 	{
+ 		return false;
+ 	}
+@@ -645,6 +657,11 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
+ 		OutError = TEXT("getup.progress_window_s must be above 0 while getup.progress_cm is");
+ 		return false;
+ 	}
++	if (GetUp.UnloadStep > 0.5 && (GetUp.StepLagCm <= 0.0 || GetUp.UnloadShare <= 0.0 || GetUp.StepMaxS <= 0.0))
++	{
++		OutError = TEXT("getup.step_lag_cm, getup.unload_share and getup.step_max_s must be above 0 while getup.unload_step is on");
++		return false;
++	}
+ 
+ 	// Iteration counts are whole numbers that fit the engine's per-body setting (one byte).
+ 	const TPair<const TCHAR*, double> Iterations[] = {
+diff --git a/Source/SandboxBody/Public/SandboxBodyController.h b/Source/SandboxBody/Public/SandboxBodyController.h
+index 3f66a61..72dd4c7 100644
+--- a/Source/SandboxBody/Public/SandboxBodyController.h
++++ b/Source/SandboxBody/Public/SandboxBodyController.h
+@@ -291,6 +291,23 @@ struct FSandboxGetUpView
+ 	double BehindSideS = 0.0;
+ 	double BehindFootS = 0.0;
+ 	double BehindHeldS = 0.0;
++	/** ...and a loaded foot that owes a step (getup.unload_step); the steps owed, done and let go. */
++	double BehindStepS = 0.0;
++	int32 Steps = 0;
++	int32 StepsDone = 0;
++	int32 StepsLetGo = 0;
++	/**
++	 * The plank: how long, after easing in, the feet carried 0.8 of the body's weight or more while its centre of mass was more than
++	 * 5 cm outside them (the world held it), and the furthest outside it was then. Seconds, cm.
++	 */
++	double PlankS = 0.0;
++	double PlankMaxCm = 0.0;
++	/**
++	 * When the pelvis first came 70 cm above the floor: the farther foot from it over the floor, and the trunk (pelvis to chest) from
++	 * vertical. cm, degrees; below 0 until then.
++	 */
++	double RiseFeetCm = -1.0;
++	double RiseTrunkDeg = -1.0;
+ 	/** Why the last attempt that was given up was given up. */
+ 	FString GivenUp;
+ 	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */
+@@ -796,6 +813,16 @@ private:
+ 		/** N7 (getup.gather_s): the clip's time where the wait that runs began (below 0: none), and which way it goes now. */
+ 		double GatherFromS = -1.0;
+ 		double GatherWay = -1.0;
++		/**
++		 * N7 (getup.unload_step): the foot that owes a step (below 0: none), how long the step has run, whether the foot has been
++		 * unloaded and is on its way, where the pelvis's assist is aimed from the clip's pelvis to take the weight off it, and per
++		 * foot whether it owes no step until it has been within step_lag_cm once (a step of it was let go).
++		 */
++		int32 StepSide = -1;
++		double StepS = 0.0;
++		bool bStepUnloaded = false;
++		FVector2D ShiftCm = FVector2D::ZeroVector;
++		bool bStepBarred[2] = { false, false };
+ 	};
+ 	FGetUpRun GetUpRun;
+ 	FSandboxGetUpView GetUpView;
+diff --git a/Source/SandboxBody/Public/SandboxBodyTuning.h b/Source/SandboxBody/Public/SandboxBodyTuning.h
+index 4f9e54f..d0a91c6 100644
+--- a/Source/SandboxBody/Public/SandboxBodyTuning.h
++++ b/Source/SandboxBody/Public/SandboxBodyTuning.h
+@@ -898,6 +898,20 @@ struct FSandboxGetUpTuning
+ 	 */
+ 	double GatherS = 0.0;
+ 	double GatherRate = 0.0;
++	/**
++	 * N7, unload and then step (the owner's decision of 26 November). 1: a foot that carries weight and is further than StepLagCm over
++	 * the floor from where the clip has it owes a step, if the other foot carries weight too. The clip waits; the pelvis's assist is
++	 * aimed so that the centre of mass goes over the other foot (by at most ShiftMaxCm); once the foot carries no more than UnloadShare
++	 * of the body's weight it is carried to the clip's foot, its assist's target raised by StepLiftCm until it is within foot_lag_cm;
++	 * a step not done in StepMaxS is let go and the clip goes on. 0: a loaded foot is where it is and the clip is laid over it (the body
++	 * rose like a plank over feet left behind it). 0 or 1, cm, share, cm, s, cm.
++	 */
++	double UnloadStep = 0.0;
++	double StepLagCm = 0.0;
++	double UnloadShare = 0.0;
++	double StepLiftCm = 0.0;
++	double StepMaxS = 0.0;
++	double ShiftMaxCm = 0.0;
+ 	/**
+ 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
+ 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
+diff --git a/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp b/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp
+index 496ab0b..754d6c4 100644
+--- a/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp
++++ b/Source/SandboxScenario/Private/ScenarioRunnerSubsystem.cpp
+@@ -2755,6 +2755,14 @@ void UScenarioRunnerSubsystem::Finish()
+ 			GetUpJson->SetNumberField(TEXT("behind_side_s"), GetUps.BehindSideS);
+ 			GetUpJson->SetNumberField(TEXT("behind_foot_s"), GetUps.BehindFootS);
+ 			GetUpJson->SetNumberField(TEXT("behind_held_s"), GetUps.BehindHeldS);
++			GetUpJson->SetNumberField(TEXT("behind_step_s"), GetUps.BehindStepS);
++			GetUpJson->SetNumberField(TEXT("steps"), GetUps.Steps);
++			GetUpJson->SetNumberField(TEXT("steps_done"), GetUps.StepsDone);
++			GetUpJson->SetNumberField(TEXT("steps_let_go"), GetUps.StepsLetGo);
++			GetUpJson->SetNumberField(TEXT("plank_s"), GetUps.PlankS);
++			GetUpJson->SetNumberField(TEXT("plank_max_cm"), GetUps.PlankMaxCm);
++			GetUpJson->SetNumberField(TEXT("rise_feet_cm"), GetUps.RiseFeetCm);
++			GetUpJson->SetNumberField(TEXT("rise_trunk_deg"), GetUps.RiseTrunkDeg);
+ 			GetUpJson->SetNumberField(TEXT("lay_s"), GetUps.LayS);
+ 			GetUpJson->SetStringField(TEXT("given_up"), GetUps.GivenUp);
+ 			GetUpJson->SetNumberField(TEXT("hits"), GetUps.Hits);

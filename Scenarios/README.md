@@ -301,7 +301,8 @@ The `strike_*` scenarios are a hand's or a foot's target sent in a straight line
 standing character and back: a slap at 6 m/s on the head, the chest and a thigh (`strike_slap_head`, `_torso`,
 `_leg`); a punch at 8 m/s on the head, the chest, a thigh, a shoulder and a forearm, the thinnest body there is
 (`strike_punch_head`, `_torso`, `_leg`, `_shoulder`, `_forearm`, and `_forearm_heights` at four more heights); a
-punch at 6 m/s that stays 0.1 s in the belly (`strike_punch_belly_steps`); and a kick at about 8 m/s into the
+punch at 6 m/s that stays 0.1 s in the belly (`strike_punch_belly_falls`, called `strike_punch_belly_steps` until
+26 November 2026); and a kick at about 8 m/s into the
 belly, the head, a thigh and a calf (`strike_kick_torso`, `strike_kick_torso_through_falls`,
 `strike_kick_head_knockdown`, `strike_kick_thigh`, `strike_kick_calf`). The speed is in the keys (distance over
 time); the hand arrives a little faster than its target, because it has to catch up with it (6.25 and 8.87 m/s).
@@ -311,8 +312,11 @@ moved: 5 cm for the head, 3 cm for the chest, 1 cm for a thigh or a forearm, 10 
 calf. The slaps, the punches on a thigh, a shoulder and a forearm, and the kicks on a thigh and a calf end
 standing (the slaps and the shoulder after one flinch). The others end lying: `strike_punch_head` and
 `strike_kick_head_knockdown` are knocked down by the head (`reactions.knockdown_head_ns`), and
-`strike_punch_torso`, `strike_punch_belly_steps` and the two kicks into the belly double over and fall
-(`reactions.double_over_*`).
+`strike_punch_torso`, `strike_punch_belly_falls` and the two kicks into the belly double over and fall
+(`reactions.double_over_*`). The belly punch falls because the doubled-over pose tilts the pelvis past
+`thresholds.fall_tilt_deg` (36.9 degrees of 35), not because the body loses its feet: at 45 the same punch is
+stepped off and the body stands. A defect left for R4, by the owner's decision of 26 November 2026
+(`docs/active-ragdoll.md`, R4 and decision 11).
 
 To see one, take pictures at the moment of the hit, with the overlays:
 `Tools\scenario.ps1 -Name strike_punch_torso -Shot -ShotAt "3.07,3.09,3.25" -Overlay all`.

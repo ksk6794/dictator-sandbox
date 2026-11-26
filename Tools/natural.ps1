@@ -71,7 +71,7 @@ for ($angle = 0; $angle -lt 360; $angle += 45) {
 for ($angle = 0.0; $angle -lt 360; $angle += 22.5) {
     Add-Trial 'hand' ('hand_{0:000}' -f $angle) ([ordered]@{ name = ''; duration_s = 10.0; body = $base.body; events = @(Get-ShoveEvents -Radians ($angle * [Math]::PI / 180.0)) })
 }
-foreach ($existing in @('getup_back', 'getup_front', 'getup_left', 'getup_right', 'strike_slap_head', 'strike_punch_torso', 'strike_punch_belly_steps', 'strike_punch_shoulder', 'strike_kick_thigh')) {
+foreach ($existing in @('getup_back', 'getup_front', 'getup_left', 'getup_right', 'strike_slap_head', 'strike_punch_torso', 'strike_punch_belly_falls', 'strike_punch_shoulder', 'strike_kick_thigh')) {
     $source = Read-JsonFile (Join-Path $RepoRoot "Scenarios\$existing.json")
     $copy = [ordered]@{}
     foreach ($property in $source.PSObject.Properties) { $copy[$property.Name] = $property.Value }

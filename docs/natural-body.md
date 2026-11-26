@@ -129,6 +129,10 @@ The track adds nine requirements and 26 criteria. Every limit below is a proposa
 | C20 | It gets up, mostly at once | Share of 50 falls that end standing; of those, at the first attempt; three seeds | 99%; 43, 45 and 44 of 50 | None | 95% or more (M5's figure); 45 or more | N7 |
 | C21 | It takes as long as a person | Median time from the first move to standing, bare floor | 4.7 s in the median of 78 (3.2 to 6.4) | 2.6 to 2.9 s young; 4.2 s median at 20 to 50 years | 2.6 to 4.2 s | N7 |
 
+C19 to C21 with these limits, and C27, are R2's gate since the owner's decision of 26 November 2026 (`docs/active-ragdoll.md`,
+decision 16); C20's "45 or more" is read as 135 or more of 150 over the three seeds. With the led get-up the same day: about 12% of
+attempts given up, 149 standing and 139 at the first attempt, 3.2 s.
+
 **Standing, and from one time to the next**
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |
@@ -231,7 +235,7 @@ Fore-and-aft sway amplitude of the centre of pressure; relaxed against braced st
 
 The parts are numbered as they were first discussed, by what they give.
 
-**The order of work is no longer here.** Since 26 November 2026 it is `docs/active-ragdoll.md`, section 8, the one order of the project, with a table of where each part of this track went (the owner's decision of 26 November): N2, N3 and N4 to R4, N5 to R5 and R6, N6 to R3, N7 to R2, R6 and R7, N9 to R9; N8 B's fingers are shown in R2 and R3, and N8 D's toes are decided before R4. The order this track had (decision 1 of 25 November) is in the table below. Its reason holds in the new order too: walking, sitting and righting a chair (M4b) come after the soft body (R4), so that they are not tuned twice.
+**The order of work is no longer here.** Since 26 November 2026 it is `docs/active-ragdoll.md`, section 8, the one order of the project, with a table of where each part of this track went (the owner's decision of 26 November): N2, N3 and N4 to R4, N5 to R5 and R6, N6 to R3, N7 to R2, R6 and R7, N9 to R9; N8 B's fingers are shown in R2 and R3, and N8 D's toes are decided before R4. The order this track had (decision 1 of 25 November) is in the table below. Its reason holds in the new order too: walking, sitting and righting a chair (M4b) come after the soft body (R4) and after the authority comes down (R7), so that they are not tuned twice.
 
 **Decisions for the owner.** Each is put one at a time when its part begins; the recommended answer is first.
 
@@ -979,7 +983,7 @@ The rules of `CLAUDE.md` and the working agreements hold. These are the ones thi
 
 **Before a part**
 
-- Read `CLAUDE.md` (the rules and "Things that have already bitten"), this plan's section for the part, and the last sections of `docs/testing.md`.
+- Read `CLAUDE.md` (the rules and "Things that have already bitten"), the areas of `docs/pitfalls.md` that the part touches (since 26 November 2026), this plan's section for the part, and the last sections of `docs/testing.md`.
 - Open with a plan: classes and modules, scenarios and measures, risks. Put the part's decisions to the owner one at a time, with options and the recommended one.
 - Take the reference: `Tools\suite.ps1 -SaveBaseline pre_<part>`, and the push matrix, the knockdowns, the stand on three seeds and the grab's pulls as they are now.
 

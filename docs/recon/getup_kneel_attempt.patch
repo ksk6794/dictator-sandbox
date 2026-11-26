@@ -1,0 +1,624 @@
+diff --git a/Config/Tuning/body.json b/Config/Tuning/body.json
+index 55bea92..c1395df 100644
+--- a/Config/Tuning/body.json
++++ b/Config/Tuning/body.json
+@@ -134,6 +134,24 @@
+     "pressed_follow": 0.5,
+     "pressed_lag_cm": 22,
+     "hold_force_n": 450,
++    "rise": 0,
++    "kneel_back_s": 1.3,
++    "kneel_front_s": 1.25,
++    "kneel_left_s": 1.2,
++    "kneel_right_s": 0.95,
++    "kneel_cm": 47,
++    "kneel_lean_deg": 10,
++    "foot_ahead_cm": 24,
++    "foot_side_cm": 10,
++    "foot_s": 0.5,
++    "foot_lift_cm": 10,
++    "foot_stiffness_scale": 2,
++    "rise_s": 1.1,
++    "rise_lean_deg": 35,
++    "rise_outside_cm": 2,
++    "rise_shift_cm": 15,
++    "rear_from": 0.5,
++    "stage_max_s": 2.5,
+     "stall_s": 3.0,
+     "wait_s": 5,
+     "lost_cm": 40,
+diff --git a/Config/Tuning/poses.json b/Config/Tuning/poses.json
+index 12a48a3..8a61703 100644
+--- a/Config/Tuning/poses.json
++++ b/Config/Tuning/poses.json
+@@ -64,6 +64,25 @@
+       "calf_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
+       "foot_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 }
+     },
++    "kneel": {
++      "spine_02": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "spine_04": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "neck_01": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "clavicle_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "upperarm_l": { "swing1_deg": -27, "swing2_deg": -5, "twist_deg": 0 },
++      "lowerarm_l": { "swing1_deg": -20, "swing2_deg": 0, "twist_deg": 0 },
++      "hand_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "clavicle_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "upperarm_r": { "swing1_deg": -27, "swing2_deg": -5, "twist_deg": 0 },
++      "lowerarm_r": { "swing1_deg": -20, "swing2_deg": 0, "twist_deg": 0 },
++      "hand_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "thigh_l": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "calf_l": { "swing1_deg": 110, "swing2_deg": 0, "twist_deg": 0 },
++      "foot_l": { "swing1_deg": -15, "swing2_deg": 0, "twist_deg": 0 },
++      "thigh_r": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
++      "calf_r": { "swing1_deg": 110, "swing2_deg": 0, "twist_deg": 0 },
++      "foot_r": { "swing1_deg": -15, "swing2_deg": 0, "twist_deg": 0 }
++    },
+     "fall_back": {
+       "spine_02": { "swing1_deg": -15, "swing2_deg": 0, "twist_deg": 0 },
+       "spine_04": { "swing1_deg": -15, "swing2_deg": 0, "twist_deg": 0 },
+diff --git a/Source/SandboxBody/Private/SandboxBodyController.cpp b/Source/SandboxBody/Private/SandboxBodyController.cpp
+index cd1feaa..dfd38df 100644
+--- a/Source/SandboxBody/Private/SandboxBodyController.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyController.cpp
+@@ -419,7 +419,8 @@ void USandboxBodyController::ApplyPose()
+ 	// not happen because something holds the body up (UpdateHeld): then it hangs, in its stance's pose again and
+ 	// with the falling body's soft muscles.
+ 	// Getting up, the clip's pose lies over this one (SetLayer): under it the body keeps the pose it lay in.
+-	const bool bDown = (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying || State == ESandboxBodyState::GetUp) && !bHeldUp;
++	const bool bRises = State == ESandboxBodyState::GetUp && GetUpRun.Stage != EGetUpStage::Clip;
++	const bool bDown = (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying || State == ESandboxBodyState::GetUp) && !bHeldUp && !bRises;
+ 	FSandboxPose Mirror;
+ 	const FSandboxPose* Pose = &Tuning.Poses.Stance;
+ 	if (bDown)
+@@ -432,6 +433,10 @@ void USandboxBodyController::ApplyPose()
+ 		case EFallWay::Right: Mirror = FSandboxPoseTuning::Mirrored(Tuning.Poses.FallSide); Pose = &Mirror; break;
+ 		}
+ 	}
++	if (bRises && GetUpRun.Stage != EGetUpStage::Rise)
++	{
++		Pose = &Tuning.Poses.Kneel;
++	}
+ 	TArray<FSandboxPoseBone> Bones;
+ 	FString Error;
+ 	if (!PoseRig.Build(*Pose, Bones, Error))
+@@ -1230,6 +1235,18 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
+ 	ClipHold.CrossShare = 1.0;
+ 	GetUpRun = FGetUpRun();
+ 	GetUpRun.Path = BestPath;
++	{
++		const FString* const Ways[] = { &Tuning.GetUp.ClipBack, &Tuning.GetUp.ClipFront, &Tuning.GetUp.ClipLeft, &Tuning.GetUp.ClipRight };
++		const double KneelsS[] = { Tuning.GetUp.KneelBackS, Tuning.GetUp.KneelFrontS, Tuning.GetUp.KneelLeftS, Tuning.GetUp.KneelRightS };
++		for (int32 Way = 0; Way < 4; ++Way)
++		{
++			if (*Ways[Way] == BestPath || BestPath.StartsWith(*Ways[Way]))
++			{
++				GetUpRun.KneelS = KneelsS[Way];
++				break;
++			}
++		}
++	}
+ 	GetUpRun.Frame = Frame;
+ 	Pelvis->Target = First * Frame;
+ 	Pelvis->Target.SetScale3D(FVector::OneVector);
+@@ -1255,6 +1272,289 @@ void USandboxBodyController::GiveUpGetUp(const FString& Reason)
+ 	EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("the get-up is given up: %s"), *Reason));
+ }
+ 
++const TCHAR* USandboxBodyController::GetUpStageName(EGetUpStage Stage)
++{
++	static const TCHAR* const Names[] = { TEXT("clip"), TEXT("kneel"), TEXT("foot"), TEXT("rise") };
++	return Names[static_cast<int32>(Stage)];
++}
++
++void USandboxBodyController::EnterGetUpStage(EGetUpStage Stage)
++{
++	GetUpRun.Stage = Stage;
++	GetUpRun.StageS = 0.0;
++	ApplyPose();
++	UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up, stage %s at %.3f s"), GetUpStageName(Stage), ElapsedS);
++}
++
++void USandboxBodyController::BeginRise(const FBodyInstance& PelvisBody)
++{
++	const FTransform Now = PelvisBody.GetUnrealWorldTransform();
++	const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
++	FQuat Tilt;
++	(Now.GetRotation() * Pelvis->SupportRotation.Inverse()).ToSwingTwist(FVector::UpVector, Tilt, GetUpRun.Heading);
++	GetUpRun.PelvisGoal = Now;
++	GetUpRun.PelvisGoal.SetScale3D(FVector::OneVector);
++	// The foot that is further forward already is the one to go on with.
++	const FVector Forward = GetUpRun.Heading.RotateVector(FVector(0.0, 1.0, 0.0));
++	double Ahead[2] = { 0.0, 0.0 };
++	for (int32 Side = 0; Side < 2; ++Side)
++	{
++		if (const FBodyInstance* Foot = Mesh->GetBodyInstance(FootBoneName[Side]))
++		{
++			Ahead[Side] = FVector::DotProduct(Foot->GetUnrealWorldTransform().GetLocation(), Forward);
++		}
++	}
++	GetUpRun.Front = Ahead[0] >= Ahead[1] ? 0 : 1;
++	GetUpRun.RiseShare = 0.0;
++	GetUpRun.bRearForward = false;
++	ReleaseClipPose();
++	EnterGetUpStage(EGetUpStage::Kneel);
++}
++
++void USandboxBodyController::SwingGetUpFoot(int32 Side, const FVector& Land, double DeltaTime, const FQuat& Level)
++{
++	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
++	const FBodyInstance* Body = Mesh->GetBodyInstance(FootBoneName[Side]);
++	FGetUpFoot& Foot = GetUpRun.Feet[Side];
++	if (!Animation || !Body)
++	{
++		return;
++	}
++	if (!Foot.bSwinging)
++	{
++		Foot.bSwinging = true;
++		Foot.ElapsedS = 0.0;
++		Foot.From = Body->GetUnrealWorldTransform().GetLocation();
++		if (!Foot.bPlanted)
++		{
++			Animation->SetLimbTarget(FootBoneIndex[Side], Foot.From, 1.0, 0.1);
++		}
++		Foot.bPlanted = false;
++	}
++	Foot.ElapsedS += DeltaTime;
++	const double Progress = FMath::Clamp(Foot.ElapsedS / FMath::Max(Tuning.GetUp.FootS, DeltaTime), 0.0, 1.0);
++	const double Across = FMath::SmoothStep(0.0, 1.0, Progress);
++	Foot.Point = FMath::Lerp(Foot.From, Land, Across) + FVector(0.0, 0.0, Tuning.GetUp.FootLiftCm * 4.0 * Across * (1.0 - Across));
++	Animation->MoveLimbTarget(FootBoneIndex[Side], Foot.Point, nullptr, &Level, 1.0, Tuning.Balance.LegExtensionMax);
++	const FVector Where = Body->GetUnrealWorldTransform().GetLocation();
++	// Down when it has come near where it is sent and touches the floor there, or when its time has run on to half as long again.
++	const bool bTouched = Progress >= 0.9 && FVector::Dist2D(Where, Land) <= 12.0 && Balance.bValid && Balance.FootForceN[Side] > 0.0;
++	if (bTouched || Foot.ElapsedS >= 1.5 * Tuning.GetUp.FootS)
++	{
++		const FVector At = Body->GetUnrealWorldTransform().GetLocation();
++		Foot.bSwinging = false;
++		Foot.bPlanted = true;
++		Foot.bFlat = true;
++		Foot.Point = FVector(At.X, At.Y, Land.Z);
++		UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up, %s is set down at %.3f s, %.0f cm from where it was sent (%s)"), *FootBoneName[Side].ToString(), ElapsedS,
++			FVector::Dist2D(At, Land), bTouched ? TEXT("on the floor") : TEXT("in the air"));
++	}
++}
++
++void USandboxBodyController::ReleaseGetUpFeet(double BlendS)
++{
++	USandboxAnimInstance* Animation = Mesh ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
++	for (int32 Side = 0; Side < 2; ++Side)
++	{
++		FGetUpFoot& Foot = GetUpRun.Feet[Side];
++		if (Animation && (Foot.bSwinging || Foot.bPlanted))
++		{
++			// Let go from the leg as it is now, held in the frame of the body as it is now (ReleaseFoot).
++			const FBodyInstance* Body = Mesh->GetBodyInstance(FootBoneName[Side]);
++			const FVector Point = Body && Body->IsValidBodyInstance() ? Body->GetUnrealWorldTransform().GetLocation() : Foot.Point;
++			const FTransform Frame = Mesh->GetComponentTransform();
++			Animation->SetLimbTarget(FootBoneIndex[Side], Point, 0.0, BlendS);
++			Animation->MoveLimbTarget(FootBoneIndex[Side], Point, &Frame);
++		}
++		Foot = FGetUpFoot();
++	}
++}
++
++void USandboxBodyController::UpdateRise(double DeltaTime, FAssist& Pelvis, const FBodyInstance& PelvisBody)
++{
++	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
++	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
++	if (!Animation)
++	{
++		GiveUpGetUp(TEXT("the mesh has no animation instance"));
++		return;
++	}
++	const FTransform Now = PelvisBody.GetUnrealWorldTransform();
++	const FVector Forward = GetUpRun.Heading.RotateVector(FVector(0.0, 1.0, 0.0));
++	const FVector Left = GetUpRun.Heading.RotateVector(FVector(1.0, 0.0, 0.0));
++	const double FloorZ = LastSupportHeightCm;
++	const double UpCm = Now.GetLocation().Z - FloorZ;
++	const FVector UpNow = (Now.GetRotation() * (GetUpRun.Heading * Pelvis.SupportRotation).Inverse()).RotateVector(FVector::UpVector);
++	const double TiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(UpNow.Z, -1.0, 1.0)));
++	// A body held down does not go on.
++	const double PressedN = SustainedN.Size();
++	const bool bHeldDown = Limits.HoldForceN > 0.0 && PressedN >= Limits.HoldForceN;
++	GetUpView.PressedMaxN = FMath::Max(GetUpView.PressedMaxN, PressedN);
++	GetUpRun.StageS += DeltaTime;
++	const auto FootAt = [this](int32 Side) { const FBodyInstance* Foot = Mesh->GetBodyInstance(FootBoneName[Side]); return Foot ? Foot->GetUnrealWorldTransform().GetLocation() : FVector::ZeroVector; };
++	const auto KneeAt = [this](int32 Side) { const FBodyInstance* Knee = Mesh->GetBodyInstance(CalfBoneName[Side]); return Knee ? Knee->GetUnrealWorldTransform().GetLocation() : FVector::ZeroVector; };
++	const int32 Front = GetUpRun.Front;
++	const int32 Rear = 1 - Front;
++	const double FrontSign = Front == 0 ? 1.0 : -1.0;
++
++	FVector GoalAt = GetUpRun.PelvisGoal.GetLocation();
++	double LeanDeg = Limits.KneelLeanDeg;
++	const double StandCm = Pelvis.SupportLocation.Z + FootStandHeightCm[0];
++	switch (GetUpRun.Stage)
++	{
++	case EGetUpStage::Kneel:
++	{
++		const FVector Knees = 0.5 * (KneeAt(0) + KneeAt(1));
++		GoalAt = FVector(Knees.X, Knees.Y, FloorZ + Limits.KneelCm);
++		if (TiltDeg <= Limits.KneelLeanDeg + 20.0 && FMath::Abs(UpCm - Limits.KneelCm) <= 8.0 && Balance.Velocity.Size() <= 30.0 && !bHeldDown)
++		{
++			EnterGetUpStage(EGetUpStage::Foot);
++		}
++		break;
++	}
++	case EGetUpStage::Foot:
++	{
++		// The weight over the rear knee, so that the front leg is free.
++		const FVector Knee = KneeAt(Rear);
++		GoalAt = FVector(Knee.X + Left.X * FrontSign * 3.0, Knee.Y + Left.Y * FrontSign * 3.0, FloorZ + Limits.KneelCm);
++		LeanDeg = 0.0;
++		break;
++	}
++	case EGetUpStage::Rise:
++	{
++		const double Share = FMath::SmoothStep(0.0, 1.0, GetUpRun.RiseShare);
++		// Where the centre of mass is wanted: over the front foot's middle first, over both feet at the end.
++		const FVector FrontFoot = FootAt(Front) + Forward * 5.0;
++		const FVector BothFeet = 0.5 * (FootAt(0) + FootAt(1)) + Forward * 5.0;
++		const FVector Wanted = GetUpRun.Feet[Rear].bFlat ? FMath::Lerp(FrontFoot, BothFeet, Share) : FrontFoot;
++		FVector2D Off(Wanted.X - Balance.CenterOfMass.X, Wanted.Y - Balance.CenterOfMass.Y);
++		const double OutsideCm = Balance.IsSupported() ? -Balance.CenterOfMassMarginCm : 100.0;
++		Off = Off.GetClampedToMaxSize(Limits.RiseShiftCm);
++		const FVector At = Now.GetLocation();
++		GoalAt = FVector(At.X + Off.X, At.Y + Off.Y, FloorZ + FMath::Lerp(Limits.KneelCm, StandCm, Share));
++		LeanDeg = FMath::Max(Limits.RiseLeanDeg * (1.0 - Share), 0.0);
++		// The rise goes on while the body is over its feet and keeps up with it.
++		const bool bKeepsUp = GoalAt.Z - At.Z <= Limits.LagCm;
++		if (!bHeldDown && OutsideCm <= Limits.RiseOutsideCm && bKeepsUp)
++		{
++			GetUpRun.RiseShare = FMath::Min(GetUpRun.RiseShare + DeltaTime / FMath::Max(Limits.RiseS, 0.1), 1.0);
++			GetUpRun.StageS = FMath::Max(GetUpRun.StageS - DeltaTime, 0.0);
++		}
++		break;
++	}
++	default:
++		break;
++	}
++	// The goal glides: no stage begins with a jump.
++	const double Follow = 1.0 - FMath::Exp(-DeltaTime / 0.12);
++	const FQuat LeanTurn(-Left, FMath::DegreesToRadians(LeanDeg));
++	const FQuat GoalTurn = (LeanTurn * GetUpRun.Heading * Pelvis.SupportRotation).GetNormalized();
++	GetUpRun.PelvisGoal.SetLocation(FMath::Lerp(GetUpRun.PelvisGoal.GetLocation(), GoalAt, Follow));
++	GetUpRun.PelvisGoal.SetRotation(FQuat::Slerp(GetUpRun.PelvisGoal.GetRotation(), GoalTurn, Follow).GetNormalized());
++	Pelvis.Target = GetUpRun.PelvisGoal;
++	SetAssistTarget(Pelvis);
++	for (FAssist& Assist : Assists)
++	{
++		if (Assist.Slot == EAssistSlot::Feet)
++		{
++			Assist.Target = FlatFootTransform(Assist);
++			SetAssistTarget(Assist);
++		}
++	}
++	// The legs: solved from where the pelvis is wanted, so that they push it there.
++	FTransform PelvisNow = Now;
++	PelvisNow.SetScale3D(FVector::OneVector);
++	FTransform GoalFrame = Mesh->GetComponentTransform().GetRelativeTransform(PelvisNow) * GetUpRun.PelvisGoal;
++	GoalFrame.SetScale3D(FVector::OneVector);
++	FTransform UprightPelvis = GetUpRun.PelvisGoal;
++	UprightPelvis.SetRotation((GetUpRun.Heading * Pelvis.SupportRotation).GetNormalized());
++	const FQuat Level = (Mesh->GetComponentTransform().GetRelativeTransform(PelvisNow) * UprightPelvis).GetRotation();
++	if (GetUpRun.Stage == EGetUpStage::Foot || GetUpRun.Stage == EGetUpStage::Rise)
++	{
++		const double FootZ = FloorZ + FootStandHeightCm[Front];
++		if (GetUpRun.Stage == EGetUpStage::Foot)
++		{
++			const FVector From(KneeAt(Front).X, KneeAt(Front).Y, 0.0);
++			FVector Land = From + Forward * (Limits.FootAheadCm) ;
++			Land = FVector(Now.GetLocation().X, Now.GetLocation().Y, 0.0) + Forward * Limits.FootAheadCm + Left * (FrontSign * Limits.FootSideCm);
++			Land.Z = FootZ;
++			if (!GetUpRun.Feet[Front].bPlanted)
++			{
++				SwingGetUpFoot(Front, Land, DeltaTime, Level);
++			}
++			if (GetUpRun.Feet[Front].bPlanted)
++			{
++				// The rear foot is on its toes where it is, and is pushed from.
++				if (!GetUpRun.Feet[Rear].bPlanted)
++				{
++					FGetUpFoot& Foot = GetUpRun.Feet[Rear];
++					Foot.bPlanted = true;
++					Foot.Point = FootAt(Rear);
++					Animation->SetLimbTarget(FootBoneIndex[Rear], Foot.Point, 1.0, 0.2);
++				}
++				EnterGetUpStage(EGetUpStage::Rise);
++			}
++		}
++		if (GetUpRun.Stage == EGetUpStage::Rise)
++		{
++			FGetUpFoot& RearFoot = GetUpRun.Feet[Rear];
++			if (!RearFoot.bFlat && (GetUpRun.bRearForward || GetUpRun.RiseShare >= Limits.RearFrom) && Balance.FootForceN[Front] >= 0.4 * WeightN)
++			{
++				GetUpRun.bRearForward = true;
++			}
++			if (GetUpRun.bRearForward && !RearFoot.bFlat)
++			{
++				const FVector Land = FVector(FootAt(Front).X, FootAt(Front).Y, FloorZ + FootStandHeightCm[Rear]) - Left * (FrontSign * StanceRightFromLeft.Size());
++				SwingGetUpFoot(Rear, Land, DeltaTime, Level);
++			}
++		}
++		for (int32 Side = 0; Side < 2; ++Side)
++		{
++			FGetUpFoot& Foot = GetUpRun.Feet[Side];
++			if (Foot.bPlanted && !Foot.bSwinging)
++			{
++				const FVector At = FootAt(Side);
++				const double Z = Foot.bFlat ? FloorZ + FootStandHeightCm[Side] : At.Z;
++				Foot.Point = FMath::Lerp(Foot.Point, FVector(At.X, At.Y, Z), FMath::Min(DeltaTime / 0.1, 1.0));
++				Animation->MoveLimbTarget(FootBoneIndex[Side], Foot.Point, &GoalFrame, Foot.bFlat ? &Level : nullptr, Foot.bFlat ? 0.0 : 1.0, Tuning.Balance.LegExtensionMax);
++			}
++		}
++	}
++	bool bScaleMoves = false;
++	for (FGetUpFoot& Foot : GetUpRun.Feet)
++	{
++		const double Wanted = Foot.bSwinging ? FMath::Max(Limits.FootStiffnessScale, 1.0) : 1.0;
++		if (Foot.Scale != Wanted)
++		{
++			Foot.Scale = FMath::FInterpConstantTo(Foot.Scale, Wanted, DeltaTime, 10.0 * FMath::Max(FMath::Max(Limits.FootStiffnessScale, 1.0) - 1.0, 0.1));
++			bScaleMoves = true;
++		}
++	}
++	if (bScaleMoves)
++	{
++		PushTuningToControls();
++	}
++	if (FMath::FloorToInt32(ElapsedS * 4.0) != FMath::FloorToInt32((ElapsedS - DeltaTime) * 4.0))
++	{
++		UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up at %.2f s: %s, share %.2f, pelvis %.0f cm up (goal %.0f), tilt %.0f deg, centre of mass %.0f cm inside the feet, floor on feet %.0f and %.0f N, assist %.2f"),
++			ElapsedS, GetUpStageName(GetUpRun.Stage), GetUpRun.RiseShare, UpCm, GetUpRun.PelvisGoal.GetLocation().Z - FloorZ, TiltDeg, Balance.IsSupported() ? Balance.CenterOfMassMarginCm : -99.0,
++			Balance.bValid ? Balance.FootForceN[0] : 0.0, Balance.bValid ? Balance.FootForceN[1] : 0.0, AssistLoad.ForceShare);
++	}
++	if (GetUpRun.StageS > Limits.StageMaxS)
++	{
++		GiveUpGetUp(FString::Printf(TEXT("stage %s took %.1f s (share %.2f, pelvis %.0f cm up, tilt %.0f deg)"), GetUpStageName(GetUpRun.Stage), GetUpRun.StageS, GetUpRun.RiseShare, UpCm, TiltDeg));
++		return;
++	}
++	if (GetUpRun.Stage == EGetUpStage::Rise && GetUpRun.RiseShare >= 1.0 && GetUpRun.Feet[Rear].bFlat && TiltDeg <= Limits.UprightDeg &&
++		Balance.bValid && Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0 && UpCm >= StandCm - 8.0)
++	{
++		++GetUpView.Successes;
++		GetUpView.DurationS = ElapsedS - GetUpView.StartedS;
++		GivenUpClip.Reset();
++		EnterState(ESandboxBodyState::Standing, FString::Printf(TEXT("got up in %.2f s"), GetUpView.DurationS));
++	}
++}
++
+ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ {
+ 	if (State != ESandboxBodyState::GetUp)
+@@ -1264,6 +1564,16 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+ 	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+ 	const FSandboxClipPose* Clip = Clips.Find(GetUpRun.Path);
++	if (GetUpRun.Stage != EGetUpStage::Clip && Body && Body->IsValidBodyInstance())
++	{
++		if (bHeldUp)
++		{
++			GiveUpGetUp(TEXT("the body is held up"));
++			return;
++		}
++		UpdateRise(DeltaTime, *Pelvis, *Body);
++		return;
++	}
+ 	if (!Body || !Body->IsValidBodyInstance() || !Clip || ClipHold.Path != GetUpRun.Path)
+ 	{
+ 		GiveUpGetUp(TEXT("its clip is gone"));
+@@ -1284,6 +1594,12 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
+ 		GetUpRun.bEased = Ease >= 1.0 && bHitOver;
+ 	}
+ 
++	if (Limits.Rise > 0.0 && Ease >= 1.0 && GetUpRun.KneelS > 0.0 && ClipHold.TimeS >= GetUpRun.KneelS)
++	{
++		BeginRise(*Body);
++		return;
++	}
++
+ 	// The pelvis's assist is aimed at where the clip has the pelvis now, and the feet's at where it has the feet:
+ 	// a clip brings the feet under the body while the hands carry it, and feet that the floor's friction kept where
+ 	// they were left the body leaning like a plank from feet half a metre behind it.
+@@ -1524,6 +1840,12 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
+ 		UE_LOG(LogSandbox, Display, TEXT("Body controller: going down %s"), WayNames[static_cast<int32>(FallWay)]);
+ 	}
+ 
++	if (OldState == ESandboxBodyState::GetUp && GetUpRun.Stage != EGetUpStage::Clip)
++	{
++		ReleaseGetUpFeet(NewState == ESandboxBodyState::Falling ? Tuning.Poses.FallBlendS : Tuning.Poses.BlendS);
++		GetUpRun.Stage = EGetUpStage::Clip;
++	}
++
+ 	// Each state has its own values. The store has checked every state that sets any, so this reads.
+ 	FSandboxBodyTuning NewTuning;
+ 	FString Error;
+@@ -3395,9 +3717,12 @@ void USandboxBodyController::PushTuningToControls()
+ 		// Eased in from the lift over balance.step_ease_s: doubled at once, the error the leg had while it carried weight
+ 		// was pushed twice as hard into the floor.
+ 		const double SwingEase = Tuning.Balance.StepEaseS > 0.0 ? FMath::SmoothStep(0.0, 1.0, FMath::Min(Swing.ElapsedS / Tuning.Balance.StepEaseS, 1.0)) : 1.0;
++		const double StepScale = State != ESandboxBodyState::GetUp ? 1.0
++			: Muscle.ChildBone == ThighBoneName[0] || Muscle.ChildBone == CalfBoneName[0] || Muscle.ChildBone == FootBoneName[0] ? GetUpRun.Feet[0].Scale
++			: Muscle.ChildBone == ThighBoneName[1] || Muscle.ChildBone == CalfBoneName[1] || Muscle.ChildBone == FootBoneName[1] ? GetUpRun.Feet[1].Scale : 1.0;
+ 		const double SwingScale = bSwingLeg ? FMath::Lerp(1.0, FMath::Max(Tuning.Balance.SwingStiffnessScale, 1.0), SwingEase) : 1.0;
+ 		const double SwingDampingScale = bSwingLeg ? FMath::Lerp(1.0, Tuning.Balance.SwingDampingScale, SwingEase) : 1.0;
+-		const double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
++		const double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * StepScale * TorqueToUnreal / ChaosAngularDriveScale;
+ 		FPhysicsControlData Data;
+ 		// Force mode: the spring is a real torque per radian. In the plugin's default (acceleration) mode
+ 		// it would be scaled by the inertia of the two jointed bodies alone, which leaves an ankle or a hip
+diff --git a/Source/SandboxBody/Private/SandboxBodyTuning.cpp b/Source/SandboxBody/Private/SandboxBodyTuning.cpp
+index a3d7168..76336d1 100644
+--- a/Source/SandboxBody/Private/SandboxBodyTuning.cpp
++++ b/Source/SandboxBody/Private/SandboxBodyTuning.cpp
+@@ -157,6 +157,7 @@ namespace
+ 		Pose(TEXT("stance"), Tuning.Poses.Stance);
+ 		Pose(TEXT("flinch"), Tuning.Poses.Flinch);
+ 		Pose(TEXT("double_over"), Tuning.Poses.DoubleOver);
++		Pose(TEXT("kneel"), Tuning.Poses.Kneel);
+ 		Visitor(FString(TEXT("poses.fall_blend_s")), Tuning.Poses.FallBlendS);
+ 		Pose(TEXT("fall_back"), Tuning.Poses.FallBack);
+ 		Pose(TEXT("fall_forward"), Tuning.Poses.FallForward);
+@@ -179,6 +180,24 @@ namespace
+ 		Visitor(FString(TEXT("getup.pressed_follow")), Tuning.GetUp.PressedFollow);
+ 		Visitor(FString(TEXT("getup.pressed_lag_cm")), Tuning.GetUp.PressedLagCm);
+ 		Visitor(FString(TEXT("getup.hold_force_n")), Tuning.GetUp.HoldForceN);
++		Visitor(FString(TEXT("getup.rise")), Tuning.GetUp.Rise);
++		Visitor(FString(TEXT("getup.kneel_back_s")), Tuning.GetUp.KneelBackS);
++		Visitor(FString(TEXT("getup.kneel_front_s")), Tuning.GetUp.KneelFrontS);
++		Visitor(FString(TEXT("getup.kneel_left_s")), Tuning.GetUp.KneelLeftS);
++		Visitor(FString(TEXT("getup.kneel_right_s")), Tuning.GetUp.KneelRightS);
++		Visitor(FString(TEXT("getup.kneel_cm")), Tuning.GetUp.KneelCm);
++		Visitor(FString(TEXT("getup.kneel_lean_deg")), Tuning.GetUp.KneelLeanDeg);
++		Visitor(FString(TEXT("getup.foot_ahead_cm")), Tuning.GetUp.FootAheadCm);
++		Visitor(FString(TEXT("getup.foot_side_cm")), Tuning.GetUp.FootSideCm);
++		Visitor(FString(TEXT("getup.foot_s")), Tuning.GetUp.FootS);
++		Visitor(FString(TEXT("getup.foot_lift_cm")), Tuning.GetUp.FootLiftCm);
++		Visitor(FString(TEXT("getup.foot_stiffness_scale")), Tuning.GetUp.FootStiffnessScale);
++		Visitor(FString(TEXT("getup.rise_s")), Tuning.GetUp.RiseS);
++		Visitor(FString(TEXT("getup.rise_lean_deg")), Tuning.GetUp.RiseLeanDeg);
++		Visitor(FString(TEXT("getup.rise_outside_cm")), Tuning.GetUp.RiseOutsideCm);
++		Visitor(FString(TEXT("getup.rise_shift_cm")), Tuning.GetUp.RiseShiftCm);
++		Visitor(FString(TEXT("getup.rear_from")), Tuning.GetUp.RearFrom);
++		Visitor(FString(TEXT("getup.stage_max_s")), Tuning.GetUp.StageMaxS);
+ 		Visitor(FString(TEXT("getup.stall_s")), Tuning.GetUp.StallS);
+ 		Visitor(FString(TEXT("getup.wait_s")), Tuning.GetUp.WaitS);
+ 		Visitor(FString(TEXT("getup.lost_cm")), Tuning.GetUp.LostCm);
+@@ -409,6 +428,24 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
+ 		!CheckRange(GetUp.PressedFollow, 1.0, TEXT("getup"), TEXT("pressed_follow"), OutError) ||
+ 		!CheckRange(GetUp.PressedLagCm, 500.0, TEXT("getup"), TEXT("pressed_lag_cm"), OutError) ||
+ 		!CheckRange(GetUp.HoldForceN, 100000.0, TEXT("getup"), TEXT("hold_force_n"), OutError) ||
++		!CheckRange(GetUp.Rise, 1.0, TEXT("getup"), TEXT("rise"), OutError) ||
++		!CheckRange(GetUp.KneelBackS, 60.0, TEXT("getup"), TEXT("kneel_back_s"), OutError) ||
++		!CheckRange(GetUp.KneelFrontS, 60.0, TEXT("getup"), TEXT("kneel_front_s"), OutError) ||
++		!CheckRange(GetUp.KneelLeftS, 60.0, TEXT("getup"), TEXT("kneel_left_s"), OutError) ||
++		!CheckRange(GetUp.KneelRightS, 60.0, TEXT("getup"), TEXT("kneel_right_s"), OutError) ||
++		!CheckRange(GetUp.KneelCm, 200.0, TEXT("getup"), TEXT("kneel_cm"), OutError) ||
++		!CheckRange(GetUp.KneelLeanDeg, 90.0, TEXT("getup"), TEXT("kneel_lean_deg"), OutError) ||
++		!CheckRange(GetUp.FootAheadCm, 100.0, TEXT("getup"), TEXT("foot_ahead_cm"), OutError) ||
++		!CheckRange(GetUp.FootSideCm, 60.0, TEXT("getup"), TEXT("foot_side_cm"), OutError) ||
++		!CheckRange(GetUp.FootS, 5.0, TEXT("getup"), TEXT("foot_s"), OutError) ||
++		!CheckRange(GetUp.FootLiftCm, 60.0, TEXT("getup"), TEXT("foot_lift_cm"), OutError) ||
++		!CheckRange(GetUp.FootStiffnessScale, 10.0, TEXT("getup"), TEXT("foot_stiffness_scale"), OutError) ||
++		!CheckRange(GetUp.RiseS, 10.0, TEXT("getup"), TEXT("rise_s"), OutError) ||
++		!CheckRange(GetUp.RiseLeanDeg, 90.0, TEXT("getup"), TEXT("rise_lean_deg"), OutError) ||
++		!CheckRange(GetUp.RiseOutsideCm, 50.0, TEXT("getup"), TEXT("rise_outside_cm"), OutError) ||
++		!CheckRange(GetUp.RiseShiftCm, 60.0, TEXT("getup"), TEXT("rise_shift_cm"), OutError) ||
++		!CheckRange(GetUp.RearFrom, 1.0, TEXT("getup"), TEXT("rear_from"), OutError) ||
++		!CheckRange(GetUp.StageMaxS, 30.0, TEXT("getup"), TEXT("stage_max_s"), OutError) ||
+ 		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
+ 		!CheckRange(GetUp.WaitS, 60.0, TEXT("getup"), TEXT("wait_s"), OutError) ||
+ 		!CheckRange(GetUp.LostCm, 1000.0, TEXT("getup"), TEXT("lost_cm"), OutError) ||
+@@ -541,7 +578,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
+ 	{
+ 		return false;
+ 	}
+-	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch }, { TEXT("double_over"), &Poses.DoubleOver },
++	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch }, { TEXT("double_over"), &Poses.DoubleOver }, { TEXT("kneel"), &Poses.Kneel },
+ 		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide },
+ 		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide } };
+ 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
+diff --git a/Source/SandboxBody/Public/SandboxBodyController.h b/Source/SandboxBody/Public/SandboxBodyController.h
+index e346950..c2cc8c1 100644
+--- a/Source/SandboxBody/Public/SandboxBodyController.h
++++ b/Source/SandboxBody/Public/SandboxBodyController.h
+@@ -651,8 +651,32 @@ private:
+ 	 * up with it and waits while it does not. Through the clip, upright and on both feet, the body stands; thrown
+ 	 * off, held up or kept waiting too long, it lets go and lies again.
+ 	 */
++	/** The stages of a body that stands up by itself (getup.rise): by its clip; on its knees; a foot forward; the rise. */
++	enum class EGetUpStage : uint8 { Clip, Kneel, Foot, Rise };
++	static const TCHAR* GetUpStageName(EGetUpStage Stage);
++	struct FGetUpFoot
++	{
++		bool bSwinging = false;
++		bool bPlanted = false;
++		/** Flat on the floor (the front foot, and the rear one once it has come forward), not on its toes. */
++		bool bFlat = false;
++		double ElapsedS = 0.0;
++		FVector From = FVector::ZeroVector;
++		FVector Point = FVector::ZeroVector;
++		double Scale = 1.0;
++	};
+ 	struct FGetUpRun
+ 	{
++		EGetUpStage Stage = EGetUpStage::Clip;
++		double StageS = 0.0;
++		double KneelS = 0.0;
++		int32 Front = 0;
++		/** The body's heading, about the vertical from how it was spawned; where the pelvis is asked to be, and the share of the rise made. */
++		FQuat Heading = FQuat::Identity;
++		FTransform PelvisGoal = FTransform::Identity;
++		double RiseShare = 0.0;
++		bool bRearForward = false;
++		FGetUpFoot Feet[2];
+ 		FString Path;
+ 		FTransform Frame = FTransform::Identity;
+ 		/** How long the clip's time has stood still now, and how long it has waited in all. */
+@@ -677,6 +701,12 @@ private:
+ 	FTransform StartSpace = FTransform::Identity;
+ 	bool StartGetUp(FString& OutError);
+ 	void UpdateGetUp(double DeltaTime);
++	/** Standing up from the knees (getup.rise): from the stage Kneel on, in place of the clip. */
++	void BeginRise(const FBodyInstance& PelvisBody);
++	void EnterGetUpStage(EGetUpStage Stage);
++	void UpdateRise(double DeltaTime, FAssist& Pelvis, const FBodyInstance& PelvisBody);
++	void SwingGetUpFoot(int32 Side, const FVector& Land, double DeltaTime, const FQuat& Level);
++	void ReleaseGetUpFeet(double BlendS);
+ 	void GiveUpGetUp(const FString& Reason);
+ 	/** How far the muscles and the assist have come up since the get-up began, 0 to 1 (1 in any other state). */
+ 	double GetUpEase() const;
+diff --git a/Source/SandboxBody/Public/SandboxBodyTuning.h b/Source/SandboxBody/Public/SandboxBodyTuning.h
+index 443fc0f..069a0ef 100644
+--- a/Source/SandboxBody/Public/SandboxBodyTuning.h
++++ b/Source/SandboxBody/Public/SandboxBodyTuning.h
+@@ -532,6 +532,8 @@ struct FSandboxPoseTuning
+ 	 * forward, the head goes down, the forearms come in front of the belly.
+ 	 */
+ 	FSandboxPose DoubleOver;
++	/** Upright on both knees, getting up (getup.rise). */
++	FSandboxPose Kneel;
+ 	/**
+ 	 * What a body that falls does with itself, by the way it goes down: backward it sits down and curls up with the
+ 	 * chin on the chest and the hands behind it; forward the hands go out in front and the knees bend; sideways
+@@ -633,6 +635,39 @@ struct FSandboxGetUpTuning
+ 	 * slows a body that is getting up and two keep it down (owner's rule).
+ 	 */
+ 	double HoldForceN = 0.0;
++	/**
++	 * Whether the body stands up by itself from the moment its clip has brought it onto its knees (1), or the clip leads
++	 * it all the way (0). By itself it goes as a person does, over a support at every stage: upright on both knees, one
++	 * foot forward flat on the floor, the weight over that foot, the knees that straighten, the other foot set beside it.
++	 * Led by the clip, its feet stayed 20 to 30 cm behind where the clip has them and it was drawn up leaning over its
++	 * toes with its centre of mass up to 45 cm outside its feet.
++	 */
++	double Rise = 0.0;
++	/** The time in each clip at which its body is on its knees (or hands and knees): the clip is let go there. Seconds. */
++	double KneelBackS = 0.0;
++	double KneelFrontS = 0.0;
++	double KneelLeftS = 0.0;
++	double KneelRightS = 0.0;
++	/** Upright on the knees: the pelvis's height over the floor and how far the trunk leans forward. cm, degrees. */
++	double KneelCm = 0.0;
++	double KneelLeanDeg = 0.0;
++	/** Where the front foot is set, ahead of the pelvis and to its side, and how: time, height it is carried at. cm, s. */
++	double FootAheadCm = 0.0;
++	double FootSideCm = 0.0;
++	double FootS = 0.0;
++	double FootLiftCm = 0.0;
++	/** How much stiffer the leg of a foot on its way is. */
++	double FootStiffnessScale = 1.0;
++	/** The rise from the knee: its time while nothing holds it back, the lean of the trunk at most, and how far the centre of mass may be outside the feet for it to go on. s, degrees, cm. */
++	double RiseS = 0.0;
++	double RiseLeanDeg = 0.0;
++	double RiseOutsideCm = 0.0;
++	/** How far the pelvis's goal is moved at most to bring the centre of mass over the feet. cm. */
++	double RiseShiftCm = 0.0;
++	/** From what share of the rise the rear foot comes forward. */
++	double RearFrom = 0.0;
++	/** A stage that has taken this long is given up. Seconds. */
++	double StageMaxS = 0.0;
+ 	/** A get-up whose clip has waited this long without moving on is given up: the body lets go and lies, and tries again. Seconds. */
+ 	double StallS = 0.0;
+ 	/**

@@ -11,8 +11,8 @@ diagram of section 5), kept in step by hand.
 **Status:** R1, the led get-up, is **on since the owner's decision of 26 November 2026** (`getup.carry` 1). The owner on the
 videos: the led get-ups look natural, the ones before do not. The baseline is `led`: 15 scenarios with a get-up have other hashes
 than `n2`, and the suite is 126 of 127, since one hand that holds the chest no longer slows a get-up (`grab_getup_held`); that is
-the first thing of R2. All nine decisions of section 10 are taken (26 November): authority is a rule with budgets; the order is
-R2, R3, the rest of M4, R4 with new tables, M4b; every part is judged as section 7 says; the natural-body track's parts are
+the first thing of R2. The decisions of section 10 are taken (26 November): authority is a rule with budgets; the order is
+R2, R3, the rest of M4, R4 with new tables, R5, R6, R7, M4b, R9; every part is judged as section 7 says; the natural-body track's parts are
 placed in the R parts. **Section 8 of this document is the one order of work of the project** and says where each part of the
 natural-body track went; the project's status is in `docs/PRD.md`, "Status". Next is R2, beginning with a clean-up (its step 0).
 Nothing after R1 is begun.
@@ -260,12 +260,14 @@ document points here; what is done is in `docs/PRD.md`, "Status".
 2. **R3**, the fall as the references drive it.
 3. **The rest of M4 and its gate in the headset** (`docs/PRD.md`, M4): part 2 closed, the rest of part 4 (things in the hand),
    part 5 (the desktop's verbs and locomotion; a first step, the player's body as a capsule, exists as
-   `Saved\Recon\m4_part5_body.patch`, not committed, its hashes not checked), part 6 (the review in the headset).
+   `docs/recon/m4_part5_body.patch`, not applied, its hashes not checked), part 6 (the review in the headset).
 4. **The toes, yes or no** (N8 D, decision 8), so that R4's new tables are measured on the asset that stays.
 5. **R4**, the soft upright body, with a new baseline and new tables; **R8**, the learned controller, as a spike beside it.
-6. **M4b**, the NPC's own actions (walk to a chair and sit, right a chair, get out from under the table), on the soft body.
-7. **R5, R6, R7 and R9** (decision 3). Whether they come before or after M4b's actions is not decided.
-8. **M5**, polish and the soak.
+6. **R5, R6 and R7** (decisions 3 and 10): reactions from recorded people, life on the floor, authority down.
+7. **M4b**, the NPC's own actions (walk to a chair and sit, right a chair, get out from under the table), on the soft body and
+   led within the budgets R7 leaves (decision 10).
+8. **R9**, variation by physics and the gate.
+9. **M5**, polish and the soak.
 
 ### Where each part of the natural-body track went
 
@@ -335,11 +337,24 @@ in the physics step (not measured).
   must keep every hash. The clip-following path (carry 0, also the fallback when a carry cannot be made) stays until R2 is
   accepted.
 - **First, the hold by one hand** (decision 3): a hand that holds a body getting up slows it and two hold it; `grab_getup_held`
-  passes again; measured on the stand with `-HoldHands 1` and `2` on three seeds.
+  passes again; measured on the stand with `-HoldHands 1` and `2` on three seeds. In numbers (decision 13, the criterion of
+  25 November): held by one hand, 20 to 60 of 150 pull free and stand within the 15 s of the hold, the rest stand once let go;
+  held by two, at most 5 of 150; the grip of `grab_getup_held` lasts its 500 frames; how much longer a held body takes to stand
+  than one nobody holds is reported. Before R1: 46 of 146 and 0; with R1 (seed 1): 42 of 50 and 3 of 49. How (decision 14):
+  authority is taken away body by body, the held body and its chain to the pelvis hardly led while the rest are, and the clip's
+  pace slows in proportion to the force of the hold (a press goes through the same force), so that a held body struggles instead
+  of freezing. Today a press or a hold takes the pull off the whole body at once and the clip waits only from
+  `getup.hold_force_n` (450 N), more than one hand's cap of 300 N. The pressed stand (`-PressN 300`, today 15 of 50) is measured
+  with it and kept near today's.
+- **Authority in R2** (decision 15): no new limit; the mean share of the stand stays at 1.16 of the body's weight or below unless a
+  reason is written down, and every step of R2 reports it body by body and by direction (`control.authority`), so that what the fit
+  to the floor takes off is seen. Bringing it down is R7's.
 - **Found in the audit of 26 November, for this part:** `getup.wait_s` cannot fire under the led get-up (its clip waits only
   while it is pressed, and the free wait counts only with nothing pressing); the overlay draws the get-up's old assist as active
   while its springs are 0 (`GetControlView`); a carry that cannot be made falls back to the clip-following get-up with only a
-  warning in the log, so a run would measure the old get-up and pass; `getup.rise` with the carry on leaves a rising body with no
+  warning in the log, so a run would measure the old get-up and pass (decision 17: `control.get_up` says whether the get-up was
+  led and why not, a scenario with `getup.carry` 1 whose get-up was not led fails, and a session says so in its log and, on the
+  desktop, on the screen); `getup.rise` with the carry on leaves a rising body with no
   force (it goes in step 0).
 - **The fingers** (N8 B, decision 8): `flat` under a hand that carries weight, shown to the owner on this part's videos.
 - **`FSandboxMotionLibrary`.** Reads the clips a text list names (`Specs/motion_library.json`: the twenty get-ups, the two rolls,
@@ -358,7 +373,11 @@ in the physics step (not measured).
 - **How long it lies** by how it fell (`getup.rest_per_ns_s` exists), and a get-up that begins while the body still settles.
 - **Scenarios:** get-ups from eight ways of lying, from a body laid across a thing, beside the table, under a press; a hit, a
   push and a hold in each phase (C26).
-- **Done when:** C19 to C21 and C27 on three seeds; the owner's look.
+- **Done when:** C19 to C21 and C27 on three seeds; the owner's look. The limits (decision 16): C19, no pose held longer than
+  1.0 s and at most 10% of attempts given up (today about 12%); C20, 95% or more stand and 135 or more of 150 at the first attempt
+  over the three seeds (today 149 and 139); C21, a median of 2.6 to 4.2 s from the first move to standing (today 3.2 s); C27, the
+  trunk within 45 degrees of upright and the farther foot within 30 cm of the pelvis as the pelvis passes 70 cm, on the stand (today
+  22 to 30 degrees and 20 to 26 cm on the four `getup_*`; the stand does not report it yet).
 
 ### R3. The fall as the references drive it
 
@@ -387,7 +406,16 @@ One part, one new baseline, because every table moves with it.
 - The assist on an upright body as torques of the standing legs (N2 step 5), so that no force from the world is left there.
 - N2's jumps that are left sorted into defects and jumps by design, and C25's limit set (`docs/natural-body.md`, decision 15;
   until then no part raises the baseline of 439 N·m).
-- Real tone levels for anticipation's brace (N5): today every `tone.*` level is 1, so the brace changes no stiffness.
+- Real tone levels for anticipation's brace (N5): today every `tone.*` level is 1, so the brace changes no stiffness (left
+  until here, decision 12: on today's body the proposed `braced` levels make the forearm 3.4 times stiffer and the chest 1.3,
+  and a seen punch moves the chest as far as an unseen one).
+- **The fall decided by a pose** (decision 11): the pelvis's tilt that makes an upright body Falling
+  (`thresholds.fall_tilt_deg`, 35) is measured against the stance, so a pose the body is asked for crosses it. A punch into the
+  belly doubles the body over, the pelvis tilts 36.9 degrees, and it falls; at 45 the same punch is stepped off and the body
+  stands (`docs/testing.md`, checks after the audit; videos `Saved\Films\belly_punch_side`, `belly_punch_side_tilt45`). The tilt is
+  judged against the pose asked of the muscles; every scenario that doubles over (`strike_punch_belly_falls`, `strike_punch_torso`,
+  the kicks into the belly) is run again, and the owner's rule of 25 November is the gate: a punch into the belly doubles over and
+  steps, a kick there fells.
 - Before this part: the toes, yes or no (N8 D), so that the new tables are measured on the asset that stays.
 - **New tables.** The push matrix's table, the knockdown thresholds and the stand are measured again on this body and put to
   the owner as the new tables. The old body stays available as a tuning directory (`-TuningDir`) for comparison.
@@ -463,6 +491,14 @@ One at a time, the recommended answer first.
 | 7 | How R2 and R3 are judged before R4 (section 7, rows 4 and 5) | **Decided on 26 November 2026: as section 7 says, for every part R2 to R9.** The push matrix, the knockdowns and the stand on three seeds are run; worse only with a reason written down and a video; done when the owner has seen the video. Not chosen: the old tables as strict gates until R4; strict gates only for what a part does not touch |
 | 8 | Where the parts of the natural-body track go | **Decided on 26 November 2026: the table in section 8.** N5 upright to R5 and lying to R6; the fingers shown in R2 and R3; the toes decided before R4. Not chosen: N5 as a part of its own after R4; the fingers and the toes as `docs/natural-body.md` had them |
 | 9 | When the dead switches go | **Decided on 26 November 2026: a clean-up commit as R2's step 0** (the list is in R2). Not chosen: only N7's get-up switches then; each R part removing what it replaces |
+| 10 | Where R5, R6, R7 and R9 stand against M4b | **Decided on 26 November 2026: R4, R5, R6, R7, then M4b, then R9 and M5.** M4b's actions are led like the get-up, within a budget (`docs/PRD.md`, M4b), and what R7 builds (a limb that carries weight is support and is not pulled; forces through the legs instead of the world) is what sitting down and lifting a chair need: built first, the actions are made within low budgets and not redone. R5's reactions are the product's core, and M4b is judged by how the body answers a push on the way. If R7's offline search of clips runs long, M4b needs only its contact-aware leading and its forces through the legs. Not chosen: R7 after M4b (its actions brought down afterwards); M4b right after R4; every R part, R9 too, before M4b |
+| 11 | A punch into the belly fells the body (`strike_punch_belly_steps` expected a fall) | **Decided on 26 November 2026: a defect, repaired in R4** (R4's "the fall decided by a pose"): the fall comes from the pelvis's tilt threshold that the doubled-over pose crosses, not from lost footing. The scenario is renamed `strike_punch_belly_falls` with its expectations as they are until then. Not chosen: repaired now, before R2, on the body R4 replaces; the fall accepted; nothing |
+| 12 | Anticipation's brace in a session with `-Perception` changes no stiffness (every `tone.*` level is 1) | **Decided on 26 November 2026: left until R4**, where tone is built on the soft body. On today's legs (800 N·m/rad) a braced trunk does not show: measured by `-Tune`, the chest gives 1.3 times less braced than relaxed, the forearm 3.4 times, and a seen punch moves the chest 16.6 cm against 15.6 unseen (`docs/testing.md`, N3 and N5 of the night of 25 November). Not chosen: braced levels now for the session only; the brace taken out of anticipation until R4 |
+| 13 | "One hand slows a get-up, two hold it", in numbers (R2's first item) | **Decided on 26 November 2026: the criterion of 25 November, on three seeds.** One hand: 20 to 60 of 150 pull free and stand within the 15 s of the hold, the rest after it; two hands: at most 5 of 150; `grab_getup_held`'s grip lasts its 500 frames; the extra time to stand when held is reported. Bounded on both sides: one hand neither holds like two nor is torn off. Not chosen: at most a third with no lower bound and none for two hands; one hand holding like two; decided by a video in the headset |
+| 14 | How a hold acts on authority (R2's first item) | **Decided on 26 November 2026: body by body, and the clip slowed by the hold's force.** The held body and its chain to the pelvis are hardly led, the rest are, and the clip's pace goes down in proportion to the force (one hand's 300 N to about a third, 450 N to a stop): the body struggles against the hand instead of freezing (principle 4, locally). The pressed stand is measured with it. Not chosen: the clip waits while held, as on the old path (the pauses the owner called robotic); body by body only (the clip runs away from a held pelvis and the attempt is given up) |
+| 15 | Authority's budget in R2 (today a mean of 1.16 of the body's weight, a median of 1.07; peaks within an attempt 2.25 in the median, 3.35 at most) | **Decided on 26 November 2026: no new limit in R2, and no higher than 1.16 without a reason written down**; reported body by body and by direction; bringing it down is R7's (decision 2). A number in R2 would push tuning toward it at the price of first attempts, as capping did in R1. Not chosen: at most 1.0 once the reference is fitted to the floor; 0.5 in R2 |
+| 16 | The limits of R2's gate | **Decided on 26 November 2026: as proposed** (R2, "Done when"): C19 1.0 s and 10%; C20 95% and 135 of 150 at the first attempt, the sum of three seeds rather than each (one seed's figure is luck); C21 2.6 to 4.2 s; C27 45 degrees and 30 cm. Not chosen: C21 at a young adult's 2.6 to 2.9 s; limits set after R2's first step |
+| 17 | A led get-up whose springs cannot be made goes the old way with only a warning in the log | **Decided on 26 November 2026: a scenario fails, a session says so.** `control.get_up` records whether the get-up was led and why not; a run with `getup.carry` 1 whose get-up was not led is `SCENARIO FAIL`; a session writes it to its log and, on the desktop, on the screen (the headset's HUD draws nothing). Built in R2; it measures, so it keeps every hash. A run must not pass on behaviour it did not ask for. Not chosen: the warning as it is |
 
 The owner's statement of the goal with these answers (26 November): the ragdoll is to look and move naturally, as a living
 person, and it must be possible to interact with it at every moment. Both halves bind every part: a behaviour that looks right
@@ -480,7 +516,7 @@ measurements, the variants and what went wrong on the way are in `docs/testing.m
 | A get-up, first move to standing | 5.0 s in the median, 2.4 s of it paused | **3.2 s**, paused only while the muscles come up (0.6 s) |
 | The trunk from upright and the farther foot from the pelvis as the pelvis passes 70 cm (C27) | 70 degrees, 37 cm (median of 150) | **22 to 30 degrees, 20 to 26 cm** (the four `getup_*`) |
 | The plank's measure, while getting up and after | 1.36 + 0.24 s | 0.10 to 0.20 + 0.22 to 0.58 s (the four `getup_*`) |
-| What the world gives, of the body's weight, mean | 0.28 | **1.16** (peaks of 2.5) |
+| What the world gives, of the body's weight, mean | 0.28 | **1.16** (peaks of 2.5) (Corrected on 26 November 2026: on the stand of 150 the peak within an attempt is 2.25 in the median, 3.01 at the 90th percentile and 3.35 at most; `docs/testing.md`, checks after the audit.) |
 | A blow of 200 N·s while getting up | Fells it, it tries again | The same (it is let go at once) |
 | Pressed with 300 N, 50 falls | 13 of 50 stand under it (39 of 150) | 15 of 50 |
 | Held by two hands, 50 falls | None pulls free | 3 of 49 pull free |
