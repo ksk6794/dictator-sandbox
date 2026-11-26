@@ -4762,6 +4762,40 @@ head with C25's baseline at 512 (`docs/natural-body.md`, decision 15).
 
 Baseline `head` (127 scenarios) from here on.
 
+### The natural body, N2: four of the jumps' repairs on (26 November, the owner's decision)
+
+The owner chose to switch the repairs "all but reach" on, with the whole battery first and any miss told before a commit
+(question 2). Limits were written before the runs (`Saved\Recon\n2_switch_plan.md`), on the head as the default body.
+
+**All five ("all but reach") missed two limits** (`Saved\Recon\bat_n2on`): `effector_hit_head` fell (the fist's 31 N*s staggered
+the body for 2.4 s instead of 1.2, and as it brought its feet together they slid apart and it went to its knees: `Saved\Films\
+n2_fist_head_on` against `n2_fist_head_off`), and the matrix's cell of 30 N*s on the head at 270 degrees took two steps where one is
+allowed (the cell that stands on the 4 cm of a step). Everything else held: knockdowns 8 and 8, stand 150 (130 at the first attempt),
+grab pulls 93 with one fall, movable room 50, 49, 50, C25 440 N*m with 10 scenarios over 200 (from 38).
+
+**Each switched off alone** (`Saved\Recon\n2_ablate`): the fall goes with `settle_smooth` or `land_ease_s` off; the cell's two steps
+with `lift_smooth`, `settle_smooth` or `land_ease_s` off; `release_smooth` and `fall_ease_s` touch neither. It is the three together.
+Both variants then had the whole battery (`Saved\Recon\bat_n2_no_settle`, `bat_n2_no_land`):
+
+| | Without `settle_smooth` | Without `land_ease_s` |
+| --- | --- | --- |
+| Suite | `palm_close_on_chest` (below) | `grab_pull_standing` falls |
+| Matrix, knockdowns | 160; 8 and 8 | 160; 8 and 8 |
+| Stand, three seeds | 150, 130 at the first attempt (seed 3 again: a job of the queue gave no result) | 150, 130 |
+| Grab pulls | 93, 1 fall | 93, 1 fall |
+| C25 | 439 N*m (`calf_l`, `hit_chest_200_side_falls`); 13 over 200 | 450; 34 over 200 |
+
+**Taken, by the owner's choice: without `settle_smooth`** (`lift_smooth` 1, `release_smooth` 1, `land_ease_s` 0.05,
+`fall_ease_s` 0.1). **`palm_close_on_chest` was set anew:** its palm pushes the chest at 3.35 s and the body steps back out of the
+hand from 3.56 s, in every variant; the grip closed at 3.9 s and met the body only where it had swayed back in time (at 3.83 s with
+all five, at 4.0 without `settle_smooth`, so on air). The grip now closes while the palm still presses (3.35 to 3.45 s), and passes
+on all three bodies (the files, all five, none). The pitfall was written down before ("Close a grip while the hand still presses").
+
+The fall on bringing the feet together is not repaired, only not met: it is the family of the night's hand on the chest (on the body
+before the head), and `settle_smooth` stays off until it is understood. The films of the hand on the chest on the head
+(`n2_hold_chest_head*`, from the side and the front) show no difference that the eye can name between the repairs and none: in both
+a long lunge back, unnatural, and the feet together by 8.5 s.
+
 
 
 

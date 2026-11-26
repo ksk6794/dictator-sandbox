@@ -231,7 +231,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
 | `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
-| `docs/` | `PRD.md` (plan), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, and the reconnaissance before N8 and N2; in the night of 25 to 26 November N8 A and B were built (the head and the wrist as a second and third physics asset, the fingers behind a weight of 0; **the head is the default body since the owner's decision of 26 November**: `PA_SandboxNPC` from `npc_body.json` has a head of its own on the neck, and the body before it is kept as `PA_SandboxNPCNeck`), and N2, N3, N6, N4 and N5 begun behind switches that are off, each stopped at a limit it did not meet: all for the owner to confirm, `docs/testing.md` has the night's sections), `testing.md` (repeatability policy and measurements). |
+| `docs/` | `PRD.md` (plan), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, and the reconnaissance before N8 and N2; in the night of 25 to 26 November N8 A and B were built (the head and the wrist as a second and third physics asset, the fingers behind a weight of 0; **the head is the default body since the owner's decision of 26 November**: `PA_SandboxNPC` from `npc_body.json` has a head of its own on the neck, and the body before it is kept as `PA_SandboxNPCNeck`; **four of N2's jump repairs are on since the same day**), and N2, N3, N6, N4 and N5 begun behind switches that are off, each stopped at a limit it did not meet: all for the owner to confirm, `docs/testing.md` has the night's sections), `testing.md` (repeatability policy and measurements). |
 
 ## Rules
 
@@ -847,6 +847,8 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **A body that is pushed gives way, and is then out of the reach of the hand that pushed it.** A desktop hand
   that reached into the chest and closed its grip half a second later closed it on air: the body had leant back
   3 cm further than the reach. Close a grip while the hand still presses (`Tools\play.ps1 -Demo -Grab`).
+  `palm_close_on_chest` closed its grip 0.45 s after the palm had pushed, and passed because the body swayed back into the
+  hand in time; with the jumps' repairs it swayed back 0.1 s later and the grip closed on air. It closes while pressing now.
 - **The engine keeps a joint's force for the last substep of a frame only.** A largest force read once a frame
   misses a jolt in the first of two substeps.
 - **A test for "clear of everything" that leaves a whole actor out leaves out the other hand.** Two hands are
