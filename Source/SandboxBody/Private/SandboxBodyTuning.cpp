@@ -166,6 +166,21 @@ namespace
 		Pose(TEXT("balance_back"), Tuning.Poses.BalanceBack);
 		Pose(TEXT("balance_forward"), Tuning.Poses.BalanceForward);
 		Pose(TEXT("balance_side"), Tuning.Poses.BalanceSide);
+		Visitor(FString(TEXT("poses.fingers.weight")), Tuning.Poses.Fingers.Weight);
+		Visitor(FString(TEXT("poses.fingers.blend_s")), Tuning.Poses.Fingers.BlendS);
+		const auto Fingers = [&Visitor](const TCHAR* Name, auto& Values)
+		{
+			static const TCHAR* const FingerNames[5] = { TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky") };
+			for (int32 Finger = 0; Finger < 5; ++Finger)
+			{
+				Visitor(FString::Printf(TEXT("poses.fingers.%s.%s_deg"), Name, FingerNames[Finger]), Values.CurlDeg[Finger]);
+			}
+			Visitor(FString::Printf(TEXT("poses.fingers.%s.spread_deg"), Name), Values.SpreadDeg);
+		};
+		Fingers(TEXT("rest"), Tuning.Poses.Fingers.Rest);
+		Fingers(TEXT("fist"), Tuning.Poses.Fingers.Fist);
+		Fingers(TEXT("splayed"), Tuning.Poses.Fingers.Splayed);
+		Fingers(TEXT("flat"), Tuning.Poses.Fingers.Flat);
 		Visitor(FString(TEXT("poses.idle.weight")), Tuning.Poses.IdleWeight);
 		Visitor(FString(TEXT("poses.idle.sway_weight")), Tuning.Poses.IdleSwayWeight);
 		Visitor(FString(TEXT("getup.rest_s")), Tuning.GetUp.RestS);
@@ -539,7 +554,20 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	{
 		return false;
 	}
+	for (const FSandboxFingerPose* Hand : { &Poses.Fingers.Rest, &Poses.Fingers.Fist, &Poses.Fingers.Splayed, &Poses.Fingers.Flat })
+	{
+		for (const double Angle : { Hand->CurlDeg[0], Hand->CurlDeg[1], Hand->CurlDeg[2], Hand->CurlDeg[3], Hand->CurlDeg[4], Hand->SpreadDeg })
+		{
+			if (!FMath::IsFinite(Angle) || FMath::Abs(Angle) > 360.0)
+			{
+				OutError = FString::Printf(TEXT("poses.fingers: %g degrees is outside -360..360"), Angle);
+				return false;
+			}
+		}
+	}
 	if (!CheckRange(Poses.BlendS, 10.0, TEXT("poses"), TEXT("blend_s"), OutError) ||
+		!CheckRange(Poses.Fingers.Weight, 1.0, TEXT("poses.fingers"), TEXT("weight"), OutError) ||
+		!CheckRange(Poses.Fingers.BlendS, 10.0, TEXT("poses.fingers"), TEXT("blend_s"), OutError) ||
 		!CheckRange(Poses.FallBlendS, 10.0, TEXT("poses"), TEXT("fall_blend_s"), OutError) ||
 		!CheckRange(Poses.IdleWeight, 5.0, TEXT("poses.idle"), TEXT("weight"), OutError) ||
 		!CheckRange(Poses.IdleSwayWeight, 5.0, TEXT("poses.idle"), TEXT("sway_weight"), OutError))

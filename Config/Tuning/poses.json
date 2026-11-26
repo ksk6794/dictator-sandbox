@@ -7,6 +7,14 @@
       "weight": 1.0,
       "sway_weight": 1.0
     },
+    "fingers": {
+      "weight": 0,
+      "blend_s": 0.25,
+      "rest": { "thumb_deg": 10, "index_deg": 12, "middle_deg": 18, "ring_deg": 24, "pinky_deg": 30, "spread_deg": -3 },
+      "fist": { "thumb_deg": 70, "index_deg": 200, "middle_deg": 205, "ring_deg": 205, "pinky_deg": 200, "spread_deg": -3 },
+      "splayed": { "thumb_deg": -10, "index_deg": 5, "middle_deg": 5, "ring_deg": 5, "pinky_deg": 5, "spread_deg": 8 },
+      "flat": { "thumb_deg": 0, "index_deg": 0, "middle_deg": 0, "ring_deg": 0, "pinky_deg": 0, "spread_deg": 3 }
+    },
     "stance": {
       "spine_02": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },
       "spine_04": { "swing1_deg": 0, "swing2_deg": 0, "twist_deg": 0 },

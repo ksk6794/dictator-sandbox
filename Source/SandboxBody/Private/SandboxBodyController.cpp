@@ -317,6 +317,7 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	}
 	ApplyPose();
 
+	FingerRig.Init(Mesh->GetSkeletalMeshAsset()->GetRefSkeleton());
 	// The idle's motion, for the bones the muscles of trunk, neck and arms take their targets from: each such
 	// joint's own bone and the bones between it and the body it hangs on.
 	IdleMotion = FSandboxIdleMotion();
@@ -647,6 +648,66 @@ void USandboxBodyController::UpdatePoseTurns()
 		Animation->SetTurns(Turns);
 		bPoseTurnsSet = Turns.Num() > 0;
 	}
+}
+
+void USandboxBodyController::UpdateFingers(double DeltaTime)
+{
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FSandboxFingerTuning& Fingers = Tuning.Poses.Fingers;
+	if (!Animation || !FingerRig.IsValid())
+	{
+		return;
+	}
+	if (Fingers.Weight <= 0.0)
+	{
+		if (bFingersSet)
+		{
+			Animation->SetFingerTurns(TArray<FSandboxPoseTurn>());
+			bFingersSet = false;
+			FMemory::Memzero(FingerShare);
+		}
+		return;
+	}
+	static const FName HandBones[2] = { TEXT("hand_l"), TEXT("hand_r") };
+	TArray<FSandboxPoseTurn> Turns;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		// What the body does: at rest the hand is relaxed; a body that braces has it half closed; one that goes down has
+		// the fingers spread; a hand that the world pushes on lies flat.
+		double Goal[4] = { 1.0, 0.0, 0.0, 0.0 };
+		const FBodyInstance* Hand = Mesh->GetBodyInstance(HandBones[Side]);
+		const bool bCarries = Hand && SupportImpulseNs.IsValidIndex(Hand->InstanceBodyIndex) && !SupportImpulseNs[Hand->InstanceBodyIndex].IsZero();
+		if (State == ESandboxBodyState::Falling && !bHeldUp)
+		{
+			Goal[0] = 0.0;
+			Goal[2] = 1.0;
+		}
+		else if (bCarries && State != ESandboxBodyState::Lying)
+		{
+			Goal[0] = 0.0;
+			Goal[3] = 1.0;
+		}
+		else if (State == ESandboxBodyState::Flinch || State == ESandboxBodyState::Stagger)
+		{
+			Goal[0] = 0.5;
+			Goal[1] = 0.5;
+		}
+		// Toward it with a lag: no jump, whichever pose is asked for and however often that changes.
+		const bool bFirst = !bFingersSet;
+		const double Follow = bFirst || Fingers.BlendS <= 0.0 ? 1.0 : 1.0 - FMath::Exp(-3.0 * DeltaTime / Fingers.BlendS);
+		for (int32 Pose = 0; Pose < 4; ++Pose)
+		{
+			FingerShare[Side][Pose] += (Goal[Pose] - FingerShare[Side][Pose]) * Follow;
+		}
+		const TPair<const FSandboxFingerPose*, double> Shares[] = {
+			TPair<const FSandboxFingerPose*, double>(&Fingers.Rest, FingerShare[Side][0] * Fingers.Weight),
+			TPair<const FSandboxFingerPose*, double>(&Fingers.Fist, FingerShare[Side][1] * Fingers.Weight),
+			TPair<const FSandboxFingerPose*, double>(&Fingers.Splayed, FingerShare[Side][2] * Fingers.Weight),
+			TPair<const FSandboxFingerPose*, double>(&Fingers.Flat, FingerShare[Side][3] * Fingers.Weight) };
+		FingerRig.BuildTurns(Side, FSandboxFingerRig::Blend(Shares), Turns);
+	}
+	Animation->SetFingerTurns(Turns);
+	bFingersSet = true;
 }
 
 bool USandboxBodyController::SetClipPose(const FString& ClipPath, double TimeS, double Rate, FString& OutError)
@@ -3539,6 +3600,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 		LastSupportPolygon = Balance.SupportPolygon;
 	}
 	FollowSupport(DeltaTime);
+	UpdateFingers(DeltaTime);
 	// What the body felt since the last tick: a hit may make it flinch, a held push makes it lean.
 	FeelFrame(DeltaTime);
 	for (FVector& Impulse : SupportImpulseNs)

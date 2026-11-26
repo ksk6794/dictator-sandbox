@@ -4336,6 +4336,14 @@ angles for the neck are shared out between the two joints by their ranges, so `p
 It is the frame, not the 85 degrees, that costs twenty first attempts (each tried alone). Why was not looked into; the hand is then asked by the clips to lie flat, bent back 60 to 85 under a turned forearm, where today it is asked for what the 25 degrees of the sideways range let through. The frame is made by a second joint between
 the two bodies that holds only the swings, with the bodies the other way round; a single joint with the bodies exchanged has no projection and stretched 0.80 cm with the body hanging by a hand (0.25 today, and 0.25 with two joints).
 
+### The natural body, N8 B: fingers (the same night; for the owner to confirm)
+
+`FSandboxFingerRig` (native, no bodies): a curl for each finger and the thumb and one spread, 24 values in `poses.fingers.*`, `poses.fingers.weight` 0 (off). Rest standing and lying, half a fist while flinching or staggering, spread in a fall, flat under a hand that the world pushes on while the body is not lying; eased over `blend_s`.
+
+- **The hashes of the bodies are the same in every scene tried, with the weight at 0 and 1, and the bones' are not** (seven close-ups). Off, everything has the hashes of `hold`. Unit test: the two hands mirror each other, a curl goes to the palm, a spread parts the fingers, a pose of zeros turns nothing.
+- `Saved\Films\n8b_fingers_stance.png`, `n8b_fingers_fall.png`: above as modelled, below posed. In the stance the fingers hang closer together and bent a little more toward the palm. The first values (35 to 52 degrees) were a cupped, mannered hand and were halved.
+- **What is bad and stays:** a hand that lies on its edge has two fingers in the floor, as before; the pose of rest does not bring them out, and the pictures of a hand in the air and at the floor differ little from the modelled hand. A finger that gives way to the floor needs a trace or a body, neither built.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

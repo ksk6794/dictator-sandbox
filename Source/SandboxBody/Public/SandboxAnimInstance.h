@@ -77,6 +77,7 @@ private:
 	TArray<FSandboxPoseBone> Layer;
 	double LayerWeight = 0.0;
 	TArray<FSandboxPoseTurn> Turns;
+	TArray<FSandboxPoseTurn> FingerTurns;
 	TArray<FSandboxLimbTarget> Limbs;
 	/** How far the blend from From to To has come, eased: 0 to 1. */
 	double Weight = 1.0;
@@ -126,6 +127,9 @@ public:
 	 */
 	void SetTurns(const TArray<FSandboxPoseTurn>& InTurns) { Turns = InTurns; }
 
+	/** The same for the bones of the fingers, which nothing else turns; kept until the next set. An empty set leaves them as modelled. */
+	void SetFingerTurns(const TArray<FSandboxPoseTurn>& InTurns) { FingerTurns = InTurns; }
+
 	/**
 	 * Places the end of a limb at a point (two-bone placement, for a leg), after the pose and its turns. The
 	 * end bone keeps the orientation the pose gives it, so a foot set down flat stays flat. The placement's
@@ -161,6 +165,7 @@ private:
 	TArray<FSandboxPoseBone> Layer;
 	double LayerWeight = 0.0;
 	TArray<FSandboxPoseTurn> Turns;
+	TArray<FSandboxPoseTurn> FingerTurns;
 
 	/** A limb target on the game thread, with the blend of its weight. */
 	struct FLimbState

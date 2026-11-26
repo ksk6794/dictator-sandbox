@@ -882,7 +882,7 @@ The wrist's model is M4's part 3. Soft tissue (FR-16) and the face (FR-23) are M
 
 1. Close-ups: a hand, a twisted forearm, a raised shoulder, a bent knee. **Done on 25 November 2026** (`docs/testing.md`; `Saved\Films\n8_*`).
 2. A: the head. A new baseline; everything listed above measured again; go or no-go. **Built on 25/26 November as a second asset, `PA_SandboxNPCHead`; go by every limit but one, for the owner to confirm:** the slap turns the head by 23 to 26 degrees with the palm on the cheek and by 17.7 with the hand held as the old test held it (`docs/testing.md`, "N8 A"). It needs the world's hold on the head off (`assist.head.angular_nm_per_rad` 0) and a neck damping of 0.05. **The wrist in the hand's own frame is no-go**: twenty fewer first attempts on the stand, from the frame and not the 85 degrees; its asset, `PA_SandboxNPCWrist`, stays unused.
-3. B: the fingers, `rest` in the stance first, then `splayed` and `flat` for the floor (in a fall forward two fingers of the lying hand are in the floor).
+3. B: the fingers, `rest` in the stance first, then `splayed` and `flat` for the floor (in a fall forward two fingers of the lying hand are in the floor). **Built on 25/26 November behind `poses.fingers.weight` (0): rest, half a fist, splayed and flat, chosen by what the body does; bodies' hashes unchanged. The fingers in the floor stay, for the owner to look at.**
 4. C: the skin, as above; step 1 did not call for the twist.
 5. D: the toes, just before M4b; a new baseline; go or no-go.
 

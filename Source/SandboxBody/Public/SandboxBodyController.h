@@ -5,6 +5,7 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyTuning.h"
 #include "SandboxClipPose.h"
+#include "SandboxFingerRig.h"
 #include "SandboxIdleMotion.h"
 #include "SandboxPoseRig.h"
 #include "SandboxAnimInstance.h"
@@ -611,6 +612,12 @@ private:
 	 * clock like every other offset of the pose. The legs are left to the balance.
 	 */
 	FSandboxIdleMotion IdleMotion;
+	/** The fingers: their axes, how much of each pose each hand has now (rest, fist, splayed, flat), and whether any has been handed over. */
+	FSandboxFingerRig FingerRig;
+	double FingerShare[2][4] = { { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 } };
+	bool bFingersSet = false;
+	/** Chooses each hand's pose of the fingers by what the body does and hands it to the animation (poses.fingers.*). */
+	void UpdateFingers(double DeltaTime);
 	void UpdateIdle(double DeltaTime);
 	/** How much of the idle the body carries now, 0 to 1, before easing. */
 	double IdleShare = 0.0;

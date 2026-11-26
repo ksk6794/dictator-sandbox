@@ -107,6 +107,7 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 			Layer.Reset();
 		}
 		Turns = Instance->Turns;
+		FingerTurns = Instance->FingerTurns;
 		Limbs.Reset();
 		for (const USandboxAnimInstance::FLimbState& Limb : Instance->LimbStates)
 		{
@@ -145,6 +146,14 @@ bool FSandboxAnimInstanceProxy::Evaluate(FPoseContext& Output)
 		}
 	}
 	for (const FSandboxPoseTurn& Turn : Turns)
+	{
+		const FCompactPoseBoneIndex Index = Container.MakeCompactPoseIndex(FMeshPoseBoneIndex(Turn.MeshBoneIndex));
+		if (Index != INDEX_NONE)
+		{
+			Output.Pose[Index].SetRotation((Output.Pose[Index].GetRotation() * Turn.Turn).GetNormalized());
+		}
+	}
+	for (const FSandboxPoseTurn& Turn : FingerTurns)
 	{
 		const FCompactPoseBoneIndex Index = Container.MakeCompactPoseIndex(FMeshPoseBoneIndex(Turn.MeshBoneIndex));
 		if (Index != INDEX_NONE)

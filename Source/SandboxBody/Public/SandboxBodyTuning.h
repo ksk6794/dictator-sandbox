@@ -518,11 +518,44 @@ struct FSandboxPose
 	FSandboxPoseAngles Joints[SandboxPoseJointCount];
 };
 
+/** A pose of one hand's fingers, counted from the reference pose, in which the hand is open ("poses.fingers.<pose>.*"). Both hands alike. */
+struct FSandboxFingerPose
+{
+	/** How far each finger is bent toward the palm, over its three joints together: thumb, index, middle, ring, pinky. Degrees. */
+	double CurlDeg[5] = { 0.0, 0.0, 0.0, 0.0, 0.0 };
+	/** How far the fingers part from the middle one (the index by this, the others in proportion); negative closes them. Degrees. */
+	double SpreadDeg = 0.0;
+
+	bool IsZero() const { return CurlDeg[0] == 0.0 && CurlDeg[1] == 0.0 && CurlDeg[2] == 0.0 && CurlDeg[3] == 0.0 && CurlDeg[4] == 0.0 && SpreadDeg == 0.0; }
+};
+
+/**
+ * Poses of the fingers ("poses.fingers.*"): which is asked for follows what the body does. The fingers have no bodies:
+ * a pose of them moves nothing and is for the eye.
+ */
+struct FSandboxFingerTuning
+{
+	/** How much of the poses the fingers take, 0 (they stay as modelled) to 1. */
+	double Weight = 0.0;
+	/** Time in which the fingers go from one pose to another, eased. Seconds. */
+	double BlendS = 0.0;
+	/** Relaxed: standing, lying. */
+	FSandboxFingerPose Rest;
+	/** A closed hand; half of it while the body flinches or staggers. */
+	FSandboxFingerPose Fist;
+	/** Falling: spread, for the floor. */
+	FSandboxFingerPose Splayed;
+	/** A hand that the world pushes on (the floor under it, as the body gets up): flat. */
+	FSandboxFingerPose Flat;
+};
+
 /** The poses the body is asked to hold, and how it goes from one to the next. */
 struct FSandboxPoseTuning
 {
 	/** Time over which the target goes from one pose to the next, eased in and out. Seconds. */
 	double BlendS = 0.0;
+	/** The fingers. */
+	FSandboxFingerTuning Fingers;
 	/** Standing. All zero is the reference pose the body held before it had poses. */
 	FSandboxPose Stance;
 	/**
