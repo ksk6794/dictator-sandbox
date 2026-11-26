@@ -184,7 +184,8 @@ Measured in M3 part 5 (`docs/testing.md`), not assumed:
   bounce: a fall gained 46 J against 26 and took 4.0 s to rest against 3.6.
 - **No body has continuous collision detection.** In 32 knockdowns nothing went deeper than 1.5 cm into the
   floor, under the 2 cm at which the owner's rule switches it on. A passive body dropped from 1.5 m does go
-  8.3 cm in, and gains 149 J on the way out; sweeping the feet, or the feet and the head, changes neither
+  8.3 cm in, and gains 149 J on the way out (the body of 18, M3 part 5; 130 J on the body of 19, baseline `led`); sweeping
+  the feet, or the feet and the head, changes neither
   figure. It is the solver not converging in the engine's 8 iterations (3.2 cm with 32, 1.5 cm with 64, which
   is what a body under control has).
 

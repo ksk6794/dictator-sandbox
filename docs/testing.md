@@ -5193,7 +5193,8 @@ No code, value or scenario changed; read from the engine's source and the projec
   values are read with no state (`FSandboxInteractionTuning::FromParams`) and their range check runs on those base values only, so
   such a value is not checked against its range either. The body reads only its own names.
 - **Times, on the reference machine:** `Tools\getup-seeds.ps1` with three processes a stand (nine in all) 92 s, 149 of 150 standing,
-  139 at the first attempt, assist share 1.16, the figures of R1 (`CLAUDE.md` had 110 s, of a run not recorded here);
+  139 at the first attempt, assist share 1.16, the figures of R1 (`CLAUDE.md` had 110 s, of a run not recorded here) (Corrected
+  in the review of the audit, 26 November: it is recorded, "106 to 114 s for the three", where the stand was made shorter);
   `Tools\natural.ps1 -Quick` 56 s.
 - **`strike_punch_belly_steps` falls by a threshold, not by losing its feet.** The fist at 6 m/s, 0.1 s in the belly: the body
   feels 79 N*s on `spine_04` (78.6 into the belly), flinches at 3.10 s, doubles over at 3.14, needs a step at 3.16 (capture point
@@ -5203,12 +5204,62 @@ No code, value or scenario changed; read from the engine's source and the projec
   together, Standing at 5.56 (four steps in all; hashes `a95dcc09` against `bb7cb4a7`). Videos from the side, real time, 3.0 to
   7.5 s: `Saved\Films\belly_punch_side` and `belly_punch_side_tilt45`. The name says "steps" since the scenario was made (111 N*s,
   four steps, standing); it has fallen since the owner's decision of 25 November for `effectors.hand.strike_through_cm` 40, and its
-  expectations were rewritten then.
+  expectations were rewritten then. (Renamed `strike_punch_belly_falls` in the same commit, decision 11 of
+  `docs/active-ragdoll.md`; noted in the review of the audit.)
 - **What the world gives a led get-up, on the stand of 150** (the same run as the times above, `Saved\Matrix\getup_seeds\timing_1126`):
   the mean share of each fall's get-up, of the body's weight, 1.16 on average, 1.07 in the median, 0.92 at the 10th percentile, 1.63 at
   the 90th, 2.20 at most; the peak within an attempt 2.25 in the median, 3.01 at the 90th percentile, 3.35 at most. R1's "peaks of 2.5"
   was not the stand's.
 
+### The review of the audit (26 November)
+
+No code, value or scenario changed. Read from the saved runs and the code; two scenarios made for the review were run from files
+outside the repository (a fall at 3 s, the hands sent at 6 s by `at_bone`, grab on as in the files) and filmed.
+
+- **C27 on the stand is not the four `getup_*`.** Every run of the stand records `control.get_up.rise_trunk_deg` and
+  `rise_feet_cm`. On the led stand of 150 (`Saved\Matrix\getup_seeds\timing_1126`) the trunk is 60.1 degrees from upright in the
+  median and the farther foot 24.9 cm from the pelvis; both of C27's limits (45 degrees, 30 cm) are met in 65 of 149 get-ups. The
+  "22 to 30 degrees and 20 to 26 cm" of R1 are the four `getup_*`, which use only the clips from the back and the front; the side
+  clips give 61 to 63 degrees in the median. Like for like the led get-up took the stand from 70 to 60 degrees and from 37 to 25 cm.
+- **C19 on the stand:** 18 of 169 attempts given up, 10.7% (the "about 12%" was 18 per 150 falls); the longest pose asked for
+  (`target_still_longest_s`) is up to 2.98 s, longer than 1.0 s in 5 of 150 falls.
+- **The figures "before R1" of the hold and the press are of older bodies.** 47 of 146 pulled free of one hand with
+  `reactions.hold_felt` off and 46 with it on, both before N2's repairs; 39 of 150 stood under 300 N on the head body before them (13
+  of 50 is 39 shared by three, not a run of seed 1). On the body R1 replaced (`n2on_hold1`, `n2on_press300`): one hand, 16, 18 and
+  15 pulled free, 49 of 147; pressed with 300 N, 14, 15 and 14 stood, 43 of 150. R1's conclusions stand.
+- **What was run after the R1 commit and not written down.** The bootstrap at 17:01 (`Saved\Tools\bootstrap.json`): `ok` false, it
+  stopped at step 7, the suite, on `grab_getup_held`, which fails on purpose until R2; it cannot pass until then. By hand after it:
+  the push matrix at 17:03 (160 runs, ok, 45.3 s), the knockdowns at 17:04 (8 of 8, 16.5 s), the stand of seed 1 at 17:04 (50 of
+  50, 40.8 s) and the session's self-test at 17:06 (`room_stand_npc`, ok). The record and replay and the grab demo were not run.
+  `Saved\Baselines\led\push-matrix.json` is `n2`'s file (same size, 09:44): `Tools\baseline.ps1 -CompareMatrix led` compares with
+  `n2`'s matrix.
+- **`drop_npc` on the body of 19:** a foot 8.28 cm into the floor and 129.6 J on the way out (`Baselines\led`); the 149 J of the
+  READMEs was the body of 18.
+- **Two hands take both ankles of a body getting up and pull it along the floor** (`Saved\Films\review_ankles_two`, film and
+  video from 5.5 s). The body falls back at 3 s and begins to get up at 5.59 s (clip `M_ragdoll_getup_stand_R`); the hands close on
+  `foot_l` and `foot_r` at 6.32 s and their targets go 2 m away over 4 s. The hands are left behind, at their cap, and their grips
+  slip after 0.74 and 1.51 s (45 cm for 0.25 s). While they hold, the world gives 700 to 1180 N in all (0.9 to 1.5 of the body's
+  weight), its net pull against the hands; the sustained press the body feels comes to 295 N of the 450 that would take the pull
+  away. The clip runs on, reaches its end at 2.60 s of it, and the body stands there on one foot, held by the world at about its
+  own weight (the right thigh at its cap, 240 N), for 3 s; the attempt is given up ("waiting for the body", which at the clip's end
+  means not upright on both feet), it falls at 11.78 s and stands at the second attempt (17.84 s). Hashes `60cb2f19` headless and
+  rendered.
+- **The same by both wrists** (`Saved\Films\review_arms_getup`), the targets 150 cm toward the head and 60 cm up: grips slip after
+  1.1 and 1.9 s; the world gives up to 2180 N (2.8 weights), the trunk held 50 cm off toward the clip against the hands; the arms
+  are pulled straight by the hands and do not reach toward the pull; then the same stand at the clip's end, given up, a fall at 11.81
+  s, standing at the second attempt. Hashes `5999e2e5`.
+- **A hit during a led get-up.** `getup_hit_strong`: the blow of 200 N*s at 8.50 s, while getting up, fells the body at once
+  (GetUp, then Falling in the same frame), but the scenario does not ask for it (it asks for two hits, a get-up and standing at the
+  end). `getup_push_weak`: 30 N*s at 8.50 s, the body stands at 8.79 s. Below `getup.carry_yield_ns` (60) a hit does not touch the
+  world's pull; only a sustained press does.
+- **The tabs of the plan** were exported and held against the files word by word: "Active ragdoll 2" and "Natural body" differ only
+  as intended; "Tab 1" differs only by its three drawings, whose labels are the Mermaid's.
+- **After the owner's decision 23** (a scenario may name a `known_failure`, read by `Tools\suite.ps1`; `grab_getup_held` carries it
+  until R2): build OK, 48 unit tests, the suite 126 of 127 with `grab_getup_held` counted apart and exit 0 (47.7 s); against `led`
+  126 scenarios with the same hashes and none changed, and `strike_punch_belly_falls` with the hashes `led` has under its old name
+  (`bb7cb4a7`, `6cc6e5d7`); `grab_getup_held`'s hashes as in `led`. The bootstrap then ran all 14 steps, every one passing, in 281 s
+  (the suite 46 s, the push matrix 47 s, the knockdowns 18 s, the stand 43 s, the record and replay 33 s, its three takes 49 s,
+  the grab demo 10 s, the session's self-test 10 s).
 
 
 

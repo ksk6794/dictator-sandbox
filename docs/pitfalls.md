@@ -1,7 +1,8 @@
 # Pitfalls: what has already bitten
 
 Moved from `CLAUDE.md` on 26 November 2026 (the owner's decision): every entry as it was written, grouped by area, and within an
-area in the order it was found. The entries that spoil a result in any part without a sign stayed in `CLAUDE.md`, "Things that
+area in the order it was found (one figure brought up to date in the move, the colliding pairs of the body of 19; notes added
+later are marked as such). The entries that spoil a result in any part without a sign stayed in `CLAUDE.md`, "Things that
 have already bitten"; read those first. Before a part's plan, read the areas below that its work touches; the plan names them. An
 entry that says "above" or "below" may mean one in another area or in `CLAUDE.md`. A new pitfall goes into its area here; one
 that can spoil any part without a sign goes into `CLAUDE.md` instead.
@@ -305,7 +306,8 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   at 4.4 cm, the body steps, and the cell is judged by how its feet shuffle.
 - **A glide that is cut short has to be gone on from where it was cut.** `PlaceFoot` without `bFromLast` starts a change of
   frame from the frame the leg was going to, not from the one it was last solved in: 21 cm, 27 degrees of the thigh in one
-  frame after a lift (known, to be repaired: `docs/natural-body.md`, decision 13).
+  frame after a lift (known, to be repaired: `docs/natural-body.md`, decision 13). (Repaired: `balance.lift_smooth` 1, on since
+  the owner's decision of 26 November 2026.)
 - **What held the head back from turning was the world.** "A slap does not turn the head because the neck is stiff and the head
   round" was written on 25 November; over necks of 40 down to 1 N*m/rad the turn went from 6 to 15 degrees only. The assist's hold
   on the head (10 N*m/rad, 0.2 s: a damper of 2 N*m*s/rad on 0.02 kg*m2) took most of it. When a figure hardly moves with the

@@ -34,6 +34,7 @@ The file name must equal the `name` field (a unit test checks this).
 | --- | --- | --- |
 | `name` | yes | Scenario name; equals the file name |
 | `duration_s` | yes | Simulated time |
+| `known_failure` | no | The reason a scenario fails on purpose, and until when (`grab_getup_held`: until R2). Read by `Tools\suite.ps1` only, not by the run: such a scenario is run and printed as `SCENARIO KNOWN FAILURE`, does not fail the suite (so the bootstrap goes on), and is named in `suite.json`'s `known_failures`; one that passes is printed as `KNOWN FAILURE PASSES`, for the mark to be taken away. The owner's decision of 26 November 2026 (`docs/active-ragdoll.md`, decision 23) |
 | `map` | no | Map package to run in, e.g. `/Game/Generated/Maps/TestRoom`. Without it the runner builds a bare floor and two lights |
 | `fixed_fps` | no, default 90 | Engine frames per simulated second. Physics substeps come from `Config/DefaultEngine.ini` |
 | `checkpoint_interval_s` | no, default 0.5 | How often body and bone transforms are written to `trace.json` |
@@ -473,7 +474,8 @@ last input, where an input is a scripted impulse, a pin, a console command, a tu
 touching something. A body under control is watched only while it is `falling` or `lying`: upright, its
 muscles and the assist hold it up and that is no fault. What the figure catches is a body thrown back up by
 the solver or by its own muscles: a passive NPC dropped from 1.5 m lands with a foot 8.3 cm inside the
-floor, and being pushed out again gives it 149 J (`drop_npc`, measured in M3 part 5; `Specs/README.md`); an 80 kg
+floor, and being pushed out again gives it 149 J (`drop_npc`, measured in M3 part 5 on the body of 18; 130 J on the body of
+19, baseline `led`; `Specs/README.md`); an 80 kg
 body lifted by 1 cm is 7.8 J.
 
 **The fall** (`control.fall`): when the controller let the body go (`started_t`), how long after that it
@@ -531,7 +533,8 @@ muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's wei
 **Get-ups** (`control.get_up`, in a run with `"get_up": true`): how many times the body began to get up and how many
 ended standing (`attempts`, `successes`); the last attempt's clip, when it began and how long it took to stand
 (`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`; under the led
-get-up, `getup.carry` 1, the clip waits only while a press holds the body down), and why the
+get-up, `getup.carry` 1, the clip stands still only while the muscles come up, while a press holds the body down and at
+its end until the body is upright on both feet), and why the
 last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`) and the most the body
 was pressed with (`pressed_max_n`: the force felt in every frame of `reactions.held_push_s`, which is what
 `getup.hold_force_n` is compared with); and what the assist did over all the time spent getting up (`seconds`): its

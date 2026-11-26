@@ -19,6 +19,9 @@
 # scenario that is over a step limit after the parallel pass (its own max_physics_step_mean_ms or the limit
 # for the set) is run once more by itself, and that run is the one that counts. Sharing the processor never
 # makes a step read shorter, so nothing over the limit can slip through.
+# A scenario whose file names a "known_failure" (the reason, and until when) fails on purpose: it is run and printed
+# as SCENARIO KNOWN FAILURE and does not fail the suite; if it passes, the suite says so (KNOWN FAILURE PASSES), so
+# that the mark is taken away. The limits for the whole set still hold for it.
 # Writes Saved\Tools\suite.json. Exit code: 0 all pass, 1 at least one failed, broke a limit or could not run.
 param(
     [string]$Filter = '*',
@@ -61,6 +64,8 @@ $started = Get-Date
 $jobs = @()
 foreach ($file in $files) {
     $job = @{ Name = $file.BaseName; Out = (Join-Path $runRoot $file.BaseName) }
+    $known = (Read-JsonFile $file.FullName).known_failure
+    if ($known) { $job.KnownFailure = [string]$known }
     if ($Tune) { $job.Tune = $Tune }
     $jobs += $job
 }
@@ -80,6 +85,7 @@ function Read-SuiteResult($job) {
     if ($metrics -and $metrics.hashes) { $bodies = $metrics.hashes.bodies; $bones = $metrics.hashes.bones }
     return [ordered]@{
         scenario = $job.Name; pass = [bool]($metrics -and $metrics.ok -and $metrics.pass); failed_checks = $failedChecks
+        known_failure = $job.KnownFailure
         max_joint_stretch_cm = $stretch; physics_step_mean_ms = $stepMs; timed_alone = ($Parallel -le 1)
         hash_bodies = $bodies; hash_bones = $bones
         verdict = (Format-ScenarioVerdict $job.Name $metrics $job.Out)
@@ -99,7 +105,12 @@ foreach ($job in $jobs) {
         $result.timed_alone = $true
         $result.verdict += (" [physics step {0:N3} ms alone, {1:N3} ms while sharing the processor]" -f $result.physics_step_mean_ms, $shared)
     }
-    Write-Output $result.verdict
+    if ($result.known_failure -and -not $result.pass) {
+        Write-Output ("SCENARIO KNOWN FAILURE: {0} ({1}); {2}" -f $result.scenario, $result.known_failure, $result.verdict)
+    } else {
+        Write-Output $result.verdict
+        if ($result.known_failure) { Write-Output ("KNOWN FAILURE PASSES: {0} is marked as failing on purpose ({1}); take the mark away" -f $result.scenario, $result.known_failure) }
+    }
     $results += $result
 }
 $seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
@@ -119,23 +130,27 @@ foreach ($limit in @(
     }
 }
 
-$failed = @($results | Where-Object { -not $_.pass })
+$failed = @($results | Where-Object { -not $_.pass -and -not $_.known_failure })
+$knownFailed = @($results | Where-Object { -not $_.pass -and $_.known_failure })
 $brokenLimits = @($limits | Where-Object { -not $_.pass })
 $ok = ($failed.Count -eq 0) -and ($brokenLimits.Count -eq 0)
 Write-JsonFile (Join-Path $resultDir 'suite.json') ([ordered]@{
     ok       = $ok
     total    = $results.Count
-    passed   = $results.Count - $failed.Count
+    passed   = $results.Count - $failed.Count - $knownFailed.Count
+    known_failures = @($knownFailed | ForEach-Object { $_.scenario })
     parallel = $Parallel
     seconds  = $seconds
     limits   = $limits
     results  = $results
 })
 
+$knownNote = ''
+if ($knownFailed.Count -gt 0) { $knownNote = "; $($knownFailed.Count) known failure(s), failing on purpose: $(($knownFailed | ForEach-Object { $_.scenario }) -join ', ')" }
 if ($ok) {
-    Write-Output "SUITE OK: $($results.Count) scenario(s) passed in $seconds s, $Parallel at a time"
+    Write-Output "SUITE OK: $($results.Count - $knownFailed.Count) of $($results.Count) scenario(s) passed in $seconds s, $Parallel at a time$knownNote"
 } else {
-    Write-Output "SUITE FAILED: $($failed.Count) of $($results.Count) scenario(s) did not pass, $($brokenLimits.Count) limit(s) of the whole set broken"
+    Write-Output "SUITE FAILED: $($failed.Count) of $($results.Count) scenario(s) did not pass, $($brokenLimits.Count) limit(s) of the whole set broken$knownNote"
     foreach ($entry in $failed) {
         Write-Output "  $($entry.scenario): $($entry.failed_checks -join ', ')"
     }
