@@ -4838,6 +4838,59 @@ recording runs: the replay holds, 13 of 13, the pelvis 0.008 cm, the frames of t
 chest with 0.11 s to the contact, under the anticipation's 0.15 s, so it neither braced nor raised a guard; that is for the owner's
 look in the headset.
 
+### The owner's look in the headset with perception (26 November)
+
+`Tools\play.ps1 -VR -Perception -Record vr_seeing`: 311 s, seven takes, 89.9 frames a second, both controllers tracked throughout.
+By the session's log the body took 94 things for threats (77 a hand near the face), braced before 43 of them and raised a guard 41
+times (34 left, 7 right; a fist held on each side of the face in a scenario raises the arm of that side, so the count is where the
+hands were, the body having turned in its get-ups), was hit 61 times (44 on the head) and fell 6 times (five by the pelvis's tilt, one
+knockdown of 37.2 N*s on the head). The usual course: a hand coming at the face at 0.7 to 0.9 m/s is a threat 0.34 to 0.44 s before
+the contact, the brace and the forearm come 0.16 s later, and the contact is soft (about 5 N*s). The recordings do not replay to the
+session (the pelvis 67 to 144 cm off by their ends; grabs and hard pushes, as in `vr_check3`), so nothing more is read from them.
+
+**The owner:** the head turned after the hands. The bracing was not noticed. **The get-ups still look unnatural:** a get-up is
+several clips with clear pauses between them, the body does not begin at once but after a delay, and it is all mechanical, robotic:
+"far from natural behaviour and movement yet".
+
+What the log shows of the get-ups (`Saved\Recon\getup_pauses.py`): the body lay still for 1.5 to 2.0 s before each began (6 s once,
+held), `getup.rest_s` 1.5 s for every fall alike; each took 4.0 to 6.2 s, and in each the clip stood still, waiting for the body, for
+0.8 to 1.3 s in all: the pauses between the clips' phases. From the fall to standing 6 to 8 s, where a person needs 2.6 to 4.2 s from
+the first move (C21). This is N7's matter (a get-up that never holds a pose).
+
+### The natural body, N7 first: the get-up's pauses (26 November, the owner's decision to take it now; not met, off)
+
+Built, all 0 in the files (the suite with the hashes of `n2`): `getup.slow_from` and `getup.rate_follow_s` (the clip slows as the
+body falls behind, to a stop at the lags that stopped it, runs while the body eases in, its speed smoothed), `getup.rest_per_ns_s`
+and `getup.rest_max_s` (the body lies `rest_s` plus that per N*s of the hit that felled it). Measures, in `control.get_up`:
+`paused_s` (the clip under a tenth of its rate), split into `paused_ease_s`, `paused_behind_s`, `paused_end_s`; the causes of
+waiting, `behind_height_s`, `behind_side_s`, `behind_foot_s`, `behind_held_s`; `lay_s`. Limits before the runs:
+`Saved\Recon\n7_getup_plan.md` (L2 the stand 147 and 129, L3 the pause at most half, L4 the get-up no longer).
+
+**Where today's pauses are** (150 get-ups of the stand): 2.42 s of a 5.0 s get-up in the median; 0.60 s while the body eases in
+(`ease_s`), 1.81 s waiting for the body mid-clip, 0.01 s at the end. The waiting is for a foot in the air more than 15 cm from the
+clip's (0.96 s median) and the pelvis more than 20 cm aside (0.73 s), rarely its height (0.16 s). Lying before it: 1.82 s.
+
+| Variant (by `-Tune`) | Stand, first attempt | Pause | Get-up | Lying | Suite |
+| --- | --- | --- | --- | --- | --- |
+| Today | 150, 130 | 2.42 s | 5.01 s | 1.82 s | 127 |
+| V1 the clip slows (`slow_from` 0.5, `rate_follow_s` 0.15) | **147, 126** | 1.72 | **6.55** | 1.82 | 127 |
+| V2 V1, and the rest by the fall (0.4 s + 0.004 s/N*s, at most 2) | **143, 125** | 1.69 | **6.51** | 1.29 | `prop_getup_on_plate` |
+| W1 a foot waited for at 25 cm, 0.35 s | 150, **106** | 1.52 | 4.11 | 1.81 | 2 get-ups fail |
+| W2 the pelvis aside at 30 cm | 150, **123** | 2.13 | 4.72 | 1.81 | `getup_held` |
+| W3 W1 and W2 | **148, 105** | 1.26 | 3.84 | 1.81 | 3 fail |
+| W4 W3 and `ease_s` 0.3 | **146, 103** | **0.93** | **3.52** | 1.80 | 4 fail |
+| X1 the get-up's muscles follow the clip's speed (`pose_velocity_share` 1) | 149, **120** | 2.24 | 4.83 | 1.76 | 127 |
+| X2 X1 and W4 | 147, **85** | 0.90 | 3.49 | 1.72 | 4 fail |
+| R1 the rest by the fall alone | 149, **126** | 2.40 | 4.99 | **1.24** | 127 |
+
+**Not met; everything off.** Slowing the clip lengthens the get-up; letting it wait less shortens it into a person's 2.6 to 4.2 s
+and halves the pause (W4), but a fifth of the attempts then fail, and a failed attempt and a second one read worse than a pause: the
+film of `getup_back` with W4 (`Saved\Films\n7_getup_back_w4`) ends crouched on the floor, where today's
+(`n7_getup_back_today`) lies still from 3.5 to 6.0 s, turns onto its side with an arm held straight up, crouches and stands by
+10.5 s. The muscles following the clip's speed (X1) changes nearly nothing: it is not damping that holds the body back. The pauses are
+the body not keeping up with the recorded clip, its feet and its pelvis; no value of the get-up as it is removes them without
+losing get-ups. Shortening the rest alone (R1) takes 0.6 s off the lying and misses the first attempts by three.
+
 
 
 

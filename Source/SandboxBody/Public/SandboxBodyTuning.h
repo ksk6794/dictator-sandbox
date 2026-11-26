@@ -865,6 +865,19 @@ struct FSandboxGetUpTuning
 	/** The body stands again once the clip is through and its pelvis is within this of upright, with both feet on the floor. Degrees. */
 	double UprightDeg = 0.0;
 	/**
+	 * N7: how long the body lies depends on how it fell. The rest is RestS plus this per newton-second of the hardest hit felt
+	 * from a second before the fall to the get-up, and at most RestMaxS (0: no bound). 0: RestS for every fall. s per N*s, s.
+	 */
+	double RestPerNsS = 0.0;
+	double RestMaxS = 0.0;
+	/**
+	 * N7: a clip that never stands still. Above 0 the clip's time slows as the body falls behind, from this share of the lags
+	 * that stop it (lag_cm, side_lag_cm, foot_lag_cm) to a stop at the whole of them, and it runs while the body eases in;
+	 * RateFollowS smooths each change of its speed (0: at once). 0, 0: the clip runs or stands, as it did. Share, seconds.
+	 */
+	double SlowFrom = 0.0;
+	double RateFollowS = 0.0;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.

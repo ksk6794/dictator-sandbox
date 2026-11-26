@@ -280,6 +280,10 @@ namespace
 		Visitor(FString(TEXT("getup.wait_s")), Tuning.GetUp.WaitS);
 		Visitor(FString(TEXT("getup.lost_cm")), Tuning.GetUp.LostCm);
 		Visitor(FString(TEXT("getup.upright_deg")), Tuning.GetUp.UprightDeg);
+		Visitor(FString(TEXT("getup.rest_per_ns_s")), Tuning.GetUp.RestPerNsS);
+		Visitor(FString(TEXT("getup.rest_max_s")), Tuning.GetUp.RestMaxS);
+		Visitor(FString(TEXT("getup.slow_from")), Tuning.GetUp.SlowFrom);
+		Visitor(FString(TEXT("getup.rate_follow_s")), Tuning.GetUp.RateFollowS);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
@@ -616,7 +620,11 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
 		!CheckRange(GetUp.WaitS, 60.0, TEXT("getup"), TEXT("wait_s"), OutError) ||
 		!CheckRange(GetUp.LostCm, 1000.0, TEXT("getup"), TEXT("lost_cm"), OutError) ||
-		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError))
+		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError) ||
+		!CheckRange(GetUp.RestPerNsS, 0.1, TEXT("getup"), TEXT("rest_per_ns_s"), OutError) ||
+		!CheckRange(GetUp.RestMaxS, 60.0, TEXT("getup"), TEXT("rest_max_s"), OutError) ||
+		!CheckRange(GetUp.SlowFrom, 0.99, TEXT("getup"), TEXT("slow_from"), OutError) ||
+		!CheckRange(GetUp.RateFollowS, 2.0, TEXT("getup"), TEXT("rate_follow_s"), OutError))
 	{
 		return false;
 	}

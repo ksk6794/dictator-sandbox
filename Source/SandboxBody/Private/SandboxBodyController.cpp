@@ -1422,8 +1422,29 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	GetUpView.StartedS = ElapsedS;
 	GetUpView.DurationS = -1.0;
 	GetUpView.StallS = 0.0;
-	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; by '%s' (likeness %.2f)"), Tuning.GetUp.RestS, *FPaths::GetBaseFilename(BestPath), BestLikeness));
+	GetUpView.PausedS = 0.0;
+	GetUpView.PausedEaseS = 0.0;
+	GetUpView.PausedBehindS = 0.0;
+	GetUpView.PausedEndS = 0.0;
+	GetUpView.BehindHeightS = 0.0;
+	GetUpView.BehindSideS = 0.0;
+	GetUpView.BehindFootS = 0.0;
+	GetUpView.BehindHeldS = 0.0;
+	GetUpView.LayS = State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
+	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; by '%s' (likeness %.2f)"), GetUpRestS(), *FPaths::GetBaseFilename(BestPath), BestLikeness));
 	return true;
+}
+
+double USandboxBodyController::GetUpRestS() const
+{
+	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	if (Limits.RestPerNsS <= 0.0)
+	{
+		return Limits.RestS;
+	}
+	// N7: a slip is got up from soon, a knockdown later.
+	const double Rest = Limits.RestS + Limits.RestPerNsS * FellByNs;
+	return Limits.RestMaxS > 0.0 ? FMath::Max(Limits.RestS, FMath::Min(Rest, Limits.RestMaxS)) : Rest;
 }
 
 void USandboxBodyController::GiveUpGetUp(const FString& Reason)
@@ -1568,7 +1589,28 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	GetUpRun.FootWaitS = AirLagCm > Limits.FootLagCm ? GetUpRun.FootWaitS + DeltaTime : 0.0;
 	const bool bBehind = bHeldDown || bPelvisBehind || (AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS);
 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
-	ClipHold.Rate = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
+	double RateGoal = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
+	if (Limits.SlowFrom > 0.0 && !bBehind && !bThrough)
+	{
+		// N7: the clip slows as the body falls behind, to a stop at the lags that stopped it before, and starts while the body
+		// eases in. Run or stand, the clip read as separate motions with pauses between them (the owner's look of 26 November).
+		const double FootShare = AirLagCm > 0.0 && GetUpRun.FootWaitS <= Limits.FootWaitS ? AirLagCm / Limits.FootLagCm : 0.0;
+		const double Share = FMath::Max3(FMath::Abs(PelvisOff.Z) / HeightLagCm, PelvisOff.Size2D() / Limits.SideLagCm, FootShare);
+		RateGoal = Limits.Rate * Ease * (1.0 - FMath::SmoothStep(Limits.SlowFrom, 1.0, Share));
+	}
+	ClipHold.Rate = Limits.RateFollowS > 0.0 ? ClipHold.Rate + (RateGoal - ClipHold.Rate) * (1.0 - FMath::Exp(-DeltaTime / Limits.RateFollowS)) : RateGoal;
+	if (ClipHold.Rate < 0.1 * Limits.Rate)
+	{
+		GetUpView.PausedS += DeltaTime;
+		(Ease < 1.0 ? GetUpView.PausedEaseS : bThrough ? GetUpView.PausedEndS : GetUpView.PausedBehindS) += DeltaTime;
+	}
+	if (Ease >= 1.0 && bBehind && !bThrough)
+	{
+		GetUpView.BehindHeightS += FMath::Abs(PelvisOff.Z) > HeightLagCm ? DeltaTime : 0.0;
+		GetUpView.BehindSideS += PelvisOff.Size2D() > Limits.SideLagCm ? DeltaTime : 0.0;
+		GetUpView.BehindFootS += AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS ? DeltaTime : 0.0;
+		GetUpView.BehindHeldS += bHeldDown ? DeltaTime : 0.0;
+	}
 	if (Ease >= 1.0 && (bBehind || bThrough))
 	{
 		GetUpRun.StallS += DeltaTime;
@@ -1701,6 +1743,7 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	}
 	if (NewState == ESandboxBodyState::Falling)
 	{
+		FellByNs = RecentHitS >= 0.0 && ElapsedS - RecentHitS <= 1.0 ? RecentHitNs : 0.0;
 		// The strengths the muscles have now, which go over to the fall's (balance.fall_ease_s): each muscle's own, as last
 		// handed to its drive, the leg of a step under way and a flinch's weakening included. (Taken from the groups'
 		// values, a fall during a swing dropped the swinging leg to half its stiffness in one step.)
@@ -3203,6 +3246,16 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		if (bFirstOfContact || bBlowIntoContact)
 		{
 			LastHitS = ElapsedS;
+			{
+				// N7: what felled the body, for how long it lies (getup.rest_per_ns_s). Measuring only: nothing reads it otherwise.
+				const double HitSizeNs = (bBlowIntoContact ? HitNs : EventHitNs).Size();
+				RecentHitNs = ElapsedS - RecentHitS > 1.0 ? HitSizeNs : FMath::Max(RecentHitNs, HitSizeNs);
+				RecentHitS = ElapsedS;
+				if (State == ESandboxBodyState::Falling || State == ESandboxBodyState::Lying)
+				{
+					FellByNs = FMath::Max(FellByNs, HitSizeNs);
+				}
+			}
 			FSandboxBodyEvent Event;
 			Event.Type = ESandboxBodyEventType::Hit;
 			Event.TimeS = ElapsedS;
@@ -3585,7 +3638,7 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 	if (State == ESandboxBodyState::Lying)
 	{
 		LyingS = IsAtRest() && !bHeldUp ? LyingS + DeltaTime : 0.0;
-		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= Tuning.GetUp.RestS - KINDA_SMALL_NUMBER)
+		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER)
 		{
 			LyingS = 0.0;
 			FString Error;

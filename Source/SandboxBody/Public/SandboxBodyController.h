@@ -276,6 +276,21 @@ struct FSandboxGetUpView
 	double StartedS = -1.0;
 	double DurationS = -1.0;
 	double StallS = 0.0;
+	/**
+	 * The last attempt: how long its clip ran at under a tenth of its rate, all of it (what reads as a pause, whether the clip
+	 * stood or crept; its end held for the body to stand up included), and how long the body had lain before it began.
+	 */
+	double PausedS = 0.0;
+	double LayS = 0.0;
+	/** Of PausedS: while the body eased in, with the clip short of its end (the body behind it), and at its end. */
+	double PausedEaseS = 0.0;
+	double PausedBehindS = 0.0;
+	double PausedEndS = 0.0;
+	/** Of the time the clip waited for the body: the pelvis too low or high, too far aside, a foot in the air, a press. */
+	double BehindHeightS = 0.0;
+	double BehindSideS = 0.0;
+	double BehindFootS = 0.0;
+	double BehindHeldS = 0.0;
 	/** Why the last attempt that was given up was given up. */
 	FString GivenUp;
 	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */
@@ -778,6 +793,15 @@ private:
 	FString GivenUpClip;
 	/** How long the body has lain still. */
 	double LyingS = 0.0;
+	/**
+	 * N7: the hardest hit felt in the last second and when (any state), and the hardest that felled the body: from a second
+	 * before its fall to its get-up. N*s, s.
+	 */
+	double RecentHitNs = 0.0;
+	double RecentHitS = -1.0;
+	double FellByNs = 0.0;
+	/** How long a body that lies waits before it gets up (getup.rest_s, and getup.rest_per_ns_s of FellByNs). Seconds. */
+	double GetUpRestS() const;
 	/** The mesh's own space when the body was started: the space a clip's root is in for a body that stands as this one stood. */
 	FTransform StartSpace = FTransform::Identity;
 	bool StartGetUp(FString& OutError);
