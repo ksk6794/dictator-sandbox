@@ -1104,7 +1104,7 @@ Asked for by the owner on 25 November 2026: a body that behaves and reacts as a 
 | N1 | Measures of naturalness and a scorecard (`Tools\natural.ps1`); changes no behaviour | **Done**, beside M4 |
 | N8 A, B | The head as its own body; fingers that are posed | After M4's gate; **built 26 Nov** (head: a second asset, go but for one limit; wrist: no-go; fingers behind a weight of 0), for the owner to confirm |
 | N2 | Weight carried by joint torques, softer springs, the assist delivered as torques of the legs | Before M4b; **begun 26 Nov** (the jumps' repairs behind switches, one set recommended; the weight torques not usable yet) |
-| N3 | Strength joint by joint and a tone that rises and falls | Before M4b |
+| N3 | Strength joint by joint and a tone that rises and falls | Before M4b; **begun 26 Nov** (values, tone, brace, daze, all neutral; the caps miss the stand) |
 | N6 | The fall with an aim: a hand target, arms that reach and brake, the head kept off the floor | Before M4b |
 | N4 | Mechanics, then reflex, then intent, at a person's delays | Before M4b |
 | N5 | Perception: gaze, bracing before a blow that is seen, the answer to a hold | Before M4b, with a headset session |

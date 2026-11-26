@@ -4436,6 +4436,35 @@ as a push of the floor at a shifted place, bounded by the soles and friction). A
   threshold (159); the legs alone fail five (`measure_cop`, `palm_close_on_chest`, `pose_foot_place`, `room_movable_fall_gets_up`, `stand_foot_moved`) and turn the one step after 30 N*s from the
   side (270 degrees, on the neck and the chest) into two (158). Today's matrix has five mirror-image pairs that end differently, the weight of the legs four: the side's second step is not a left and
   right mistake of the weight; the body is not symmetric today either. `palm_close_on_chest` fails with either half.
+### The natural body, N3: muscles joint by joint, and the tone (the same night; for the owner to confirm)
+
+Built, all neutral (the hashes of `hold`): `muscles.joints.<kind>.stiffness_scale`, `damping_scale`, `max_torque_scale` for twelve kinds of joint (step 1); the tone, `tone.<level>.<group>.stiffness` and `damping`
+for limp, relaxed, ready and braced, each group's standing level (`tone.standing.<group>`, 2 = ready), `tone.rise_s` 0.05 and `tone.fall_s` 0.4, `RequestTone` and the scenario event `tone` (step 3); a brace after a hit
+(`tone.brace_from_ns`, after `brace_delay_s` 0.08, for `brace_hold_s` 1) and a daze after a hit on the head below the knockdown (`tone.daze_*`, legs and spine) (step 5). Every level is 1 in the file: today's body.
+
+**Step 2, the caps from the published peak torques (stronger direction; as factors on the group's cap), limits set before:** matrix 160, knockdowns 8 of 8 both ways, stand 147 and 129, grab pulls 93.
+
+| Caps | Matrix | Knockdowns | By hand | Stand | Pulls |
+| --- | --- | --- | --- | --- | --- |
+| All: hip 0.71, knee 0.99, ankle 0.45, shoulder 1.04, elbow 0.64, wrist 0.31, neck 1.04 | 160 | **7** (forward: rest 3.6 s) | **7** | 149, **121** | 93 |
+| Legs and neck | 160 | **7** | **7** | 150, **124** | - |
+| Arms | 160 | 8 | 8 | 148, **124** | - |
+| Shoulder and elbow (not the wrist) | 160 | 8 | 8 | 149, **127** | - |
+| Ankle and neck | 160 | **7** (rest 4.3 s) | 8 | **146**, 129 | - |
+
+**C5 is not met within the limits**, and nothing is changed: a man's ankle (112 N*m) lets the forward knockdown come to rest later than 3 s, and every set of weaker arms costs the stand three to eleven first attempts (the get-up asks the arms for more). The plan's fallback (the wrist keeps a higher cap) is the "shoulder and elbow" row: 127, two under.
+
+**The tone, with levels proposed tonight** (limp 0.1; relaxed spine 0.6, neck 0.5, arms 0.25, legs 0.8; braced spine 1.5, neck 2, arms 2.5, legs 1.25; damping 0.3, 0.7 and 1.3), by `-Tune`:
+
+- **C6** (`Tools\compliance.ps1`, 20 N from the front, the whole body at one level): forearm 16.9 cm relaxed, 8.9 ready, 5.0 braced: **3.4 times, met**; chest 1.51, 1.32, 1.18: **1.3 times, not met**. The chest's give is the whole body's lean on its legs and ankles (the pelvis goes 3.4 cm), which a tone of the trunk hardly changes.
+- 30 N*s on the chest: relaxed, two steps and a stagger, the chest 28 cm; ready and braced, no step, 18 and 17 cm.
+- Braced and let go: the largest change of a strength in a frame is 0.26 (the tone's own `rise_s`), against the flinch's 0.7 of today. No jump of a command above 39 N*m.
+- Step 5's push matrix (the levels above, `tone.brace_from_ns` 10): **159 of 160**, the one cell the cell on a threshold of `CLAUDE.md` (30 N*s on the head from behind and a side: three steps);
+  with the daze as well (`tone.daze_from_ns` 15): 160. Today: 160. The braced body does not step less: 6 steps at 30 N*s in both.
+- **The daze does not do what the plan wants:** 25 N*s on the head and 30 on the chest 2 s later is two steps with the daze and two without (`tone_dazed_steps_more` would fail).
+- Relaxed arms in the stance (the arms' and the neck's standing level 1): after 30 N*s the hands travel 12 cm against 20, **less, not more**: with the damping at 0.7 and the stiffness at 0.25 the arm is damped three times as hard for its spring. The relaxed damping wants to be about the stiffness's share (0.25 to 0.35). The film of a push of 80 N*s (`Saved\Films\n3_push80_today`, `n3_push80_relaxed`) shows no difference at that scale.
+- Step 4 (arms and neck relaxed while standing) needs the weight carried (N2) to keep a relaxed arm where its pose has it; not taken further.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

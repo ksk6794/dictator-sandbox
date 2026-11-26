@@ -109,6 +109,18 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("tone"))
+		{
+			if (!Json->TryGetStringField(TEXT("level"), OutEvent.ToneLevel) ||
+				(OutEvent.ToneLevel != TEXT("limp") && OutEvent.ToneLevel != TEXT("relaxed") && OutEvent.ToneLevel != TEXT("ready") && OutEvent.ToneLevel != TEXT("braced")) ||
+				!Json->TryGetNumberField(TEXT("duration_s"), OutEvent.DurationS) || OutEvent.DurationS < 0.0)
+			{
+				OutError = FString::Printf(TEXT("events[%d]: 'tone' needs 'level' (limp, relaxed, ready or braced) and 'duration_s' (0 lets go)"), Index);
+				return false;
+			}
+			return true;
+		}
+
 		if (OutEvent.Type == TEXT("step"))
 		{
 			FString Body;

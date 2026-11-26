@@ -358,6 +358,17 @@ public:
 	int32 GetKnockdownCount() const { return Knockdowns; }
 	double GetMaxHeadHitNs() const { return MaxHeadHitNs; }
 
+	/**
+	 * Asks the whole body for a tone (limp, relaxed, ready, braced) for so long; it goes there and back by the tone's own
+	 * time constants. Seconds 0 lets go of a level asked for.
+	 */
+	void RequestTone(ESandboxTone Level, double Seconds);
+	/** Times a hit braced the body, and times one on the head dazed it. */
+	int32 GetBraceCount() const { return Braces; }
+	int32 GetDazeCount() const { return Dazes; }
+	/** Each group's tone now, as a factor on its stiffness (spine, neck, arms, legs, toes). */
+	double GetToneStiffness(ESandboxMuscleGroup Group) const { return ToneStiffness[static_cast<int32>(Group)]; }
+
 	/** Whether the muscles give weight torques now; the largest one so far and the largest change of one in a frame, N*m, with its joint and time. */
 	bool IsCarryingWeight() const { return bWeightOn; }
 	double GetWeightMaxNm() const { return WeightMaxNm; }
@@ -988,6 +999,25 @@ private:
 	 * its spring. A muscle's drive acts between two bodies of the character: nothing is added to the body as a whole.
 	 */
 	void UpdateWeight(double DeltaTime);
+	/**
+	 * The tone each group has now (stiffness and damping factors), what it goes to, and a level asked for from outside
+	 * until a time (RequestTone). It follows with tone.rise_s up and tone.fall_s down: no strength jumps.
+	 */
+	double ToneStiffness[5] = { 1.0, 1.0, 1.0, 1.0, 1.0 };
+	double ToneDamping[5] = { 1.0, 1.0, 1.0, 1.0, 1.0 };
+	int32 AskedTone = -1;
+	double AskedToneUntilS = 0.0;
+	/** A brace after a hit (tone.brace_*): from when to when. A daze (tone.daze_*): how deep, 0 to 1, and since when. */
+	double BraceFromS = -1.0;
+	double BraceUntilS = -1.0;
+	double DazeDepth = 0.0;
+	double DazedAtS = -1.0;
+	int32 Dazes = 0;
+	int32 Braces = 0;
+	bool bToneMoving = false;
+	/** Follows the level asked for, and hands the controls the strengths while they change. */
+	void UpdateTone(double DeltaTime);
+
 
 	/** Hands a muscle's weight torque to its drive. */
 	void GiveWeightTorque(const FMuscle& Muscle);

@@ -53,6 +53,36 @@ namespace
 		Visitor(FString(TEXT("muscles.weight_follow_s")), Tuning.Weight.FollowS);
 		Visitor(FString(TEXT("muscles.weight_legs_by")), Tuning.Weight.LegsBy);
 		Visitor(FString(TEXT("balance.ankle_as_torque")), Tuning.Weight.AnkleAsTorque);
+		for (int32 Kind = 0; Kind < SandboxJointKindCount; ++Kind)
+		{
+			Visitor(FString::Printf(TEXT("muscles.joints.%s.stiffness_scale"), SandboxJointKinds[Kind]), Tuning.Joints[Kind].StiffnessScale);
+			Visitor(FString::Printf(TEXT("muscles.joints.%s.damping_scale"), SandboxJointKinds[Kind]), Tuning.Joints[Kind].DampingScale);
+			Visitor(FString::Printf(TEXT("muscles.joints.%s.max_torque_scale"), SandboxJointKinds[Kind]), Tuning.Joints[Kind].MaxTorqueScale);
+		}
+		{
+			static const TCHAR* const Levels[SandboxToneCount] = { TEXT("limp"), TEXT("relaxed"), TEXT("ready"), TEXT("braced") };
+			static const TCHAR* const Groups[5] = { TEXT("spine"), TEXT("neck"), TEXT("arms"), TEXT("legs"), TEXT("toes") };
+			for (int32 Level = 0; Level < SandboxToneCount; ++Level)
+			{
+				for (int32 Group = 0; Group < 5; ++Group)
+				{
+					Visitor(FString::Printf(TEXT("tone.%s.%s.stiffness"), Levels[Level], Groups[Group]), Tuning.Tone.Stiffness[Level][Group]);
+					Visitor(FString::Printf(TEXT("tone.%s.%s.damping"), Levels[Level], Groups[Group]), Tuning.Tone.Damping[Level][Group]);
+				}
+			}
+			for (int32 Group = 0; Group < 5; ++Group)
+			{
+				Visitor(FString::Printf(TEXT("tone.standing.%s"), Groups[Group]), Tuning.Tone.Standing[Group]);
+			}
+			Visitor(FString(TEXT("tone.rise_s")), Tuning.Tone.RiseS);
+			Visitor(FString(TEXT("tone.brace_from_ns")), Tuning.Tone.BraceFromNs);
+			Visitor(FString(TEXT("tone.brace_delay_s")), Tuning.Tone.BraceDelayS);
+			Visitor(FString(TEXT("tone.brace_hold_s")), Tuning.Tone.BraceHoldS);
+			Visitor(FString(TEXT("tone.daze_from_ns")), Tuning.Tone.DazeFromNs);
+			Visitor(FString(TEXT("tone.daze_scale")), Tuning.Tone.DazeScale);
+			Visitor(FString(TEXT("tone.daze_s")), Tuning.Tone.DazeS);
+			Visitor(FString(TEXT("tone.fall_s")), Tuning.Tone.FallS);
+		}
 		Visitor(FString(TEXT("assist.internal_share")), Tuning.Weight.InternalShare);
 		Assist(TEXT("pelvis"), Tuning.Pelvis);
 		Assist(TEXT("chest"), Tuning.Chest);
@@ -257,6 +287,27 @@ FSandboxPose FSandboxPoseTuning::Mirrored(const FSandboxPose& Pose)
 	return Result;
 }
 
+const TCHAR* const SandboxJointKinds[SandboxJointKindCount] = {
+	TEXT("spine_02"), TEXT("spine_04"), TEXT("neck_01"), TEXT("head"), TEXT("clavicle"), TEXT("upperarm"), TEXT("lowerarm"), TEXT("hand"),
+	TEXT("thigh"), TEXT("calf"), TEXT("foot"), TEXT("ball") };
+
+const FSandboxJointScale* FSandboxBodyTuning::JointScale(FName ChildBone) const
+{
+	FString Kind = ChildBone.ToString();
+	if (Kind.EndsWith(TEXT("_l")) || Kind.EndsWith(TEXT("_r")))
+	{
+		Kind = Kind.LeftChop(2);
+	}
+	for (int32 Index = 0; Index < SandboxJointKindCount; ++Index)
+	{
+		if (Kind == SandboxJointKinds[Index])
+		{
+			return &Joints[Index];
+		}
+	}
+	return nullptr;
+}
+
 const TCHAR* const SandboxPoseJoints[SandboxPoseJointCount] = {
 	TEXT("spine_02"), TEXT("spine_04"), TEXT("neck_01"),
 	TEXT("clavicle_l"), TEXT("upperarm_l"), TEXT("lowerarm_l"), TEXT("hand_l"),
@@ -415,6 +466,40 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		}
 	}
 
+	for (int32 Kind = 0; Kind < SandboxJointKindCount; ++Kind)
+	{
+		if (!CheckRange(Joints[Kind].StiffnessScale, 20.0, SandboxJointKinds[Kind], TEXT("stiffness_scale"), OutError) ||
+			!CheckRange(Joints[Kind].DampingScale, 20.0, SandboxJointKinds[Kind], TEXT("damping_scale"), OutError) ||
+			!CheckRange(Joints[Kind].MaxTorqueScale, 20.0, SandboxJointKinds[Kind], TEXT("max_torque_scale"), OutError))
+		{
+			return false;
+		}
+	}
+	for (int32 Level = 0; Level < SandboxToneCount; ++Level)
+	{
+		for (int32 Group = 0; Group < 5; ++Group)
+		{
+			if (!CheckRange(Tone.Stiffness[Level][Group], 20.0, TEXT("tone"), TEXT("stiffness"), OutError) || !CheckRange(Tone.Damping[Level][Group], 20.0, TEXT("tone"), TEXT("damping"), OutError))
+			{
+				return false;
+			}
+		}
+	}
+	for (int32 Group = 0; Group < 5; ++Group)
+	{
+		if (!CheckRange(Tone.Standing[Group], 3.0, TEXT("tone.standing"), TEXT("level"), OutError) || Tone.Standing[Group] != FMath::RoundToDouble(Tone.Standing[Group]))
+		{
+			OutError = TEXT("tone.standing.<group> must be a level: 0 limp, 1 relaxed, 2 ready, 3 braced");
+			return false;
+		}
+	}
+	if (!CheckRange(Tone.RiseS, 10.0, TEXT("tone"), TEXT("rise_s"), OutError) || !CheckRange(Tone.FallS, 10.0, TEXT("tone"), TEXT("fall_s"), OutError) ||
+		!CheckRange(Tone.BraceFromNs, 1000.0, TEXT("tone"), TEXT("brace_from_ns"), OutError) || !CheckRange(Tone.BraceDelayS, 2.0, TEXT("tone"), TEXT("brace_delay_s"), OutError) ||
+		!CheckRange(Tone.BraceHoldS, 30.0, TEXT("tone"), TEXT("brace_hold_s"), OutError) || !CheckRange(Tone.DazeFromNs, 1000.0, TEXT("tone"), TEXT("daze_from_ns"), OutError) ||
+		!CheckRange(Tone.DazeScale, 1.0, TEXT("tone"), TEXT("daze_scale"), OutError) || !CheckRange(Tone.DazeS, 60.0, TEXT("tone"), TEXT("daze_s"), OutError))
+	{
+		return false;
+	}
 	if (!CheckRange(Weight.FollowS, 5.0, TEXT("muscles"), TEXT("weight_follow_s"), OutError) ||
 		!CheckRange(Weight.LegsBy, 1.0, TEXT("muscles"), TEXT("weight_legs_by"), OutError) ||
 		!CheckRange(Weight.AnkleAsTorque, 1.0, TEXT("balance"), TEXT("ankle_as_torque"), OutError) ||

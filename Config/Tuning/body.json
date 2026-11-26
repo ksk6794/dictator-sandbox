@@ -13,8 +13,37 @@
     "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.15, "max_torque_nm": 80, "pose_velocity_share": 0, "weight_share": 0 },
     "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0, "weight_share": 0 },
     "toes": { "stiffness_nm_per_rad": 100, "damping_s": 0.06, "max_torque_nm": 40, "pose_velocity_share": 0, "weight_share": 0 },
+    "joints": {
+      "spine_02": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "spine_04": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "neck_01": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "head": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "clavicle": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "upperarm": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "lowerarm": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "hand": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "thigh": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "calf": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "foot": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 },
+      "ball": { "stiffness_scale": 1, "damping_scale": 1, "max_torque_scale": 1 }
+    },
     "weight_follow_s": 0.05,
     "weight_legs_by": 1
+  },
+  "tone": {
+    "limp": { "spine": { "stiffness": 1, "damping": 1 }, "neck": { "stiffness": 1, "damping": 1 }, "arms": { "stiffness": 1, "damping": 1 }, "legs": { "stiffness": 1, "damping": 1 }, "toes": { "stiffness": 1, "damping": 1 } },
+    "relaxed": { "spine": { "stiffness": 1, "damping": 1 }, "neck": { "stiffness": 1, "damping": 1 }, "arms": { "stiffness": 1, "damping": 1 }, "legs": { "stiffness": 1, "damping": 1 }, "toes": { "stiffness": 1, "damping": 1 } },
+    "ready": { "spine": { "stiffness": 1, "damping": 1 }, "neck": { "stiffness": 1, "damping": 1 }, "arms": { "stiffness": 1, "damping": 1 }, "legs": { "stiffness": 1, "damping": 1 }, "toes": { "stiffness": 1, "damping": 1 } },
+    "braced": { "spine": { "stiffness": 1, "damping": 1 }, "neck": { "stiffness": 1, "damping": 1 }, "arms": { "stiffness": 1, "damping": 1 }, "legs": { "stiffness": 1, "damping": 1 }, "toes": { "stiffness": 1, "damping": 1 } },
+    "standing": { "spine": 2, "neck": 2, "arms": 2, "legs": 2, "toes": 2 },
+    "rise_s": 0.05,
+    "fall_s": 0.4,
+    "brace_from_ns": 0,
+    "brace_delay_s": 0.08,
+    "brace_hold_s": 1.0,
+    "daze_from_ns": 0,
+    "daze_scale": 0.5,
+    "daze_s": 3.0
   },
   "assist": {
     "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },

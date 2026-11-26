@@ -1483,6 +1483,21 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			}
 			continue;
 		}
+		if (Event.Type == TEXT("tone"))
+		{
+			USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;
+			if (!Controller)
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f asks for a tone, and the body is not under active control"), Event.TimeS);
+				continue;
+			}
+			const ESandboxTone Level = Event.ToneLevel == TEXT("limp") ? ESandboxTone::Limp : Event.ToneLevel == TEXT("relaxed") ? ESandboxTone::Relaxed
+				: Event.ToneLevel == TEXT("braced") ? ESandboxTone::Braced : ESandboxTone::Ready;
+			Controller->RequestTone(Level, Event.DurationS);
+			++EventsApplied;
+			bInputPending = true;
+			continue;
+		}
 		if (Event.Type == TEXT("clip_pose"))
 		{
 			USandboxBodyController* Controller = Ragdoll ? Ragdoll->GetController() : nullptr;

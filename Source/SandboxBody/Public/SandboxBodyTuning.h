@@ -636,6 +636,59 @@ struct FSandboxPoseTuning
 	static FSandboxPose Mirrored(const FSandboxPose& Pose);
 };
 
+/** One kind of joint's own muscle, as factors on its group's ("muscles.joints.<kind>.*"); 1, 1, 1 is the group's muscle. */
+struct FSandboxJointScale
+{
+	double StiffnessScale = 0.0;
+	double DampingScale = 0.0;
+	/** On the group's cap: a person's joints are not as strong as each other within a group (an ankle against a hip). */
+	double MaxTorqueScale = 0.0;
+};
+
+/** The kinds of joint that have values of their own; both sides alike. */
+constexpr int32 SandboxJointKindCount = 12;
+extern SANDBOXBODY_API const TCHAR* const SandboxJointKinds[SandboxJointKindCount];
+
+/** The levels of the body's tone. */
+enum class ESandboxTone : uint8
+{
+	Limp,
+	Relaxed,
+	Ready,
+	Braced
+};
+constexpr int32 SandboxToneCount = 4;
+
+/**
+ * The body's tone ("tone.*"): how tense each muscle group is now, as factors on its stiffness and damping, for four named
+ * levels; it follows the level asked for, faster up than down, so that no strength jumps. Ready is 1 everywhere.
+ */
+struct FSandboxToneTuning
+{
+	/** Factors on stiffness and on damping, by level and by muscle group (spine, neck, arms, legs, toes). */
+	double Stiffness[SandboxToneCount][5] = {};
+	double Damping[SandboxToneCount][5] = {};
+	/** Time constants of the way up (bracing) and down (letting go). Seconds. */
+	double RiseS = 0.0;
+	double FallS = 0.0;
+	/** The level each group stands at with nothing happening: 0 limp, 1 relaxed, 2 ready, 3 braced. */
+	double Standing[5] = {};
+	/**
+	 * A hit of at least BraceFromNs braces the whole body, BraceDelayS after it (a reflex, not the frame of the hit), for
+	 * BraceHoldS; 0 never. N*s, s.
+	 */
+	double BraceFromNs = 0.0;
+	double BraceDelayS = 0.0;
+	double BraceHoldS = 0.0;
+	/**
+	 * A hit on the head from DazeFromNs up to the knockdown's reactions.knockdown_head_ns dazes the body: its legs and spine
+	 * at DazeScale of their tone (graded with the hit, the whole of it at the knockdown's), coming back over DazeS. 0 never.
+	 */
+	double DazeFromNs = 0.0;
+	double DazeScale = 0.0;
+	double DazeS = 0.0;
+};
+
 /** How the weight torques are worked out ("muscles.weight_*"). */
 struct FSandboxWeightTuning
 {
@@ -783,6 +836,10 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxMuscleTuning Legs;
 	FSandboxMuscleTuning Toes;
 	FSandboxWeightTuning Weight;
+	FSandboxJointScale Joints[SandboxJointKindCount];
+	FSandboxToneTuning Tone;
+	/** The values of the joint whose child is this bone (its kind with the side taken off); null for a bone of no kind. */
+	const FSandboxJointScale* JointScale(FName ChildBone) const;
 
 	FSandboxAssistTuning Pelvis;
 	FSandboxAssistTuning Chest;

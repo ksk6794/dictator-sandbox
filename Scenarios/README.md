@@ -82,6 +82,9 @@ Event types. Unknown types are a parse error.
   `poses.blend_s`, and 0 lets the foot go back to the pose. The muscles do the work; nothing moves the foot
   directly. `control.foot_targets` lists each placed foot with its distance from its point at the end
   (`final_error_cm`). Active control only.
+- `tone` asks the body for a tone (`level`: `limp`, `relaxed`, `ready` or `braced`) for `duration_s`; the
+  muscles go over to it at `tone.rise_s` or `tone.fall_s` and back to their standing levels after it. With
+  every level at 1 (the file's values) it changes nothing. Active control only.
 - `console` runs `command` as if it were typed into the console of the running session, for example
   `"Sandbox.Tune muscles.legs.stiffness_nm_per_rad=0"`. It counts as applied when the engine knows the
   command; whether a tuning command changed anything shows in `control.tuning_changes`.

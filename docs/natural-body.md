@@ -498,6 +498,8 @@ N3 gives every joint its own strength and gives the body a tone: how tense it is
 
 ### Steps
 
+**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N3"):** steps 1, 3 and 5 are built and neutral (the hashes of `hold`). Step 2 does not meet its limits and nothing is changed: a man's ankle lets a forward knockdown rest after 3 s, and weaker arms cost the stand 3 to 11 first attempts. With the levels proposed that night, C6 is met for the forearm (3.4 times) and not for the chest (1.3); step 4's relaxed arms swing less, not more, with their damping at 0.7 (it wants to be near the stiffness's share); the daze changes nothing in the steps after a second hit.
+
 1. Values joint by joint, all neutral: the baseline's hashes.
 2. Caps from the published torques; "Must hold"; the joints at their cap in a get-up listed.
 3. The tone, its four levels, all at 1; `RequestTone`, the event `tone`.

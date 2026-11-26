@@ -3106,6 +3106,17 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		}
 		const bool bFirstOfContact = !bEventHitTold && EventHitNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && (EventHitNs | Felt) > 0.0;
 		const bool bBlowIntoContact = bEventHitTold && bBlowFrame && bEventRiseOver;
+		// A hit braces the body after the reflex's delay (N3). The brace is a tone, so it comes and goes by the tone's own time.
+		if (Tuning.Tone.BraceFromNs > 0.0 && (bBlowIntoContact ? HitNs : EventHitNs).Size() >= Tuning.Tone.BraceFromNs && (bFirstOfContact || bBlowIntoContact) &&
+			State != ESandboxBodyState::Lying && State != ESandboxBodyState::Falling)
+		{
+			if (BraceUntilS < ElapsedS)
+			{
+				BraceFromS = ElapsedS + Tuning.Tone.BraceDelayS;
+				++Braces;
+			}
+			BraceUntilS = ElapsedS + Tuning.Tone.BraceDelayS + Tuning.Tone.BraceHoldS;
+		}
 		if (bFirstOfContact || bBlowIntoContact)
 		{
 			FSandboxBodyEvent Event;
@@ -3166,6 +3177,21 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			HeadHitNs += HitNs.Size();
 			MaxHeadHitNs = FMath::Max(MaxHeadHitNs, HeadHitNs);
 			const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch || State == ESandboxBodyState::Stagger;
+			// A hit on the head below the knockdown dazes the body: legs and spine lose some of their tone for a while (N3).
+			if (Tuning.Tone.DazeFromNs > 0.0 && bUpright && HeadHitNs >= Tuning.Tone.DazeFromNs)
+			{
+				const double Top = Reactions.KnockdownHeadNs > Tuning.Tone.DazeFromNs ? Reactions.KnockdownHeadNs : Tuning.Tone.DazeFromNs + 1.0;
+				const double Depth = FMath::Clamp((HeadHitNs - Tuning.Tone.DazeFromNs) / (Top - Tuning.Tone.DazeFromNs), 0.0, 1.0);
+				if (Depth > DazeDepth || DazedAtS < 0.0)
+				{
+					if (DazedAtS < 0.0 || ElapsedS - DazedAtS > Tuning.Tone.DazeS)
+					{
+						++Dazes;
+					}
+					DazeDepth = FMath::Max(Depth, DazeDepth);
+					DazedAtS = ElapsedS;
+				}
+			}
 			if (Reactions.KnockdownHeadNs > 0.0 && !bHeadFelled && bUpright && HeadHitNs >= Reactions.KnockdownHeadNs)
 			{
 				bHeadFelled = true;
@@ -3900,6 +3926,66 @@ void USandboxBodyController::InternalAssist(FVector& OutForceN, FVector& OutTorq
 	}
 }
 
+void USandboxBodyController::RequestTone(ESandboxTone Level, double Seconds)
+{
+	AskedTone = Seconds > 0.0 ? static_cast<int32>(Level) : -1;
+	AskedToneUntilS = ElapsedS + Seconds;
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: tone %d asked for %.2f s at %.3f s"), AskedTone, Seconds, ElapsedS);
+}
+
+void USandboxBodyController::UpdateTone(double DeltaTime)
+{
+	const FSandboxToneTuning& Tone = Tuning.Tone;
+	if (AskedTone >= 0 && ElapsedS >= AskedToneUntilS)
+	{
+		AskedTone = -1;
+	}
+	bool bChanged = false;
+	for (int32 Group = 0; Group < 5; ++Group)
+	{
+		// A level asked for from outside, or the standing level of the group. (The states' own strengths are the states'.)
+		const bool bUprightState = State != ESandboxBodyState::Falling && State != ESandboxBodyState::Lying;
+		const bool bBraced = bUprightState && BraceFromS >= 0.0 && ElapsedS >= BraceFromS && ElapsedS < BraceUntilS;
+		const int32 Level = AskedTone >= 0 ? AskedTone : bBraced ? static_cast<int32>(ESandboxTone::Braced) : FMath::Clamp(FMath::RoundToInt32(Tone.Standing[Group]), 0, SandboxToneCount - 1);
+		double GoalStiffness = Tone.Stiffness[Level][Group];
+		double GoalDampingNow = Tone.Damping[Level][Group];
+		// Dazed: the legs and the spine, deepest at the hit and back over tone.daze_s.
+		if (DazedAtS >= 0.0 && Tone.DazeS > 0.0 && (Group == static_cast<int32>(ESandboxMuscleGroup::Legs) || Group == static_cast<int32>(ESandboxMuscleGroup::Spine)))
+		{
+			const double Left = FMath::Clamp(1.0 - (ElapsedS - DazedAtS) / Tone.DazeS, 0.0, 1.0);
+			GoalStiffness *= FMath::Lerp(1.0, Tone.DazeScale, DazeDepth * Left);
+		}
+		const auto Follow = [&](double& Now, double Goal)
+		{
+			if (Now == Goal)
+			{
+				return;
+			}
+			const double TimeS = Goal > Now ? Tone.RiseS : Tone.FallS;
+			const double Share = TimeS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / TimeS) : 1.0;
+			Now += (Goal - Now) * Share;
+			// Close enough is there: a tone that only creeps toward its goal would never let the controls rest.
+			if (FMath::Abs(Goal - Now) < 1.0e-4 * FMath::Max(Goal, 1.0))
+			{
+				Now = Goal;
+			}
+			bChanged = true;
+		};
+		Follow(ToneStiffness[Group], GoalStiffness);
+		Follow(ToneDamping[Group], GoalDampingNow);
+	}
+	if (DazedAtS >= 0.0 && Tone.DazeS > 0.0 && ElapsedS - DazedAtS > Tone.DazeS)
+	{
+		DazedAtS = -1.0;
+		DazeDepth = 0.0;
+	}
+	if (bChanged || bToneMoving)
+	{
+		PushTuningToControls();
+	}
+	bToneMoving = bChanged;
+}
+
 void USandboxBodyController::GiveWeightTorque(const FMuscle& Muscle)
 {
 	// Through the muscle's own drive, as a turn of its target: the drive's torque is stiffness times the error, so a target
@@ -3990,7 +4076,7 @@ void USandboxBodyController::PushTuningToControls()
 	const double FallShare = FallEaseShare();
 	for (FMuscle& Muscle : Muscles)
 	{
-		const FSandboxMuscleTuning& Group = Tuning.Muscle(Muscle.Group);
+		FSandboxMuscleTuning Group = Tuning.Muscle(Muscle.Group);
 		// The leg of a step under way is stiffer, so that the foot keeps up with its point.
 		const bool bSwingLeg = Swing.bActive &&
 			(Muscle.ChildBone == ThighBoneName[Swing.Side] || Muscle.ChildBone == CalfBoneName[Swing.Side] || Muscle.ChildBone == FootBoneName[Swing.Side]);
@@ -4001,8 +4087,19 @@ void USandboxBodyController::PushTuningToControls()
 		const double SwingShare = bSwingLeg ? FMath::Max(SwingEase, LandShare(Muscle.ChildBone)) : LandShare(Muscle.ChildBone);
 		const double SwingScale = FMath::Lerp(1.0, FMath::Max(Tuning.Balance.SwingStiffnessScale, 1.0), SwingShare);
 		const double SwingDampingScale = FMath::Lerp(1.0, Tuning.Balance.SwingDampingScale, SwingShare);
-		double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
-		double ExtraDamping = Spring * Group.DampingS * SwingDampingScale;
+		// The joint's own muscle and the body's tone (N3); 1 and ready are the group's muscle as it was.
+		const FSandboxJointScale* Joint = Tuning.JointScale(Muscle.ChildBone);
+		const int32 GroupIndex = static_cast<int32>(Muscle.Group);
+		const double JointStiffness = (Joint ? Joint->StiffnessScale : 1.0) * ToneStiffness[GroupIndex];
+		const double JointDamping = (Joint ? Joint->DampingScale : 1.0) * ToneDamping[GroupIndex];
+		Group.MaxTorqueNm *= Joint ? Joint->MaxTorqueScale : 1.0;
+		double Spring = Group.StiffnessNmPerRad * JointStiffness * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+		// The damping from the spring the muscle would have without the joint's and the tone's factor on stiffness, times theirs on
+		// damping: worked out from the spring itself, a stiffness factor of 0 took the damping with it. (With both factors 1 the two
+		// are the same number.)
+		const double SpringBase = JointStiffness == 1.0 ? Spring : Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+		double ExtraDamping = JointStiffness == 1.0 && JointDamping == 1.0 ? Spring * Group.DampingS * SwingDampingScale
+			: SpringBase * Group.DampingS * SwingDampingScale * JointDamping;
 		double VelocityShare = FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingShare);
 		if (FallShare < 1.0 && bFallEaseFromSet)
 		{
@@ -4030,7 +4127,7 @@ void USandboxBodyController::PushTuningToControls()
 		Control->SetControlData(Muscle.Control, Data);
 		// The same in physical units, for whoever looks at the controls (GetControlView); nothing here reads it.
 		Muscle.StiffnessNmPerRad = Spring * ChaosAngularDriveScale / TorqueToUnreal;
-		const bool bAsBefore = !(FallShare < 1.0 && bFallEaseFromSet);
+		const bool bAsBefore = JointStiffness == 1.0 && JointDamping == 1.0 && !(FallShare < 1.0 && bFallEaseFromSet);
 		Muscle.DampingNmsPerRad = bAsBefore ? Muscle.StiffnessNmPerRad * Group.DampingS * SwingDampingScale : ExtraDamping * ChaosAngularDriveScale / TorqueToUnreal;
 		Muscle.MaxTorqueNm = Group.MaxTorqueNm;
 		Muscle.PoseVelocityShare = Data.AngularTargetVelocityMultiplier;
@@ -4136,6 +4233,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateRegroup(DeltaTime);
 	UpdateStep(DeltaTime);
 	UpdateStrengthEases();
+	UpdateTone(DeltaTime);
 	if (Tuning.Balance.StaggerBrakeFollowS > 0.0)
 	{
 		const FVector2D Goal = State == ESandboxBodyState::Stagger ? FVector2D(Balance.Velocity.X, Balance.Velocity.Y) * Tuning.Balance.StaggerDampingS : FVector2D::ZeroVector;

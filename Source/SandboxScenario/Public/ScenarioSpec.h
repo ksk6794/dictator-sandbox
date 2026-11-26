@@ -54,6 +54,8 @@ struct FScenarioEvent
 	 */
 	bool bFollowClip = false;
 	double RaiseCm = 0.0;
+	/** "tone": the level asked of the whole body ("limp", "relaxed", "ready", "braced"), for DurationS. */
+	FString ToneLevel;
 	/** "foot_target": where to, from the foot's position when the event fires, cm; and how strongly. */
 	FVector OffsetCm = FVector::ZeroVector;
 	double Weight = 0.0;
