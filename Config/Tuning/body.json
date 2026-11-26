@@ -8,17 +8,20 @@
     "foot_right": "foot_r"
   },
   "muscles": {
-    "spine": { "stiffness_nm_per_rad": 600, "damping_s": 0.06, "max_torque_nm": 300, "pose_velocity_share": 0 },
-    "neck": { "stiffness_nm_per_rad": 40, "damping_s": 0.1, "max_torque_nm": 50, "pose_velocity_share": 0 },
-    "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.15, "max_torque_nm": 80, "pose_velocity_share": 0 },
-    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0 },
-    "toes": { "stiffness_nm_per_rad": 100, "damping_s": 0.06, "max_torque_nm": 40, "pose_velocity_share": 0 }
+    "spine": { "stiffness_nm_per_rad": 600, "damping_s": 0.06, "max_torque_nm": 300, "pose_velocity_share": 0, "weight_share": 0 },
+    "neck": { "stiffness_nm_per_rad": 40, "damping_s": 0.1, "max_torque_nm": 50, "pose_velocity_share": 0, "weight_share": 0 },
+    "arms": { "stiffness_nm_per_rad": 40, "damping_s": 0.15, "max_torque_nm": 80, "pose_velocity_share": 0, "weight_share": 0 },
+    "legs": { "stiffness_nm_per_rad": 800, "damping_s": 0.06, "max_torque_nm": 250, "pose_velocity_share": 0, "weight_share": 0 },
+    "toes": { "stiffness_nm_per_rad": 100, "damping_s": 0.06, "max_torque_nm": 40, "pose_velocity_share": 0, "weight_share": 0 },
+    "weight_follow_s": 0.05,
+    "weight_legs_by": 1
   },
   "assist": {
     "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
     "chest": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
     "head": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 10, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
-    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 }
+    "feet": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 1500, "angular_nm_per_rad": 15, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
+    "internal_share": 0
   },
   "solver": {
     "position_iterations": 64,
@@ -80,6 +83,13 @@
     "step_width_min_cm": 18,
     "cross_offset_cm": 22,
     "step_ease_s": 0.05,
+    "lift_smooth": 0,
+    "settle_smooth": 0,
+    "reach_smooth": 0,
+    "release_smooth": 0,
+    "land_ease_s": 0,
+    "fall_ease_s": 0,
+    "ankle_as_torque": 0,
     "stance_follow": 0.6,
     "leg_extension_max": 0.995,
     "step_shift_share": 0.8,
@@ -92,6 +102,8 @@
     "lower_max_cm": 15,
     "cross_past_cm": 12,
     "stagger_damping_s": 0.15,
+    "stagger_brake_follow_s": 0,
+    "lift_frame_s": 0,
     "regroup_wait_s": 0.6,
     "regroup_tolerance_cm": 8,
     "regroup_max_steps": 2,

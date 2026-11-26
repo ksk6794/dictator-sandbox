@@ -4344,6 +4344,98 @@ the two bodies that holds only the swings, with the bodies the other way round; 
 - `Saved\Films\n8b_fingers_stance.png`, `n8b_fingers_fall.png`: above as modelled, below posed. In the stance the fingers hang closer together and bent a little more toward the palm. The first values (35 to 52 degrees) were a cupped, mannered hand and were halved.
 - **What is bad and stays:** a hand that lies on its edge has two fingers in the floor, as before; the pose of rest does not bring them out, and the pictures of a hand in the air and at the floor differ little from the modelled hand. A finger that gives way to the floor needs a trace or a body, neither built.
 
+### The natural body, N2 first: the jumps of a step (decision 13; the same night, for the owner to confirm)
+
+Today's body, every correction behind a value of `Config/Tuning/body.json` that is 0 (as it was): with all of them at 0 the 117 scenarios have the hashes of `hold`.
+They are the reconnaissance's trial corrections made tunable, and two more found tonight:
+
+| Value | What it puts right |
+| --- | --- |
+| `balance.lift_smooth` | Cases a and b: at a lift the leg's frame goes over from the one it was last solved in; the foot's level and its ankle's limit come in over `step_ease_s` |
+| `balance.land_ease_s` | The swinging leg's strength goes out over this time once it has landed, instead of at once |
+| `balance.settle_smooth` | A landed foot settles from the height its leg was solved for |
+| `balance.reach_smooth` | The share of its length a leg reaches comes in with the placement's weight |
+| `balance.release_smooth` | A leg let go as a fall begins goes back to the pose from its last target, held in the body |
+| `balance.fall_ease_s` | The muscles go over to the strengths of a fall over this time |
+| `balance.stagger_brake_follow_s` | **New:** the stagger's brake on the legs' frame (`stagger_damping_s` times the body's speed) follows the speed with a lag. Taken at once it moved the frame by 15 to 40 cm in the frame after a blow: 276 of 517 jumps in a stagger were in its first three frames |
+| `balance.lift_frame_s` | **New:** time over which a lifting leg's frame goes from the upright one to the body as it is (0: `step_ease_s`, 0.05 s). After a blow the two are 25 degrees apart: 6 degrees a frame, and then a stop |
+
+**Today's figure is not N1's.** Over the suite the largest jump is 429 N*m (`grab_pull_standing`, foot_l), 58 scenarios of 96 have one over 100 N*m and 39 over 200; N1's 367 was measured before the hold was felt and the blow was carried.
+
+Limits set before the runs (`Saved\Recon\window_plan.md`): J1 the largest at most 367; J2 the push matrix 160 of 160; J3 the stand 147 of 150 and 129 at the first attempt; J4 a scenario that fails is read; J5 fewer than 58 scenarios over 100 N*m.
+
+| Set | Largest, N*m | Over 100 / 200 | Fail in the suite | Matrix | Stand |
+| --- | --- | --- | --- | --- | --- |
+| Today | 429 | 58 / 39 | - | 160 | 149, 132 |
+| lift (a and b) | 508 | 58 / 39 | `strike_kick_thigh`, `strike_punch_belly_steps` | 160 | 150, 130 |
+| land | 411 | 58 / 26 | `palm_close_on_chest`, `prop_step_on_plate` | 160 | 149, 131 |
+| settle | 376 | 58 / 37 | `grab_pull_standing` | 160 | 149, 132 |
+| reach | 374 | 58 / 39 | - | 160 | 150, 132 |
+| release | 429 | 58 / 41 | `strike_kick_torso_through_falls` | 160 | 149, **126** |
+| fall ease | 429 | 57 / 51 | `prop_fall_on_box` | 160 | 148, 130 |
+| brake | 349 | 59 / 43 | four | 160 | 148, 133 |
+| **all but reach** | **352** | **56 / 15** | `effector_hold_chest`, `effector_shove_knockdown_gets_up` | **160** | **149, 130** |
+| all | 414 | 42 / 33 | - | 160 | 148, 132 |
+| brake and all | 394 | 44 / 36 | two | 160 | 149, 130 |
+| brake, all but reach | 503 | 56 / 38 | three | 160 | 150, 131 |
+| brake, all, lift frame 0.15 s | 303 | 38 / 17 | three | **158** | 147, **124** |
+| brake, all but release, lift frame 0.15 / 0.1 s; brake, all, lift frame 0.1 s | 364, 311, 298 | 38 to 44 | two to four | **158 to 159** | 149, 126; 148, 129; 150, 128 |
+
+- **No set meets every limit.** "All but reach" meets J1, J2, J3 and J5 and changes two scenarios: `effector_hold_chest` (a hand that keeps pressing on the chest) ends in a stagger with the feet 73 cm apart, where today the feet are brought together at 8.3 s; and **in `effector_shove_knockdown_gets_up` the body falls a second time after it has got up**, where today it staggers and stands. The second is a worse behaviour, not a different one.
+- The figures move both ways with each correction: a correction takes the jump it was made for away and the run goes another way, with jumps of its own elsewhere (`lift` alone: 508 in `strike_punch_forearm`). The largest is a figure of one frame of one run; the count over 200 N*m says more (15 with "all but reach", against 39).
+- **What is left,** by a temporary log of every jump over 60 N*m (taken out again): in a stagger, a swing under way (109), the frame after a landing (64), the first frames (63); a fall begins (48); a hit's flinch (25). The largest that remain are a lift's frame (the frame that is let go of over 0.05 s), which a longer glide takes away (303) at the price of two cells of the push matrix and the stand's first attempts.
+- **Recommended, for the owner to confirm:** "all but reach" behind its switches, with the two scenarios looked at on films first; C25's limit then proposed at 360 N*m for now (decision 15 asks for it after the repair), 60 stays the aim and is far: 56 scenarios still have a jump over 100 N*m. Nothing is switched on.
+
+**After an independent reading of the code (the same night).** The reader found no path that changes a run with the files as they are, and twelve defects behind the switches. Put right, each neutral (the hashes of `hold`):
+the fall's ease now starts from what each muscle had as the fall began, the swinging leg's doubled strength included (from the groups' values it dropped the swinging leg to half its stiffness in one step);
+a leg that lifts again while its landing still eases keeps the larger share; a foot let go keeps the orientation it was held to while its weight goes; a brace ends with an upright body; a stiffness factor of 0 no
+longer takes the damping with it; an arm's ranges come in with its target's weight; a unit test that could not fail is gone. **"All but reach" again, after them:** the largest jump 352 N*m, **7 scenarios over 200 N*m
+(15 before the repairs, 39 today)**, 55 over 100; the matrix 160; the stand 148 and 131; the suite fails `effector_hold_chest` (as before) and `room_movable_fall_gets_up`, whose first get-up is given up and
+whose second stands at 18.6 s, the run ending in the step that brings the feet together (19.2 s); `effector_shove_knockdown_gets_up` passes now. The recommendation stands, with these two to be looked at. The film of the first (`Saved\Films\n2_hold_chest_today` and `n2_hold_chest_abr`, from the front): today the body steps
+back from the hand and by 8.5 s has its feet together; with the repairs it goes on stepping, turns to a side and ends the run in a step with its legs crossed. That is worse to look at, and is the thing to
+weigh before switching the set on.
+Left as they are, known, all behind switches that are off: `balance.lift_frame_s` blends a first placement's weight, not a frame; the weight torques count no push from a thing that moves (a prop, movable
+furniture, a hand), so a body standing on one carries none of its weight; the ankle as a torque and the assist's trunk share switch with the state and do not ease; a lifted foot keeps its push for about 0.1 s;
+`StopFallAim` lets the hands go at a point of the world; the weight torque's cap ignores the joint's own factor; a frame `UpdateWeight` returns early in counts two frames' pushes next time.
+
+### The natural body, N2 step 1 and 2: the weight carried by the joints (the same night; for the owner to confirm)
+
+`FSandboxWeightTorques` (`SandboxBody`): the torque each joint needs to carry what hangs beyond it and what the world pushes on it, and the weight's share between two feet by where the
+centre of mass stands over their soles; two unit tests with worked answers (an arm held out, a leg under a push, a share between soles). The controller collects what the world pushes each
+body with from the solver's own contact points after every substep (as N1's centre of pressure does), and gives each muscle `muscles.<group>.weight_share` of its torque; `muscles.weight_follow_s`,
+`muscles.weight_legs_by` (1: the feet's push by place, not as measured, which would integrate the spring's error), `balance.ankle_as_torque` and `assist.internal_share` (the ankle strategy and the assist
+as a push of the floor at a shifted place, bounded by the soles and friction). All 0: the hashes of `hold`.
+
+**The torque does not arrive as it is worked out, and this is not solved.**
+
+- Put on the child and the opposite on the parent (`AddTorqueInRadians`, as the plan said), an arm held out at 20 N*m/rad was held up 1.6 to 1.7 times over (its spring then pushed it down by 5 N*m). With
+  `p.Chaos.Solver.InertiaConditioning.Enabled=0` the spring was left with 0.5 N*m of 8.3: the solver's joints work with an inertia conditioned for stability (a rod jointed at its end gets 1.5 times its own)
+  and a torque from outside is integrated with the body's own. Switching the conditioning off for the body's own bodies while the run goes (`FBodyInstance::SetInertiaConditioningEnabled`) changed nothing:
+  the solver does not take the change.
+- Asked of the muscle's drive instead (a turn of its target by torque / stiffness, and, tried first, a turning speed of torque / damping), the arm's weight reaches the shoulder whole when the arm is held
+  forward and by 65 to 75% when it is held out to the side (with or without a twist): the cause was not found. That is what is built now, because it never gives more than is worked out.
+- **On the whole set, as it is:** all four groups at 1 with today's stiffness: 14 scenarios of 119 fail, the push matrix fails, the stand is as today (149, 132). With the ankle strategy as a torque and
+  the assist given from inside as well (`balance.ankle_as_torque` 1, `assist.internal_share` 1): 41 fail and 91 of 150 falls end standing. **Not usable as built; everything stays off.** What would be next: the
+  delivery first (why the drive takes a turn of its target about one axis whole and about another by two thirds), then the legs on their own, then the assist; the softer springs of step 4 come only after that.
+  Measured again at 03:05 with the arm's spring at 10 N*m/rad instead of 20 (`Saved/Recon/deliv`): held out by its swing1 (48 degrees) the spring is left with 3.0 N*m of 6.9 (56%
+  delivered, 65 to 75% at 20 N*m/rad); held by its swing2, either way, with 0.5 of 3.1 and 0.2 of 4.9 (85 and 97%). The share falls as the stiffness falls, and the turn of the target that carries
+  the torque is torque / stiffness: 0.69 rad (40 degrees) here. The next thing to try is that turn's size: a turn that is not small, composed with the sag the joint has, is no longer the torque it
+  stands for (the velocity target, or the turn split over more stiffness, would tell).
+  **Tried at once, and it is not that: the delivery was never short; the figure was.** At 20, 40 and 80 N*m/rad the spring's figure is left with 3.2 N*m every time (63 to 66%), and at 24, 48 and
+  70 degrees of swing1 with 2.6 to 3.4 (65 to 67%): it moves with neither the stiffness nor the angle. Where the hand ends says otherwise: an arm at 1000 N*m/rad and no weight torque holds it at
+  128.7 cm, the arm at 40 N*m/rad with the weight torque at 128.8 and at 80 at 130.5, against 118.2 at 40 without it. The weight is carried whole. The spring's figure
+  (`effort.joints.<joint>.torque_final_nm`) is the spring law between the body and the skeletal target, and the 3.2 N*m it reads is not a sag that moves the hand (a turn about the arm's own axis
+  would not, with the elbow straight); what it is was not found. **So "65 to 75%" above, and the claim in `CLAUDE.md`, were the measure's**, and N2's next question is the 14 scenarios that fail with
+  every share at 1, not the delivery.
+- **Then the 14 (03:10).** Four were falls that did not come to rest within 3 s: a body that is not upright still had the weight torques of its arms, spine and neck (only the legs' went with the
+  posture), and they held a fallen body's limbs up. Now every group's share goes to 0 while the body is not upright (neutral with the shares at 0: the hashes of `hold`). With all four shares at 1:
+  **9 fail** (`measure_arm_held_out`, `measure_cop` and `measure_push_neck` hold today's body's known answers, which the weight changes on purpose; `pose_foot_place`, whose pinned pelvis's
+  hold is no push the weight torques count; `push_chest_80_steps` and `stand_foot_moved` (the stance after steps); `palm_close_on_chest`, `strike_punch_shoulder`, `room_movable_fall_gets_up`);
+  the push matrix **158** (30 N*s from the side on the neck and the chest: two steps); knockdowns 8 and 8; the stand 147 and 130. Still not usable; what is left is how the body stands, not how it falls.
+  Split by group: the arms, spine and neck alone fail five (two `measure_*`, `effector_hit_head` falls, `palm_close_on_chest`, `strike_punch_shoulder`) and keep the matrix but for the cell on a
+  threshold (159); the legs alone fail five (`measure_cop`, `palm_close_on_chest`, `pose_foot_place`, `room_movable_fall_gets_up`, `stand_foot_moved`) and turn the one step after 30 N*s from the
+  side (270 degrees, on the neck and the chest) into two (158). Today's matrix has five mirror-image pairs that end differently, the weight of the legs four: the side's second step is not a left and
+  right mistake of the weight; the body is not symmetric today either. `palm_close_on_chest` fails with either half.
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

@@ -55,6 +55,8 @@ struct FSandboxLimbTarget
 	 * one frame kicked the body off the floor.
 	 */
 	double ReachShare = 0.0;
+	/** The share of its length the limb is held to comes in with the placement's weight (whole at once, a leg that is placed for the first time jumps). */
+	bool bReachWithWeight = false;
 };
 
 /**
@@ -147,6 +149,9 @@ public:
 	void MoveLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, const FTransform* Frame, const FQuat* EndFrame = nullptr,
 		double EndLimitWeight = 0.0, double ReachShare = 0.0);
 
+	/** From now on the share of its length a limb is held to comes in with its target's weight (FSandboxLimbTarget::bReachWithWeight). */
+	void SetReachWithWeight(bool bInReachWithWeight) { bReachWithWeight = bInReachWithWeight; }
+
 	/** The weight a limb target has now, part way through its blend; 0 without one. */
 	double GetLimbWeight(int32 EndMeshBoneIndex) const;
 
@@ -183,6 +188,7 @@ private:
 	};
 	TArray<FLimbState> LimbStates;
 	TMap<int32, FSandboxJointLimits> EndLimits;
+	bool bReachWithWeight = false;
 
 	double BlendS = 0.0;
 	/** Time since the current blend started. */

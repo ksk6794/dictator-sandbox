@@ -8,6 +8,7 @@
 #include "SandboxFingerRig.h"
 #include "SandboxIdleMotion.h"
 #include "SandboxPoseRig.h"
+#include "SandboxWeightTorques.h"
 #include "SandboxAnimInstance.h"
 #include "SandboxBodyController.generated.h"
 
@@ -357,6 +358,13 @@ public:
 	int32 GetKnockdownCount() const { return Knockdowns; }
 	double GetMaxHeadHitNs() const { return MaxHeadHitNs; }
 
+	/** Whether the muscles give weight torques now; the largest one so far and the largest change of one in a frame, N*m, with its joint and time. */
+	bool IsCarryingWeight() const { return bWeightOn; }
+	double GetWeightMaxNm() const { return WeightMaxNm; }
+	double GetWeightStepMaxNm(FName& OutBone, double& OutTimeS) const { OutBone = WeightStepBone; OutTimeS = WeightStepAtS; return WeightStepMaxNm; }
+	/** The share of the weight that the world holds up, as the weight torques take it. */
+	double GetWeightHeld() const { return WeightHeld; }
+
 	bool IsStarted() const { return bStarted; }
 	/** The values of the current state, as the tuning files and overrides give them. */
 	const FSandboxBodyTuning& GetTuning() const { return Tuning; }
@@ -468,6 +476,12 @@ private:
 		double DampingNmsPerRad = 0.0;
 		double MaxTorqueNm = 0.0;
 		double PoseVelocityShare = 0.0;
+		/** What it had as a fall began, which balance.fall_ease_s goes over from: N*m/rad, N*m*s/rad, share. */
+		double FallFromStiffness = 0.0;
+		double FallFromDamping = 0.0;
+		double FallFromVelocityShare = 0.0;
+		/** The weight torque the muscle gives on top of its spring in this step, world space, N*m (muscles.<group>.weight_share). */
+		FVector WeightNm = FVector::ZeroVector;
 	};
 
 	enum class EAssistSlot : uint8 { Pelvis, Chest, Head, Feet };
@@ -904,6 +918,12 @@ private:
 		/** The frame the leg was last solved in (world), and whether a change of frame starts from it rather than from FromFrame. */
 		FTransform LastFrame = FTransform::Identity;
 		bool bHasLastFrame = false;
+		/** The point the leg was last solved for, and how much of its ankle's range it was held to. */
+		FVector LastPoint = FVector::ZeroVector;
+		double LastEndLimitWeight = 0.0;
+		/** The orientation the foot was last held to (a swing's level), if any. */
+		FQuat LastEndFrame = FQuat::Identity;
+		bool bHasLastEndFrame = false;
 		bool bFromLastFrame = false;
 		FTransform FromTransform = FTransform::Identity;
 		/**
@@ -962,8 +982,75 @@ private:
 	FVector FlatFootPoint(int32 Side) const;
 	/** Height of each foot's bone over the lowest point of its sole at Start, standing flat, cm. */
 	double FootStandHeightCm[2] = { 0.0, 0.0 };
+	/**
+	 * The weight torques (FSandboxWeightTorques): what the world pushes each body with is collected from the solver's own
+	 * contacts after every substep, and each tick every muscle whose group has a share is asked for its torque on top of
+	 * its spring. A muscle's drive acts between two bodies of the character: nothing is added to the body as a whole.
+	 */
+	void UpdateWeight(double DeltaTime);
+
+	/** Hands a muscle's weight torque to its drive. */
+	void GiveWeightTorque(const FMuscle& Muscle);
+	/** Collects the world's pushes of one substep; called by the solver after it. */
+	void AddPushes(double SubstepS);
+	void StartCollectingPushes();
+	void StopCollectingPushes();
+	/** A body of the weight's chain, after the one it hangs on. */
+	struct FWeightBody
+	{
+		FName Bone;
+		int32 Parent = INDEX_NONE;
+		/** Index into Muscles, none for the root. */
+		int32 Muscle = INDEX_NONE;
+		/** The push, smoothed (N), and its place from the body's centre of mass times its size (N*cm). */
+		FVector PushN = FVector::ZeroVector;
+		FVector PushOffsetNcm = FVector::ZeroVector;
+		double PushSizeN = 0.0;
+	};
+	TArray<FWeightBody> WeightBodies;
+	/** Collected since the last tick, by body instance: the impulse (N*s), and its place times its size (N*s*cm). */
+	TArray<FVector> PushImpulseNs;
+	TArray<FVector> PushMomentNsCm;
+	TArray<double> PushSizeNs;
+	FDelegateHandle PushHandle;
+	/** Each group's share as it is now: it follows the tuning's with the smoothing, and never jumps with a state. */
+	double WeightShareNow[5] = { 0.0, 0.0, 0.0, 0.0, 0.0 };
+	/** The share of the weight the world holds up, smoothed: none in a free fall. */
+	double WeightHeld = 0.0;
+	/** The shift of the centre of pressure that the ankle strategy asks for as torques (balance.ankle_as_torque), cm, with the strategies' lag. */
+	FVector2D StrategyShiftCm = FVector2D::ZeroVector;
+	/** Whether the legs' torques are worked out from a push at a place, so that the strategies and the assist can move that place. */
+	bool IsPushByPlace() const { return Tuning.Weight.LegsBy > 0.5 && IsUpright(); }
+	/** The share of an assist's force and torque that still comes from the world (assist.internal_share). */
+	double WorldShareOf(EAssistSlot Slot) const { return Slot != EAssistSlot::Feet && IsPushByPlace() ? 1.0 - Tuning.Weight.InternalShare : 1.0; }
+	/**
+	 * What the assist wants of an upright body, as the legs and the trunk can give it: the horizontal force on the pelvis
+	 * (N), the torque on the pelvis, the chest and the head together (N*m), and each trunk joint's part of it by muscle.
+	 */
+	void InternalAssist(FVector& OutForceN, FVector& OutTorqueNm, TMap<int32, FVector>& OutJointNm) const;
+	/** The weight's share on each foot and its place under it (weight_legs_by 1), smoothed. */
+	double FootPushN[2] = { 0.0, 0.0 };
+	FVector2D FootPushAt[2] = { FVector2D::ZeroVector, FVector2D::ZeroVector };
+	bool bWeightOn = false;
+	/** The largest weight torque a joint has had, and the largest change of one from one frame to the next. */
+	double WeightMaxNm = 0.0;
+	double WeightStepMaxNm = 0.0;
+	FName WeightStepBone;
+	double WeightStepAtS = 0.0;
+
+	/** How much of the swinging leg's own strength is left in a leg that has landed (balance.land_ease_s): 1 at the landing to 0. */
+	double LandShare(FName ChildBone) const;
+	/** How far the muscles have gone over from the strengths they had to those of the fall (balance.fall_ease_s). */
+	double FallEaseShare() const;
+	/** Hands the controls the strengths that go over in time, while they do. */
+	void UpdateStrengthEases();
+	/** The strength each muscle had as the fall began (balance.fall_ease_s): FMuscle's FallFrom*. */
+	bool bFallEaseFromSet = false;
 	/** The rig as the tuning files give it (Tuning.Rig may carry the head of an asset that has one of its own). */
 	FSandboxBodyRig TunedRig;
+	/** The stagger's brake on the legs' frame as it is now (balance.stagger_brake_follow_s), cm. */
+	FVector2D StaggerBrakeCm = FVector2D::ZeroVector;
+
 	/** Lets a foot of the controller's go back to the pose, eased out. */
 	void ReleaseFoot(int32 Side, double BlendS);
 	/** Hands every placement its point and frame for this tick. */

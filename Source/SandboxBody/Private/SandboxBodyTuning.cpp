@@ -34,6 +34,7 @@ namespace
 			Visitor(FString::Printf(TEXT("muscles.%s.damping_s"), Group), Values.DampingS);
 			Visitor(FString::Printf(TEXT("muscles.%s.max_torque_nm"), Group), Values.MaxTorqueNm);
 			Visitor(FString::Printf(TEXT("muscles.%s.pose_velocity_share"), Group), Values.PoseVelocityShare);
+			Visitor(FString::Printf(TEXT("muscles.%s.weight_share"), Group), Values.WeightShare);
 		};
 		const auto Assist = [&Visitor](const TCHAR* Group, auto& Values)
 		{
@@ -49,6 +50,10 @@ namespace
 		Muscle(TEXT("arms"), Tuning.Arms);
 		Muscle(TEXT("legs"), Tuning.Legs);
 		Muscle(TEXT("toes"), Tuning.Toes);
+		Visitor(FString(TEXT("muscles.weight_follow_s")), Tuning.Weight.FollowS);
+		Visitor(FString(TEXT("muscles.weight_legs_by")), Tuning.Weight.LegsBy);
+		Visitor(FString(TEXT("balance.ankle_as_torque")), Tuning.Weight.AnkleAsTorque);
+		Visitor(FString(TEXT("assist.internal_share")), Tuning.Weight.InternalShare);
 		Assist(TEXT("pelvis"), Tuning.Pelvis);
 		Assist(TEXT("chest"), Tuning.Chest);
 		Assist(TEXT("head"), Tuning.Head);
@@ -106,6 +111,12 @@ namespace
 		Visitor(FString(TEXT("balance.step_width_min_cm")), Tuning.Balance.StepWidthMinCm);
 		Visitor(FString(TEXT("balance.cross_offset_cm")), Tuning.Balance.CrossOffsetCm);
 		Visitor(FString(TEXT("balance.step_ease_s")), Tuning.Balance.StepEaseS);
+		Visitor(FString(TEXT("balance.lift_smooth")), Tuning.Balance.LiftSmooth);
+		Visitor(FString(TEXT("balance.settle_smooth")), Tuning.Balance.SettleSmooth);
+		Visitor(FString(TEXT("balance.reach_smooth")), Tuning.Balance.ReachSmooth);
+		Visitor(FString(TEXT("balance.release_smooth")), Tuning.Balance.ReleaseSmooth);
+		Visitor(FString(TEXT("balance.land_ease_s")), Tuning.Balance.LandEaseS);
+		Visitor(FString(TEXT("balance.fall_ease_s")), Tuning.Balance.FallEaseS);
 		Visitor(FString(TEXT("balance.stance_follow")), Tuning.Balance.StanceFollow);
 		Visitor(FString(TEXT("balance.leg_extension_max")), Tuning.Balance.LegExtensionMax);
 		Visitor(FString(TEXT("balance.step_shift_share")), Tuning.Balance.StepShiftShare);
@@ -118,6 +129,8 @@ namespace
 		Visitor(FString(TEXT("balance.lower_max_cm")), Tuning.Balance.LowerMaxCm);
 		Visitor(FString(TEXT("balance.cross_past_cm")), Tuning.Balance.CrossPastCm);
 		Visitor(FString(TEXT("balance.stagger_damping_s")), Tuning.Balance.StaggerDampingS);
+		Visitor(FString(TEXT("balance.stagger_brake_follow_s")), Tuning.Balance.StaggerBrakeFollowS);
+		Visitor(FString(TEXT("balance.lift_frame_s")), Tuning.Balance.LiftFrameS);
 		Visitor(FString(TEXT("balance.regroup_wait_s")), Tuning.Balance.RegroupWaitS);
 		Visitor(FString(TEXT("balance.regroup_tolerance_cm")), Tuning.Balance.RegroupToleranceCm);
 		Visitor(FString(TEXT("balance.regroup_max_steps")), Tuning.Balance.RegroupMaxSteps);
@@ -395,10 +408,19 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		if (!CheckRange(Entry.Value->StiffnessNmPerRad, MaxAngularStiffness, Entry.Key, TEXT("stiffness_nm_per_rad"), OutError) ||
 			!CheckRange(Entry.Value->DampingS, MaxDampingS, Entry.Key, TEXT("damping_s"), OutError) ||
 			!CheckRange(Entry.Value->MaxTorqueNm, MaxTorque, Entry.Key, TEXT("max_torque_nm"), OutError) ||
-			!CheckRange(Entry.Value->PoseVelocityShare, 1.0, Entry.Key, TEXT("pose_velocity_share"), OutError))
+			!CheckRange(Entry.Value->PoseVelocityShare, 1.0, Entry.Key, TEXT("pose_velocity_share"), OutError) ||
+			!CheckRange(Entry.Value->WeightShare, 1.5, Entry.Key, TEXT("weight_share"), OutError))
 		{
 			return false;
 		}
+	}
+
+	if (!CheckRange(Weight.FollowS, 5.0, TEXT("muscles"), TEXT("weight_follow_s"), OutError) ||
+		!CheckRange(Weight.LegsBy, 1.0, TEXT("muscles"), TEXT("weight_legs_by"), OutError) ||
+		!CheckRange(Weight.AnkleAsTorque, 1.0, TEXT("balance"), TEXT("ankle_as_torque"), OutError) ||
+		!CheckRange(Weight.InternalShare, 1.0, TEXT("assist"), TEXT("internal_share"), OutError))
+	{
+		return false;
 	}
 
 	const TPair<const TCHAR*, const FSandboxAssistTuning*> Assists[] = {
@@ -520,6 +542,12 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.StepWidthMinCm, 100.0, TEXT("balance"), TEXT("step_width_min_cm"), OutError) ||
 		!CheckRange(Balance.CrossOffsetCm, 100.0, TEXT("balance"), TEXT("cross_offset_cm"), OutError) ||
 		!CheckRange(Balance.StepEaseS, 2.0, TEXT("balance"), TEXT("step_ease_s"), OutError) ||
+		!CheckRange(Balance.LiftSmooth, 1.0, TEXT("balance"), TEXT("lift_smooth"), OutError) ||
+		!CheckRange(Balance.SettleSmooth, 1.0, TEXT("balance"), TEXT("settle_smooth"), OutError) ||
+		!CheckRange(Balance.ReachSmooth, 1.0, TEXT("balance"), TEXT("reach_smooth"), OutError) ||
+		!CheckRange(Balance.ReleaseSmooth, 1.0, TEXT("balance"), TEXT("release_smooth"), OutError) ||
+		!CheckRange(Balance.LandEaseS, 2.0, TEXT("balance"), TEXT("land_ease_s"), OutError) ||
+		!CheckRange(Balance.FallEaseS, 2.0, TEXT("balance"), TEXT("fall_ease_s"), OutError) ||
 		!CheckRange(Balance.StanceFollow, 1.0, TEXT("balance"), TEXT("stance_follow"), OutError) ||
 		!CheckRange(Balance.LegExtensionMax, 1.0, TEXT("balance"), TEXT("leg_extension_max"), OutError) ||
 		!CheckRange(Balance.StepShiftShare, 1.0, TEXT("balance"), TEXT("step_shift_share"), OutError) ||
@@ -532,6 +560,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.LowerMaxCm, 60.0, TEXT("balance"), TEXT("lower_max_cm"), OutError) ||
 		!CheckRange(Balance.CrossPastCm, 300.0, TEXT("balance"), TEXT("cross_past_cm"), OutError) ||
 		!CheckRange(Balance.StaggerDampingS, 2.0, TEXT("balance"), TEXT("stagger_damping_s"), OutError) ||
+		!CheckRange(Balance.StaggerBrakeFollowS, 2.0, TEXT("balance"), TEXT("stagger_brake_follow_s"), OutError) ||
+		!CheckRange(Balance.LiftFrameS, 2.0, TEXT("balance"), TEXT("lift_frame_s"), OutError) ||
 		!CheckRange(Balance.RegroupWaitS, 10.0, TEXT("balance"), TEXT("regroup_wait_s"), OutError) ||
 		!CheckRange(Balance.RegroupToleranceCm, 100.0, TEXT("balance"), TEXT("regroup_tolerance_cm"), OutError) ||
 		!CheckRange(Balance.RegroupMaxSteps, 10.0, TEXT("balance"), TEXT("regroup_max_steps"), OutError) ||

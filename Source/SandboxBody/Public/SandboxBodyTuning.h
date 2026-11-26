@@ -36,6 +36,11 @@ struct FSandboxMuscleTuning
 	 * only resists the joint's own turning.
 	 */
 	double PoseVelocityShare = 0.0;
+	/**
+	 * How much of the torque that carries the weight of what hangs beyond the joint the muscle gives on top of its spring
+	 * (FSandboxWeightTorques): 0 none, the spring carries it by its error; 1 all of it, the spring is there for the pose.
+	 */
+	double WeightShare = 0.0;
 };
 
 /**
@@ -336,6 +341,22 @@ struct FSandboxBalanceTuning
 	/** Time over which a step's placement of the legs eases in, and a swinging leg's frame changes. Seconds. */
 	double StepEaseS = 0.0;
 	/**
+	 * The jumps of a step put right, each by itself; 0 leaves it as it was, 1 (above 0.5) puts it right.
+	 * LiftSmooth: at a lift the leg's frame goes over from the one the leg was last solved in (and not from the whole of
+	 * the one it was on its way to), and the foot's level and its ankle's limit come in over StepEaseS.
+	 * SettleSmooth: a foot that has landed settles from the height its leg was solved for, not from where its bone is.
+	 * ReachSmooth: the share of its length a leg is held to (LegExtensionMax) comes in with the placement's weight.
+	 * ReleaseSmooth: a leg let go as a fall begins goes back to the pose from the target it was solved for.
+	 */
+	double LiftSmooth = 0.0;
+	double SettleSmooth = 0.0;
+	double ReachSmooth = 0.0;
+	double ReleaseSmooth = 0.0;
+	/** Time over which the swinging leg's own strength goes once it has landed; 0: at once. Seconds. */
+	double LandEaseS = 0.0;
+	/** Time over which the muscles go from the strengths of the state before to those of a fall as it begins; 0: at once. Seconds. */
+	double FallEaseS = 0.0;
+	/**
 	 * While a foot swings, the leg that carries the body is solved with the pelvis upright and at its standing
 	 * height, and this far (0 to 1) from its anchor toward where it is over the floor: 0 holds the body back
 	 * toward the old support, 1 lets it travel over the stance foot toward the step.
@@ -391,6 +412,16 @@ struct FSandboxBalanceTuning
 	 * from its anchor to where it is) by the body's speed times this: they brake it in proportion to its speed. s.
 	 */
 	double StaggerDampingS = 0.0;
+	/**
+	 * Time constant over which that brake follows the body's speed, in and out (0: at once, as it was). Taken from the speed
+	 * at once, the legs' frame moved by the speed a blow had given the body, 20 to 50 cm in one frame. s.
+	 */
+	double StaggerBrakeFollowS = 0.0;
+	/**
+	 * Time over which a lifting leg's frame goes over from the upright one it stood in to the body as it is (0: StepEaseS).
+	 * After a blow the two are 25 degrees apart, and over StepEaseS (0.05 s) the leg's targets turn by 6 degrees a frame and stop. s.
+	 */
+	double LiftFrameS = 0.0;
 	/**
 	 * After recovery steps, once the body has stood still this long, a foot steps back to its place beside the other
 	 * (0: the feet stay where the steps put them). Seconds.
@@ -605,6 +636,31 @@ struct FSandboxPoseTuning
 	static FSandboxPose Mirrored(const FSandboxPose& Pose);
 };
 
+/** How the weight torques are worked out ("muscles.weight_*"). */
+struct FSandboxWeightTuning
+{
+	/** Smoothing of what the world pushes the bodies with, and of how much of the weight the world holds up. Seconds. */
+	double FollowS = 0.0;
+	/**
+	 * Where the push under a standing foot comes from: 0 what the floor pushed it with; 1 a share of the weight by where the
+	 * centre of mass lies between the soles, only while the body is upright. (Measured, the torque follows the push it makes:
+	 * an integrator of the spring's error.)
+	 */
+	double LegsBy = 0.0;
+	/**
+	 * The ankle strategy as torques (0 or 1): the shift of the centre of pressure it asks for is a shift of where the floor
+	 * pushes the feet that the leg torques are worked out from, bounded by the soles, and not a turn of the ankles' targets.
+	 * With LegsBy 1.
+	 */
+	double AnkleAsTorque = 0.0;
+	/**
+	 * How much of what the assist wants of the pelvis, the chest and the head of an upright body is given by the legs and the
+	 * trunk (0 to 1) and not by the world: a horizontal force and an upright torque are a push of the floor at a shifted
+	 * place, bounded by the soles and by friction. What is cut off is not given back to the world. With LegsBy 1.
+	 */
+	double InternalShare = 0.0;
+};
+
 /** How a body that lies gets up ("getup.*"). */
 struct FSandboxGetUpTuning
 {
@@ -726,6 +782,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxMuscleTuning Arms;
 	FSandboxMuscleTuning Legs;
 	FSandboxMuscleTuning Toes;
+	FSandboxWeightTuning Weight;
 
 	FSandboxAssistTuning Pelvis;
 	FSandboxAssistTuning Chest;

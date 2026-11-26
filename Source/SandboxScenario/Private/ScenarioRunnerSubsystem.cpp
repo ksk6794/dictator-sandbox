@@ -2897,6 +2897,21 @@ void UScenarioRunnerSubsystem::Finish()
 		ControlJson->SetNumberField(TEXT("contact_reports"), Controller->GetContactReportCount());
 		ControlJson->SetNumberField(TEXT("double_overs"), Controller->GetDoubleOverCount());
 		ControlJson->SetNumberField(TEXT("max_belly_hit_ns"), Controller->GetMaxBellyHitNs());
+		if (Controller->GetWeightMaxNm() > 0.0)
+		{
+			// The weight torques (muscles.<group>.weight_share): the largest, and the largest change of one in a frame.
+			FName StepBone;
+			double StepAtS = 0.0;
+			const double StepNm = Controller->GetWeightStepMaxNm(StepBone, StepAtS);
+			const TSharedRef<FJsonObject> WeightJson = MakeShared<FJsonObject>();
+			WeightJson->SetBoolField(TEXT("on_at_end"), Controller->IsCarryingWeight());
+			WeightJson->SetNumberField(TEXT("max_nm"), Controller->GetWeightMaxNm());
+			WeightJson->SetNumberField(TEXT("step_max_nm"), StepNm);
+			WeightJson->SetStringField(TEXT("step_max_joint"), StepBone.ToString());
+			WeightJson->SetNumberField(TEXT("step_max_t"), StepAtS);
+			WeightJson->SetNumberField(TEXT("held_share_at_end"), Controller->GetWeightHeld());
+			ControlJson->SetObjectField(TEXT("weight"), WeightJson);
+		}
 		ControlJson->SetNumberField(TEXT("knockdowns"), Controller->GetKnockdownCount());
 		ControlJson->SetNumberField(TEXT("max_head_hit_ns"), Controller->GetMaxHeadHitNs());
 

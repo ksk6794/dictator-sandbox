@@ -957,6 +957,15 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **The largest change of a command in a frame is not its largest jump.** A swinging leg's is 65 N*m, and 4 of them are a
   jump: read `command_jump_max_nm`. And a frame can have several causes: of 365 N*m 333, 333 and 140 were left with each of
   three put right alone, 26 with all.
+- **A torque put on a body is not a muscle's torque.** Chaos solves its joints with an inertia conditioned for stability
+  (`p.Chaos.Solver.InertiaConditioning.*`: a rod jointed at its end gets 1.5 times its inertia), and integrates an outside torque
+  with the body's own: the arm's weight given as `AddTorqueInRadians` on the arm and the opposite on the shoulder held it 1.6 to
+  1.7 times over (with the conditioning switched off, as worked out). `FBodyInstance::SetInertiaConditioningEnabled` on the
+  character's bodies while a run goes changed nothing: the solver does not take it. Asked of the muscle's own drive instead (a turn
+  of its target by torque / stiffness) the torque arrives whole: the hand of an arm held out ends where an arm of 1000 N*m/rad holds it
+  (128.8 cm against 128.7). The spring's figure (`effort.joints.<joint>.torque_final_nm`) read 3.2 N*m left over all the same, at every
+  stiffness from 10 to 80 and every angle from 24 to 70 degrees, and was taken for a delivery of 65 to 75% for a night. A figure that moves
+  with neither the stiffness nor the angle is a figure to check against where the body ends: a stiff arm's place is the known answer.
 - **What held the head back from turning was the world.** "A slap does not turn the head because the neck is stiff and the head
   round" was written on 25 November; over necks of 40 down to 1 N*m/rad the turn went from 6 to 15 degrees only. The assist's hold
   on the head (10 N*m/rad, 0.2 s: a damper of 2 N*m*s/rad on 0.02 kg*m2) took most of it. When a figure hardly moves with the

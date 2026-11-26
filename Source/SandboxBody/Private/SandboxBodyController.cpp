@@ -11,8 +11,11 @@
 #include "PhysicsControlComponent.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/ConstraintInstance.h"
+#include "Chaos/PBDCollisionConstraints.h"
 #include "Chaos/RigidParticles.h"
+#include "PBDRigidsSolver.h"
 #include "Physics/Experimental/PhysInterface_Chaos.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "SandboxCore.h"
 #include "SandboxParamStore.h"
@@ -55,6 +58,7 @@ void USandboxBodyController::OnUnregister()
 		Mesh->OnComponentHit.RemoveDynamic(this, &USandboxBodyController::OnBodyHit);
 	}
 	ReleaseIslandRefresh();
+	StopCollectingPushes();
 	Super::OnUnregister();
 }
 
@@ -302,6 +306,27 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	StartSpace.SetScale3D(FVector::OneVector);
 
 	PushTuningToControls();
+
+	// The chain the weight is worked out along: every body after the one it hangs on.
+	WeightBodies.Reset();
+	WeightBodies.AddDefaulted_GetRef().Bone = InTuning.Rig.Pelvis;
+	for (bool bAdded = true; bAdded;)
+	{
+		bAdded = false;
+		for (int32 Index = 0; Index < Muscles.Num(); ++Index)
+		{
+			const FMuscle& Each = Muscles[Index];
+			const int32 Parent = WeightBodies.IndexOfByPredicate([&Each](const FWeightBody& Body) { return Body.Bone == Each.ParentBone; });
+			if (Parent != INDEX_NONE && !WeightBodies.ContainsByPredicate([&Each](const FWeightBody& Body) { return Body.Bone == Each.ChildBone; }))
+			{
+				FWeightBody& Body = WeightBodies.AddDefaulted_GetRef();
+				Body.Bone = Each.ChildBone;
+				Body.Parent = Parent;
+				Body.Muscle = Index;
+				bAdded = true;
+			}
+		}
+	}
 
 	// The target pose: joint angles from the tuning, evaluated by the mesh's animation instance.
 	if (!PoseRig.Init(Mesh, OutError))
@@ -931,6 +956,7 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 	FVector2D LeanGoal = FVector2D::ZeroVector;
 	FVector2D HipGoal = FVector2D::ZeroVector;
 	double ArmGoal[ArmWayCount] = { 0.0, 0.0, 0.0, 0.0 };
+	FVector2D ShiftGoal = FVector2D::ZeroVector;
 	StrategyErrorCm = FVector2D::ZeroVector;
 	const int32 Feet = Balance.bValid ? Balance.StandingFeet.Num() : 0;
 
@@ -1028,8 +1054,18 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 			const FVector2D Lean(LeaningCm.X * SupportForward.X + LeaningCm.Y * SupportForward.Y, LeaningCm.X * SupportSide.X + LeaningCm.Y * SupportSide.Y);
 			const FVector2D TiltRad = -Lean / ComHeightCm;
 			const double MaxRad = FMath::DegreesToRadians(Limits.AnkleMaxDeg);
-			LeanGoal.X = FMath::Clamp(ShiftM.X * WeightN / StiffnessNmPerRad + TiltRad.X, -MaxRad, MaxRad);
-			LeanGoal.Y = FMath::Clamp(ShiftM.Y * WeightN / StiffnessNmPerRad + TiltRad.Y, -MaxRad, MaxRad);
+			if (Tuning.Weight.AnkleAsTorque > 0.5 && IsPushByPlace())
+			{
+				// The shift as a place the floor pushes at (UpdateWeight); the targets turn by the lean alone.
+				LeanGoal.X = FMath::Clamp(TiltRad.X, -MaxRad, MaxRad);
+				LeanGoal.Y = FMath::Clamp(TiltRad.Y, -MaxRad, MaxRad);
+				ShiftGoal = (FVector2D(SupportForward.X, SupportForward.Y) * ShiftM.X + FVector2D(SupportSide.X, SupportSide.Y) * ShiftM.Y) * 100.0;
+			}
+			else
+			{
+				LeanGoal.X = FMath::Clamp(ShiftM.X * WeightN / StiffnessNmPerRad + TiltRad.X, -MaxRad, MaxRad);
+				LeanGoal.Y = FMath::Clamp(ShiftM.Y * WeightN / StiffnessNmPerRad + TiltRad.Y, -MaxRad, MaxRad);
+			}
 		}
 
 		// Arms: thrown the way the body tips, in proportion to how far the capture point has got from where the body
@@ -1062,6 +1098,7 @@ void USandboxBodyController::UpdateStrategies(double DeltaTime)
 	const double Follow = Limits.ResponseS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Limits.ResponseS) : 1.0;
 	AnkleLeanRad += (LeanGoal - AnkleLeanRad) * Follow;
 	HipBendRad += (HipGoal - HipBendRad) * Follow;
+	StrategyShiftCm += (ShiftGoal - StrategyShiftCm) * Follow;
 	// A turn too small to matter is no turn: a body without strategies carries none, and its run is unchanged.
 	constexpr double NegligibleRad = 1.0e-7;
 	if (LeanGoal.IsZero() && AnkleLeanRad.Size() < NegligibleRad)
@@ -1603,6 +1640,16 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	}
 	if (NewState == ESandboxBodyState::Falling)
 	{
+		// The strengths the muscles have now, which go over to the fall's (balance.fall_ease_s): each muscle's own, as last
+		// handed to its drive, the leg of a step under way and a flinch's weakening included. (Taken from the groups'
+		// values, a fall during a swing dropped the swinging leg to half its stiffness in one step.)
+		for (FMuscle& Muscle : Muscles)
+		{
+			Muscle.FallFromStiffness = Muscle.StiffnessNmPerRad;
+			Muscle.FallFromDamping = Muscle.DampingNmsPerRad;
+			Muscle.FallFromVelocityShare = Muscle.PoseVelocityShare;
+		}
+		bFallEaseFromSet = true;
 		// The pose of the fall is chosen once, as the fall starts (ApplyTuning below asks for it).
 		ChooseFallWay();
 		static const TCHAR* const WayNames[] = { TEXT("backward"), TEXT("forward"), TEXT("to the left"), TEXT("to the right") };
@@ -1804,7 +1851,12 @@ FTransform USandboxBodyController::FrameTransform(EFrame Frame, int32 Side, bool
 		// body on past the leading foot; a pull toward the anchor strong enough to stop it turned the body round and
 		// sent it out the other side.)
 		FVector2D Behind = FVector2D::ZeroVector;
-		if (Frame == EFrame::Stance && State == ESandboxBodyState::Stagger)
+		if (Frame == EFrame::Stance && Tuning.Balance.StaggerBrakeFollowS > 0.0)
+		{
+			// With the speed's own lag, in and out (UpdateStaggerBrake).
+			Behind = StaggerBrakeCm;
+		}
+		else if (Frame == EFrame::Stance && State == ESandboxBodyState::Stagger)
 		{
 			Behind = FVector2D(Balance.Velocity.X, Balance.Velocity.Y) * Tuning.Balance.StaggerDampingS;
 		}
@@ -1984,10 +2036,21 @@ void USandboxBodyController::ReleaseFoot(int32 Side, double BlendS)
 		// Let go from the leg as it is now, held in the frame of the body as it is now: a point fixed in the
 		// world would have the leg reach for it while the body goes down, and feed the fall.
 		const FBodyInstance* Body = Mesh->GetBodyInstance(FootBoneName[Side]);
-		const FVector Point = Body && Body->IsValidBodyInstance() ? Body->GetUnrealWorldTransform().GetLocation() : Foot.Point;
+		FVector Point = Body && Body->IsValidBodyInstance() ? Body->GetUnrealWorldTransform().GetLocation() : Foot.Point;
 		const FTransform Frame = Mesh->GetComponentTransform();
-		Animation->SetLimbTarget(FootBoneIndex[Side], Point, 0.0, BlendS);
-		Animation->MoveLimbTarget(FootBoneIndex[Side], Point, &Frame);
+		if (Tuning.Balance.ReleaseSmooth > 0.5 && Foot.bHasLastFrame)
+		{
+			// From the target the leg was solved for, held in the body: the target itself does not jump, and goes with the
+			// body as it goes down.
+			Point = Frame.TransformPosition(Foot.LastFrame.InverseTransformPosition(Foot.LastPoint));
+			Animation->SetLimbTarget(FootBoneIndex[Side], Point, 0.0, BlendS);
+			Animation->MoveLimbTarget(FootBoneIndex[Side], Point, &Frame, Foot.bHasLastEndFrame ? &Foot.LastEndFrame : nullptr, Foot.LastEndLimitWeight, Tuning.Balance.LegExtensionMax);
+		}
+		else
+		{
+			Animation->SetLimbTarget(FootBoneIndex[Side], Point, 0.0, BlendS);
+			Animation->MoveLimbTarget(FootBoneIndex[Side], Point, &Frame);
+		}
 	}
 	Foot = FFootPlacement();
 }
@@ -2016,7 +2079,22 @@ void USandboxBodyController::UpdatePlacements(double DeltaTime)
 		const FQuat Level = FrameTransform(EFrame::Here, -1).GetRotation();
 		const FQuat* EndFrame = Foot.Mode == EPlacement::Swing ? &Level : nullptr;
 		// Held to the ankle's range in the air, let go of it as the foot settles on the floor.
-		const double EndLimitWeight = Foot.Mode == EPlacement::Swing ? 1.0 : Foot.SettleLeft();
+		double EndLimitWeight = Foot.Mode == EPlacement::Swing ? 1.0 : Foot.SettleLeft();
+		FQuat EasedLevel = Level;
+		if (Tuning.Balance.LiftSmooth > 0.5)
+		{
+			// Both come in over the lift, and the level goes out with the settling: whole from the first frame of a swing
+			// they turned the ankle's target at once.
+			const double Ease = Foot.Mode != EPlacement::Swing ? Foot.SettleLeft()
+				: Tuning.Balance.StepEaseS > 0.0 ? FMath::SmoothStep(0.0, 1.0, FMath::Min(Swing.ElapsedS / Tuning.Balance.StepEaseS, 1.0)) : 1.0;
+			EasedLevel = FQuat::Slerp(Mesh->GetComponentQuat(), Level, Ease).GetNormalized();
+			EndFrame = Ease > 0.0 ? &EasedLevel : nullptr;
+			EndLimitWeight = Ease;
+		}
+		Foot.LastPoint = Point;
+		Foot.LastEndLimitWeight = EndLimitWeight;
+		Foot.bHasLastEndFrame = EndFrame != nullptr;
+		Foot.LastEndFrame = EndFrame ? *EndFrame : FQuat::Identity;
 		if (Weight >= 1.0 && Foot.Frame == EFrame::Actual)
 		{
 			// The component as the animation sees it when it evaluates: the most recent there is.
@@ -2452,7 +2530,7 @@ void USandboxBodyController::StartSwing(const FSandboxStepRecord& Plan, const TA
 		const FVector StanceAt = Mesh->GetBodyInstance(FootBoneName[Other])->GetUnrealWorldTransform().GetLocation();
 		Swing.PassPoint = FVector2D(StanceAt.X, StanceAt.Y) + CrossForward(Other) * (Swing.Pass * Limits.CrossOffsetCm);
 	}
-	PlaceFoot(Side, EPlacement::Swing, Swing.Point, EFrame::Actual, Limits.StepEaseS);
+	PlaceFoot(Side, EPlacement::Swing, Swing.Point, EFrame::Actual, Limits.LiftFrameS > 0.0 ? Limits.LiftFrameS : Limits.StepEaseS, nullptr, Limits.LiftSmooth > 0.5);
 	// The other leg carries the body while the foot is in the air.
 	const FVector StancePoint = Placement[Other].Mode != EPlacement::None ? Placement[Other].Point : FlatFootPoint(Other);
 	PlaceFoot(Other, EPlacement::Planted, StancePoint, EFrame::Stance, Limits.StepEaseS);
@@ -2851,7 +2929,7 @@ void USandboxBodyController::UpdateStep(double DeltaTime)
 		const bool bWasPlaced[2] = { Placement[0].Mode != EPlacement::None, Placement[1].Mode != EPlacement::None };
 		PlaceFoot(Swing.Side, EPlacement::Planted, FVector(Record.Landed.X, Record.Landed.Y, Swing.Target.Z), Planted, Limits.AnchorFollowS, nullptr, true);
 		// From the height the bone touched at down to the planted one: the sole comes down onto the floor.
-		Placement[Swing.Side].SettleCm = FMath::Max(Record.Landed.Z - Swing.Target.Z, 0.0);
+		Placement[Swing.Side].SettleCm = Limits.SettleSmooth > 0.5 ? WasPoint[Swing.Side].Z - Swing.Target.Z : FMath::Max(Record.Landed.Z - Swing.Target.Z, 0.0);
 		Placement[Swing.Side].SettleS = Limits.StepSettleS;
 		// The planned sole where the foot landed: what the decisions count as its support while it settles.
 		LandedSole = Swing.TargetSole;
@@ -3474,6 +3552,423 @@ void USandboxBodyController::ApplySurface()
 	bSurfaceApplied = true;
 }
 
+void USandboxBodyController::StartCollectingPushes()
+{
+	const UWorld* World = GetWorld();
+	FPhysScene* Scene = World ? World->GetPhysicsScene() : nullptr;
+	if (Chaos::FPhysicsSolver* Solver = Scene && !PushHandle.IsValid() ? Scene->GetSolver() : nullptr)
+	{
+		PushHandle = Solver->AddPostAdvanceCallback(FSolverPostAdvance::FDelegate::CreateWeakLambda(this, [this](Chaos::FReal SubstepS) { AddPushes(SubstepS); }));
+	}
+}
+
+void USandboxBodyController::StopCollectingPushes()
+{
+	const UWorld* World = GetWorld();
+	FPhysScene* Scene = World ? World->GetPhysicsScene() : nullptr;
+	if (Chaos::FPhysicsSolver* Solver = Scene && PushHandle.IsValid() ? Scene->GetSolver() : nullptr)
+	{
+		Solver->RemovePostAdvanceCallback(PushHandle);
+	}
+	PushHandle.Reset();
+}
+
+void USandboxBodyController::AddPushes(double SubstepS)
+{
+	// The solver's own contact points with their own impulses: a contact event has the nearest point of a contact with the
+	// impulse of all of it, 8.6 cm from where the floor's push on a standing body goes through.
+	const UWorld* World = GetWorld();
+	FPhysScene* Scene = World ? World->GetPhysicsScene() : nullptr;
+	Chaos::FPhysicsSolver* Solver = Scene ? Scene->GetSolver() : nullptr;
+	if (!bStarted || !Mesh || !Solver || !Solver->GetEvolution() || SubstepS <= 0.0)
+	{
+		return;
+	}
+	PushImpulseNs.SetNumZeroed(Mesh->Bodies.Num());
+	PushMomentNsCm.SetNumZeroed(Mesh->Bodies.Num());
+	PushSizeNs.SetNumZeroed(Mesh->Bodies.Num());
+	TMap<const Chaos::FGeometryParticleHandle*, int32, TInlineSetAllocator<64>> Own;
+	for (int32 Index = 0; Index < Mesh->Bodies.Num(); ++Index)
+	{
+		const FBodyInstance* Body = Mesh->Bodies[Index];
+		if (Body && Body->GetPhysicsActor())
+		{
+			Own.Add(Body->GetPhysicsActor()->GetHandle_LowLevel(), Index);
+		}
+	}
+	for (const Chaos::FPBDCollisionConstraintHandle* Handle : Solver->GetEvolution()->GetCollisionConstraints().GetConstraintHandles())
+	{
+		const Chaos::FPBDCollisionConstraint& Contact = Handle->GetContact();
+		const Chaos::FGeometryParticleHandle* First = Contact.GetParticle0();
+		const Chaos::FGeometryParticleHandle* Second = Contact.GetParticle1();
+		const int32* FirstIndex = Own.Find(First);
+		const int32* SecondIndex = Own.Find(Second);
+		if (!Contact.IsEnabled() || (FirstIndex != nullptr) == (SecondIndex != nullptr))
+		{
+			continue;
+		}
+		// The world: what does not move under physics.
+		const Chaos::FConstGenericParticleHandle Other(FirstIndex ? Second : First);
+		if (Other->IsDynamic())
+		{
+			continue;
+		}
+		const int32 Index = FirstIndex ? *FirstIndex : *SecondIndex;
+		// Away from the other body, toward ours.
+		const FVector Away = FVector(Contact.CalculateWorldContactNormal()) * (FirstIndex ? 1.0 : -1.0);
+		for (int32 PointIndex = 0; PointIndex < Contact.NumManifoldPoints(); ++PointIndex)
+		{
+			if (!Contact.IsManifoldPointActive(PointIndex))
+			{
+				continue;
+			}
+			const Chaos::FManifoldPointResult& Result = Contact.GetManifoldPointResult(PointIndex);
+			FVector ImpulseNs = (FVector(Result.NetImpulse) + FVector(Result.NetPushOut) / SubstepS) * 0.01;
+			if ((ImpulseNs | Away) < 0.0)
+			{
+				ImpulseNs = -ImpulseNs;
+			}
+			const FVector Point = Contact.GetShapeWorldTransform0().TransformPositionNoScale(FVector(Contact.GetManifoldPoint(PointIndex).ContactPoint.ShapeContactPoints[0]));
+			const double Size = ImpulseNs.Size();
+			PushImpulseNs[Index] += ImpulseNs;
+			PushMomentNsCm[Index] += Point * Size;
+			PushSizeNs[Index] += Size;
+		}
+	}
+}
+
+void USandboxBodyController::UpdateWeight(double DeltaTime)
+{
+	bool bWanted = false;
+	for (int32 Group = 0; Group < UE_ARRAY_COUNT(WeightShareNow); ++Group)
+	{
+		bWanted = bWanted || Tuning.Muscle(static_cast<ESandboxMuscleGroup>(Group)).WeightShare > 0.0;
+	}
+	bWanted = bWanted || Tuning.Weight.AnkleAsTorque > 0.5 || Tuning.Weight.InternalShare > 0.0;
+	if (!bWanted && !bWeightOn)
+	{
+		return;
+	}
+	if (!bWeightOn)
+	{
+		bWeightOn = true;
+		StartCollectingPushes();
+		// The share of the weight held is the whole of it for a body that stands; a body in the air loses it as it falls.
+		WeightHeld = Balance.IsSupported() ? 1.0 : 0.0;
+		return; // nothing has been collected yet
+	}
+	const double Follow = Tuning.Weight.FollowS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Tuning.Weight.FollowS) : 1.0;
+	const bool bByPlace = Tuning.Weight.LegsBy > 0.5;
+	bool bAny = false;
+	for (int32 Group = 0; Group < UE_ARRAY_COUNT(WeightShareNow); ++Group)
+	{
+		double Goal = Tuning.Muscle(static_cast<ESandboxMuscleGroup>(Group)).WeightShare;
+		// A body that is not upright is carried by what it lies or falls on, not by its muscles: the weight torques go, all of them.
+		// (Kept for the arms, the spine and the neck, they held a fallen body's limbs up and kept it from rest for more than 3 s.)
+		if (!IsUpright() && (bByPlace || static_cast<ESandboxMuscleGroup>(Group) != ESandboxMuscleGroup::Legs))
+		{
+			Goal = 0.0;
+		}
+		WeightShareNow[Group] += (Goal - WeightShareNow[Group]) * Follow;
+		if (Goal == 0.0 && WeightShareNow[Group] < 1.0e-4)
+		{
+			WeightShareNow[Group] = 0.0;
+		}
+		bAny = bAny || WeightShareNow[Group] > 0.0;
+	}
+
+	// What the world pushed with over the last frame.
+	double HeldN = 0.0;
+	const double PerS = DeltaTime > 0.0 ? 1.0 / DeltaTime : 0.0;
+	TArray<FSandboxWeightTorques::FBody> Bodies;
+	Bodies.SetNum(WeightBodies.Num());
+	for (int32 Index = 0; Index < WeightBodies.Num(); ++Index)
+	{
+		FWeightBody& Each = WeightBodies[Index];
+		const FBodyInstance* Body = Mesh->GetBodyInstance(Each.Bone);
+		if (!Body || !Body->IsValidBodyInstance())
+		{
+			return;
+		}
+		const int32 Instance = Body->InstanceBodyIndex;
+		const bool bCollected = PushImpulseNs.IsValidIndex(Instance);
+		const FVector Com = Body->GetCOMPosition();
+		const FVector PushN = bCollected ? PushImpulseNs[Instance] * PerS : FVector::ZeroVector;
+		const double SizeN = bCollected ? PushSizeNs[Instance] * PerS : 0.0;
+		const FVector OffsetNcm = bCollected ? (PushMomentNsCm[Instance] - Com * PushSizeNs[Instance]) * PerS : FVector::ZeroVector;
+		HeldN += PushN.Z;
+		Each.PushN += (PushN - Each.PushN) * Follow;
+		Each.PushSizeN += (SizeN - Each.PushSizeN) * Follow;
+		Each.PushOffsetNcm += (OffsetNcm - Each.PushOffsetNcm) * Follow;
+
+		FSandboxWeightTorques::FBody& Out = Bodies[Index];
+		Out.Parent = Each.Parent;
+		Out.JointCm = Body->GetUnrealWorldTransform().GetLocation();
+		Out.CenterOfMassCm = Com;
+		Out.MassKg = Body->GetBodyMass();
+		if (Each.PushSizeN > 0.1)
+		{
+			Out.PushN = Each.PushN;
+			Out.PushAtCm = Com + Each.PushOffsetNcm / Each.PushSizeN;
+		}
+	}
+	const double HeldGoal = WeightN > 0.0 ? FMath::Clamp(HeldN / WeightN, 0.0, 1.0) : 0.0;
+	WeightHeld += (HeldGoal - WeightHeld) * Follow;
+	for (FVector& Each : PushImpulseNs) { Each = FVector::ZeroVector; }
+	for (FVector& Each : PushMomentNsCm) { Each = FVector::ZeroVector; }
+	for (double& Each : PushSizeNs) { Each = 0.0; }
+
+	// The feet with the floor's push at a shifted place, and what the trunk gives of the assist; only for an upright body.
+	TArray<FSandboxWeightTorques::FBody> Shifted;
+	TMap<int32, FVector> TrunkNm;
+	if (bByPlace)
+	{
+		// The weight shared between the feet that the floor touches, by where the centre of mass stands over their soles.
+		TArray<FVector2D> Soles[2];
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (Balance.FootForceN[Side] > 0.0)
+			{
+				FSandboxBodyProbe::SupportPolygon(Mesh, TArray<FName>{ FootBoneName[Side] }, WholeSoleToleranceCm, Soles[Side]);
+			}
+		}
+		double FirstShare = 0.0;
+		FVector2D At[2];
+		FSandboxWeightTorques::ShareBetweenFeet(Soles[0], Soles[1], FVector2D(Balance.CenterOfMass.X, Balance.CenterOfMass.Y), FirstShare, At);
+		const double Goals[2] = { Soles[0].Num() > 0 ? FirstShare * WeightN * WeightHeld : 0.0, Soles[1].Num() > 0 ? (1.0 - FirstShare) * WeightN * WeightHeld : 0.0 };
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (Goals[Side] > 0.0)
+			{
+				FootPushAt[Side] = FootPushN[Side] > 1.0 ? FMath::Lerp(FootPushAt[Side], At[Side], Follow) : At[Side];
+			}
+			FootPushN[Side] += (Goals[Side] - FootPushN[Side]) * Follow;
+			const int32 Index = WeightBodies.IndexOfByPredicate([this, Side](const FWeightBody& Body) { return Body.Bone == FootBoneName[Side]; });
+			if (Index != INDEX_NONE)
+			{
+				Bodies[Index].PushN = FVector(0.0, 0.0, FootPushN[Side]);
+				Bodies[Index].PushAtCm = FVector(FootPushAt[Side], Balance.SupportHeightCm);
+			}
+		}
+		const double LoadN = FootPushN[0] + FootPushN[1];
+		if (IsUpright() && LoadN > 0.2 * WeightN && (Tuning.Weight.InternalShare > 0.0 || Tuning.Weight.AnkleAsTorque > 0.5))
+		{
+			FVector ForceN = FVector::ZeroVector;
+			FVector TorqueNm = FVector::ZeroVector;
+			if (Tuning.Weight.InternalShare > 0.0)
+			{
+				InternalAssist(ForceN, TorqueNm, TrunkNm);
+				// No more than the soles' friction carries.
+				ForceN = ForceN.GetClampedToMaxSize2D(0.6 * LoadN);
+			}
+			// A push at a place d from the one that only carries the weight turns the body by d x F, so a torque T is a shift of
+			// (-Ty, Tx) / F; and a horizontal force at the floor turns it by its height over the floor, which is shifted away.
+			const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+			const FBodyInstance* PelvisBody = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+			const double HeightM = PelvisBody ? FMath::Max(PelvisBody->GetCOMPosition().Z - Balance.SupportHeightCm, 0.0) * 0.01 : 0.0;
+			FVector2D ShiftCm2 = StrategyShiftCm;
+			ShiftCm2 += FVector2D(-TorqueNm.Y, TorqueNm.X) * (100.0 / LoadN);
+			ShiftCm2 -= FVector2D(ForceN.X, ForceN.Y) * (HeightM * 100.0 / LoadN);
+			const FVector2D Place = (FootPushAt[0] * FootPushN[0] + FootPushAt[1] * FootPushN[1]) / LoadN + ShiftCm2;
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				if (FootPushN[Side] < 0.05 * LoadN)
+				{
+					Soles[Side].Reset();
+				}
+			}
+			double ShiftedShare = 0.0;
+			FVector2D ShiftedAt[2];
+			FSandboxWeightTorques::ShareBetweenFeet(Soles[0], Soles[1], Place, ShiftedShare, ShiftedAt);
+			Shifted = Bodies;
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const int32 Index = WeightBodies.IndexOfByPredicate([this, Side](const FWeightBody& Body) { return Body.Bone == FootBoneName[Side]; });
+				const double Share = Side == 0 ? ShiftedShare : 1.0 - ShiftedShare;
+				if (Index != INDEX_NONE && Soles[Side].Num() > 0)
+				{
+					Shifted[Index].PushN = FVector(ForceN.X * Share, ForceN.Y * Share, LoadN * Share);
+					Shifted[Index].PushAtCm = FVector(ShiftedAt[Side], Balance.SupportHeightCm);
+				}
+			}
+		}
+	}
+
+	TArray<FVector> Torques;
+	const double GravityMps2 = GravityCmS2 * 0.01;
+	if (!FSandboxWeightTorques::Compute(Bodies, FVector(0.0, 0.0, -GravityMps2 * WeightHeld), Torques))
+	{
+		return;
+	}
+	TArray<FVector> ShiftedTorques;
+	if (Shifted.Num() > 0)
+	{
+		FSandboxWeightTorques::Compute(Shifted, FVector(0.0, 0.0, -GravityMps2 * WeightHeld), ShiftedTorques);
+	}
+	for (int32 Index = 0; Index < WeightBodies.Num(); ++Index)
+	{
+		if (WeightBodies[Index].Muscle == INDEX_NONE)
+		{
+			continue;
+		}
+		FMuscle& Muscle = Muscles[WeightBodies[Index].Muscle];
+		const double CapNm = Tuning.Muscle(Muscle.Group).MaxTorqueNm;
+		FVector TorqueNm = Torques[Index] * WeightShareNow[static_cast<int32>(Muscle.Group)];
+		if (ShiftedTorques.IsValidIndex(Index) && Muscle.Group == ESandboxMuscleGroup::Legs)
+		{
+			TorqueNm += ShiftedTorques[Index] - Torques[Index];
+		}
+		if (const FVector* Trunk = TrunkNm.Find(WeightBodies[Index].Muscle))
+		{
+			TorqueNm += *Trunk;
+		}
+		// The shock of a landing is not answered with more than the joint has.
+		if (CapNm > 0.0)
+		{
+			TorqueNm = TorqueNm.GetClampedToMaxSize(CapNm);
+		}
+		const double StepNm = (TorqueNm - Muscle.WeightNm).Size();
+		if (StepNm > WeightStepMaxNm && !Muscle.WeightNm.IsZero())
+		{
+			WeightStepMaxNm = StepNm;
+			WeightStepBone = Muscle.ChildBone;
+			WeightStepAtS = ElapsedS;
+		}
+		WeightMaxNm = FMath::Max(WeightMaxNm, TorqueNm.Size());
+		const bool bHad = !Muscle.WeightNm.IsZero();
+		Muscle.WeightNm = TorqueNm;
+		if (bHad || !TorqueNm.IsZero())
+		{
+			GiveWeightTorque(Muscle);
+		}
+	}
+	if (!bWanted && !bAny)
+	{
+		bWeightOn = false;
+		StopCollectingPushes();
+		for (FMuscle& Muscle : Muscles)
+		{
+			Muscle.WeightNm = FVector::ZeroVector;
+			GiveWeightTorque(Muscle);
+		}
+	}
+}
+
+void USandboxBodyController::InternalAssist(FVector& OutForceN, FVector& OutTorqueNm, TMap<int32, FVector>& OutJointNm) const
+{
+	for (const FAssist& Assist : Assists)
+	{
+		const FBodyInstance* Body = Assist.Slot != EAssistSlot::Feet ? Mesh->GetBodyInstance(Assist.Bone) : nullptr;
+		if (!Body || !Body->IsValidBodyInstance())
+		{
+			continue;
+		}
+		// The assist's own spring law (UpdateAssistLoad).
+		const FSandboxAssistTuning& Slot = AssistTuning(Assist.Slot);
+		const double Share = Tuning.Weight.InternalShare;
+		if (Slot.HorizontalNPerM > 0.0)
+		{
+			const FVector ErrorM = (AssistGoal(Assist).TransformPositionNoScale(Body->GetMassSpaceLocal().GetLocation()) - Body->GetCOMPosition()) * 0.01;
+			const FVector VelocityMps = Body->GetUnrealWorldVelocity() * 0.01 - FVector(SupportVelocityCmS, 0.0) * 0.01;
+			FVector CommandN = (ErrorM - VelocityMps * Slot.DampingS) * Slot.HorizontalNPerM * Share;
+			CommandN.Z = 0.0;
+			if (Slot.MaxForceN > 0.0)
+			{
+				CommandN = CommandN.GetClampedToMaxSize(Slot.MaxForceN);
+			}
+			OutForceN += CommandN;
+		}
+		if (Slot.AngularNmPerRad > 0.0)
+		{
+			const FVector ErrorRad = (Assist.Target.GetRotation() * Body->GetUnrealWorldTransform().GetRotation().Inverse()).GetShortestArcWith(FQuat::Identity).ToRotationVector();
+			FVector CommandNm = (ErrorRad - Body->GetUnrealWorldAngularVelocityInRadians() * Slot.DampingS) * Slot.AngularNmPerRad * Share;
+			if (Slot.MaxTorqueNm > 0.0)
+			{
+				CommandNm = CommandNm.GetClampedToMaxSize(Slot.MaxTorqueNm);
+			}
+			// Tilting only: a turn about the vertical is the feet's friction's.
+			CommandNm.Z = 0.0;
+			OutTorqueNm += CommandNm;
+			// Every joint between this body and the pelvis carries it.
+			int32 Index = WeightBodies.IndexOfByPredicate([&Assist](const FWeightBody& Each) { return Each.Bone == Assist.Bone; });
+			while (Index != INDEX_NONE && WeightBodies[Index].Muscle != INDEX_NONE)
+			{
+				OutJointNm.FindOrAdd(WeightBodies[Index].Muscle) += CommandNm;
+				Index = WeightBodies[Index].Parent;
+			}
+		}
+	}
+}
+
+void USandboxBodyController::GiveWeightTorque(const FMuscle& Muscle)
+{
+	// Through the muscle's own drive, as a turn of its target: the drive's torque is stiffness times the error, so a target
+	// turned by torque / stiffness about the torque's axis is meant to be that torque on top of the spring, within the
+	// joint's cap. It is not exact: on an arm held out it reached the shoulder by 100% held forward and by 65 to 75% held
+	// out to the side, the same as a turning speed asked of the drive; the cause was not found. Put on the two bodies as a
+	// torque pair instead it counted 1.6 to 1.7 times, which is the solver's inertia conditioning (shown by switching it
+	// off: 0.5 N*m left of 8.3); switched off for the body's own bodies while it runs, the solver did not take the change.
+	const FBodyInstance* Parent = Mesh->GetBodyInstance(Muscle.ParentBone);
+	FPhysicsControlTarget Target;
+	if (Parent && Parent->IsValidBodyInstance() && Muscle.StiffnessNmPerRad > 0.0 && !Muscle.WeightNm.IsZero())
+	{
+		const FQuat CachedParent = Control->GetCachedBoneTransform(Mesh, Muscle.ParentBone).GetRotation();
+		const FQuat CachedChild = Control->GetCachedBoneTransform(Mesh, Muscle.ChildBone).GetRotation();
+		const FQuat TargetWorld = (Parent->GetUnrealWorldTransform().GetRotation() * CachedParent.Inverse() * CachedChild).GetNormalized();
+		// The record's orientation is taken in the space of the target from the pose.
+		const FVector TurnRad = TargetWorld.UnrotateVector(Muscle.WeightNm / Muscle.StiffnessNmPerRad);
+		Target.TargetOrientation = FQuat::MakeFromRotationVector(TurnRad.GetClampedToMaxSize(UE_DOUBLE_PI * 0.75)).Rotator();
+	}
+	Control->SetControlTarget(Muscle.Control, Target);
+}
+
+double USandboxBodyController::LandShare(FName ChildBone) const
+{
+	if (Tuning.Balance.LandEaseS <= 0.0 || !IsUpright())
+	{
+		return 0.0;
+	}
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		if (ChildBone != ThighBoneName[Side] && ChildBone != CalfBoneName[Side] && ChildBone != FootBoneName[Side])
+		{
+			continue;
+		}
+		for (int32 Index = StepLog.Num() - 1; Index >= 0; --Index)
+		{
+			if (StepLog[Index].Side == Side && StepLog[Index].LandS >= 0.0)
+			{
+				return 1.0 - FMath::SmoothStep(0.0, 1.0, FMath::Clamp((ElapsedS - StepLog[Index].LandS) / Tuning.Balance.LandEaseS, 0.0, 1.0));
+			}
+		}
+	}
+	return 0.0;
+}
+
+double USandboxBodyController::FallEaseShare() const
+{
+	if (State != ESandboxBodyState::Falling || Tuning.Balance.FallEaseS <= 0.0)
+	{
+		return 1.0;
+	}
+	return FMath::SmoothStep(0.0, 1.0, FMath::Clamp((ElapsedS - StateEnteredS) / Tuning.Balance.FallEaseS, 0.0, 1.0));
+}
+
+void USandboxBodyController::UpdateStrengthEases()
+{
+	// The strengths that go over in time are handed to the controls while they do, and once more at the end.
+	const auto Running = [this](double SinceS, double EaseS) { return EaseS > 0.0 && ElapsedS - SinceS <= EaseS + 0.02; };
+	bool bPush = State == ESandboxBodyState::Falling && Running(StateEnteredS, Tuning.Balance.FallEaseS);
+	for (int32 Index = FMath::Max(StepLog.Num() - 2, 0); Index < StepLog.Num() && !bPush; ++Index)
+	{
+		bPush = IsUpright() && StepLog[Index].LandS >= 0.0 && Running(StepLog[Index].LandS, Tuning.Balance.LandEaseS);
+	}
+	if (bPush)
+	{
+		PushTuningToControls();
+	}
+}
+
 void USandboxBodyController::PushTuningToControls()
 {
 	ApplySurface();
@@ -3488,6 +3983,11 @@ void USandboxBodyController::PushTuningToControls()
 		}
 	}
 
+	if (USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()))
+	{
+		Animation->SetReachWithWeight(Tuning.Balance.ReachSmooth > 0.5);
+	}
+	const double FallShare = FallEaseShare();
 	for (FMuscle& Muscle : Muscles)
 	{
 		const FSandboxMuscleTuning& Group = Tuning.Muscle(Muscle.Group);
@@ -3497,9 +3997,22 @@ void USandboxBodyController::PushTuningToControls()
 		// Eased in from the lift over balance.step_ease_s: doubled at once, the error the leg had while it carried weight
 		// was pushed twice as hard into the floor.
 		const double SwingEase = Tuning.Balance.StepEaseS > 0.0 ? FMath::SmoothStep(0.0, 1.0, FMath::Min(Swing.ElapsedS / Tuning.Balance.StepEaseS, 1.0)) : 1.0;
-		const double SwingScale = bSwingLeg ? FMath::Lerp(1.0, FMath::Max(Tuning.Balance.SwingStiffnessScale, 1.0), SwingEase) : 1.0;
-		const double SwingDampingScale = bSwingLeg ? FMath::Lerp(1.0, Tuning.Balance.SwingDampingScale, SwingEase) : 1.0;
-		const double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+		// And out again once it has landed, over balance.land_ease_s.
+		const double SwingShare = bSwingLeg ? FMath::Max(SwingEase, LandShare(Muscle.ChildBone)) : LandShare(Muscle.ChildBone);
+		const double SwingScale = FMath::Lerp(1.0, FMath::Max(Tuning.Balance.SwingStiffnessScale, 1.0), SwingShare);
+		const double SwingDampingScale = FMath::Lerp(1.0, Tuning.Balance.SwingDampingScale, SwingShare);
+		double Spring = Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+		double ExtraDamping = Spring * Group.DampingS * SwingDampingScale;
+		double VelocityShare = FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingShare);
+		if (FallShare < 1.0 && bFallEaseFromSet)
+		{
+			// Over to the fall's strengths from what this muscle had as the fall began.
+			const double FromSpring = Muscle.FallFromStiffness * TorqueToUnreal / ChaosAngularDriveScale;
+			const double FromDamping = Muscle.FallFromDamping * TorqueToUnreal / ChaosAngularDriveScale;
+			Spring = FMath::Lerp(FromSpring, Spring, FallShare);
+			ExtraDamping = FMath::Lerp(FromDamping, ExtraDamping, FallShare);
+			VelocityShare = FMath::Lerp(Muscle.FallFromVelocityShare, VelocityShare, FallShare);
+		}
 		FPhysicsControlData Data;
 		// Force mode: the spring is a real torque per radian. In the plugin's default (acceleration) mode
 		// it would be scaled by the inertia of the two jointed bodies alone, which leaves an ankle or a hip
@@ -3508,17 +4021,17 @@ void USandboxBodyController::PushTuningToControls()
 		Data.LinearStrength = 0.0f; // the joint itself holds the bodies together
 		Data.AngularStrength = StrengthForSpring(Spring);
 		Data.AngularDampingRatio = 0.0f;
-		Data.AngularExtraDamping = static_cast<float>(Spring * Group.DampingS * SwingDampingScale);
+		Data.AngularExtraDamping = static_cast<float>(ExtraDamping);
 		Data.MaxTorque = static_cast<float>(Group.MaxTorqueNm * TorqueToUnreal);
-		Data.AngularTargetVelocityMultiplier = static_cast<float>(bSwingLeg
-			? FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingEase) : Group.PoseVelocityShare);
+		Data.AngularTargetVelocityMultiplier = static_cast<float>(VelocityShare);
 		Data.bUseSkeletalAnimation = true;
 		// The two bodies are jointed and must never collide, whatever this extra constraint says.
 		Data.bDisableCollision = true;
 		Control->SetControlData(Muscle.Control, Data);
 		// The same in physical units, for whoever looks at the controls (GetControlView); nothing here reads it.
 		Muscle.StiffnessNmPerRad = Spring * ChaosAngularDriveScale / TorqueToUnreal;
-		Muscle.DampingNmsPerRad = Muscle.StiffnessNmPerRad * Group.DampingS * SwingDampingScale;
+		const bool bAsBefore = !(FallShare < 1.0 && bFallEaseFromSet);
+		Muscle.DampingNmsPerRad = bAsBefore ? Muscle.StiffnessNmPerRad * Group.DampingS * SwingDampingScale : ExtraDamping * ChaosAngularDriveScale / TorqueToUnreal;
 		Muscle.MaxTorqueNm = Group.MaxTorqueNm;
 		Muscle.PoseVelocityShare = Data.AngularTargetVelocityMultiplier;
 	}
@@ -3539,6 +4052,13 @@ void USandboxBodyController::PushTuningToControls()
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
+		}
+		{
+			// What the legs and the trunk give of it the world does not.
+			const double WorldShare = WorldShareOf(Assist.Slot);
+			Slot.HorizontalNPerM *= WorldShare;
+			Slot.VerticalNPerM *= WorldShare;
+			Slot.AngularNmPerRad *= WorldShare;
 		}
 		const double AngularSpring = Slot.AngularNmPerRad * TorqueToUnreal / ChaosAngularDriveScale;
 		FPhysicsControlData Data;
@@ -3615,6 +4135,13 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateGetUp(DeltaTime);
 	UpdateRegroup(DeltaTime);
 	UpdateStep(DeltaTime);
+	UpdateStrengthEases();
+	if (Tuning.Balance.StaggerBrakeFollowS > 0.0)
+	{
+		const FVector2D Goal = State == ESandboxBodyState::Stagger ? FVector2D(Balance.Velocity.X, Balance.Velocity.Y) * Tuning.Balance.StaggerDampingS : FVector2D::ZeroVector;
+		StaggerBrakeCm += (Goal - StaggerBrakeCm) * (1.0 - FMath::Exp(-DeltaTime / Tuning.Balance.StaggerBrakeFollowS));
+	}
+	UpdateWeight(DeltaTime);
 	UpdateShift(DeltaTime);
 	UpdateLowering(DeltaTime);
 	UpdateIdle(DeltaTime);
@@ -4030,6 +4557,12 @@ void USandboxBodyController::UpdateAssistLoad()
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
+		}
+		{
+			const double WorldShare = WorldShareOf(Assist.Slot);
+			Slot.HorizontalNPerM *= WorldShare;
+			Slot.VerticalNPerM *= WorldShare;
+			Slot.AngularNmPerRad *= WorldShare;
 		}
 		const FVector Stiffness(Slot.HorizontalNPerM, Slot.HorizontalNPerM, Slot.VerticalNPerM);
 		FVector CommandN = Stiffness * (ErrorM - VelocityMps * Slot.DampingS);
