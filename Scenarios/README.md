@@ -82,6 +82,10 @@ Event types. Unknown types are a parse error.
   `poses.blend_s`, and 0 lets the foot go back to the pose. The muscles do the work; nothing moves the foot
   directly. `control.foot_targets` lists each placed foot with its distance from its point at the end
   (`final_error_cm`). Active control only.
+- `hand_target` is `foot_target` for an arm (`body`, a hand's bone): the upper arm and the forearm turn, the
+  elbow bent back and out, the hand turns with its forearm, and the shoulder and the elbow are held to their
+  ranges. It is reported with the feet, under `control.foot_targets`, and checked by
+  `max_foot_target_error_cm`. Active control only.
 - `tone` asks the body for a tone (`level`: `limp`, `relaxed`, `ready` or `braced`) for `duration_s`; the
   muscles go over to it at `tone.rise_s` or `tone.fall_s` and back to their standing levels after it. With
   every level at 1 (the file's values) it changes nothing. Active control only.

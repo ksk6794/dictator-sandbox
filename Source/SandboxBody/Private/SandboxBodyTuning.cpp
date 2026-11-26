@@ -83,6 +83,16 @@ namespace
 			Visitor(FString(TEXT("tone.daze_s")), Tuning.Tone.DazeS);
 			Visitor(FString(TEXT("tone.fall_s")), Tuning.Tone.FallS);
 		}
+		Visitor(FString(TEXT("fall.aim")), Tuning.FallAim.Aim);
+		Visitor(FString(TEXT("fall.reach_ahead_cm")), Tuning.FallAim.ReachAheadCm);
+		Visitor(FString(TEXT("fall.hand_height_cm")), Tuning.FallAim.HandHeightCm);
+		Visitor(FString(TEXT("fall.reach_blend_s")), Tuning.FallAim.ReachBlendS);
+		Visitor(FString(TEXT("fall.way_follow_s")), Tuning.FallAim.WayFollowS);
+		Visitor(FString(TEXT("fall.arm_reach_stiffness")), Tuning.FallAim.ReachStiffness);
+		Visitor(FString(TEXT("fall.arm_reach_damping")), Tuning.FallAim.ReachDamping);
+		Visitor(FString(TEXT("fall.reach_back")), Tuning.FallAim.ReachBack);
+		Visitor(FString(TEXT("fall.arm_yield_stiffness")), Tuning.FallAim.YieldStiffness);
+		Visitor(FString(TEXT("fall.arm_yield_damping")), Tuning.FallAim.YieldDamping);
 		Visitor(FString(TEXT("assist.internal_share")), Tuning.Weight.InternalShare);
 		Assist(TEXT("pelvis"), Tuning.Pelvis);
 		Assist(TEXT("chest"), Tuning.Chest);
@@ -497,6 +507,15 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Tone.BraceFromNs, 1000.0, TEXT("tone"), TEXT("brace_from_ns"), OutError) || !CheckRange(Tone.BraceDelayS, 2.0, TEXT("tone"), TEXT("brace_delay_s"), OutError) ||
 		!CheckRange(Tone.BraceHoldS, 30.0, TEXT("tone"), TEXT("brace_hold_s"), OutError) || !CheckRange(Tone.DazeFromNs, 1000.0, TEXT("tone"), TEXT("daze_from_ns"), OutError) ||
 		!CheckRange(Tone.DazeScale, 1.0, TEXT("tone"), TEXT("daze_scale"), OutError) || !CheckRange(Tone.DazeS, 60.0, TEXT("tone"), TEXT("daze_s"), OutError))
+	{
+		return false;
+	}
+	if (!CheckRange(FallAim.Aim, 1.0, TEXT("fall"), TEXT("aim"), OutError) || !CheckRange(FallAim.ReachAheadCm, 200.0, TEXT("fall"), TEXT("reach_ahead_cm"), OutError) ||
+		!CheckRange(FallAim.HandHeightCm, 50.0, TEXT("fall"), TEXT("hand_height_cm"), OutError) || !CheckRange(FallAim.ReachBlendS, 2.0, TEXT("fall"), TEXT("reach_blend_s"), OutError) ||
+		!CheckRange(FallAim.WayFollowS, 2.0, TEXT("fall"), TEXT("way_follow_s"), OutError) || !CheckRange(FallAim.ReachStiffness, 20.0, TEXT("fall"), TEXT("arm_reach_stiffness"), OutError) ||
+		!CheckRange(FallAim.ReachDamping, 20.0, TEXT("fall"), TEXT("arm_reach_damping"), OutError) || !CheckRange(FallAim.YieldStiffness, 20.0, TEXT("fall"), TEXT("arm_yield_stiffness"), OutError) ||
+		!CheckRange(FallAim.YieldDamping, 20.0, TEXT("fall"), TEXT("arm_yield_damping"), OutError) ||
+		!CheckRange(FallAim.ReachBack, 1.0, TEXT("fall"), TEXT("reach_back"), OutError))
 	{
 		return false;
 	}

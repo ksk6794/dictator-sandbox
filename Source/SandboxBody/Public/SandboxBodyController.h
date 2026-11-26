@@ -299,7 +299,11 @@ public:
 	 * the pose. The muscles then do the work; nothing moves the foot directly. False with a reason if the bone
 	 * is not the end of two segments that have bodies.
 	 */
-	bool SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError);
+	bool SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError, double BlendS = -1.0);
+
+	/** Times a fall reached for the floor (fall.aim), and when a hand first touched it in the last one (-1 never). */
+	int32 GetFallReachCount() const { return FallReaches; }
+	double GetFallHandTouchS() const { return FallHandTouchS; }
 
 	/**
 	 * Makes a step with one foot to a point of the floor (x and y; the foot comes down at the height it stands
@@ -1018,6 +1022,16 @@ private:
 	/** Follows the level asked for, and hands the controls the strengths while they change. */
 	void UpdateTone(double DeltaTime);
 
+	/** The fall with an aim (fall.*): the way the body goes down, followed every tick, and the hands sent to the floor along it. */
+	void UpdateFallAim(double DeltaTime);
+	void StopFallAim();
+	bool bFallAiming = false;
+	FVector2D FallWayNow = FVector2D::ZeroVector;
+	double FallFloorZ = 0.0;
+	bool bHandTouchedFrame[2] = { false, false };
+	double HandTouchedS[2] = { -1.0, -1.0 };
+	int32 FallReaches = 0;
+	double FallHandTouchS = -1.0;
 
 	/** Hands a muscle's weight torque to its drive. */
 	void GiveWeightTorque(const FMuscle& Muscle);

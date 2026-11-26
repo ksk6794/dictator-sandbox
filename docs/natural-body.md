@@ -747,6 +747,8 @@ N6 makes a falling body do what a person does on the way down: reach for the pla
 
 ### Steps
 
+**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N6 step 1", "step 4 in part", "step 5"):** step 1 is built (`hand_target`): its geometry puts the hand within 0.5 cm of the points and `pose_hand_place` holds that, but the arms at their own strength sag 6 to 9 cm under their weight (N2's matter). Step 2 is the scorecard of that night. Step 4 was tried by values alone (the falling neck at 120 N*m/rad and the fall poses' necks turned further away): the head strikes in 33% of the falls by hand instead of 75%, but the stand is two worse and one scenario fails, so by "Must hold" it does not hold. Step 5 is built behind `fall.aim` (hands sent to the floor along the way, every tick, on top of today's poses; steps 3's blend by direction is not built): with the head's values it brings the head's strikes by hand to 17% and the hand first to 100% by blows, and gains up to 83 J in a backward fall by hand and costs the stand three first attempts. Without a reach in a fall backward (`fall.reach_back` 0) it comes closest: energy 38 J at most, the head strikes in 17% of the falls by hand, the matrix 160; it still misses three limits (the head by blows as today, the hand at 35 to 36 rad/s as it meets the floor, the stand one fall worse). Not met; off; recommended for the owner's look.
+
 1. The hand target, on a welded pelvis.
 2. N1's fall figures on today's falls, by blow and by hand: the state before.
 3. The way of the fall every tick; the base pose as a blend by direction.

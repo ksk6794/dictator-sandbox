@@ -975,6 +975,18 @@ touch must not be in that list, and the ones that are get explained in the part'
   hand's own point: held with the fingers forward, it met the face with its rear edge. Change the body and these change with it.
 - **Every tool runs on another physics asset without a file changed:** `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCHead` (and
   `SANDBOX_HEAD_BODY=head` for a body whose head is its own) puts that asset into a copy of each scenario in the queue.
+- **A leg's two-bone placement does not place an arm.** Taken over as it was, the pole put the stance's elbow into its own plane
+  in the target's first frame (the arm's target turned 21 degrees in one step), and the hand kept the orientation it hung with, so
+  an arm held out asked its wrist for 90 degrees; the wrist pushed on its limit and the hand ended 30 cm from its point with arms
+  at 3000 N*m/rad. An arm's bend goes over from the pose's plane with the weight, its hand turns with the forearm, and its shoulder
+  and elbow are held to their ranges (`FSandboxLimbTarget::bArm`). Test a placement with stiff muscles first: that is the geometry;
+  what the arm's own strength leaves of it is its weight.
+- **Check a limit against today's body before it judges a change.** "No joint faster than 30 rad/s in the knockdowns" was written
+  for N6 and today's neck reaches 36 after the blow at 90 degrees; the plan said "the arms, when they meet the floor". Read today's
+  figure of a new limit before the runs it is to judge.
+- **Muscles that chase a point of the world while the body turns do work, and a fall shows it as energy.** Braced arms sent to
+  the floor behind a body falling backward gained 83 J (today's fall 30) in the 0.2 s before a hand touched; more damping on them
+  left 48 J and kept a blow's fall from rest for 4 s. The 40 J of a fall (`max_energy_gain_j`) catches it.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,

@@ -138,6 +138,11 @@ namespace
 			return true;
 		}
 
+		if (OutEvent.Type == TEXT("hand_target"))
+		{
+			// The same as a foot's, for an arm: the runner places a limb's end, whichever it is.
+			OutEvent.Type = TEXT("foot_target");
+		}
 		if (OutEvent.Type == TEXT("foot_target"))
 		{
 			FString Body;

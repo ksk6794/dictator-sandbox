@@ -31,6 +31,11 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `tone.standing.<group>` | level | The level a group stands at with nothing happening: 0 limp, 1 relaxed, 2 ready, 3 braced. A scenario's `tone` event asks the whole body for a level for a time |
 | `tone.brace_from_ns`, `brace_delay_s`, `brace_hold_s` | N*s, s, s | A hit of at least this braces the whole body that much after it (a reflex) for that long; 0 never |
 | `tone.daze_from_ns`, `daze_scale`, `daze_s` | N*s, factor, s | A hit on the head from this much up to the knockdown's dazes the body: legs and spine at down to `daze_scale` of their tone, graded with the hit, back over `daze_s`; 0 never |
+| `fall.aim` | 0 or 1 | 1: while the body falls the hands reach for the floor along the way it goes (N6); 0: today's fall, bit for bit |
+| `fall.reach_ahead_cm`, `fall.hand_height_cm` | cm | Where a hand is sent: this far from its shoulder along the fall's way, its wrist this high above the floor |
+| `fall.reach_blend_s`, `fall.way_follow_s` | s | How fast the reach comes in; how fast the fall's way follows the body |
+| `fall.reach_back` | 0 or 1 | 1: the hands reach in a fall backward too, behind the hips; 0: only forward and sideways |
+| `fall.arm_reach_stiffness`, `arm_reach_damping`, `arm_yield_stiffness`, `arm_yield_damping` | factors | The arms' tone while they reach, and once a hand has touched the floor (they give way); by the tone's own times |
 | `tone.rise_s`, `tone.fall_s` | s | Time constants of a tone going up (bracing) and coming down (letting go): no strength jumps |
 | `balance.ankle_as_torque` | 0 or 1 | 1: the ankle strategy's shift of the centre of pressure is a shift of where the floor's push is taken to be for the legs' weight torques (bounded by the soles), not a turn of the ankles' targets. Needs `muscles.weight_legs_by` 1 and the legs' `weight_share` |
 | `assist.internal_share` | 0..1 | How much of what the assist wants of the pelvis, the chest and the head of an upright body the legs and the trunk give instead of the world: its horizontal force and upright torque become a push of the floor at a shifted place, bounded by the soles and by friction; the trunk's joints carry the chest's and the head's torque. What is cut off is not given back to the world. Needs `muscles.weight_legs_by` 1 |

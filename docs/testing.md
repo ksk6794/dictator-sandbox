@@ -4465,6 +4465,93 @@ for limp, relaxed, ready and braced, each group's standing level (`tone.standing
 - Relaxed arms in the stance (the arms' and the neck's standing level 1): after 30 N*s the hands travel 12 cm against 20, **less, not more**: with the damping at 0.7 and the stiffness at 0.25 the arm is damped three times as hard for its spring. The relaxed damping wants to be about the stiffness's share (0.25 to 0.35). The film of a push of 80 N*s (`Saved\Films\n3_push80_today`, `n3_push80_relaxed`) shows no difference at that scale.
 - Step 4 (arms and neck relaxed while standing) needs the weight carried (N2) to keep a relaxed arm where its pose has it; not taken further.
 
+### The natural body, N6 step 4 in part: the head kept off the floor (the same night; for the owner to confirm)
+
+The fall's poses already turn the neck away from the floor; with the falling state's neck at 40 N*m/rad they are not held. By `-Tune`, no code: `states.falling.muscles.neck.stiffness_nm_per_rad` 120,
+`poses.fall_back.neck_01.swing1_deg` -60 (chin to the chest, -40), `poses.fall_forward.neck_01.swing1_deg` 50 (head back, 25), `poses.fall_side.neck_01.swing2_deg` -30 (the ear to the upper shoulder, 0).
+
+| | Today | Head kept off |
+| --- | --- | --- |
+| C15, the head strikes the floor (0.5 m/s or more), by hand / by blows | 75% of 12 / 50% of 8 | **33% / 38%** |
+| C16, the head's speed at the floor, 90th percentile, by hand / by blows | 4.32 / 2.82 m/s | 4.74 / 3.34 |
+| C17, rest, energy, into the floor | 2.21 s, 25.5 J, 1.23 cm | 2.91 s, 28.4 J, 1.75 cm |
+| Suite | 117 | 118 of 119 (`room_movable_fall_gets_up` ends in its second get-up) |
+| Knockdowns; stand | 8; 149, 132 | 8; 147, 132 |
+
+The head strikes the floor in fewer falls, and as hard as before in those where it does: straight forward the face meets the floor at 4.7 m/s, which the neck cannot prevent; that is the arms' work (N6 step 5, not built).
+C16's 90th percentile rises because fewer, harder falls are left in it. **By N6's "Must hold" it does not hold:** the stand is two worse (147 against 149; the plan asks for no worse) and
+`room_movable_fall_gets_up` fails, its second get-up given up. These runs were made before their limits were written down; they are judged by the plan's rule, which was there before. Nothing is changed;
+the four values are information for the owner (films not made).
+
+### The natural body, N6 step 1: the hand target (the same night; for the owner to confirm)
+
+`hand_target` (a scenario event; `SetFootTarget` takes a hand as it takes a foot, `control.foot_targets` reports both) places a hand by the legs' two-bone placement, with three things only an arm has
+(`FSandboxLimbTarget::bArm`, set by `SetLimbBend`, which only an arm's target calls; with no hand target every hash of `hold` is as before):
+
+- the elbow goes back and out (the pole), and the plane of the bend goes over from the pose's own to the pole's with the weight: taken at once, the stance's elbow turned 22 degrees about the arm in the target's first frame (a target step of 21 degrees);
+- the hand turns with its forearm: kept as it hung, the wrist of an arm held out was asked for 90 degrees, and pushing on its limit put the hand 30 cm from its point with stiff arms;
+- the shoulder and the elbow are held to their ranges after the placement.
+
+Limits written before the runs that count (`pose_hand_place`, plan): the hand within 3 cm of points in front, to the side and below; no joint 1 degree outside its range; no joint faster than 30 rad/s. The first runs
+(before the three repairs above) were made before the limits were written.
+
+| Arms (welded pelvis, idle off) | Front | Side | Below | Over the head (information) |
+| --- | --- | --- | --- | --- |
+| Stiff (3000 N*m/rad, the trunk too): the geometry | 0.5 cm | 0.5 | 0.4 | 0.8 |
+| 400 N*m/rad (`strong`) | 1.2 | 3.4 | 1.1 | 1.9 |
+| Braced (2.5 times today's) | 3.3 | 5.4 | 2.9 | 2.4 |
+| Today's own | **7.2** | **8.6** | **5.9** | 5.0 |
+| Today's own, the arms' weight carried (`muscles.arms.weight_share` 1, N2) | 3.1 | 6.6 | 2.9 | - |
+
+No joint was outside its range by more than 0.07 degrees, none faster than 14.4 rad/s. **The geometry meets the plan's 3 cm; the arms at their own strength do not:** the miss is downward (6.7 of 7.2 cm in front), the arm's weight
+on soft muscles. N2's weight torque takes it to about 3 cm in front and below, not to the side (its delivery through the drive's target is 65 to 100% by the pose, see N2). `pose_hand_place` and `pose_hand_place_below`
+therefore test the geometry, with stiff arms and trunk, and say so; a copy with the arms' own strength fails, as it should. Over the head the upper arm's target turns 17 degrees in one frame as the arm passes the line
+of the shoulder (a twist; not a criterion point; to be looked at before a target above the shoulder is used).
+
+### The natural body, N6 step 5: the arms reach for the floor (the same night; not met, off; for the owner to confirm)
+
+Built behind `fall.aim` (0 in the file: today's fall, every hash of `hold`): while the body falls and nothing holds it up, the fall's way is taken every tick (the pelvis's lean and the centre of mass's velocity, as
+`ChooseFallWay` takes it once, smoothed over `fall.way_follow_s`) and each hand is sent by the hand target (step 1) to the floor `fall.reach_ahead_cm` from its shoulder along that way, its wrist
+`fall.hand_height_cm` above the floor; until a hand or a forearm touches the floor the arms are at `fall.arm_reach_*` of their tone, after it at `fall.arm_yield_*`; the trunk on the floor ends the reach (the
+targets are let go over `poses.fall_blend_s`). Steps 2 to 4 of the plan (the way as a blend of the sample's reach clips) are not built: the hands are targets on top of today's fall poses.
+
+Limits written before the runs (F1 to F8). F5 as written (no joint faster than 30 rad/s in the knockdowns) is broken by today's body too (the neck at 36.1 rad/s after the blow at 90 degrees); it is judged as the plan
+words it, on the arms, which stay under 30 but in one fall (the hand at 30 in `d4`).
+
+| Variant (`fall.aim` 1 and) | C14 hand first, by hand / blows | C15 head strikes, by hand / blows | C16 head speed m/s | Most energy gained, blows / by hand | Stand |
+| --- | --- | --- | --- | --- | --- |
+| Today (`fall.aim` 0) | 86% / 80% | 75% / 50% | 4.32 / 2.82 | 25.5 / 30.3 J | 149, 132 |
+| The file's values (reach 2.5, yield 0.3) | 57% / 100% | 75% / 50% | 3.87 / 2.78 | 36.5 / **76.4** | - |
+| Reach 1 (no brace) | 29% / 100% | 92% / 50% | 5.40 / 2.60 | 27.6 / **42.3** | - |
+| Reach 5, yield 1 | 86% / 100% | 58% / 63% | 4.05 / 2.45 | 37.7 / - | - |
+| Reach 5, yield 1, with the head kept off (step 4's values) | 86% / 100% | **17%** / 50% | 4.25 / 1.87 | **41.0** / **83.1** | **148, 129** |
+
+With reach 5, yield 1 and the head kept off: push matrix 160; the suite fails seven, six of them on `max_energy_gain_j` (`effector_push_chest_falls`, `grab_drag_fallen_one` and `_two`, `grab_overload_tears`,
+`hit_chest_200_falls`, `prop_fall_on_box`) and `room_movable_fall_gets_up` (the head's values, as in step 4). More damping on the reaching arms (4 and 8) brought the energy by hand to 69 and 48 J and kept a blow's
+fall from rest for 3.0 and 4.3 s.
+
+**Not met: F2 (energy, rest) and F6 (the stand).** The energy is gained in the backward falls 0.01 s before a hand touches (`shove_270`: 83 J at 3.533 s, the hand at 3.544): braced arms swinging back to targets behind
+the hips. The head is kept off the floor in many more falls by hand when the arms reach and the neck is held, which is what the plan is for; what is in the way is the arms' work, which the owner's 40 J holds. Nothing is
+switched on. The films (`Saved\Films\n6_fwd_hand_today`, `n6_fwd_hand_aim`: the forward fall after a shove by hand) show what both falls share: the shove throws the body nearly level, like a plank, and it lands on its
+face; with the reach the hands are on the floor under the chest 0.1 s before the face, and the arms fold under the body.
+
+**A third variant, judged by the same limits: no reach in a fall backward** (`fall.reach_back` 0, added; 1 in the file), with reach 5, yield 1 and the head kept off. It is the closest and still misses three:
+
+| Limit | Result |
+| --- | --- |
+| F2 knockdowns, rest, energy, floor | 8 and 8; 2.68 s; 28.4 J by blows, 38.3 J by hand; 1.01 cm: **met** |
+| F3 C14 hand first | 86% by hand, 100% by blows: **met** |
+| F4 C15 lower than today; C16 no higher | by hand **17%** (75 today); by blows **50%, as today, not lower: missed**; C16 4.25 and 1.85 m/s: met |
+| F5 the arms under 30 rad/s | **the hand at 34.9 and 36.4 rad/s** as it meets the floor after the sideways blows (0 and 180 degrees): **missed** |
+| F6 the stand | **148, 131** against 149, 132: one fall worse in each: **missed** |
+| F7 the matrix | 160: met |
+| F8 the suite | one fails: `room_movable_fall_gets_up`, as with the head's values alone (its first get-up given up) |
+
+Films for the owner (`Saved\Films`): `n6_fwd_hand_reach_noback` (the shove forward, as above: still a dive, the arms fold, the face reaches the floor), `n6_side_blow_today` and `n6_side_blow_reach_noback` (200 N*s
+from the side, from the front: in both the body goes over straight, knees unbent, like a plank; with the reach the near hand meets the floor under the shoulder and the head is turned to the upper shoulder; the
+camera loses the body after 4.1 s). **Recommended for the owner's look, not switched on:** these values; what they still need is the wrist's speed at the floor (N8 A's wrist model) and the trunk and legs of step 6.
+
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

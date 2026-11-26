@@ -689,6 +689,26 @@ struct FSandboxToneTuning
 	double DazeS = 0.0;
 };
 
+/** The fall with an aim (N6, "fall.*"): the arms reach for the floor while the body goes down. */
+struct FSandboxFallAimTuning
+{
+	/** 1 reaches, 0 does not (today's fall, bit for bit). */
+	double Aim = 0.0;
+	/** How far along the fall's way from the shoulder the hand is sent, and how high above the floor its wrist. Centimetres. */
+	double ReachAheadCm = 0.0;
+	double HandHeightCm = 0.0;
+	/** How fast the reach comes in, and how fast the fall's way follows the body. Seconds. */
+	double ReachBlendS = 0.0;
+	double WayFollowS = 0.0;
+	/** The arms' tone while they reach (before a hand touches), and once a hand has touched (they give way): factors. */
+	double ReachStiffness = 0.0;
+	double ReachDamping = 0.0;
+	/** 1: the hands reach in a fall backward too (behind the hips); 0: only forward and sideways. */
+	double ReachBack = 0.0;
+	double YieldStiffness = 0.0;
+	double YieldDamping = 0.0;
+};
+
 /** How the weight torques are worked out ("muscles.weight_*"). */
 struct FSandboxWeightTuning
 {
@@ -838,6 +858,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxWeightTuning Weight;
 	FSandboxJointScale Joints[SandboxJointKindCount];
 	FSandboxToneTuning Tone;
+	FSandboxFallAimTuning FallAim;
 	/** The values of the joint whose child is this bone (its kind with the side taken off); null for a bone of no kind. */
 	const FSandboxJointScale* JointScale(FName ChildBone) const;
 

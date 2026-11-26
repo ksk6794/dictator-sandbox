@@ -57,6 +57,21 @@ struct FSandboxLimbTarget
 	double ReachShare = 0.0;
 	/** The share of its length the limb is held to comes in with the placement's weight (whole at once, a leg that is placed for the first time jumps). */
 	bool bReachWithWeight = false;
+	/**
+	 * Which way the middle joint goes, in the mesh's space (the character faces +y, its left is +x): a knee forward, an elbow
+	 * back and out. And the axis it bends about when the limb is too straight to tell, signed so that a positive turn bends it:
+	 * -x for a knee, +x for an elbow.
+	 */
+	FVector PoleDirection = FVector::YAxisVector;
+	FVector HingeFallback = -FVector::XAxisVector;
+	/**
+	 * An arm (a bend given by SetLimbBend): the plane of the bend comes from the pose's own toward the pole's with the weight,
+	 * so that nothing turns in the frame a target is given; and the end turns with the middle (the wrist keeps the pose's bend).
+	 */
+	bool bArm = false;
+	/** An arm's shoulder and elbow are held to these ranges after the placement (not used for a leg). */
+	FSandboxJointLimits RootLimits;
+	FSandboxJointLimits MiddleLimits;
 };
 
 /**
@@ -141,6 +156,12 @@ public:
 	 */
 	void SetLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, double Weight, double BlendS);
 
+	/** Which way a limb's middle joint goes and its hinge's fallback (FSandboxLimbTarget), for every target of that end from now on. */
+	void SetLimbBend(int32 EndMeshBoneIndex, const FVector& PoleDirection, const FVector& HingeFallback) { Bends.Add(EndMeshBoneIndex, TPair<FVector, FVector>(PoleDirection, HingeFallback)); }
+
+	/** The ranges an arm's two segments are held to (FSandboxLimbTarget::RootLimits, MiddleLimits). */
+	void SetLimbRanges(int32 EndMeshBoneIndex, const FSandboxJointLimits& Root, const FSandboxJointLimits& Middle) { Ranges.Add(EndMeshBoneIndex, TPair<FSandboxJointLimits, FSandboxJointLimits>(Root, Middle)); }
+
 	/**
 	 * Moves the point of a limb target that exists, and sets the frame it is solved in (nullptr: the component
 	 * itself), without touching the blend of its weight. Does nothing for a limb that has no target. For a
@@ -188,6 +209,8 @@ private:
 	};
 	TArray<FLimbState> LimbStates;
 	TMap<int32, FSandboxJointLimits> EndLimits;
+	TMap<int32, TPair<FVector, FVector>> Bends;
+	TMap<int32, TPair<FSandboxJointLimits, FSandboxJointLimits>> Ranges;
 	bool bReachWithWeight = false;
 
 	double BlendS = 0.0;

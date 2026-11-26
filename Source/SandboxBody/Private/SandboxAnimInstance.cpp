@@ -115,6 +115,17 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 			{
 				FSandboxLimbTarget& Added = Limbs.Add_GetRef(Limb.Target);
 				Added.bReachWithWeight = Instance->bReachWithWeight;
+				if (const TPair<FVector, FVector>* Bend = Instance->Bends.Find(Limb.Target.EndMeshBoneIndex))
+				{
+					Added.PoleDirection = Bend->Key;
+					Added.HingeFallback = Bend->Value;
+					Added.bArm = true;
+				}
+				if (const TPair<FSandboxJointLimits, FSandboxJointLimits>* Range = Instance->Ranges.Find(Limb.Target.EndMeshBoneIndex))
+				{
+					Added.RootLimits = Range->Key;
+					Added.MiddleLimits = Range->Value;
+				}
 				if (const FSandboxJointLimits* Limits = Instance->EndLimits.Find(Limb.Target.EndMeshBoneIndex))
 				{
 					Added.EndLimits = *Limits;
@@ -218,16 +229,30 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		const FVector Along = (EndTransform.GetLocation() - RootTransform.GetLocation()).GetSafeNormal();
 		const FVector ToEffector = Effector - RootTransform.GetLocation();
 		const FVector Line = ToEffector.IsNearlyZero() ? Along : ToEffector.GetSafeNormal();
-		FVector Bend = (FVector::YAxisVector - Line * Line.Y).GetSafeNormal();
+		const FVector& PoleWay = Limb.PoleDirection;
+		FVector Bend = (PoleWay - Line * (Line | PoleWay)).GetSafeNormal();
 		if (Bend.IsNearlyZero())
 		{
-			Bend = (FVector::YAxisVector - Along * Along.Y).GetSafeNormal();
+			Bend = (PoleWay - Along * (Along | PoleWay)).GetSafeNormal();
+		}
+		if (Limb.bArm)
+		{
+			// The elbow starts where the pose has it and goes over to the pole's side with the weight: taken at once, the
+			// stance's elbow (back) was turned 22 degrees out about the arm in the first frame of a target.
+			const FVector Elbow = MiddleTransform.GetLocation() - RootTransform.GetLocation();
+			const FVector OwnBend = (Elbow - Line * (Line | Elbow)).GetSafeNormal();
+			if (!OwnBend.IsNearlyZero())
+			{
+				const FVector Mixed = OwnBend * (1.0 - FMath::Clamp(Limb.Weight, 0.0, 1.0)) + Bend * FMath::Clamp(Limb.Weight, 0.0, 1.0);
+				Bend = Mixed.IsNearlyZero() ? Bend : Mixed.GetSafeNormal();
+			}
 		}
 		const FVector Pole = RootTransform.GetLocation() + ToEffector * 0.5 + Bend * 50.0;
 
 		const FTransform RootBefore = RootTransform;
 		const FTransform MiddleBefore = MiddleTransform;
 		const FVector EndBefore = EndTransform.GetLocation();
+		const FQuat EndRotationBefore = EndTransform.GetRotation();
 		AnimationCore::SolveTwoBoneIK(RootTransform, MiddleTransform, EndTransform, Pole, Effector, /*bAllowStretching*/ false, 1.0, 1.0);
 
 		// The solver turns each bone by the least rotation that points it at its new end, which leaves the
@@ -271,13 +296,46 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 				return FQuat(FMatrix(X, Y, FVector::CrossProduct(X, Y), FVector::ZeroVector));
 			};
 			// The knee bends toward +y: thigh down and forward, shin down and back, so the hinge is -x.
-			const FVector HingeBefore = HingeOf(KneeBefore - Hip, EndBefore - KneeBefore, -FVector::XAxisVector);
+			const FVector HingeBefore = HingeOf(KneeBefore - Hip, EndBefore - KneeBefore, Limb.HingeFallback);
 			const FQuat Least = FQuat::FindBetweenVectors(KneeBefore - Hip, KneeNow - Hip);
 			const FVector HingeNow = HingeOf(KneeNow - Hip, EndNow - KneeNow, Least.RotateVector(HingeBefore));
 			const FQuat RootTurn = Basis(KneeNow - Hip, HingeNow) * Basis(KneeBefore - Hip, HingeBefore).Inverse();
 			const FQuat MiddleTurn = Basis(EndNow - KneeNow, HingeNow) * Basis(EndBefore - KneeBefore, HingeBefore).Inverse();
 			RootTransform.SetRotation((RootTurn * RootBefore.GetRotation()).GetNormalized());
 			MiddleTransform.SetRotation((MiddleTurn * MiddleBefore.GetRotation()).GetNormalized());
+			if (Limb.bArm)
+			{
+				// A hand goes with its forearm: kept as it hung, the wrist of an arm held out was asked for 90 degrees.
+				EndTransform.SetRotation((MiddleTurn * EndRotationBefore).GetNormalized());
+			}
+		}
+		if (Limb.bArm && Limb.RootLimits.bValid && Limb.MiddleLimits.bValid)
+		{
+			// Every joint within its range: a point the arm cannot reach inside it is not reached. Asked for anyway, a hand
+			// over the head pushed the shoulder into its limit and bent the trunk back.
+			const FCompactPoseBoneIndex Above = Container.GetParentBoneIndex(Root);
+			if (Above != INDEX_NONE)
+			{
+				const auto Carry = [](const FQuat& Fix, const FVector& About, FTransform& Bone)
+				{
+					Bone.SetLocation(About + Fix.RotateVector(Bone.GetLocation() - About));
+					Bone.SetRotation((Fix * Bone.GetRotation()).GetNormalized());
+				};
+				// By the target's weight, as the placement itself: held at once, a pose outside a range would snap into it in the
+				// target's first frame and back as it is let go.
+				const double Hold = FMath::Clamp(Limb.Weight, 0.0, 1.0);
+				const FQuat RootClamped = FSandboxPoseRig::ClampToLimits(ComponentPose.GetComponentSpaceTransform(Above).GetRotation(), RootTransform.GetRotation(), Limb.RootLimits);
+				const FQuat RootHeld = FQuat::Slerp(RootTransform.GetRotation(), RootClamped, Hold).GetNormalized();
+				const FQuat RootFix = (RootHeld * RootTransform.GetRotation().Inverse()).GetNormalized();
+				Carry(RootFix, RootTransform.GetLocation(), MiddleTransform);
+				Carry(RootFix, RootTransform.GetLocation(), EndTransform);
+				RootTransform.SetRotation(RootHeld);
+				const FQuat MiddleClamped = FSandboxPoseRig::ClampToLimits(RootHeld, MiddleTransform.GetRotation(), Limb.MiddleLimits);
+				const FQuat MiddleHeld = FQuat::Slerp(MiddleTransform.GetRotation(), MiddleClamped, Hold).GetNormalized();
+				const FQuat MiddleFix = (MiddleHeld * MiddleTransform.GetRotation().Inverse()).GetNormalized();
+				Carry(MiddleFix, MiddleTransform.GetLocation(), EndTransform);
+				MiddleTransform.SetRotation(MiddleHeld);
+			}
 		}
 		if (Limb.bEndInFrame)
 		{

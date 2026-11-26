@@ -30,6 +30,18 @@
     "weight_follow_s": 0.05,
     "weight_legs_by": 1
   },
+  "fall": {
+    "aim": 0,
+    "reach_ahead_cm": 30,
+    "hand_height_cm": 8,
+    "reach_blend_s": 0.15,
+    "way_follow_s": 0.1,
+    "arm_reach_stiffness": 2.5,
+    "arm_reach_damping": 1.3,
+    "reach_back": 1,
+    "arm_yield_stiffness": 0.3,
+    "arm_yield_damping": 1.5
+  },
   "tone": {
     "limp": { "spine": { "stiffness": 1, "damping": 1 }, "neck": { "stiffness": 1, "damping": 1 }, "arms": { "stiffness": 1, "damping": 1 }, "legs": { "stiffness": 1, "damping": 1 }, "toes": { "stiffness": 1, "damping": 1 } },
     "relaxed": { "spine": { "stiffness": 1, "damping": 1 }, "neck": { "stiffness": 1, "damping": 1 }, "arms": { "stiffness": 1, "damping": 1 }, "legs": { "stiffness": 1, "damping": 1 }, "toes": { "stiffness": 1, "damping": 1 } },

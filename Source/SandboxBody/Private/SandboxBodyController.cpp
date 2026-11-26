@@ -1773,7 +1773,7 @@ void USandboxBodyController::ApplyImpulse(FName Bone, const FVector& ImpulseNs)
 	FeelImpulse(Bone, ImpulseNs, Body->GetCOMPosition());
 }
 
-bool USandboxBodyController::SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError)
+bool USandboxBodyController::SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError, double BlendS)
 {
 	USandboxAnimInstance* Animation = bStarted ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
 	if (!Animation)
@@ -1791,7 +1791,19 @@ bool USandboxBodyController::SetFootTarget(FName Foot, const FVector& WorldLocat
 		OutError = FString::Printf(TEXT("'%s' is not the end of two segments with bodies"), *Foot.ToString());
 		return false;
 	}
-	Animation->SetLimbTarget(End, WorldLocation, Weight, Tuning.Poses.BlendS);
+	// An arm bends its elbow back and out, a leg its knee forward. (A knee's numbers are the ones the placement always had.)
+	if (FSandboxBodyTuning::GroupOfBone(Foot) == ESandboxMuscleGroup::Arms)
+	{
+		const bool bLeft = Foot.ToString().EndsWith(TEXT("_l"));
+		Animation->SetLimbBend(End, FVector(bLeft ? 0.4 : -0.4, -1.0, -0.3).GetSafeNormal(), FVector::XAxisVector);
+		FSandboxJointLimits Shoulder;
+		FSandboxJointLimits Elbow;
+		if (FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Root), Shoulder) && FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Middle), Elbow))
+		{
+			Animation->SetLimbRanges(End, Shoulder, Elbow);
+		}
+	}
+	Animation->SetLimbTarget(End, WorldLocation, Weight, BlendS >= 0.0 ? BlendS : Tuning.Poses.BlendS);
 	PlacedFeet.Remove(End);
 	if (Weight > 0.0)
 	{
@@ -3008,6 +3020,14 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 		// The trunk or the head on the floor: what a fall ends with (UpdateState lets the muscles go after it).
 		const ESandboxMuscleGroup Group = FSandboxBodyTuning::GroupOfBone(Hit.MyBoneName);
 		bTrunkTouched = bTrunkTouched || Group == ESandboxMuscleGroup::Spine || Group == ESandboxMuscleGroup::Neck;
+		if (Group == ESandboxMuscleGroup::Arms && bFallAiming)
+		{
+			const FString Bone = Hit.MyBoneName.ToString();
+			if (Bone.StartsWith(TEXT("hand")) || Bone.StartsWith(TEXT("lowerarm")))
+			{
+				bHandTouchedFrame[Bone.EndsWith(TEXT("_r")) ? 1 : 0] = true;
+			}
+		}
 		const FBodyInstance* Body = Mesh->GetBodyInstance(Hit.MyBoneName);
 		if (Body && SupportImpulseNs.IsValidIndex(Body->InstanceBodyIndex))
 		{
@@ -3949,6 +3969,13 @@ void USandboxBodyController::UpdateTone(double DeltaTime)
 		const int32 Level = AskedTone >= 0 ? AskedTone : bBraced ? static_cast<int32>(ESandboxTone::Braced) : FMath::Clamp(FMath::RoundToInt32(Tone.Standing[Group]), 0, SandboxToneCount - 1);
 		double GoalStiffness = Tone.Stiffness[Level][Group];
 		double GoalDampingNow = Tone.Damping[Level][Group];
+		// Reaching for the floor in a fall, the arms are tense; once a hand has touched they give way (fall.arm_*).
+		if (bFallAiming && Group == static_cast<int32>(ESandboxMuscleGroup::Arms))
+		{
+			const bool bTouched = HandTouchedS[0] >= 0.0 || HandTouchedS[1] >= 0.0;
+			GoalStiffness = bTouched ? Tuning.FallAim.YieldStiffness : Tuning.FallAim.ReachStiffness;
+			GoalDampingNow = bTouched ? Tuning.FallAim.YieldDamping : Tuning.FallAim.ReachDamping;
+		}
 		// Dazed: the legs and the spine, deepest at the hit and back over tone.daze_s.
 		if (DazedAtS >= 0.0 && Tone.DazeS > 0.0 && (Group == static_cast<int32>(ESandboxMuscleGroup::Legs) || Group == static_cast<int32>(ESandboxMuscleGroup::Spine)))
 		{
@@ -3984,6 +4011,112 @@ void USandboxBodyController::UpdateTone(double DeltaTime)
 		PushTuningToControls();
 	}
 	bToneMoving = bChanged;
+}
+
+void USandboxBodyController::UpdateFallAim(double DeltaTime)
+{
+	const FSandboxFallAimTuning& Aim = Tuning.FallAim;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		if (bHandTouchedFrame[Side] && bFallAiming && HandTouchedS[Side] < 0.0)
+		{
+			HandTouchedS[Side] = ElapsedS;
+			if (FallHandTouchS < 0.0)
+			{
+				FallHandTouchS = ElapsedS;
+			}
+		}
+		bHandTouchedFrame[Side] = false;
+	}
+	const bool bWant = Aim.Aim > 0.5 && State == ESandboxBodyState::Falling && !bHeldUp && TrunkTouchedS < 0.0 && Balance.bValid &&
+		(Aim.ReachBack > 0.5 || FallWay != EFallWay::Back);
+	if (!bWant)
+	{
+		if (bFallAiming)
+		{
+			StopFallAim();
+		}
+		return;
+	}
+	// The way the body goes down, as ChooseFallWay takes it, but every tick and smoothed: a fall turns as it goes.
+	const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+	const FBodyInstance* PelvisBody = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+	if (!PelvisBody || !PelvisBody->IsValidBodyInstance())
+	{
+		return;
+	}
+	const FQuat Turned = PelvisBody->GetUnrealWorldTransform().GetRotation() * Pelvis->Target.GetRotation().Inverse();
+	const FVector Up = Turned.RotateVector(FVector::UpVector);
+	constexpr double LeanPerMps = 0.5;
+	FVector2D Way = FVector2D(Up.X, Up.Y) / LeanPerMps + FVector2D(Balance.Velocity.X, Balance.Velocity.Y) * 0.01;
+	if (!Way.Normalize())
+	{
+		return;
+	}
+	const bool bStarting = !bFallAiming;
+	if (bStarting)
+	{
+		FallWayNow = Way;
+		FallFloorZ = LastSupportHeightCm;
+		HandTouchedS[0] = HandTouchedS[1] = -1.0;
+		FallHandTouchS = -1.0;
+		++FallReaches;
+		bFallAiming = true;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: reaching for the floor at %.3f s (way %.2f, %.2f)"), ElapsedS, Way.X, Way.Y);
+	}
+	else
+	{
+		const double Share = Aim.WayFollowS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Aim.WayFollowS) : 1.0;
+		FallWayNow += (Way - FallWayNow) * Share;
+		FallWayNow.Normalize();
+	}
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	static const FName Shoulders[2] = { FName(TEXT("upperarm_l")), FName(TEXT("upperarm_r")) };
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const FBodyInstance* Shoulder = Mesh->GetBodyInstance(Shoulders[Side]);
+		const int32 End = Skeleton.FindBoneIndex(Hands[Side]);
+		if (!Animation || !Shoulder || End == INDEX_NONE || HandTouchedS[Side] >= 0.0)
+		{
+			// A hand on the floor stays where its target was.
+			continue;
+		}
+		const FVector From = Shoulder->GetUnrealWorldTransform().GetLocation();
+		const FVector Point(From.X + FallWayNow.X * Aim.ReachAheadCm, From.Y + FallWayNow.Y * Aim.ReachAheadCm, FallFloorZ + Aim.HandHeightCm);
+		if (bStarting || !PlacedFeet.Contains(End))
+		{
+			FString Error;
+			SetFootTarget(Hands[Side], Point, 1.0, Error, Aim.ReachBlendS);
+		}
+		else
+		{
+			Animation->MoveLimbTarget(End, Point, nullptr, nullptr, 0.0, 0.0);
+			PlacedFeet.Add(End, Point);
+		}
+	}
+}
+
+void USandboxBodyController::StopFallAim()
+{
+	bFallAiming = false;
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const int32 End = Skeleton.FindBoneIndex(Hands[Side]);
+		if (const FVector* Placed = End != INDEX_NONE ? PlacedFeet.Find(End) : nullptr)
+		{
+			if (Animation)
+			{
+				Animation->SetLimbTarget(End, *Placed, 0.0, Tuning.Poses.FallBlendS);
+			}
+			PlacedFeet.Remove(End);
+		}
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: the reach for the floor ends at %.3f s (a hand touched at %.3f s)"), ElapsedS, FallHandTouchS);
 }
 
 void USandboxBodyController::GiveWeightTorque(const FMuscle& Muscle)
@@ -4233,6 +4366,10 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateRegroup(DeltaTime);
 	UpdateStep(DeltaTime);
 	UpdateStrengthEases();
+	if (Tuning.FallAim.Aim > 0.5 || bFallAiming)
+	{
+		UpdateFallAim(DeltaTime);
+	}
 	UpdateTone(DeltaTime);
 	if (Tuning.Balance.StaggerBrakeFollowS > 0.0)
 	{
