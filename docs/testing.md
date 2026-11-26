@@ -2730,7 +2730,7 @@ once a stretch of rising force, a hand held at the chest was six hits in six sec
 now more and now less. Once a contact, the hand is three: it lands, and the body steps away from it twice and
 meets it again.
 
-**A report on recordings** (`Toolsecording-report.ps1 -Name "takes*"`): every recording that matches is replayed
+**A report on recordings** (`Tools\recording-report.ps1 -Name "takes*"`): every recording that matches is replayed
 and read. On the owner's first recording it finds 13 hits in 72 s: the hand arriving at 0.3 to 4.1 m/s, 432 to 648 N
 in the hardest frame of a strike (the spring's cap is 300 N: a moving hand gives up its momentum too), the neck
 struck eight times, the chest four, the upper arm twice. It was this list that showed one strike told as two

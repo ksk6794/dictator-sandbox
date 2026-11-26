@@ -231,7 +231,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
 | `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
-| `docs/` | `PRD.md` (plan), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, and the reconnaissance before N8 and N2; no other part is started), `testing.md` (repeatability policy and measurements). |
+| `docs/` | `PRD.md` (plan), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, and the reconnaissance before N8 and N2; in the night of 25 to 26 November N8 A and B were built (the head and the wrist as a second and third physics asset, the fingers behind a weight of 0), and N2, N3, N6, N4 and N5 begun behind switches that are off, each stopped at a limit it did not meet: all for the owner to confirm, `docs/testing.md` has the night's sections), `testing.md` (repeatability policy and measurements). |
 
 ## Rules
 
