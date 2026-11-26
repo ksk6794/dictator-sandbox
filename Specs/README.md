@@ -15,7 +15,7 @@ generated asset matches its spec.
   "total_mass_kg": 80.0,
   "bodies": [
     {"bone": "pelvis", "mass_fraction": 0.1117, "shapes_from": ["pelvis"]},
-    {"bone": "spine_04", "mass_fraction": 0.1596, "shapes_from": ["spine_04", "clavicle_l", "clavicle_r"]},
+    {"bone": "spine_04", "mass_fraction": 0.1436, "shapes_from": ["spine_04"]},
     {"bone": "foot_l", "mass_fraction": 0.0137, "shapes": [
       {"type": "box", "center_cm": [14.9, 7.0, 3.25], "size_cm": [9.5, 26.0, 6.5], "yaw_deg": -8.5}]}
   ],
@@ -31,13 +31,18 @@ generated asset matches its spec.
 }
 ```
 
+An excerpt of `npc_body.json`, its values as they are (some lines wrapped): three of its 19 bodies, three of the
+eleven entries of its joints (18 joints with the mirrored ones) and two of the nine pairs it keeps from colliding.
+
 | Field | Meaning |
 | --- | --- |
+| `name` | The spec's name, by custom its file's without `.json`; the generator's log and the tests name the asset by it (the test of which way the NPC's joints open runs on `npc_body` only) |
 | `output` | Package path of the generated asset |
+| `skeletal_mesh` | The mesh the asset is made for: its bones and reference pose, in which shapes and joint frames are placed. A bone the spec names that the mesh lacks is an error |
 | `template` | Existing physics asset that supplies collision shapes, and the projection settings of the joints |
 | `total_mass_kg` | Body mass; each body gets `mass_fraction` of it. Fractions must sum to 1 |
 | `bodies[].bone` | Bone the body is attached to. Bones without a body follow their parent rigidly |
-| `bodies[].shapes_from` | Template bodies whose shapes this body takes over. Listing several merges them |
+| `bodies[].shapes_from` | Template bodies whose shapes this body takes over. Listing several merges them (`npc_body_neck.json` makes one body of the neck and the head: `["neck_01", "head"]`) |
 | `bodies[].inertia_scale` | Optional factor (1 to 20) on the inertia the engine works out from the body's mass and shapes. See "Inertia of the hands" |
 | `bodies[].ccd` | Optional, `true` or `false` (the default): continuous collision detection for this body. Off for every body of `npc_body.json`, by measurement: see "Limits and continuous collision detection" |
 | `bodies[].shapes` | Shapes written out in the spec, in the mesh's reference-pose space, where the floor is z = 0. `"type": "box"`: `center_cm`, `size_cm` along the box's own axes and `yaw_deg` (rotation about the vertical). `"type": "sphere"`: `center_cm`, `radius_cm`. `"type": "capsule"`: `radius_cm` and the two ends of its line, `from_cm` and `to_cm` (a head's cheekbones). Fields a type does not take are not read. A body needs `shapes_from`, `shapes` or both. The generator's log prints every body's shapes in this space, the template's among them: the way to see what a template has |
@@ -49,6 +54,20 @@ generated asset matches its spec.
 | `joints[].swing1`, `swing2`, `twist` | `[min, max]` in degrees, `"locked"` or `"free"`. A range need not be symmetric |
 | `joints[].limit` | What the joint does at the end of its range: `"hard"`, or `{"stiffness": n, "damping": n}` for a soft limit (the engine's figures of a soft limit, the same for the two swings and the twist). Written for every joint; a mirrored joint has its twin's |
 | `collision.disable` | `[boneA, boneB]` pairs that do not collide with each other. Jointed bodies never collide; every other pair of bodies does, unless it is listed here. See "Self-collision" |
+
+### The physics specs
+
+| Spec | Asset | What it is |
+| --- | --- | --- |
+| `npc_body.json` | `PA_SandboxNPC` | The default body since the owner's decision of 26 November 2026: 19 bodies and 18 joints, the head a body of its own on the neck (`neck_01` and `head`, below). The run-time asset allows 144 pairs of its bodies to collide |
+| `npc_body_neck.json` | `PA_SandboxNPCNeck` | The body before it: 18 bodies, head and neck one body on one joint (127 pairs) |
+| `npc_body_wrist.json` | `PA_SandboxNPCWrist` | The one-piece neck with a wrist limited in the hand's own axes (`"limits_in": "child"`, swing1 -85 to 60). No-go and unused; to be removed at R2's step 0 (owner's decision of 26 November) |
+| `npc_body_toes.json` | `PA_SandboxNPCToes` | 20 bodies: the one-piece neck's 18 and a toe body on each foot (`ball_l`, `ball_r`; their muscles are the `toes` group). Put off; yes or no is decided before R4 |
+
+Every tool runs on another of these assets without a file changed: `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck` puts
+that asset in the place of `PA_SandboxNPC` in a copy of each scenario of the queue (`Tools\common.ps1`), and for an
+asset whose head is part of the neck (`PA_SandboxNPCNeck`, `PA_SandboxNPCWrist`, `PA_SandboxNPCToes`)
+`SANDBOX_HEAD_BODY=neck_01` makes what a scenario does to `head` act on that bone.
 
 ### Joints
 
@@ -137,9 +156,13 @@ or the engine leaves room:
   sternoclavicular joint: 40 degrees of elevation and 10 of depression (swing1), 20 of protraction and 25
   of retraction (swing2), plus or minus 30 of rotation about its length. The shoulder girdle adds its range
   to the arm's, as a person's does, and the arm can rise in front and to the side. Its muscle is in the
-  `arms` group.
+  `spine` group, not `arms` (`FSandboxBodyTuning::GroupOfBone`): with the arms' soft muscles each collarbone sagged
+  10 degrees under its arm.
 - **Spine.** The table's totals are split evenly over the two spine joints.
-- **Neck.** One joint carries the whole range; head and neck are one body.
+- **Neck.** Two joints since 26 November 2026, the head a body of its own: `neck_01` (swing1 -40 to 50) and `head`
+  (-20 to 25), together the range the one joint had (-60 to 75; the swing2 of 35 and 10 make the old 45, the twists of
+  35 and 45 the old 80). The one-piece neck, one joint for the whole range and head and neck one body, is
+  `npc_body_neck.json`.
 - **Forearm rotation** is on the wrist's twist (plus or minus 70), because the forearm is one body.
 - **Ankle.** Sideways tilt (plus or minus 15) and turning (plus or minus 10) are not in the table.
 - **Knee and elbow** are hinges with nothing else free.
@@ -196,7 +219,9 @@ body then took 3.3 to 6.7 s to come to rest instead of 2.6. The solver's other j
 
 A box room centred on the origin with the floor's top face at z = 0: floor, ceiling and four walls built
 from the engine cube, point lights, one reflection capture and a player start. `mobility` is `static`
-(fully baked) or `stationary` (baked bounce light, dynamic shadows on movable objects).
+(fully baked) or `stationary` (baked bounce light, dynamic shadows on movable objects). `test_room.json` is the
+example above with a second light, a stationary one: the test room of M1, whose lighting is baked, where
+`room_stand_npc` and a session without `-Name` stand.
 
 The generator saves the map unlit. `Tools\bake-lighting.ps1` then builds lightmaps and reflection captures
 with CPU Lightmass. A map is regenerated only when its spec file is newer than the map, because regenerating
@@ -223,3 +248,13 @@ pieces' places are read from the spec in the project's folder, so a change needs
 `movable_room.json` is `getup_room.json` with a table of 30 kg and a chair of 5 kg (`Tools\getup-stand.ps1 -FurnitureRoom movable_room`).
 
 Limitations: box shape only, engine grid material, no windows or doors; furniture without `mass_kg` is static boxes.
+
+## pose_prior.json: the clips of the pose database
+
+Not an asset. The list of recorded clips `Tools\pose-prior.ps1 -Build` makes the database of recorded poses from
+(`FSandboxPosePrior`, `metrics.pose_prior` in `Scenarios/README.md`): standing, stepping, crouching, sitting, being
+pushed and felled, lying and getting up, a part of Epic's sample chosen by the owner on 25 November 2026. Each set
+names a folder (`in_project`: below `Content/Characters`; `from_sample`: below the sample's `Animations`, copied by
+`Tools\fetch-sample-anims.ps1 -PosePrior`), a regular expression on a clip's file name, and the number of clips it
+must give: another number is an error, since figures from two databases are not to be compared. `exclude` leaves out
+montages, additives and the like. The database is not committed.

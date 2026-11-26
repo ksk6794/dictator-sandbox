@@ -1,175 +1,19 @@
 # DictatorSandbox
 
 Unreal Engine 5.8 C++ prototype: one photoreal room, one active-ragdoll NPC the player can hit, push, grab
-and drag, on desktop and PCVR. Requirements, architecture and milestones are in `docs/PRD.md`.
-Current milestone: **M1 done** (MetaHuman by script, physics asset and room from JSON specs, baked lighting,
-launch in the headset, 7.1 ms of GPU time per stereo frame). **M2, active ragdoll core: all five steps
-are built and its six criteria are met; the owner's hand check of the desktop session is deferred and does
-not hold up M3** (the deferred list is at the end of the M2 section of `docs/PRD.md`).
-The NPC stands under full simulation for 10 minutes (muscles and balance assist through Physics Control);
-every tuning value lives in `Config/Tuning`, is hot-reloaded and can be overridden from the console and
-the command line; the body has the states Standing, Flinch, Stagger, Falling, Lying and GetUp, joint limits from anatomy
-that mirror left to right, and passes the push matrix; the player has physical hands (effectors: bodies
-with mass on force-capped springs) that the body feels through its own contact events, a desktop pawn with
-test tools, and scenarios can script the hands; debug overlays show the controller's work in a session and
-on scenario screenshots; slaps at 6 m/s and punches at 8 m/s on head, chest, thigh and forearm pass without
-tunnelling. **M3, balance and recovery, is done: closed on 24 November 2026 with its five criteria met, the fifth by a
-review of the clips that the owner handed to the agent; the owner's own look in a session is deferred with M2's
-and does not hold up M4** (the seven parts, the gate's table, the review and the known limits are in
-the M3 section of `docs/PRD.md`). **M4, full interaction and VR, is in progress: part 1 of 6, the hands in the
-headset, is done (four steps)** (its order of parts and what M3 hands over to it are in the M4 section). Step 1:
-a session's hands can be recorded (`Tools\play.ps1 -Record`, the K key) and a scenario replays the recording frame
-for frame (`"recording"`; `replay_demo_hands`); `Tools\record-replay.ps1` holds a replay against its session
-(the same states of the body within a frame, the pelvis within 1 cm, the hands' impulses within 5%) and two
-replays against each other by their hashes. Step 2: the hands' source for a headset
-(`FSandboxTrackedTargetSource`: the controllers' grip poses with the velocities the runtime tracks, through the
-pawn's origin into the world, the body at `effectors.hand.offset_*` from the grip pose, the grip from the squeeze
-axis), which asks one interface where a controller is (`ISandboxControllerTracker`; `FSandboxXRControllers` is
-the only file that knows of a headset); `Tools\play.ps1 -VR` runs the session in the headset. It is unit-tested
-on made-up poses, and a first look in the headset (72 s, `Saved\Recordings\vr_check`) showed poses, velocities and
-the squeeze arriving, 89.9 frames a second, and a replay that ends as the session did to the last digit; it also
-showed that the runtime's velocity trails its own poses by about 38 ms and that a controller out of sight is not
-reported as lost and jumps back by a metre (`docs/testing.md`, "M4 part 1, step 2"). After that look, on the owner's decisions: a controller the headset does
-not see leaves its hand where it was and a target never jumps (it catches up at `tools.headset.catch_up_speed_mps`),
-and nothing is drawn as text in the headset. Step 3, the hand against its target, is done (`Tools\swing-lag.ps1`):
-behind a swing of 2 to 8 m/s the hand is 1.9 to 10.5 cm with the target's true velocity, 2.1 to 13.1 cm with the
-difference of two poses, and 4.6 to 26.6 cm with the velocity as the runtime gives it; on the owner's recording
-4.7 cm against 8.2 cm, so the velocity is taken from the poses (`tools.headset.runtime_velocity_share` 0). A new
-take (the N key; in the headset both fists raised above the eyes with the grips held for a second) ends the recording that runs, puts the NPC back,
-makes the hands anew and starts a recording of its own, which replays within the check's limits
-(`Tools\record-replay.ps1 -Takes`). Toward part 2, with no physics changed: the hand has a frame of its own
-(`effectors.hand.grip_*_deg`), is a fist or open by its grip and shows an open hand as a plate, the controllers
-vibrate with the hand's contact force, and the body tells of every hit and change of state. The open hand can
-also be the body that collides (`effectors.hand.palm_collides`, on since the owner's second look in the headset on
-25 November: an open hand is the plate; a scripted hand's keys say `"grip"`, and without it the hand is a fist). **Part 3's
-first step, the grab, is built and on by the owner's decision of 25 November, after three sessions with it**
-(`effectors.hand.grab` 1; `palm_close_on_chest` switches it off for itself; every session has it, and on the desktop the G key holds
-the hands open): a grip that closes with a simulated body within 3 cm of the hand takes hold of it
-by a joint at the hand's own point (`FSandboxGrabJoint`), the force is the hand's spring's, and it lets go when
-the grip opens, slips (the hand 45 cm behind its target), is torn open (450 N for 0.1 s) or what it held is
-gone; an arm is lifted, a standing body pulled by an arm comes along in steps, a fallen body is dragged 2 m by
-two hands and not by one (`Tools\grab-pulls.ps1`: 93 pulls within the stretch and force criteria). One hand
-slows a get-up and two hold it, measured on the stand with holding hands (`Tools\getup-stand.ps1 -HoldHands`, three
-seeds: from one hand 47 bodies of 146 pull free and stand within the 15 s, from two none; 37 while the open hand was a ball). The body
-feels a grab as a push that is kept up (`reactions.hold_felt`, see below); a hand that goes on through the body fells it as the hands are tuned (300 N for half a
-second is a knockdown; `effector_push_chest_falls`, `effector_shove_knockdown_gets_up`), while a punch that
-comes back delivered 12 to 28 N*s. **Since the owner's looks of 25 November a fist that comes fast has a blow**
-(`effectors.hand.strike_*`: for 0.15 s a cap of up to 900 N and a spring of up to 9000 N/m, graded by the speed it
-arrived at, from 2 to 4.5 m/s, and carried at least 40 cm beyond where it landed (the owner's decision of 25 November: 25 before), the way it came, though the
-player's hand stops at the surface or goes back; an open hand has none, and pushing, holding and dragging keep the
-300 N): a fist that comes at 3, 4 and 5.5 m/s is 51, 101 and 120 N*s into the chest, 60, 127 and 154 into the belly and 20, 41 and 47 into the head; one of 5.5 m/s (and the desktop's of 8) fells it,
-and the body steps; an open hand at 4 m/s is 7 to 9. In the owner's first session with a blow (`vr_check2`) his
-punches were 8 to 34 N*s: his hand was open most of the time and stopped at the surface. The
-desktop hand goes at 8 m/s to what the camera aims at and 15 cm through it. **A body hit from the front into the
-belly or the solar plexus with 40 N*s or more doubles over for two seconds** (`reactions.double_over_*`,
-`poses.double_over`; by its own clock in every state, told as `double_over`): a punch with weight behind it and a
-kick do it, a jab, a push and a hit into the chest do not; the push matrix, the knockdowns and the stand are as they
-were. **A hit on the head that brings 35 N*s or more knocks an upright body down** (`reactions.knockdown_head_ns`: a kick
-does, a punch at 27 at most does not; six cells of the push matrix's 80 N*s row, the blows on the head, now end in a fall).
-The kick has its effector (`foot_left`, `foot_right`: a foot of 10 kg on a spring
-capped at 3500 N since that day, `effectors.foot.*`; scenarios `strike_kick_*`: into the head a knockdown, into the belly a fall, doubled over, into the thigh and the calf steps; the desktop's kick comes up to the height of its point and is thrust level through it, `tools.kick.chamber_cm`; on the desktop the F key kicks at
-what the camera aims at, `tools.kick.*`, and a desktop session's rig and recordings have the foot as a third
-effector; at rest the foot is held with 40 N and a kick reaches 130 cm at most). **Part 4's first step:** a scenario
-can put boxes with mass into its world (`"props"`; `prop_*`: one pushed, one lifted and carried by a grab, one dropped
-on the head, one thrown, one fallen onto, a crate of 40 kg that one hand cannot lift and two can, a stick taken by its end and swung at the arm), and a thing that is held keeps its
-direction in the hand (`effectors.hand.grab_hold_*`) and is taken by its handle if it names one (`"handle_cm"`). To the body every such thing is still a hand (standing on a movable plate it reads no foot on the ground), unless
-`reactions.thing_support` is on, and it is since the owner's decision of 25 November: a thing that has a weight of its own (a hand has none) and does not come up
-faster than 1 m/s where it touches is support, as the floor is, however hard it pushes; the body that falls on it goes limp, as on the floor. A stick's blow is 2.5 N*s, no hit. On the grab: the run and the session tell it what is held (`FScenarioStage::TellBodyOfHolds`) and it
-tells its listeners; since the owner's decision of 25 November a hold is felt as a push that is kept up (`reactions.hold_felt`: the body leans into it, steps for it, is pressed by it while getting up), so a pulled thigh or calf is followed by a step in 9 of 24 pulls (2 before). Part 1's step 4,
-the owner's two sessions in the headset (25 November, 462 s), is done: the hands and the grab are right, the punches are weak,
-a slap does not turn the head (a criterion of N8 A) and the get-up ends like a plank over the toes. **The get-up was
-worked on inside M4 that day (three attempts, the toes of N8 D and the ankle's range tried; each below the limit set before its
-runs, all taken out) and is put off with its cause written down:** the clip brings its feet under the body while they are loaded on ours, and a loaded
-foot does not go (`docs/testing.md`, 25 November). The wrist's model moved to N8 A, and part 3 is closed. Part 4: a thing in the hand strikes as a fist does (`effectors.hand.strike_held`, on with `strike_hold_scale` 5 since the owner's decision of 25 November; 21, 25 and 30 N*s at 3, 5 and 7 m/s into the trunk; `prop_stick_blow_torso`; to be tuned after the owner's look in a session); a room's furniture can have mass (`mass_kg` in a room spec's piece, `movable_room.json`; `room_movable_*`; `Tools\getup-stand.ps1 -FurnitureRoom movable_room`: 50, 49 and 50 of 50; 49, 50 and 49 with the head as its own body); support from things is on (`docs/testing.md`, "M4 part 4: support from things"); the balance goes with what carries the body (`CarrySupport`: a plate of 0.3 m/s is ridden without a step; `prop_ride_plate`, `prop_stand_on_stick`; event `prop_move`). The body senses its own balance (standing feet, support polygon, capture
-point); every run measures energy, rest after a fall and penetration of the body
-into the world and into itself; the suite runs eight scenarios at a time, and there are tools for baselines
-and parameter sweeps. Three defects of earlier milestones were found and fixed in that part: the generated
-physics asset had no self-collision, the standing character slept one substep in six, and a run on a busy
-machine could differ from the one before it (the solver's determinism mode is now on). Part 2, the source
-of the target pose (a native animation instance, poses from text), is done: its step 0 gave the
-body collarbones (18 bodies; the shoulder is two links) and the hands three times their inertia, so that a
-punch on the forearm does not snap the wrist. Steps 1 to 3 gave the body a native animation instance as the
-source of its target pose, poses written as joint angles in `Config/Tuning/poses.json`, and the flinch's
-pose offset (the struck part gives way, shoulders up, head in); step 4 two-bone leg placement
-(`USandboxBodyController::SetFootTarget`, scenario event `foot_target`). The idle from `MM_Idle` moved to
-part 7 then, and was done in the audit after part 4. Part 3, standing balance: the capture point decides whether the body stands, needs a step (held by
-the assist until part 4, reported as `step_needed_frames`) or falls; ankle and hip strategies are turns of the
-leg targets; the assist's anchors follow the feet; a held push is leant into and makes the body flinch only as
-it lands; quiet-standing assist share 0.0052 (bound 0.0093); the push matrix names each outcome (stood, held,
-stepped, fell) and judges it by the owner's table (the 80 N*s row from part 4). Part 4, Stagger and the recovery step: a body whose
-capture point leaves what the ankles and hips bring back staggers and steps (to where the capture point will be
-when the foot lands, across the other foot if it must, again if one step is not enough), and can be asked for a
-step (`RequestStep`, scenario event `step`). An audit of how the body moves (November 2026, on the owner's
-request) followed it: the stance has the arms down, arms and neck are soft, the body always tries to step and
-falls only when its posture gives way, a falling body takes a protective pose and a lying one lets go
-(`poses.fall_*`), after recovery steps the body brings its feet back together (`balance.regroup_*`), a standing
-body carries the motion of the engine's `MM_Idle` on top of its stance (breathing, the shoulders, a slow sway;
-`poses.idle.*`, the idle planned for part 7), and its arms join the fight for balance (`poses.balance_*`,
-`balance.arm_*`). **Part 5, the fall, is done but for one look that waits for the owner:** knockdowns from 8
-directions pass (`Tools\knockdowns.ps1`), the muscles have torque caps from published strength figures, they
-let go after the body meets the floor, joint limits are written in the spec, and continuous collision detection
-stays off by measurement; whether the poses of Epic's Game Animation Sample are better than these is looked at
-once the owner has downloaded it (done: its get-up clips are taken, its logic is not). **Part 6, the get-up, is
-done (three steps).** A recorded clip is a source of the target pose (`FSandboxClipPose`: the four
-get-ups of Epic's Game Animation Sample, made for another skeleton, carried over to the body's 17 joints;
-`USandboxBodyController::SetClipPose`, scenario event `clip_pose`, `Tools\clip-film.ps1`). **Step 2 is done:** the
-state GetUp. A body that has lain still for `getup.rest_s` takes the clip whose pelvis lies most like its own and
-gets up by it under full simulation: the muscles are asked for the clip's pose, the clip's time waits for the body,
-the assist pulls the pelvis and the feet toward where the clip has them with capped forces, and the clip is laid
-over the feet the body really stands on. It gets up from all four sides in 3.3 to 4.1 s; a 30 N*s push does not
-stop it, a 200 N*s blow fells it and it tries again, two hands at their 300 N each only slow it, and a force it
-cannot lift (1500 N on the pelvis) is waited out for 3 s, given up and tried again (scenarios `getup_*`). A scenario's body gets up only with `"get_up": true`. **Step 3, the stand:** `Tools\getup-stand.ps1`
-knocks the body down 50 times from a seed, 24 of them near a wall, a table and a chair (static boxes of a room
-spec, `Specs/rooms/getup_room.json`: the table in the middle of the room, the chair drawn up to it, since the
-owner's request of 24 November), and counts the falls that end standing: 49, 50 and 50 of 50 over three seeds
-(the criterion is 90%), 39, 37 and 43 of them at the first attempt (50, 49 and 48 with the two pieces apart near
-the corners). **Part 7, the gate, is done (four steps and the review).** The get-up's assist is
-0.28 of body weight on average, from 0.51, with the stand unchanged (49, 50 and 49 of 50): the clip follows the
-body over the floor while the feet carry nothing (`getup.pelvis_follow_s`), the arms are stronger while getting
-up, and the assist's caps are 90 N on the pelvis and 30 N on a foot. A body getting up that is pressed with
-450 N or more does not push on (`getup.hold_force_n`): 600 N keeps every body of 150 down, under 300 N one of
-three gets up while it is pressed (one of four, 39 of 150, with the head as its own body on 26 November, against 50 on the body before it the same day; `Tools\getup-stand.ps1 -PressN`; two of three before the body's friction on the
-floor went from 0.7 to 0.5, so "one hand slows" is set again in M4 with the grab). The stance's elbows hang at 17 degrees of bend, not 37
-(`poses.stance.lowerarm_*`). The wrist's model waits for M4's grab by the hand (owner's decision). **Step 2,
-friction and restitution, is done:** the body's surface is tuning (`surface.*`: on the floor a friction of 0.5 for
-skin and cloth and 0.7 for the soles, where both were the engine's 0.7; restitution 0.1, taken as the smaller of
-the two surfaces'), measured by dragging the lying body (`Tools\surface-friction.ps1`: 0.69 before, 0.51 to 0.54
-now). A body with 0.9 against the floor gets up at the first attempt 101 times of 150 instead of 124 to 130;
-otherwise standing, pushes, falls and get-ups hardly notice friction from 0.4 to 1.0 or restitution from 0 to
-0.3. A lying body needs about 400 N to be dragged: one hand does not move it, two do. **Step 3, the sweeps, is
-done and changed no value:** 64 solver iterations is the only count that passes everything (16 and 8 break the
-bound on the standing assist's share, 32 to 48 lose two cells of the push matrix; 32 would save 0.15 ms a frame),
-the legs' strength is held from both sides (at 400 the body does not step, at 1200 a blow of 200 N*s on the chest
-does not fell it), the other muscles and the dampings are on a plateau, and the body stands with no assist at all
-but then takes up to seven steps after 30 N*s on the head. **Before step 4 (owner's decisions of 24 November), both done:** the push matrix counts a
-step from 10 cm (`-StepMinCm`; a foot that hops less is a shuffle, counted and not judged: the cells lost at 32
-iterations and with a weaker assist were such hops of 5 to 6 cm), and the stance on crossed legs that Stagger did
-not leave is closed: a staggering body that has come to rest with its centre of mass off the support that touches
-steps once more (`balance.rest_step_s`; scenario `stagger_rest_off_support`), where it had neither stepped (the
-capture point within 4 cm of its whole soles) nor stood (the centre of mass not over the edges it stood on), kept
-up by the stagger's upright hold on the pelvis. **Step 4, the clips and the criteria table, is done, and so is the review**
-(`Saved\Films\m3_*`, listed in `Saved\Films\m3_gate.txt`; the table is in the M3 section of `docs/PRD.md`). The
-review left the runs after 200 N*s and the step across as they are, and changed one thing: a get-up attempt is
-given up once its clip has waited 5 s in all with nothing pressing on the body (`getup.wait_s`; a body had held
-one pose for 13 s under a table's edge; scenario `getup_wait_bounded`). The stand is 49, 50 and 49 of 50 with 38,
-44 and 44 at the first attempt, and no attempt lasts longer than 7.7 s.
-**The second architecture of the active ragdoll (proposed on 26 November 2026, on the owner's request: `docs/active-ragdoll.md`,
-parts R1 to R9; it keeps the natural-body track's criteria and replaces its order and its rule that no force comes from the world).**
-The audit's causes: one spring carries weight and tracks the pose; the root has no actuator and nothing plans contacts; too little
-recorded motion; instant, discrete decisions; limbs that chase points of the world; gates cut around the stiff body; one class for
-everything. Neither Euphoria in Rockstar's games nor Epic's sample for 5.8 gets a body up by simulation. The design: always
-simulated, a whole-body reference with an explicit, capped, measured authority (`FSandboxCarry`), motion matched from a library by
-the body's physical state, the fall as the references drive it, a soft upright body, behaviours as classes. **R1, the led get-up,
-is on since the owner's decision of 26 November (`getup.carry` 1; the owner on the videos: the led get-ups look natural, the ones
-before do not; baseline `led`, 15 scenarios with a get-up have other hashes than `n2`, and the suite is 126 of 127 until the hold
-by one hand is repaired, the first thing of R2; the owner's decisions of the same day: authority is a rule with budgets, 0 for an
-upright, falling or lying body; the order is R2, R3, the rest of M4 and its gate, R4 judged by new tables measured on the soft
-body, M4b; the goal in the owner's words: it looks and moves as a living person and can be interacted with at every moment):**
-the world pulls every body toward where the clip has it (never
-down), the clip runs at its rate; 3.2 s instead of 5.0, no pauses, the stand 149 and 139 at the first attempt (150 and 130 today),
-the world giving 1.16 of the body's weight instead of 0.28; a hit of 60 N*s lets the body go, a press takes the pull away in
-proportion, two hands hold, **one hand no longer slows it (`grab_getup_held` fails with the switch on: open)**.
-DLSS is deliberately deferred to M5.
+and drag, on desktop and PCVR. **The goal** (the owner, 26 November 2026): the ragdoll looks and moves naturally,
+as a living person, and can be interacted with at every moment; both halves bind every part.
+
+**Where things are:** requirements, milestones and the current status in `docs/PRD.md` ("Status", at the top);
+the order of work in `docs/active-ragdoll.md`, section 8 (the second architecture: authority, parts R1 to R9, and
+where each part of the natural-body track went); criteria C1 to C26 with their human figures in
+`docs/natural-body.md` (C27 in `docs/active-ragdoll.md`); measurements in `docs/testing.md`. What each milestone
+built, with its figures, is in its section of `docs/PRD.md`.
+
+**In short (26 November 2026):** M1 to M3 done (the owner's hand checks deferred); M4 in progress, its rest after
+R3. 19 bodies, muscles through Physics Control, capture-point balance with steps, the led get-up on
+(`getup.carry` 1). Baseline `led`: the suite is 126 of 127, `grab_getup_held` failing on purpose until R2. Next:
+R2, first a clean-up of dead switches, then the hold by one hand. DLSS is deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 
@@ -195,7 +39,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate; a step is a foot carried 10 cm or more, `-StepMinCm`, and shorter hops are reported as shuffles); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
 | The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; `-PropsFile Tools\stand_furniture_props.json -Only floor -Floor 50` puts movable furniture around every fall on the bare floor; `-HoldHands 1` or `2` has that many hands take hold of the chest of every fallen body for 15 s, with the grab on, and counts the grips that came off and the bodies that pulled free and stood in that time; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
-| The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-Seeds "1,2,3"`, `-PressN`, `-Only`; three engine processes a stand, nine in all; results in `Saved\Matrix\getup_seeds\<name>`) |
+| The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-Seeds "1,2,3"`, `-PressN`, `-HoldHands`, `-Only`, `-StopStandingS`; three engine processes a stand, nine in all, `-Parallel`; results in `Saved\Matrix\getup_seeds\<name>`) |
 | Friction between the lying body and the floor, by experiment | `powershell -ExecutionPolicy Bypass -File Tools\surface-friction.ps1` (knocks the body down and drags it by the pelvis with `-ForceN 800` for `-PushS 1.0`; the friction from its acceleration; `-Tune` to try values) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,head"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall; `-ByHand` fells it with two fists that go through the chest at 4 m/s instead) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
@@ -218,9 +62,9 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see below) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 43 s (117 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 55 s), the compliance table 25 s, the pose database 35 s, a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 48 s (127 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 56 s), the compliance table 25 s, the pose database 35 s, a record and replay 25 s (three takes 40 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 66 s (three seeds side by
-side 110 s), regenerating the physics asset 10 s, a film
+side, nine processes, 92 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s (its grab demo 12 s), the whole
 bootstrap about 5 minutes (14 steps). Engine start-up is 14 s of a run against 1 s of physics, which is why runs share
 processes; `SANDBOX_SEPARATE_PROCESSES=1` goes back to one process per run.
@@ -237,7 +81,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 | Path | Holds |
 | --- | --- |
 | `Source/SandboxCore` | Shared services: log category `LogSandbox`, JSON helpers, `FSandboxParamStore` (tuning files, overrides, hot reload, the `Sandbox.Tune*` console commands). Depends on no other Sandbox module. |
-| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Falling, Lying; it tells whoever listens of every hit and change of state, `OnBodyEvent`, which a run lists under `control.events`, and of a grab and its release, which it does not feel and is told of by the run or the session, `TellHolds`; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies, its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `ApplySurface` gives the bodies their friction and restitution (`surface.*`); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`), `FSandboxMotionStats` (arithmetic on recorded motion: spread, period, a drive's torque), `FSandboxPosePrior` (a database of recorded poses and the likeness of a pose to them), `FSandboxCarry` (the authority of a reference over the body: one capped spring from the world on every body toward where a clip has it, per kg of the body, never downward, made when first needed; the led get-up, `getup.carry`). |
+| `Source/SandboxBody` | The simulated body: `ASandboxRagdollActor`, `USandboxBodyController` (muscles, balance assist and the states Standing, Flinch, Stagger, Falling, Lying and GetUp; it tells whoever listens of every hit and change of state, `OnBodyEvent`, which a run lists under `control.events`, and of a grab and its release, which it does not feel and is told of by the run or the session, `TellHolds`; the sense of balance, `GetBalance` and `MeasureBalance`: standing feet, support polygon, capture point; the decision on it, `IsStepNeeded`; `FollowSupport` moves the assist's anchors with the feet; `UpdateStrategies` turns the leg targets (ankle, hip, lean into a held push); `StartGetUp` and `UpdateGetUp` get a lying body up by a recorded clip (the state GetUp: the clip chosen by how the pelvis lies; led since 26 November 2026, `getup.carry` 1: the clip runs at its pace and waits only for a press that holds the body down, and `FSandboxCarry` pulls every body toward it; with the carry off, or when a carry cannot be made, the clip-following path: its time waiting for the body, the pelvis's and the feet's assist aimed where the clip has them, the clip's root following the loaded feet); `ApplySurface` gives the bodies their friction and restitution (`surface.*`); `FeelFrame` splits what is felt into hit and pressure; `GetControlView` hands its targets to overlays), `FSandboxBodyTuning` (the body's tuning values by name, read from the store, poses among them), `FSandboxBodyProbe` (measurements: the support polygon, the capture point, energy, penetration into the world and into itself), `USandboxAnimInstance` (the target pose the muscles hold: a base pose blended from one to the next, turns added on top such as the flinch's; a native instance with its own proxy, no Animation Blueprint), `FSandboxPoseRig` (joint angles of a pose to bone rotations, on the axes of the physics asset's joints), `FSandboxIdleMotion` (the motion of a recorded idle clip, as each bone's turn from the clip's first frame, added to the pose of a standing body), `FSandboxClipPose` (a recorded clip made for another skeleton as target poses for the body's joints: each body turned, in the space of the whole body, by what the clip's bone is turned from its own reference pose, arms and legs pointed where the clip's point, every joint kept within its range; laid over the base pose by the animation instance's layer, `USandboxBodyController::SetClipPose`), `FSandboxMotionStats` (arithmetic on recorded motion: spread, period, a drive's torque), `FSandboxPosePrior` (a database of recorded poses and the likeness of a pose to them), `FSandboxCarry` (the authority of a reference over the body: one capped spring from the world on every body toward where a clip has it, per kg of the body, never downward, made when first needed; the led get-up, `getup.carry`), `FSandboxLimbTarget` (two-bone placement of a leg or an arm in the animation instance: `SetFootTarget`, `SetHandTarget`), `FSandboxWeightTorques` (N2's torques that carry the weight beyond each joint; built, its shares at 0), `FSandboxFingerRig` (N8 B's finger poses; its weight at 0), the body's perception (`TellSeen` with `FSandboxSeen`, `UpdatePerception`, `FSandboxPerceptionView`: what it sees, a threat, the gaze, anticipation and the guard, N5; on in a session with `-Perception`). |
 | `Source/SandboxInteraction` | The player side. `USandboxEffectorComponent` (a hand, or a kicking foot, which is the same with other tuning and no grip: a sphere with mass, a fist or open by its target's grip; the open hand is shown as a plate and, with `effectors.hand.palm_collides`, is a second body, `USandboxPalmComponent`, that takes the ball's place while the hand is open; ask the hand through `GetHandTransform`, `GetHandVelocity`, `GetProbe`, not the component) held by `FSandboxWorldSpring` (spring with a force cap to a moving world point); `ASandboxEffectorRig` (the hands plus an `ISandboxTargetSource`: desktop, scripted, recorded, tracked; it can keep the targets of every stepped frame, `SetRecording`); `FSandboxTargetRecording` (what the hands were asked for, frame after frame, as a text file) and `FSandboxRecordedTargetSource` (plays one back frame for frame); `FSandboxTrackedTargetSource` (the hands of a player in a headset, as arithmetic on what an `ISandboxControllerTracker` says of each controller) and `FSandboxXRControllers` (that interface answered by the engine's XR system: the only file that knows of a headset); `FSandboxGrabJoint` (a grab: a joint that keeps a hand's own point and another simulated body together, free to turn; the hand takes hold with it when its grip closes within reach of a body, `effectors.hand.grab`, and passes simulated bodies while it holds); `FSandboxDragHandle`; `ASandboxPawn` (free camera, tools, time control, the kick and the open hands of the desktop, input made in C++; in a headset the origin of the play space, with the camera under it as the head), `ASandboxPlayerController`, `ASandboxHUD`, `ASandboxGameMode`; `FSandboxInteractionTuning`. |
 | `Source/SandboxScenario` | `UScenarioBatchSubsystem` (the job queue: one engine process runs many scenarios, each in a fresh world, with its own `run.log`, after a warm-up run; `-ScenarioQueue=<dir>`), `UScenarioRunnerSubsystem` (also measures the hands from outside: penetration, tunnelling, what a strike moved, and every frame each hand's gap to its target, written to `hands.csv`; and for the body, every frame: balance, energy, rest after a fall, penetration, written to `series.csv`), `FScenarioSpec`, `FScenarioStage` (builds a scenario's scene, its things with mass among it: `"props"`, boxes that simulate, `SpawnProps`), `USandboxPlaySubsystem` (the interactive session, `-Play=`; the only place where pawn and character meet in code), `USandboxOverlaySubsystem` (debug overlays, `Sandbox.Overlay`; here because it needs both the character and the hands), `FNaturalMeasures` (how natural the motion is, frame by frame, read only; the runner calls it), automation tests. |
 | `Source/SandboxEditor` | Editor-only `GenerateAssets` commandlet; `FPhysicsAssetGenerator` builds physics assets from specs, joints from their anatomy (`ComputeJointFrames`). |
@@ -246,8 +90,8 @@ touch must not be in that list, and the ones that are get explained in the part'
 | `Recordings/` | Recordings of a session's hands that scenarios replay (`"recording"` in a scenario file); new ones are written under `Saved\Recordings` and copied here to be kept. |
 | `Tools/` | The CLI scripts above. `common.ps1` holds shared helpers (`Invoke-ScenarioBatch` hands scenario runs to a queue that several engine processes empty, for the suite, the push matrix, sweeps and single runs; a run's own log is `run.log`, the process's `process.log`). |
 | `Config/` | Engine and game settings. Physics timing lives in `DefaultEngine.ini`. |
-| `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `effectors.json` (the hands), `tools.json` (the desktop tools); names, units and ways to change them in its `README.md`. |
-| `docs/` | `PRD.md` (plan), `active-ragdoll.md` (the second architecture of the active ragdoll, proposed on 26 November 2026: the audit, seven causes, what Euphoria and Epic's sample do, the design with its authority, FR-33 to FR-41, parts R1 to R9 and R1's first results), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios and steps; **N1, the measures and the scorecard, is done**, and the reconnaissance before N8 and N2; in the night of 25 to 26 November N8 A and B were built (the head and the wrist as a second and third physics asset, the fingers behind a weight of 0; **the head is the default body since the owner's decision of 26 November**: `PA_SandboxNPC` from `npc_body.json` has a head of its own on the neck, and the body before it is kept as `PA_SandboxNPCNeck`; **four of N2's jump repairs are on since the same day**), and N2, N3, N6, N4 and N5 begun behind switches that are off, each stopped at a limit it did not meet: all for the owner to confirm, `docs/testing.md` has the night's sections), `testing.md` (repeatability policy and measurements). |
+| `Config/Tuning/` | Every tunable number, as JSON: `body.json` (the character), `poses.json` (its poses, as joint angles), `effectors.json` (the hands and the foot), `tools.json` (the desktop tools and the headset); names, units and ways to change them in its `README.md`. |
+| `docs/` | `PRD.md` (plan), `active-ragdoll.md` (the second architecture of the active ragdoll, proposed on 26 November 2026: the audit, seven causes, what Euphoria and Epic's sample do, the design with its authority, FR-33 to FR-41, parts R1 to R9 and R1's first results; **section 8 is the one order of work of the project**, with where each part of the natural-body track went), `natural-body.md` (the natural-body track, proposed on 25 November 2026: what "natural" means in 26 criteria with human reference figures, and parts N1 to N9 with their design, scenarios, steps and how each ended; N1 is done, N8 A's head is the default body, four of N2's jump repairs are on, the rest is behind switches that are off; its order of work is replaced by the R parts), `testing.md` (repeatability policy, how the journal is kept, and measurements). |
 
 ## Rules
 
@@ -274,8 +118,14 @@ touch must not be in that list, and the ones that are get explained in the part'
   contact events) must leave a run's hashes as they were. A new metric is checked that way before it is used.
 - **The body can be interacted with at every moment** (owner's requirement, FR-18). In every state, getting up
   included, it is a simulated body whose muscles are asked for a pose: never kinematic, never played back, never
-  deaf to a contact. A recorded clip is a target for the muscles, not a motion of the body, and every state has
-  to say what a hit, a push and a grab do to it.
+  deaf to a contact. A recorded clip is a target for the muscles and, within a budget, for the authority's springs
+  (below); the body is never moved, only pushed, and every state has to say what a hit, a push and a grab do to it.
+- **Authority is a rule with budgets** (owner's decision of 26 November 2026; `docs/active-ragdoll.md`, section 5).
+  Besides its muscles the body may be pulled toward its reference by capped springs from the world on every body
+  (`FSandboxCarry`), never downward, measured in every run. The budget is 0 for a body that stands, flinches,
+  staggers, falls or lies; the get-up takes what it needs now and comes down part by part (R7). The balance assist
+  on an upright body is the one recorded exception until R4 replaces it with torques of the legs. Any contact from
+  outside takes authority away: a hit at once, a press or a hold in proportion.
 - **A body under control never sleeps** (`USandboxBodyController::Start` sets its bodies to never sleep). It
   has to sense its balance and answer a touch at once; see the pitfall about the solver's sleep below.
 - **Time control never changes the physics step.** Pause, single step and slow motion decide on which
@@ -346,7 +196,7 @@ touch must not be in that list, and the ones that are get explained in the part'
   one of its 120 pairs off from M1 to M3: no self-collision, a forearm 17 cm inside the chest after a fall.
   The generator's log listed "colliding bodies" from its own plan, not from the asset. Read such a fact
   back from the asset: `penetration.self_collision_pairs` in `metrics.json` is what the run-time asset
-  allows (127 for the NPC), and a metric that reads exactly 0 in every run is a metric to distrust.
+  allows (127 for the NPC of 18 bodies, 144 since the head is a body of its own), and a metric that reads exactly 0 in every run is a metric to distrust.
 - **A strike scenario can pass because it lands on a lucky spot.** `strike_punch_forearm` passed M2 at
   10 rad/s; 2 cm higher the same punch snapped the wrist at 37 rad/s, and adding the collarbones moved the
   arm enough to land in that band. Sweeping the point of impact (and the stiffness: 11, 49, 41, 35, 30,

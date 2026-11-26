@@ -5,7 +5,8 @@
 #   ... -Tune "name=value,..."  tuning overrides for every run
 #   ... -Label friction05       names the output: Saved\Matrix\getup_seeds\<Label>\seed_<n> (and seed_<n>.txt, what
 #                               the stand printed)
-#   ... -Parallel 5             engine processes of each stand; the stands run at the same time
+#   ... -Parallel 3             engine processes of each stand; the stands run at the same time (three seeds at 3
+#                               are nine processes: an engine process takes 1.75 GB, and fifteen ran out of 32 GB)
 #   ... -PressN 300, -HoldHands 1, -Only "table,chair", -StopStandingS 0     passed on to every stand
 #
 # Prints, for each seed: the falls that end standing, those at the first attempt, attempts a fall, and the
@@ -15,7 +16,7 @@ param(
     [string]$Seeds = '1,2,3',
     [string]$Tune,
     [string]$Label = 'seeds',
-    [int]$Parallel = 5,
+    [int]$Parallel = 3,
     [double]$PressN = 0,
     [int]$HoldHands = 0,
     [string]$Only,

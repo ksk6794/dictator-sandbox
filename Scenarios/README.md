@@ -88,7 +88,12 @@ Event types. Unknown types are a parse error.
   `max_foot_target_error_cm`. Active control only.
 - A scenario's `body` may say `"perception": true` (false when left out): the run then tells the body every frame
   where the hands, the feet and the things with mass are and how fast they go, and the body judges what it sees
-  (N5, `perception.*`); `control.perception` has its count and every threat. It changes nothing the body does yet.
+  (N5, `perception.*`); `control.perception` has its count and every threat. By itself that changes nothing the body
+  does. What it does about what it sees is behind `perception.gaze`, `anticipate` and `guard` (the head turns toward
+  it; a threat braces the body and draws the head in; the near arm comes up into its way), all 0 in the files: a
+  scenario switches one on with a `console` event (`gaze_follows_hand` does the gaze), and a session has all three
+  with `Tools\play.ps1 -Perception`. Every `tone.*` level is 1, so the brace of the anticipation changes no
+  stiffness.
 - `tone` asks the body for a tone (`level`: `limp`, `relaxed`, `ready` or `braced`) for `duration_s`; the
   muscles go over to it at `tone.rise_s` or `tone.fall_s` and back to their standing levels after it. With
   every level at 1 (the file's values) it changes nothing. Active control only.
@@ -99,8 +104,8 @@ Event types. Unknown types are a parse error.
   nothing else: the running session has to notice the edit by itself, as it would after a save in an
   editor. A scenario with such an event runs on its own copy of the tuning files in `<Out>\tuning`, so
   `Config/Tuning` is never written to. Active control only.
-- `effector` moves one of the player's hands (`"effector": "hand_left"` or `"hand_right"`) along a `path`.
-  See below.
+- `effector` moves one of the player's hands (`"effector": "hand_left"` or `"hand_right"`), or a kicking foot
+  (`"foot_left"` or `"foot_right"`), along a `path`. See below.
 
 ## Hands
 
@@ -119,18 +124,19 @@ own contact events, by the same rules as for an `impulse` event, and may flinch.
 - A path is the **target's** way, not the hand's. Key times count from the event's `t`, the first is 0 and
   they increase. Between two keys the target moves in a straight line at constant speed, and that speed is
   handed to the spring, so a free hand follows without lagging. After the last key the target stays there.
-- The hand itself is a 1.5 kg sphere pulled by a spring that can apply 300 N at most. It arrives where the
-  target is only if nothing is in the way, and a target that jumps is followed as fast as that force allows.
+- The hand itself is a 1.5 kg sphere pulled by a spring that can apply 300 N at most; a fist that meets
+  something at speed has a blow for 0.15 s, its cap up to 900 N and its spring up to 9000 N/m, graded by its
+  speed (`effectors.hand.strike_*`). It arrives where the target is only if nothing is in the way, and a target that jumps is followed as fast as that force allows.
 - A hand named by any event exists from the start of the run, resting on the first key of its first path.
   A later path of the same hand takes over when it begins.
 - `rotation_deg` is `[pitch, yaw, roll]`; a key without one keeps the rotation of the key before it.
 - `grip` is 1 for a fist and 0 for an open hand; a key without one keeps the grip of the key before it, and a
   hand whose keys say nothing is a fist, the ball it has always been. An open hand is a flat plate in the hand's
   own frame (x along the fingers, z toward the thumb, the palm facing along y), shown always and, with
-  `effectors.hand.palm_collides` set to 1, the body that collides. Unturned, a hand's palm faces along the
+  `effectors.hand.palm_collides` at 1 (the file's value since 25 November 2026), the body that collides. Unturned, a hand's palm faces along the
   scenario's y, toward or away from an unrotated character; `"rotation_deg": [0, 90, 0]` turns it to face along
-  x, and `[90, 0, 0]` points the fingers up. A scenario switches the plate on with a console event at 0 s
-  (`Sandbox.Tune effectors.hand.palm_collides=1`), as `palm_slap_head` does.
+  x, and `[90, 0, 0]` points the fingers up. The plate collides by default; the console event at 0 s that some
+  scenarios still have (`Sandbox.Tune effectors.hand.palm_collides=1`, as `palm_slap_head` does) is redundant.
 - In the scenario's own space the character faces +y and its left is +x, when it is spawned unrotated.
 
 `effectors` in `metrics.json` has, for each hand: `contact_impulse_ns` (the sum of all contact impulses),
@@ -142,8 +148,8 @@ its cap), `snaps`, `shape_changes` (times the hand changed between the ball and 
 expectation `effector_shape_changes` holds the sum over the hands), `grips_on_body` and `last_gripped` (times the grip closed
 while the open hand lay on something, and on what: such a hand stays open until it has room to be a fist; the
 expectation `effector_grips_on_body` holds the sum), `open_hand_at_end` and `mass_kg` of the body that is the
-hand at the end. Of a grab (`effectors.hand.grab`, which a scenario switches on with a `console` event at
-`t` 0: `Sandbox.Tune effectors.hand.grab=1`): `grabs` and `last_grabbed` (times a closing grip took hold of a
+hand at the end. Of a grab (`effectors.hand.grab`, 1 in the file since 25 November 2026, so every run has it; the
+`console` event at `t` 0 that some scenarios still have, `Sandbox.Tune effectors.hand.grab=1`, is redundant): `grabs` and `last_grabbed` (times a closing grip took hold of a
 body, and of which), `grab_frames` (frames it held something), `grab_slips` (times the grip slipped because the
 hand was left behind its target), `grab_overloads` (times it was torn open by its load), `grabs_lost` (what it
 held ceased to exist), `max_grab_stretch_cm` (the furthest the two held points came apart), `max_grab_force_n`
@@ -205,9 +211,14 @@ A hand that follows a moving target perfectly still shows one frame of the targe
 the place for the start of a step and is there at its end.
 
 **What the body told of.** `control.events` in `metrics.json` lists, in order, every hit and every change of
-state the body told its listeners of (`USandboxBodyController::OnBodyEvent`): `t`, `type` (`hit` or `state`),
-the `state` the body is in, and for a hit the `bone` and `impulse_ns`, for a change the `previous_state` and the
-`reason`.
+state the body told its listeners of (`USandboxBodyController::OnBodyEvent`): `t`, `type`, the `state` the body
+is in, and by type:
+
+- `hit`: a hit, with the `bone` and `impulse_ns`;
+- `state`: a change of state, with the `previous_state` and the `reason`;
+- `double_over`: the body doubled over (`reactions.double_over_*`), with the `bone` that was struck and `impulse_ns`;
+- `grab` and `release`: a hand took hold of a body of the character or let go, with the `bone` and the `holder`
+  (the hand's name), as the run tells the body (below).
 
 A scenario may put things with mass into its world: `"props": [ { "name": "box", "size_cm": [40, 40, 45],
 "mass_kg": 5, "location_cm": [150, 60, 22.5], "rotation_deg": [0, 0, 0] } ]`. A prop may add `"handle_cm": [40, 0, 0]`,
@@ -286,12 +297,22 @@ See `docs/testing.md`.
 
 ## Strikes
 
-The `strike_*` scenarios are a hand's target sent in a straight line through a place on the standing
-character and back: a slap at 6 m/s and a punch at 8 m/s on the head, the chest and a thigh, and a punch on
-a forearm, the thinnest body there is. The speed is in the keys (distance over time); the hand arrives a
-little faster than its target, because it has to catch up with it (6.25 and 8.87 m/s). Each one expects no
-tunnelling, penetration under 1 cm, no joint faster than 30 rad/s, the arrival speed, a flinch that ends
-standing, and that the struck body moved: 5 cm for the head, 3 cm for the chest, 1 cm for a thigh.
+The `strike_*` scenarios are a hand's or a foot's target sent in a straight line through a place on the
+standing character and back: a slap at 6 m/s on the head, the chest and a thigh (`strike_slap_head`, `_torso`,
+`_leg`); a punch at 8 m/s on the head, the chest, a thigh, a shoulder and a forearm, the thinnest body there is
+(`strike_punch_head`, `_torso`, `_leg`, `_shoulder`, `_forearm`, and `_forearm_heights` at four more heights); a
+punch at 6 m/s that stays 0.1 s in the belly (`strike_punch_belly_steps`); and a kick at about 8 m/s into the
+belly, the head, a thigh and a calf (`strike_kick_torso`, `strike_kick_torso_through_falls`,
+`strike_kick_head_knockdown`, `strike_kick_thigh`, `strike_kick_calf`). The speed is in the keys (distance over
+time); the hand arrives a little faster than its target, because it has to catch up with it (6.25 and 8.87 m/s).
+Each one expects no tunnelling, penetration under 1 cm and no joint faster than 30 rad/s (32 for
+`strike_punch_shoulder`, 40 for `strike_punch_torso`); most also expect the arrival speed and that the struck body
+moved: 5 cm for the head, 3 cm for the chest, 1 cm for a thigh or a forearm, 10 and 15 cm for a kicked thigh and
+calf. The slaps, the punches on a thigh, a shoulder and a forearm, and the kicks on a thigh and a calf end
+standing (the slaps and the shoulder after one flinch). The others end lying: `strike_punch_head` and
+`strike_kick_head_knockdown` are knocked down by the head (`reactions.knockdown_head_ns`), and
+`strike_punch_torso`, `strike_punch_belly_steps` and the two kicks into the belly double over and fall
+(`reactions.double_over_*`).
 
 To see one, take pictures at the moment of the hit, with the overlays:
 `Tools\scenario.ps1 -Name strike_punch_torso -Shot -ShotAt "3.07,3.09,3.25" -Overlay all`.
@@ -328,7 +349,7 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `min_fall_time_s` | The body did not fall before this time (not falling at all also passes; combine with `fell`) |
 | `tuning_changes` | The running body took new tuning values exactly this many times. 0 in a scenario that changes nothing shows that watching the tuning files left the run alone |
 | `max_joint_limit_violation_deg` | No joint is found further outside its limits, from the sixth frame on. Measured as the solver limits a joint (`FSandboxPoseRig::LimitExcessDeg`); until M3 part 5 it compared angles the solver does not use and overstated joints that swing and twist at once |
-| `end_state` | The body's state at the end: `"standing"`, `"flinch"`, `"falling"` or `"lying"`. Active control only |
+| `end_state` | The body's state at the end: `"standing"`, `"flinch"`, `"stagger"`, `"falling"`, `"lying"` or `"get_up"`. Active control only |
 | `state_sequence` | Every state the body went through, in order, joined by `>`: `"standing>flinch>standing"`. Active control only |
 | `max_joint_speed_rads` | No joint's two bodies rotate faster relative to each other, over the whole run |
 | `max_physics_step_mean_ms` | The solver's mean wall-clock time per frame (all substeps) stays below it |
@@ -339,6 +360,10 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_effector_penetration_cm` | No hand's sphere was found deeper inside a body of the character or the static world, after any frame |
 | `min_effector_impact_speed_mps` | Every hand that touched something was moving at least this fast when it first did: a strike arrived as a strike. Fails if no hand touched anything |
 | `min_struck_displacement_cm` | The body of the character each hand touched first moved at least this far from where it was just before. Fails if no hand touched the character |
+| `min_felt_impulse_ns` | The body felt at least this much from the simulated bodies that touched it, hands and things alike (`control.contact_impulse_ns`): a thing reached the body at all. Active control only |
+| `min_prop_travel_cm` | The prop that went least far got at least this far from where it was put, at some moment (`props[].travel_cm`). Fails in a run without props |
+| `max_prop_travel_cm` | The prop that went furthest got at most this far. Fails in a run without props |
+| `max_prop_speed_mps` | No prop was ever faster than this (`props[].max_speed_mps`): nothing was launched. Fails in a run without props |
 | `min_com_margin_cm`, `min_capture_margin_cm` | The centre of mass, or the capture point, never got closer to the edge of the support polygon while the body was upright (after `settle_s`), and some foot stood in every such frame. Negative values allow it to be outside by that much. Active control only |
 | `max_energy_gain_j` | The body's energy (kinetic plus gravitational) never rose by more above its lowest value since the last input. See "Balance, energy and penetration" |
 | `max_rest_after_fall_s` | The body went into `falling` and was at rest, for good, within this time of it. Fails if it never fell. Active control only |
@@ -350,9 +375,23 @@ Expectations. A name that is not in this table is a parse error, so a misspelt o
 | `max_assist_force_share_mean` | The balance assist's commanded force over body weight, averaged over the settled frames, stayed at most this (`control.assist_load.force_share_mean`). The standing scenarios hold it to 0.0093, the owner's M3 bound. Active control only |
 | `max_steps` | At most this many steps while upright (`control.step_count`). Active control only |
 | `min_steps` | At least this many: the body was made to step. Active control only |
+| `max_recovery_steps` | The controller made at most this many steps for its balance or asked for (`control.recovery_steps`, without the regrouping ones). Active control only |
+| `max_landing_error_cm` | Every step the controller made (`control.recovery_steps`) landed, at most this far over the floor from its target, and there was at least one. Active control only |
+| `max_stance_error_cm` | At the end the feet stand at most this far from their stance (`control.stance_error_cm`). Active control only |
 | `effector_strikes` | The hands landed exactly this many blows in all (`effectors.list.<hand>.strikes`): touches at a speed that gives the hand its blow's strength (`effectors.hand.strike_*`) |
+| `effector_shape_changes` | The hands changed between the ball and the open hand's plate exactly this many times in all (`effectors.list.<hand>.shape_changes`) |
+| `effector_grips_on_body` | The hands' grips closed while the open hand lay on something exactly this many times in all (`effectors.list.<hand>.grips_on_body`) |
+| `effector_grabs` | The hands took hold of a body exactly this many times in all (`effectors.list.<hand>.grabs`) |
+| `effector_grab_slips` | The hands' grips slipped, the hand left behind its target, exactly this many times in all (`effectors.list.<hand>.grab_slips`) |
+| `effector_grab_overloads` | The hands' grips were torn open by their load exactly this many times in all (`effectors.list.<hand>.grab_overloads`) |
+| `effector_handle_grabs` | The hands took a thing by its handle exactly this many times in all (`effectors.list.<hand>.handle_grabs`) |
+| `min_grab_frames` | The hands held something for at least this many frames in all (`effectors.list.<hand>.grab_frames`, summed) |
+| `max_grab_stretch_cm` | The two points a grab holds together came at most this far apart, in the hand that stretched furthest (`effectors.list.<hand>.max_grab_stretch_cm`) |
+| `max_grab_force_n` | The joint of a grab carried at most this force at the end of any frame it held (the last substep's), in the hand that carried most (`effectors.list.<hand>.max_grab_force_n`) |
 | `double_overs` | The body doubled over exactly this many times (`control.double_overs`; `reactions.double_over_*`). Active control only |
 | `knockdowns` | A hit on the head knocked the body down exactly this many times (`control.knockdowns`; `reactions.knockdown_head_ns`). Active control only |
+| `hit_events` | The body told of exactly this many hits (`control.hit_events`, the `hit` entries of `control.events`). Active control only |
+| `grab_events` | The body was told of exactly this many grabs (`control.grab_events`), and what it was last told is held is what the hands hold of it at the run's end. Active control only |
 | `max_flinches` | The body went into Flinch at most this many times (a held push: once, as the hand lands). Active control only |
 | `min_get_ups` | The body got up at least this many times (`control.get_up.successes`). Active control only, with `"get_up": true` |
 | `max_get_ups` | The body got up at most this many times: 0 for a body that hands are to keep down for the whole run |
@@ -378,7 +417,8 @@ anything (`effectors_not_tunnelled`).
 
 ## The whole set
 
-`Tools\suite.ps1` runs every scenario of this directory, eight at a time (`-Parallel`), in about 100 s. The
+`Tools\suite.ps1` runs every scenario of this directory, eight at a time (`-Parallel`): 127 scenarios in about
+48 s; `stand_npc_10min`, over 60 s, only with `-Long` (about 90 s in all). The
 runs do not depend on each other and each has its own fixed timestep, so their results are the same as
 when run one after another; only the wall-clock figures differ. It holds the whole set to two limits on top
 of each scenario's own expectations, and prints the worst scenario of each: no simulated body's joints
@@ -428,8 +468,9 @@ while nothing feeds the body. `max_gain_j` is the largest rise of the sum above 
 last input, where an input is a scripted impulse, a pin, a console command, a tuning change or a hand
 touching something. A body under control is watched only while it is `falling` or `lying`: upright, its
 muscles and the assist hold it up and that is no fault. What the figure catches is a body thrown back up by
-the solver or by its own muscles: a passive NPC dropped from 1.5 m lands with a foot 8.4 cm inside the
-floor, and being pushed out again gives it 171 J (`drop_npc`); an 80 kg body lifted by 1 cm is 7.8 J.
+the solver or by its own muscles: a passive NPC dropped from 1.5 m lands with a foot 8.3 cm inside the
+floor, and being pushed out again gives it 149 J (`drop_npc`, measured in M3 part 5; `Specs/README.md`); an 80 kg
+body lifted by 1 cm is 7.8 J.
 
 **The fall** (`control.fall`): when the controller let the body go (`started_t`), how long after that it
 was at rest for good (`rest_after_s`), and how far and which way the centre of mass went over the floor
@@ -441,7 +482,7 @@ These are the runner's own figures and do not follow the tuning's rest threshold
 bone, what it is inside and when), and how deep two bodies of the character are inside each other
 (`max_self_cm`), each as the distance the shape would have to move to be clear. The player's hands are
 left out here: they are measured on their own. Bodies of the character count against each other only where
-the physics asset lets them collide; `self_collision_pairs` says how many such pairs there are (127 for the NPC), because
+the physics asset lets them collide; `self_collision_pairs` says how many such pairs there are (144 for the NPC of 19 bodies; 127 on the 18-body asset before the head was a body of its own), because
 with 0 the body passes through itself and the figure reads 0 whatever happens. The first five frames are
 reported apart (`spawn_world_cm`, `spawn_self_cm`). Boxes, capsules and spheres are measured;
 `unmeasured_shapes` counts the others.
@@ -458,8 +499,9 @@ a snap of one substep, not a body that is flying apart.
 
 - `step_needed_frames`, `step_needed_first_t`: frames in which the controller found that the capture point
   was further outside the support than the ankles and hips can bring back (`balance.recoverable_cm`) but
-  within a step's reach. Until the recovery step exists the assist holds such a body; the push matrix calls
-  that outcome `held`. `decision_margin_min_cm` is the lowest margin the controller decided on: it judges
+  within a step's reach. Since M3 part 4 such a body staggers and steps; only one whose legs are placed from
+  outside (`foot_target`) is held by the assist, and a body that needed a step and took none is what the push matrix
+  calls `held`, a failure. `decision_margin_min_cm` is the lowest margin the controller decided on: it judges
   against every foot the floor touches (or touched within `balance.lift_grace_s`), not only the feet that
   stand by `balance.foot_contact_min_n`, and moves the capture point by the held push (below).
 - `replants`: times a foot was planted anew where it landed. `control.assist_targets` has every assist
@@ -467,7 +509,7 @@ a snap of one substep, not a body that is flying apart.
   pelvis, chest and head follow the feet's (`stand_foot_moved`).
 - `ankle_lean_max_deg`, `hip_bend_max_deg`, `ankle_integral_forward_cm`, `ankle_integral_side_cm`: the
   strategies' largest turns and the slow part's shift of the centre of pressure at the end.
-- `sustained_force_max_n`, `lean_max_cm`: the largest force felt in every frame of `reactions.pressure_s`
+- `sustained_force_max_n`, `lean_max_cm`: the largest force felt in every frame of `reactions.held_push_s`
   (a held push; a blow leaves nothing here) and the largest lean into it.
 - `control.steps`, `step_count`, `foot_lifts`: measured by the runner from the feet the floor touches. A
   step is a foot that leaves the floor for at least 0.1 s and lands at least 5 cm from where it left; a
@@ -484,12 +526,14 @@ muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's wei
 
 **Get-ups** (`control.get_up`, in a run with `"get_up": true`): how many times the body began to get up and how many
 ended standing (`attempts`, `successes`); the last attempt's clip, when it began and how long it took to stand
-(`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`), and why the
+(`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`; under the led
+get-up, `getup.carry` 1, the clip waits only while a press holds the body down), and why the
 last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`) and the most the body
 was pressed with (`pressed_max_n`: the force felt in every frame of `reactions.held_push_s`, which is what
 `getup.hold_force_n` is compared with); and what the assist did over all the time spent getting up (`seconds`): its
 commanded force over body weight, mean and largest (`assist_force_share_mean` 0.25 to 0.28 since M3 part 7, 0.44 to
-0.49 before), and its largest torque share. The
+0.49 before: the clip-following get-up, before R1; under the led get-up the world's pull of `getup.carry` counts in
+the share, 1.16 of body weight in R1), and its largest torque share. The
 run's log has a line four times a second while the body gets up: the clip's time, how far the pelvis and the feet
 are from where the clip has them, and what the floor carries of each foot.
 
@@ -670,8 +714,9 @@ it is down and nearly still it lies and lets its muscles go.
 
 The scenarios: `push_chest_80_steps` and `push_pelvis_80_side_steps` (a step forward, steps across),
 `stagger_rest_off_support` (crossed legs after steps across: a third step out of them),
-`effector_push_chest_steps` (a hand pushes the chest 70 cm back: the body backs away and stands; it used to be
-`effector_push_chest_falls`), `push_thigh_200_stumbles` (200 N*s on a thigh is run off in four steps; it used to
+`effector_push_chest_steps` (a hand pushes the chest 70 cm back: the body backs away and stands; it was once named
+`effector_push_chest_falls`), `effector_push_chest_falls` as it is now (a hand that goes on through the chest, 2.2 m
+at 1 m/s, and holds there for a second: the body is felled and lies), `push_thigh_200_stumbles` (200 N*s on a thigh is run off in four steps; it used to
 be `push_thigh_200_falls`), and three falls after 200 N*s on the chest: `hit_chest_200_falls` (backward),
 `hit_chest_200_forward_falls` and `hit_chest_200_side_falls`.
 
@@ -693,7 +738,8 @@ quarters, reporting how near to the furniture each came. It prints one row a fal
 (`-Film failed` for a sheet of pictures of each that does not, `-Film "36,42"` of those trials). With `-PressN 300`
 every fallen body is also pressed down on the pelvis with that force from 5 to 25 s, and the stand counts the
 bodies that stood while they were pressed: what a hand does to a get-up, asked of 50 falls and not of one (under
-300 N two of three get up, under 600 N none: `getup.hold_force_n`).
+300 N 15 of 50 stand with the led get-up; on the clip-following get-up before it one of four, 39 of 150, on the head
+body, and under 600 N none: `getup.hold_force_n`).
 
 To look at what a recorded clip asks of the body, `Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes
 "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60`: the body hangs by its welded pelvis, is asked for the clip's pose
