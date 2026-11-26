@@ -303,6 +303,9 @@ struct FSandboxGetUpView
 	 */
 	double RiseFeetCm = -1.0;
 	double RiseTrunkDeg = -1.0;
+	/** N7 (getup.rise): when the body took over from the clip's crouch (below 0: it did not), and how long its rise has waited. Seconds. */
+	double RiseBeganS = -1.0;
+	double RiseWaitS = 0.0;
 	/** Why the last attempt that was given up was given up. */
 	FString GivenUp;
 	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */
@@ -755,6 +758,8 @@ private:
 		double TimeS = 0.0;
 		double Rate = 0.0;
 		double Share = 0.0;
+		/** The most Share may be while the pose is held: 1, or less while the body's own rise takes over from it (getup.rise). */
+		double ShareCap = 1.0;
 		bool bReleased = false;
 		/** Asked for from outside (SetClipPose), not by the body's own get-up: the body then leaves its balance alone. */
 		bool bOutside = false;
@@ -808,6 +813,18 @@ private:
 		/** N7 (getup.gather_s): the clip's time where the wait that runs began (below 0: none), and which way it goes now. */
 		double GatherFromS = -1.0;
 		double GatherWay = -1.0;
+		/**
+		 * N7 (getup.rise): the clip's time at which the body takes over and rises by itself (below 0: the clip to its end); whether it
+		 * has; how far the rise has come (0 to 1); the pelvis's height above the floor and its turn when it began, and its upright turn;
+		 * and the offset of the pelvis's aim over the floor that keeps the centre of mass over the feet.
+		 */
+		double RiseAtS = -1.0;
+		bool bRising = false;
+		double RiseShare = 0.0;
+		double RiseFromHeightCm = 0.0;
+		FQuat RiseFromTurn = FQuat::Identity;
+		FQuat RiseToTurn = FQuat::Identity;
+		FVector2D RiseOffsetCm = FVector2D::ZeroVector;
 	};
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;
@@ -831,6 +848,17 @@ private:
 	FTransform StartSpace = FTransform::Identity;
 	bool StartGetUp(FString& OutError);
 	void UpdateGetUp(double DeltaTime);
+	/** N7 (getup.rise): the body's own rise from the clip's crouch; PelvisNow is where the pelvis's body is. */
+	void UpdateRise(double DeltaTime, const FTransform& PelvisNow);
+	/** The plank and the shape at 70 cm, measured while getting up (read only). */
+	void MeasureGetUpShape(const FTransform& PelvisNow, double Ease, double DeltaTime);
+	/** The pelvis's height above the soles when the body was started: the height a rise goes to. cm. */
+	double StandPelvisHeightCm = 0.0;
+	/**
+	 * N7 (getup.rise_lean_s): how far everything above the feet leans, and which way over the floor, to keep the centre of mass over the
+	 * feet while rising; it fades by its own clock afterwards. Radians, as a vector in the world's horizontal plane.
+	 */
+	FVector2D RiseLeanRad = FVector2D::ZeroVector;
 	void GiveUpGetUp(const FString& Reason);
 	/** How far the muscles and the assist have come up since the get-up began, 0 to 1 (1 in any other state). */
 	double GetUpEase() const;

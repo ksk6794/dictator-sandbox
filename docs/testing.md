@@ -4972,6 +4972,30 @@ What the measurements of both days say together: the recorded get-ups close the 
 the feet fast (18 to 55 cm in 0.6 s of clip, 25 November) while the body is ahead of them, a motion carried by its speed. This body
 follows slower, through waits, and the lean that the recorded person passes through in a moment is held by the world for 1.4 s.
 
+### N7: a get-up made for this body, step 1, the rise from a crouch (26 November, the owner's choice; stopped before the stand)
+
+Built behind `getup.rise` (0 in the file; the suite with the hashes of `n2`, 48 unit tests): from the back the body follows
+`M_ragdoll_getup_crouch_B` (a get-up into a crouch) only to its crouch (`rise_at_back_s` 0.95), and rises from there by itself:
+the muscles go over from the clip's crouch to the stance over `rise_s` (the clip's layer capped, `ClipHold.ShareCap`), the pelvis's
+assist goes up to the standing height (measured at start, `StandPelvisHeightCm`) and upright, aimed over the floor to take the centre
+of mass over the middle of the feet; the rise waits while the pelvis lags or the centre of mass is more than `rise_com_cm` outside the
+feet; a lean of the body's own (`rise_lean_s`, `rise_lean_max_deg`) fades by its own clock after the rise. Plan and limits before the
+runs: `Saved\Recon\n7_rise_plan.md`. **No limit was judged**: four tries on `getup_back`, each a diagnostic written down before it ran,
+and none worth the stand.
+
+- The body reaches the clip's crouch (pelvis 53 cm up, both feet loaded) with its centre of mass **22 cm ahead of the feet**. The
+  recorded person is rolling forward there; held still, it is a fall the world holds.
+- Waiting for the centre of mass: it never comes (the pelvis's 90 N does not move it); given up after 3 s (`Saved\Films\n7_rise_try1`).
+- Rising without that wait: up in 2.0 s, the centre of mass 13 to 36 cm ahead the whole way, `plank_s` 2.5 s against 1.7 for that fall
+  today (`n7_back_rise_side\film.mp4`, today's `n7_back_today_side\film.mp4`, the same camera).
+- Leaning by the ankles (as the ankle strategy does standing): the centre of mass came from 23 to 18 cm, then the body tipped over its
+  toes (`n7_rise_lean1`). A centre of mass ahead of the toes is beyond what a foot can push back.
+- Leaning at the hips: the body stays crouched with half its weight on its hands, 31 cm ahead; given up after 3 s.
+
+What it shows: the crouch of a recorded get-up is no place to stand still on this body either. Every pose this body reaches on its
+way up by a recorded clip has its centre of mass ahead of its feet; a slow get-up has to get its feet under it first, with the hands
+carrying the front of the body while they come.
+
 
 
 

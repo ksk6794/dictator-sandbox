@@ -899,6 +899,24 @@ struct FSandboxGetUpTuning
 	double GatherS = 0.0;
 	double GatherRate = 0.0;
 	/**
+	 * N7, a get-up made for this body (the owner's decision of 26 November). 1: from the back the body follows RiseClipBack only up to
+	 * its crouch at RiseAtBackS, and rises from there by itself: the muscles go over from the clip's crouch to the stance over RiseS, the
+	 * pelvis's assist rises to the standing height with its tilt to upright and keeps the centre of mass over the middle of the feet; the
+	 * rise waits while the pelvis lags or the centre of mass is more than RiseComCm outside the feet. 0: the clip to its end (the body
+	 * rose like a plank over its feet). 0 or 1, s, s, cm.
+	 */
+	double Rise = 0.0;
+	double RiseAtBackS = 0.0;
+	double RiseS = 0.0;
+	double RiseComCm = 0.0;
+	/**
+	 * ...and the body moves its own centre of mass over the feet while it rises, as the ankle strategy does standing: everything above the
+	 * feet leans toward where it should be, by the error over the centre of mass's height per RiseLeanS, at most RiseLeanMaxDeg. s, degrees.
+	 */
+	double RiseLeanS = 0.0;
+	double RiseLeanMaxDeg = 0.0;
+	FString RiseClipBack;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.

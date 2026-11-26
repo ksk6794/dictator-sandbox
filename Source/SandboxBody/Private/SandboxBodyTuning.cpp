@@ -290,6 +290,12 @@ namespace
 		Visitor(FString(TEXT("getup.reached_feet")), Tuning.GetUp.ReachedFeet);
 		Visitor(FString(TEXT("getup.gather_s")), Tuning.GetUp.GatherS);
 		Visitor(FString(TEXT("getup.gather_rate")), Tuning.GetUp.GatherRate);
+		Visitor(FString(TEXT("getup.rise")), Tuning.GetUp.Rise);
+		Visitor(FString(TEXT("getup.rise_at_back_s")), Tuning.GetUp.RiseAtBackS);
+		Visitor(FString(TEXT("getup.rise_s")), Tuning.GetUp.RiseS);
+		Visitor(FString(TEXT("getup.rise_com_cm")), Tuning.GetUp.RiseComCm);
+		Visitor(FString(TEXT("getup.rise_lean_s")), Tuning.GetUp.RiseLeanS);
+		Visitor(FString(TEXT("getup.rise_lean_max_deg")), Tuning.GetUp.RiseLeanMaxDeg);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
@@ -302,6 +308,7 @@ namespace
 		Visitor(TEXT("getup.clip_front"), GetUp.ClipFront);
 		Visitor(TEXT("getup.clip_left"), GetUp.ClipLeft);
 		Visitor(TEXT("getup.clip_right"), GetUp.ClipRight);
+		Visitor(TEXT("getup.rise_clip_back"), GetUp.RiseClipBack);
 	}
 }
 
@@ -636,8 +643,19 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.ProgressPelvis, 1.0, TEXT("getup"), TEXT("progress_pelvis"), OutError) ||
 		!CheckRange(GetUp.ReachedFeet, 1.0, TEXT("getup"), TEXT("reached_feet"), OutError) ||
 		!CheckRange(GetUp.GatherS, 2.0, TEXT("getup"), TEXT("gather_s"), OutError) ||
-		!CheckRange(GetUp.GatherRate, 2.0, TEXT("getup"), TEXT("gather_rate"), OutError))
+		!CheckRange(GetUp.GatherRate, 2.0, TEXT("getup"), TEXT("gather_rate"), OutError) ||
+		!CheckRange(GetUp.Rise, 1.0, TEXT("getup"), TEXT("rise"), OutError) ||
+		!CheckRange(GetUp.RiseAtBackS, 60.0, TEXT("getup"), TEXT("rise_at_back_s"), OutError) ||
+		!CheckRange(GetUp.RiseS, 10.0, TEXT("getup"), TEXT("rise_s"), OutError) ||
+		!CheckRange(GetUp.RiseComCm, 100.0, TEXT("getup"), TEXT("rise_com_cm"), OutError) ||
+		!CheckRange(GetUp.RiseLeanS, 10.0, TEXT("getup"), TEXT("rise_lean_s"), OutError) ||
+		!CheckRange(GetUp.RiseLeanMaxDeg, 60.0, TEXT("getup"), TEXT("rise_lean_max_deg"), OutError))
 	{
+		return false;
+	}
+	if (GetUp.Rise > 0.5 && GetUp.RiseS <= 0.0)
+	{
+		OutError = TEXT("getup.rise_s must be above 0 while getup.rise is on");
 		return false;
 	}
 	if (GetUp.ProgressCm > 0.0 && GetUp.ProgressWindowS <= 0.0)
