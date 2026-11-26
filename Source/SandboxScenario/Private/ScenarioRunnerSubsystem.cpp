@@ -2755,6 +2755,10 @@ void UScenarioRunnerSubsystem::Finish()
 			GetUpJson->SetNumberField(TEXT("behind_side_s"), GetUps.BehindSideS);
 			GetUpJson->SetNumberField(TEXT("behind_foot_s"), GetUps.BehindFootS);
 			GetUpJson->SetNumberField(TEXT("behind_held_s"), GetUps.BehindHeldS);
+			GetUpJson->SetNumberField(TEXT("plank_s"), GetUps.PlankS);
+			GetUpJson->SetNumberField(TEXT("plank_max_cm"), GetUps.PlankMaxCm);
+			GetUpJson->SetNumberField(TEXT("rise_feet_cm"), GetUps.RiseFeetCm);
+			GetUpJson->SetNumberField(TEXT("rise_trunk_deg"), GetUps.RiseTrunkDeg);
 			GetUpJson->SetNumberField(TEXT("lay_s"), GetUps.LayS);
 			GetUpJson->SetStringField(TEXT("given_up"), GetUps.GivenUp);
 			GetUpJson->SetNumberField(TEXT("hits"), GetUps.Hits);

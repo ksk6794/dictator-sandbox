@@ -1004,6 +1004,10 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **Check a limit against today's body before it judges a change.** "No joint faster than 30 rad/s in the knockdowns" was written
   for N6 and today's neck reaches 36 after the blow at 90 degrees; the plan said "the arms, when they meet the floor". Read today's
   figure of a new limit before the runs it is to judge.
+- **Look an idea up in `docs/testing.md` by what it does, not by its name, before offering it as new.** "Unload, then step" was put
+  to the owner on 26 November as untried ("the toes and the ankle were tried, not a shift of the weight"); the third get-up attempt of
+  25 November, "the foot held until it is free", had lifted the foot, made the clip wait and aimed the pelvis at the other foot, and it
+  failed as the new one then did. Search for the mechanism's words (foot, lifted, shift, held) and read every section on the subject.
 - **Muscles that chase a point of the world while the body turns do work, and a fall shows it as energy.** Braced arms sent to
   the floor behind a body falling backward gained 83 J (today's fall 30) in the 0.2 s before a hand touched; more damping on them
   left 48 J and kept a blow's fall from rest for 4 s. The 40 J of a fall (`max_energy_gain_j`) catches it.

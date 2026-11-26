@@ -291,6 +291,18 @@ struct FSandboxGetUpView
 	double BehindSideS = 0.0;
 	double BehindFootS = 0.0;
 	double BehindHeldS = 0.0;
+	/**
+	 * The plank: how long, after easing in, the feet carried 0.8 of the body's weight or more while its centre of mass was more than
+	 * 5 cm outside them (the world held it), and the furthest outside it was then. Seconds, cm.
+	 */
+	double PlankS = 0.0;
+	double PlankMaxCm = 0.0;
+	/**
+	 * When the pelvis first came 70 cm above the floor: the farther foot from it over the floor, and the trunk (pelvis to chest) from
+	 * vertical. cm, degrees; below 0 until then.
+	 */
+	double RiseFeetCm = -1.0;
+	double RiseTrunkDeg = -1.0;
 	/** Why the last attempt that was given up was given up. */
 	FString GivenUp;
 	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */

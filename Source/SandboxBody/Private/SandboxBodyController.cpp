@@ -1430,7 +1430,11 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	GetUpView.BehindSideS = 0.0;
 	GetUpView.BehindFootS = 0.0;
 	GetUpView.BehindHeldS = 0.0;
-	GetUpView.LayS = State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
+	GetUpView.PlankS = 0.0;
+	GetUpView.PlankMaxCm = 0.0;
+	GetUpView.RiseFeetCm = -1.0;
+	GetUpView.RiseTrunkDeg = -1.0;
+	GetUpView.LayS =State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
 	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; by '%s' (likeness %.2f)"), GetUpRestS(), *FPaths::GetBaseFilename(BestPath), BestLikeness));
 	return true;
 }
@@ -1568,6 +1572,27 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		const double Share = 1.0 - OnFeet * (1.0 - (bPushesOn ? Limits.PressedFollow : 0.0));
 		const FVector2D Shift = FVector2D(Off.X, Off.Y) * (Share * FMath::Min(DeltaTime / Limits.PelvisFollowS, 1.0));
 		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
+	}
+	// The plank, measured (read only): the feet carry the body while its centre of mass is outside them (the world holds it up); and
+	// the body's shape as the pelvis comes up through 70 cm. The body rose like a plank over feet left behind it (the owner's look of
+	// 26 November).
+	if (Ease >= 1.0 && Balance.bValid && Balance.IsSupported() && WeightN > 0.0 &&
+		Balance.FootForceN[0] + Balance.FootForceN[1] >= 0.8 * WeightN && Balance.CenterOfMassMarginCm < -5.0)
+	{
+		GetUpView.PlankS += DeltaTime;
+		GetUpView.PlankMaxCm = FMath::Max(GetUpView.PlankMaxCm, -Balance.CenterOfMassMarginCm);
+	}
+	if (GetUpView.RiseFeetCm < 0.0 && Now.GetLocation().Z - LastSupportHeightCm >= 70.0)
+	{
+		const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+		const FBodyInstance* Feet[2] = { Mesh->GetBodyInstance(Tuning.Rig.FootLeft), Mesh->GetBodyInstance(Tuning.Rig.FootRight) };
+		if (Chest && Chest->IsValidBodyInstance() && Feet[0] && Feet[0]->IsValidBodyInstance() && Feet[1] && Feet[1]->IsValidBodyInstance())
+		{
+			const FVector Trunk = Chest->GetUnrealWorldTransform().GetLocation() - Now.GetLocation();
+			GetUpView.RiseTrunkDeg = FMath::RadiansToDegrees(FMath::Atan2(Trunk.Size2D(), Trunk.Z));
+			GetUpView.RiseFeetCm = FMath::Max(FVector::Dist2D(Feet[0]->GetUnrealWorldTransform().GetLocation(), Now.GetLocation()),
+				FVector::Dist2D(Feet[1]->GetUnrealWorldTransform().GetLocation(), Now.GetLocation()));
+		}
 	}
 	// A line of the log four times a second: where the body is against the clip.
 	if (FMath::FloorToInt32(ElapsedS * 4.0) != FMath::FloorToInt32((ElapsedS - DeltaTime) * 4.0))

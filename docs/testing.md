@@ -4926,6 +4926,52 @@ still one. With S1's stronger muscles too (GS) it is worse: 134 of 150, 80 at th
 all, one trade between the pauses and the get-ups that succeed. Videos for the owner, the get-up from
 the front in real time: `Saved\Films\n7_front_today\film.mp4` and `n7_front_g1\film.mp4` (G1 gets up at its first attempt there).
 
+### N7: the plank, measured; unload and then step (26 November, the owner's choice; not met, taken out)
+
+**The owner, on the videos:** no visible difference between the get-up with pauses and without; the get-up is as unnatural as
+before, the body rises "like a plank, like a rocket on its launcher". So the pauses are not what the eye sees.
+
+**The plank, measured** (read only, kept: `control.get_up.plank_s`, `plank_max_cm`, `rise_feet_cm`, `rise_trunk_deg`, the last
+attempt). `plank_s` is the time after easing in with the feet carrying 0.8 of the weight or more and the centre of mass more than
+5 cm outside them (the rule of 25 November); `rise_*` the farther foot from the pelvis over the floor and the trunk (pelvis to chest)
+from vertical when the pelvis first comes 70 cm above the floor. Checked before use on `getup_back`: `plank_s` 1.700 s against 1.709
+from the same rule over `series.csv` (a frame apart), furthest out 45.2 cm against 45.5; the rise, 35.8 cm and 52.9 degrees, lies
+between the trace's checkpoints at 9.0 s (34.7 cm, 51.8) and 9.5 s (51.5, 45.0). The suite with the measures has the hashes of `n2`.
+In that fall: at 9.0 s a half-kneel, the pelvis 53 cm up, the left foot 34 cm to the side of the pelvis and not ahead of it, the
+right foot 34 cm behind; at 9.5 s the pelvis is 80 cm up (standing: 90) with both feet behind it along the lean (27 and 48 cm) and
+the trunk 50 degrees forward; the feet carry the weight with the centre of mass 21 to 33 cm outside them until 10.5 s.
+
+**Today on the stand of 150** (median, p90): plank 1.36 s (1.88), furthest out 46 cm (62); at 70 cm the farther foot 37 cm (47),
+the trunk 70 degrees (81). In the log's samples (every 0.25 s) 927 are a plank: 633 of them with both feet within 20 cm of the
+clip's, 294 with a foot further. At clip times 1.6 to 2.0 s, the pelvis 70 to 74 cm up, in all four clips. So the plank is mostly
+not a foot left behind on its own; the clip is laid over the loaded feet (`frame_follow_s`), and the lean is of the body as a whole,
+as 25 November found ("the body is pitched forward as one piece").
+
+**Unload and then step** (the plan and its limits before the runs: `Saved\Recon\n7_unload_plan.md`): a loaded foot more than
+`step_lag_cm` over the floor from the clip's owes a step; the clip waits, the pelvis's assist takes the centre of mass over the other
+foot (at most 25 cm), and once the foot carries 0.15 of the weight or less it is carried to the clip's foot, raised 8 cm; let go after
+1.2 s. Limits: plank median at most half of today's and the farther foot at 70 cm at most 30 cm (U1), the stand 147 and 129 (U2),
+the suite (U3), the get-up at most 0.8 s longer (U4), the assist at most 0.03 more (U5).
+
+| Variant | Stand, first attempt | Plank, s | Foot at 70 cm | Get-up | Steps owed, let go | Suite |
+| --- | --- | --- | --- | --- | --- | --- |
+| Today | 150, 130 | 1.36 | 37 cm | 5.01 s | - | 127 |
+| U-a `step_lag_cm` 20 | **148, 107** | **1.36** | **33** | **6.52** | 524, 198 | 127 |
+| U-b 15 | **132, 63** | **1.13** | **33** | **6.64** | 3162, 143 | 5 get-ups fail |
+| U-c U-a, unloaded at 0.25 | **148, 107** | **1.23** | **33** | **6.54** | 539, 186 | 127 |
+
+**Not met by any; taken out** (`Saved\Recon\n7_unload_step_full.patch`; the measures stay). A foot often cannot be unloaded: the
+pelvis's 90 N takes the centre of mass three quarters of the way to the other foot and the foot keeps 160 to 220 N (`getup_back`,
+U-a: the step let go after 1.2 s). While the clip waits, the body leans back over its feet by itself in about a second; that is a
+pause, not a step. **This was the third attempt of 25 November again** ("the foot held until it is free": lifted, the clip waiting,
+the pelvis aimed toward the other foot; 1.45 s off the feet to 1.05, 99 first attempts of 150). I told the owner that a shift of the
+weight had not been tried; it had, and the section above says so. Today adds the measure and the 68% of plank moments with the feet
+where the clip has them.
+
+What the measurements of both days say together: the recorded get-ups close the gap between the centre of mass and the feet by moving
+the feet fast (18 to 55 cm in 0.6 s of clip, 25 November) while the body is ahead of them, a motion carried by its speed. This body
+follows slower, through waits, and the lean that the recorded person passes through in a moment is held by the world for 1.4 s.
+
 
 
 

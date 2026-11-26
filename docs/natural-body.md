@@ -775,6 +775,8 @@ N7 makes a body on the floor a person on the floor: it breathes, settles into a 
 
 **Why.** A body that has fallen lies without one motion until its get-up begins, and reads as dead. About one get-up attempt in four is given up (53 of 203 on three seeds), and while a clip waits the body holds one pose for up to 5 s.
 
+**Begun out of order, 26 November, on the owner's look in the headset** (the get-up "several clips with pauses between them, robotic", then "it rises like a plank"). Measured and kept: the clip's pauses (`control.get_up.paused_s` and its causes) and the plank (`plank_s`: 1.36 s in the median of 150 get-ups with the centre of mass up to 46 cm outside the feet that carry it; `rise_feet_cm`, `rise_trunk_deg`). Tried and not met: sixteen ways to shorten the pauses (switches at 0 in the files; each costs first attempts) and unloading a foot before it steps (taken out; it repeats 25 November's third attempt). The recorded get-ups pass through that lean by their speed, and this body, slower, is held in it by the world. `docs/testing.md`, "N7 first" and "N7: the plank".
+
 ### Design
 
 **1. Breath, in every state.** A generator in the controller: a phase that advances at `breath.rate_per_min` and turns the spine and the collarbones by `breath.spine_deg` and `breath.clavicle_deg`, as turns on top of the pose. The rate rises with effort (a fall, a get-up, a run of steps, a hit) toward `breath.rate_max_per_min` and comes back over `breath.recover_s`. After a hit that doubles the body over the breath is held for `breath.winded_s` and then comes fast. Standing has its breath from `MM_Idle` today: the generator is used where the idle is not carried, and whether it takes the idle's place while standing is decided by a look at both.
