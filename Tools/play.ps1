@@ -24,6 +24,10 @@
 #                                   it is 1 in the tuning files since 25 November 2026, so every session has it). On the
 #                                   desktop the G key holds the hands open: reach, let G go while the hand presses on
 #                                   the body, and the hand holds it; G again lets go
+#   ... -Perception                 the body sees what moves near it (N5): the session tells it the hands, the foot and
+#                                   the things every frame, and gaze, anticipation and the guarding arm are switched on
+#                                   (perception.gaze, anticipate, guard = 1; 0 in the tuning files). A recording's
+#                                   replay judges what moves with the same switches
 #   ... -Demo -Grab                 the same for the grab (effectors.hand.grab switched on): the hands open, the right
 #                                   one reaches into the chest and its grip takes hold; the character is put back
 #                                   while it is held; the hand takes hold of the new one, pulls and lets go; then
@@ -51,6 +55,7 @@ param(
     [switch]$Demo,
     [switch]$Takes,
     [switch]$Grab,
+    [switch]$Perception,
     [switch]$VR,
     [double]$Seconds = 0,
     [string]$Record,
@@ -90,7 +95,13 @@ foreach ($stale in @('play.json', 'final.png')) {
 if ($Grab) {
     if ($Tune) { $Tune = "$Tune,effectors.hand.grab=1" } else { $Tune = 'effectors.hand.grab=1' }
 }
+# -Perception: what the body sees and does with it (N5), for a person's look; the tuning files keep it off.
+if ($Perception) {
+    $seeing = 'perception.gaze=1,perception.anticipate=1,perception.guard=1'
+    if ($Tune) { $Tune = "$seeing,$Tune" } else { $Tune = $seeing }
+}
 $arguments = "-game -Play=`"$scenarioFile`" -Out=`"$Out`" -UseFixedTimeStep -FPS=$fps"
+if ($Perception) { $arguments += ' -PlayPerception' }
 if ($spec.map) { $arguments = "$($spec.map) $arguments" }
 if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }

@@ -90,6 +90,7 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	bDemoGrab = !bSmoke && !bDemoTakes && FParse::Param(FCommandLine::Get(), TEXT("PlayDemoGrab"));
 	bDemo = !bSmoke && (bDemoTakes || bDemoGrab || FParse::Param(FCommandLine::Get(), TEXT("PlayDemo")));
 	bRecordFromStart = FParse::Value(FCommandLine::Get(), TEXT("Record="), RecordName) && !RecordName.IsEmpty() && !bDemo && !bSmoke;
+	bPerception = FParse::Param(FCommandLine::Get(), TEXT("PlayPerception"));
 	FParse::Value(FCommandLine::Get(), TEXT("PlaySeconds="), PlaySeconds);
 	if (!FParse::Value(FCommandLine::Get(), TEXT("Out="), OutDir))
 	{
@@ -254,6 +255,32 @@ void USandboxPlaySubsystem::ResetCharacter()
 	}
 }
 
+void USandboxPlaySubsystem::TellPerception()
+{
+	if (!bPerception || !Character)
+	{
+		return;
+	}
+	// Every frame, as a scenario's run does: a character put back after a reset starts without it.
+	if (USandboxBodyController* Controller = Character->GetController())
+	{
+		Controller->SetPerceptionAllowed(true);
+	}
+	TArray<TObjectPtr<AActor>> Things;
+	for (const TWeakObjectPtr<AActor>& Prop : Props)
+	{
+		if (Prop.IsValid())
+		{
+			Things.Add(Prop.Get());
+		}
+	}
+	// A session that records sees the hands while a recording runs. Before the first one they fly from where the pawn made
+	// them to where the recording begins, which its replay cannot know: watched, that flight turned the session's head and
+	// the replay's body ended 2 cm off the session's.
+	const bool bHandsSeen = RecordName.IsEmpty() || (Pawn.IsValid() && Pawn->IsRecording());
+	FScenarioStage::TellBodyWhatMoves(bHandsSeen && Pawn.IsValid() ? Pawn->GetRig() : nullptr, Things, Character);
+}
+
 void USandboxPlaySubsystem::AddHudLines(TArray<FString>& OutLines) const
 {
 	const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
@@ -335,6 +362,35 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 				Event->SetStringField(TEXT("type"), TEXT("console"));
 				Event->SetStringField(TEXT("command"), FString::Printf(TEXT("Sandbox.Tune %s=1"), Switch.Key));
 				ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
+			}
+		}
+	}
+	// A session with perception: its replay judges what moves as the session did, with the same switches of what the
+	// body does with it (without them the replay's body would not turn its head or raise a guard where the session's did).
+	if (bPerception)
+	{
+		const TSharedPtr<FJsonObject>* SeeingBody = nullptr;
+		if (Scenario->TryGetObjectField(TEXT("body"), SeeingBody))
+		{
+			(*SeeingBody)->SetBoolField(TEXT("perception"), true);
+		}
+		if (const USandboxBodyController* Seeing = Character ? Character->GetController() : nullptr)
+		{
+			const FSandboxPerceptionTuning& Look = Seeing->GetTuning().Perception;
+			const TPair<const TCHAR*, double> Switches[] = {
+				{ TEXT("perception.gaze"), Look.Gaze },
+				{ TEXT("perception.anticipate"), Look.Anticipate },
+				{ TEXT("perception.guard"), Look.Guard } };
+			for (const TPair<const TCHAR*, double>& Switch : Switches)
+			{
+				if (Switch.Value > 0.5)
+				{
+					const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
+					Event->SetNumberField(TEXT("t"), 0.0);
+					Event->SetStringField(TEXT("type"), TEXT("console"));
+					Event->SetStringField(TEXT("command"), FString::Printf(TEXT("Sandbox.Tune %s=1"), Switch.Key));
+					ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
+				}
 			}
 		}
 	}
@@ -781,6 +837,7 @@ void USandboxPlaySubsystem::Tick(float DeltaTime)
 	}
 	// The character is told what the hands hold of it; neither knows the other.
 	FScenarioStage::TellBodyOfHolds(Pawn.IsValid() ? Pawn->GetRig() : nullptr, Character);
+	TellPerception();
 
 	// A recording from the first frame begins once the pawn has its hands, which it makes when it begins to
 	// play: later than the session adopts it. (Asked for at the adoption, as it first was, the recording never

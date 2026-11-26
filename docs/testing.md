@@ -4816,6 +4816,28 @@ The night's third variant (`fall.aim` 1, `arm_reach_stiffness` 5, `arm_reach_dam
 The head is kept off the floor far better, and the falls do not come to rest in time. The owner kept `fall.aim` off (question 4):
 the next work of N6 is why a fall with the reach comes to rest so late and why two shoves by hand no longer fell the body.
 
+### The natural body, N4 put off and N5 in the session (26 November, the owner's decisions)
+
+**N4** (question 5): the reflex's delay stays off until N2's step 5 (the assist as torques of the legs); its figures were the
+night's, on the body before the head, and were not measured again.
+
+**N5 in the session** (question 6): `Tools\play.ps1 -Perception` tells the body every frame what the hands, the foot and the
+things do (`FScenarioStage::TellBodyWhatMoves`, as a scenario's run with `"perception": true`) and switches on gaze, anticipation
+and the guard for that session (`-Tune` after it still chooses); the tuning files keep them off. A recording of such a session is
+replayed with `"perception": true` and the same switches by console at 0 s (`Tools\record-replay.ps1 -Perception` runs it,
+recording `demo_seeing`). Checks: the suite with the hashes of `n2`; the default session's replay to the same hashes
+(`540f5e9f`); the takes; the self-test with and without `-Perception` (14 of 14); the grab demo.
+
+The seeing session's replay first ended 2.1 cm off at the pelvis and 6.5% off in a hand's impulse, a flinch a frame apart. Ruled
+out one by one: the hands seen before the replay's recording begins (not telling them changed no hash), and the switches coming by a
+console change at 0 s (given from the first step instead, no hash moved). Each behaviour on alone found it: with nothing on and with
+anticipation alone the replay held (0.008 and 0.009 cm), with gaze alone it drifted the whole 2.1 cm. What the body was told showed
+why: in the session the hands fly from where the pawn makes them to where the recording begins in the 0.7 s before it does, and the
+gaze followed that flight; the replay has them there at once. A session that records now shows the body its hands only while a
+recording runs: the replay holds, 13 of 13, the pelvis 0.008 cm, the frames of the flinches the same. In the demo the hands come at the
+chest with 0.11 s to the contact, under the anticipation's 0.15 s, so it neither braced nor raised a guard; that is for the owner's
+look in the headset.
+
 
 
 

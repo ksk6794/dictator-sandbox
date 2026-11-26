@@ -7,6 +7,8 @@
 #   ... -PelvisCm 1 -ImpulsePct 5 -Frames 1   how far the replay may be from the session: the pelvis's place,
 #                                   each hand's contact impulse, the frame of each change of state
 #   ... -Twice                      replay a second time and require the two replays to have the same hashes
+#   ... -Perception                 the session sees (play.ps1 -Demo -Perception, recorded as demo_seeing): the body
+#                                   is told what moves, with gaze, anticipation and the guard on, and so is its replay
 #   ... -Takes                      the session of three takes (play.ps1 -Demo -Takes): the character is put back
 #                                   before each, each take is a recording of its own, and each is replayed and held
 #                                   against what the session saw of that take
@@ -20,7 +22,8 @@ param(
     [double]$ImpulsePct = 5.0,
     [int]$Frames = 1,
     [switch]$Twice,
-    [switch]$Takes
+    [switch]$Takes,
+    [switch]$Perception
 )
 . "$PSScriptRoot\common.ps1"
 
@@ -55,7 +58,9 @@ if ($Takes) {
 $recordName = $Recorded
 if (-not $recordName) {
     $recordName = 'demo_hands'
-    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Record $recordName
+    $seeing = @()
+    if ($Perception) { $recordName = 'demo_seeing'; $seeing = @('-Perception') }
+    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Record $recordName @seeing
     if ($LASTEXITCODE -ne 0) {
         Write-Output "RECORD REPLAY ERROR: the session did not give a recording"
         $demo | ForEach-Object { Write-Output "  $_" }

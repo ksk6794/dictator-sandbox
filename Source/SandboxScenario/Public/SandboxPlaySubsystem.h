@@ -101,6 +101,13 @@ private:
 	bool bDemoTakes = false;
 	/** -PlayDemoGrab: the hands take hold of the character, it is put back while it is held, and held again. */
 	bool bDemoGrab = false;
+	/**
+	 * The body judges what moves near it (N5: the hands, the foot, the things), as a scenario's with "perception": true;
+	 * -PlayPerception (Tools\play.ps1 -Perception). What it does with it is the tuning's (perception.gaze, anticipate, guard).
+	 */
+	bool bPerception = false;
+	/** Tells the character what moves near it and lets it judge that, when the session has perception. */
+	void TellPerception();
 	bool bGrabHeld = false;
 	bool bGrabLostOnReset = false;
 	bool bGrabHeldAgain = false;
