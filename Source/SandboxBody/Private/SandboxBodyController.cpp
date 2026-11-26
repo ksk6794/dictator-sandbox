@@ -1630,7 +1630,30 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		RateGoal = Limits.Rate * Ease * (1.0 - FMath::SmoothStep(Limits.SlowFrom, 1.0, Share));
 	}
 	ClipHold.Rate = Limits.RateFollowS > 0.0 ? ClipHold.Rate + (RateGoal - ClipHold.Rate) * (1.0 - FMath::Exp(-DeltaTime / Limits.RateFollowS)) : RateGoal;
-	if (ClipHold.Rate < 0.1 * Limits.Rate)
+	if (Limits.GatherS > 0.0 && Ease >= 1.0 && bBehind && !bThrough)
+	{
+		// N7, a wait that is not a freeze: the clip goes back a little and comes again while the body catches up, never past where
+		// the wait began. Standing still, it read as a body that froze between clips (the owner's look of 26 November).
+		if (GetUpRun.GatherFromS < 0.0)
+		{
+			GetUpRun.GatherFromS = ClipHold.TimeS;
+			GetUpRun.GatherWay = -1.0;
+		}
+		if (ClipHold.TimeS <= FMath::Max(GetUpRun.GatherFromS - Limits.GatherS, 0.0) + KINDA_SMALL_NUMBER)
+		{
+			GetUpRun.GatherWay = 1.0;
+		}
+		else if (ClipHold.TimeS >= GetUpRun.GatherFromS)
+		{
+			GetUpRun.GatherWay = -1.0;
+		}
+		ClipHold.Rate = GetUpRun.GatherWay * Limits.GatherRate * Limits.Rate;
+	}
+	else if (!bBehind)
+	{
+		GetUpRun.GatherFromS = -1.0;
+	}
+	if (FMath::Abs(ClipHold.Rate) < 0.1 * Limits.Rate)
 	{
 		GetUpView.PausedS += DeltaTime;
 		(Ease < 1.0 ? GetUpView.PausedEaseS : bThrough ? GetUpView.PausedEndS : GetUpView.PausedBehindS) += DeltaTime;

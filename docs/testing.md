@@ -4918,6 +4918,14 @@ there (the prediction was wrong, and the code's comments say so). Aimed there, t
 (85 to 126 of 150, against 130). A recorded clip with an assist gets the body up because it waits for it; the pauses are the price of
 that, and no value of the get-up as it is takes them away. Everything stays off; the switches and the measures stay for the next step.
 
+**A wait that is not a freeze** (the plan's item 7; `getup.gather_s`, `gather_rate`, 0 in the file): while the clip waits, its time
+goes back by up to `gather_s` and comes again at half its rate, never past where the wait began. The freezes in mid-clip go (0.00 s
+in the median; only the 0.6 s of easing in is left), and so do get-ups: G1 (0.15 s) 142 of 150 stand, 102 at the first attempt, five
+get-up scenarios fail; G2 (0.3 s) 140 and 105, six. Even a target that moves back a little keeps the body from catching up: it needs a
+still one. With S1's stronger muscles too (GS) it is worse: 134 of 150, 80 at the first attempt, nine scenarios. Sixteen variants in
+all, one trade between the pauses and the get-ups that succeed. Videos for the owner, the get-up from
+the front in real time: `Saved\Films\n7_front_today\film.mp4` and `n7_front_g1\film.mp4` (G1 gets up at its first attempt there).
+
 
 
 

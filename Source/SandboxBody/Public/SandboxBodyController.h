@@ -793,6 +793,9 @@ private:
 		double PelvisCheckS = 0.0;
 		double PelvisLagAtCheck = 0.0;
 		bool bPelvisNotWaited = false;
+		/** N7 (getup.gather_s): the clip's time where the wait that runs began (below 0: none), and which way it goes now. */
+		double GatherFromS = -1.0;
+		double GatherWay = -1.0;
 	};
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;

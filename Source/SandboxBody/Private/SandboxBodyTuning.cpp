@@ -288,6 +288,8 @@ namespace
 		Visitor(FString(TEXT("getup.progress_window_s")), Tuning.GetUp.ProgressWindowS);
 		Visitor(FString(TEXT("getup.progress_pelvis")), Tuning.GetUp.ProgressPelvis);
 		Visitor(FString(TEXT("getup.reached_feet")), Tuning.GetUp.ReachedFeet);
+		Visitor(FString(TEXT("getup.gather_s")), Tuning.GetUp.GatherS);
+		Visitor(FString(TEXT("getup.gather_rate")), Tuning.GetUp.GatherRate);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
@@ -632,7 +634,9 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.ProgressCm, 20.0, TEXT("getup"), TEXT("progress_cm"), OutError) ||
 		!CheckRange(GetUp.ProgressWindowS, 2.0, TEXT("getup"), TEXT("progress_window_s"), OutError) ||
 		!CheckRange(GetUp.ProgressPelvis, 1.0, TEXT("getup"), TEXT("progress_pelvis"), OutError) ||
-		!CheckRange(GetUp.ReachedFeet, 1.0, TEXT("getup"), TEXT("reached_feet"), OutError))
+		!CheckRange(GetUp.ReachedFeet, 1.0, TEXT("getup"), TEXT("reached_feet"), OutError) ||
+		!CheckRange(GetUp.GatherS, 2.0, TEXT("getup"), TEXT("gather_s"), OutError) ||
+		!CheckRange(GetUp.GatherRate, 2.0, TEXT("getup"), TEXT("gather_rate"), OutError))
 	{
 		return false;
 	}

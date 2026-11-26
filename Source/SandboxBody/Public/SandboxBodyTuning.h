@@ -892,6 +892,13 @@ struct FSandboxGetUpTuning
 	 */
 	double ReachedFeet = 0.0;
 	/**
+	 * N7, a wait that is not a freeze: while the clip waits for the body its time goes back by up to GatherS and comes again, at
+	 * GatherRate of its rate, over and over, instead of standing still; it never goes past where the wait began. 0: it stands.
+	 * Seconds of the clip, share.
+	 */
+	double GatherS = 0.0;
+	double GatherRate = 0.0;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.
