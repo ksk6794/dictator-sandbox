@@ -5346,6 +5346,55 @@ before: the desktop is untouched (decision 27). Saved as the baseline `walk` (13
 seed 1 45 s (50 of 50, 48 at the first attempt), the session's self-test 10 s, the record and replay 34 s, its three takes 50 s,
 the grab demo 10 s, the walk with its replay 37 s.
 
+### R2, step 0: the clean-up (26 November, decisions 9 and 29)
+
+Every dead switch of R2's list went, code and values, and nothing a run does moved: the suite kept all 132 hashes of `walk`, and
+the push matrix, the knockdowns and four stands of 150 falls came out the same trial for trial. 61 lines added, 820 taken out.
+
+**What went.** N7's get-up: `getup.rise` with `rise_at_back_s`, `rise_s`, `rise_com_cm`, `rise_lean_s`, `rise_lean_max_deg` and
+`rise_clip_back` (and with them `UpdateRise`, the rise's lean in the pose's turns, the clip's share cap, the pelvis's standing height,
+and the two metrics that measured only that rise, `control.get_up.rise_began_s` and `rise_wait_s`; no script read them);
+`fast_rise` with its four values (`ApplyFastRiseCaps`); `slow_from`, `rate_follow_s`; `progress_cm`, `progress_window_s`,
+`progress_pelvis`; `reached_feet` (`FSandboxClipPose::ReachedBodyAt` stays: the carry aims with it); `gather_s`, `gather_rate`;
+`end_one_foot`. N2's variants not taken: `balance.reach_smooth` (and the anim instance's `SetReachWithWeight`),
+`stagger_brake_follow_s`, `lift_frame_s`. N3's daze, `tone.daze_*` (and the controller's count of dazes, which nothing asked
+for). The three overrides of `assist.head.angular_nm_per_rad` (falling, getting up, lying) that repeated the base 0. The wrist's
+asset (`Specs/physics/npc_body_wrist.json`, the generated `PA_SandboxNPCWrist`) and, by decision 29, the spec field `limits_in`
+that only it used: the generator's second joint for the swings, its frame `Plain` (folded into `Child`, which it equalled for every
+other joint), `FSandboxPoseRig`'s `bInChild` and its unit test `DictatorSandbox.Body.Pose.LimitsInTheChildsFrame`. A spec that still
+names `limits_in` is refused rather than built another way.
+
+**What stayed as a rule.** `balance.swing_foot_n_per_m` was not a switch: it was the swinging foot's assist spring, set in place
+of the feet's 1500 N/m while a foot swings, and 0. Deleting the code would have handed the swinging foot the feet's springs and
+moved every scenario with a step. Its name and value went; the code keeps the rule as it was: the world gives a swinging foot no
+pull, only the feet's angular spring holds its turn.
+
+**What stays on purpose:** the clip-following get-up (carry 0, and the fallback when a carry cannot be made) with every value it
+reads, until R2 is accepted; `settle_smooth` (off until it is understood); `rest_per_ns_s` and `rest_max_s` (R2's "how long it
+lies"); `fall.aim` (until R3); the tone's levels, the joints' scales, `weight_share`, `ankle_as_torque`, `reflex_delay_s` (R4);
+the perception's switches (the session's `-Perception`).
+
+**Checks.** The build, no warnings (35 s); 49 unit tests; `Tools\gen-assets.ps1` remade the three physics assets with the changed
+generator, and the suite ran on them: `Tools\suite.ps1 -Baseline walk`, 132 scenarios with the same hashes, 131 of 132 with
+`grab_getup_held` counted apart. `Tools\push-matrix.ps1` and `Tools\baseline.ps1 -CompareMatrix walk`: 160 runs end as they did.
+`Tools\knockdowns.ps1`: 8 of 8, every field of every fall as before but the physics step's time. The stand on three seeds
+(`Tools\getup-seeds.ps1`), each trial's hash and time to stand held against a run of the code before the change
+(`Saved\Matrix\getup_seeds`: `timing_1126` for the plain stand, `r2s0_before_*` made for this): 150 of 150 the same in each of
+the four. The bootstrap passed all 15 steps in 328 s (its stand of seed 1: 50 of 50, 48 at the first attempt).
+
+**The figures before R2's hold, on three seeds** (the held and pressed stands had been run on seed 1 only):
+
+| Stand | Seed 1 | Seed 2 | Seed 3 | Sum | Assist's mean share (seeds) | R2's criterion |
+| --- | --- | --- | --- | --- | --- | --- |
+| Nobody holds: end standing, at the first attempt | 50, 48 | 49, 44 | 50, 47 | 149, 139 | 1.18, 1.18, 1.12 (1.16) | C20: 95% and 135 |
+| One hand (`-HoldHands 1`): pulled free and stood within the hold | 42 | 39 | 38 | **119 of 150** | 1.06, 1.09, 1.04 | 20 to 60 |
+| Two hands (`-HoldHands 2`): pulled free and stood | 3 | 7 | 4 | **14 of 150** | 0.74, 0.82, 0.78 | at most 5 |
+| Pressed with 300 N (`-PressN 300`): stood under the press | 15 | 18 | 17 | 50 of 150 | 0.99, 1.01, 1.00 | kept near this |
+
+Two hands do not meet decision 13 either: seed 1's 3 of 49 hid it (seed 2 gives 7). With one hand 147 of 150 stand in the end,
+with two 144, pressed 145. The authority body by body and by direction (decision 15) is not measured yet: `control.authority` does
+not exist; proposed to be built with decision 17 in R2's next step, both of them measures that keep every hash.
+
 
 
 ## Known behaviour of the stock mannequin

@@ -16,7 +16,8 @@ R3. 19 bodies, muscles through Physics Control, capture-point balance with steps
 player's movement in VR built (the right stick, a snap turn on the left, the player's body as a capsule of 10 kg; decisions 24
 to 28; the owner's look in the headset to come). Baseline `walk` (`led`'s 127 hashes and five `body_*`): the suite is 131 of
 132, `grab_getup_held` failing on purpose until R2 (marked `known_failure`, so the suite and the bootstrap pass with it counted
-apart). Next: R2, first a clean-up of dead switches, then the hold by one hand. DLSS is deferred to M5.
+apart). R2's step 0, the clean-up of dead switches, done (every hash kept; 49 unit tests). Next: R2's decision 17 (a get-up
+that was not led is said), then the hold by one hand. DLSS is deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 

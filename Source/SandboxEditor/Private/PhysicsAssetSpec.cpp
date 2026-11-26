@@ -263,12 +263,9 @@ bool FPhysicsAssetSpec::LoadFile(const FString& FilePath, FPhysicsAssetSpec& Out
 			Joint.Along = FName(*Along);
 		}
 
-		FString LimitsIn;
-		if (JointJson->HasField(TEXT("limits_in")))
-		{
-			if (!JointJson->TryGetStringField(TEXT("limits_in"), LimitsIn) || (LimitsIn != TEXT("child") && LimitsIn != TEXT("parent"))) { return Fail(Context + TEXT(".limits_in must be \"parent\" (the default) or \"child\"")); }
-			Joint.bLimitsInChild = LimitsIn == TEXT("child");
-		}
+		// Swings limited in the child's frame went with the wrist's asset (R2's step 0, 26 November 2026): a spec that still asks
+		// for them would be built otherwise than it says.
+		if (JointJson->HasField(TEXT("limits_in"))) { return Fail(Context + TEXT(".limits_in is no longer read: every joint's swings are limited in the parent's frame")); }
 
 		FString AxisError;
 		if (!ParseSwingAxis(JointJson, Context, Joint, AxisError) ||

@@ -42,11 +42,6 @@ struct FSandboxJointLimits
 	bool bSwing1Free = false;
 	bool bSwing2Free = false;
 	bool bTwistFree = false;
-	/**
-	 * The swings are limited in the child's frame, after the twist, and the middle of their ranges is in it ("limits_in":
-	 * "child" in the spec: a joint of its own for the swings, with the two bodies the other way round).
-	 */
-	bool bInChild = false;
 };
 
 /**

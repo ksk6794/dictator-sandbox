@@ -719,7 +719,7 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   the engine runs it. It sees the pose the muscles are asked for, not the simulated body, and switching it off changes every
   hash by rounding. Ask the bones (`trace.json`, with the mesh's bone names from an editor script) before saying what moves them.
 - **Every tool runs on another physics asset without a file changed:** `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck` (and
-  `SANDBOX_HEAD_BODY=neck_01` for a body whose head is part of the neck: `PA_SandboxNPCNeck`, `PA_SandboxNPCWrist`,
+  `SANDBOX_HEAD_BODY=neck_01` for a body whose head is part of the neck: `PA_SandboxNPCNeck`,
   `PA_SandboxNPCToes`) puts that asset into a copy of each scenario in the queue, and what the scenario does to `head` it does
   to that bone.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`

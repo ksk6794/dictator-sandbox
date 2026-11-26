@@ -306,9 +306,6 @@ struct FSandboxGetUpView
 	 */
 	double RiseFeetCm = -1.0;
 	double RiseTrunkDeg = -1.0;
-	/** N7 (getup.rise): when the body took over from the clip's crouch (below 0: it did not), and how long its rise has waited. Seconds. */
-	double RiseBeganS = -1.0;
-	double RiseWaitS = 0.0;
 	/** Why the last attempt that was given up was given up. */
 	FString GivenUp;
 	/** Hits felt while getting up (at least thresholds.flinch_impulse_ns each). */
@@ -464,9 +461,8 @@ public:
 	 * time constants. Seconds 0 lets go of a level asked for.
 	 */
 	void RequestTone(ESandboxTone Level, double Seconds);
-	/** Times a hit braced the body, and times one on the head dazed it. */
+	/** Times a hit braced the body. */
 	int32 GetBraceCount() const { return Braces; }
-	int32 GetDazeCount() const { return Dazes; }
 	/** Each group's tone now, as a factor on its stiffness (spine, neck, arms, legs, toes). */
 	double GetToneStiffness(ESandboxMuscleGroup Group) const { return ToneStiffness[static_cast<int32>(Group)]; }
 
@@ -725,8 +721,6 @@ private:
 	void RefreshSolverIsland();
 	void ReleaseIslandRefresh();
 	void UpdateAssistLoad();
-	/** The pelvis's caps while a get-up rises at the clip's rate (getup.fast_rise); nothing otherwise. */
-	void ApplyFastRiseCaps(const FAssist& Assist, FSandboxAssistTuning& Slot) const;
 	/** Hands the pose of the tuning to the animation instance, which blends to it if it is new. */
 	void ApplyPose();
 	/** Works out the turns added on top of the pose this tick (the flinch's offset) and hands them over. */
@@ -763,8 +757,6 @@ private:
 		double TimeS = 0.0;
 		double Rate = 0.0;
 		double Share = 0.0;
-		/** The most Share may be while the pose is held: 1, or less while the body's own rise takes over from it (getup.rise). */
-		double ShareCap = 1.0;
 		bool bReleased = false;
 		/** Asked for from outside (SetClipPose), not by the body's own get-up: the body then leaves its balance alone. */
 		bool bOutside = false;
@@ -805,37 +797,6 @@ private:
 		/** How long the clip has now waited for a foot in the air (getup.foot_wait_s). */
 		double FootWaitS = 0.0;
 		bool bEased = false;
-		/**
-		 * N7 (getup.progress_cm): a wait for a foot or for the pelvis goes on only while it comes closer; each has the time since
-		 * its last check, its lag then, and whether it has stopped being waited for (until its lag is under the bound again).
-		 */
-		double FootCheckS = 0.0;
-		double FootLagAtCheck = 0.0;
-		bool bFootNotWaited = false;
-		double PelvisCheckS = 0.0;
-		double PelvisLagAtCheck = 0.0;
-		bool bPelvisNotWaited = false;
-		/** N7 (getup.gather_s): the clip's time where the wait that runs began (below 0: none), and which way it goes now. */
-		double GatherFromS = -1.0;
-		double GatherWay = -1.0;
-		/**
-		 * N7 (getup.rise): the clip's time at which the body takes over and rises by itself (below 0: the clip to its end); whether it
-		 * has; how far the rise has come (0 to 1); the pelvis's height above the floor and its turn when it began, and its upright turn;
-		 * and the offset of the pelvis's aim over the floor that keeps the centre of mass over the feet.
-		 */
-		double RiseAtS = -1.0;
-		bool bRising = false;
-		double RiseShare = 0.0;
-		double RiseFromHeightCm = 0.0;
-		FQuat RiseFromTurn = FQuat::Identity;
-		FQuat RiseToTurn = FQuat::Identity;
-		FVector2D RiseOffsetCm = FVector2D::ZeroVector;
-		/**
-		 * N7 (getup.fast_rise): the clip's time at which its hands leave the floor for good (below 0: no fast rise), and how far the
-		 * rise's stronger pull has come in (0 to 1).
-		 */
-		double FastFromS = -1.0;
-		double FastShare = 0.0;
 	};
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;
@@ -859,17 +820,8 @@ private:
 	FTransform StartSpace = FTransform::Identity;
 	bool StartGetUp(FString& OutError);
 	void UpdateGetUp(double DeltaTime);
-	/** N7 (getup.rise): the body's own rise from the clip's crouch; PelvisNow is where the pelvis's body is. */
-	void UpdateRise(double DeltaTime, const FTransform& PelvisNow);
 	/** The plank and the shape at 70 cm, measured while getting up (read only). */
 	void MeasureGetUpShape(const FTransform& PelvisNow, double Ease, double DeltaTime);
-	/** The pelvis's height above the soles when the body was started: the height a rise goes to. cm. */
-	double StandPelvisHeightCm = 0.0;
-	/**
-	 * N7 (getup.rise_lean_s): how far everything above the feet leans, and which way over the floor, to keep the centre of mass over the
-	 * feet while rising; it fades by its own clock afterwards. Radians, as a vector in the world's horizontal plane.
-	 */
-	FVector2D RiseLeanRad = FVector2D::ZeroVector;
 	void GiveUpGetUp(const FString& Reason);
 	/**
 	 * The led get-up (getup.carry; docs/active-ragdoll.md, part R1): every body pulled by the world toward where the clip has it.
@@ -1182,12 +1134,9 @@ private:
 	double ToneDamping[5] = { 1.0, 1.0, 1.0, 1.0, 1.0 };
 	int32 AskedTone = -1;
 	double AskedToneUntilS = 0.0;
-	/** A brace after a hit (tone.brace_*): from when to when. A daze (tone.daze_*): how deep, 0 to 1, and since when. */
+	/** A brace after a hit (tone.brace_*): from when to when. */
 	double BraceFromS = -1.0;
 	double BraceUntilS = -1.0;
-	double DazeDepth = 0.0;
-	double DazedAtS = -1.0;
-	int32 Dazes = 0;
 	int32 Braces = 0;
 	bool bToneMoving = false;
 	/** Follows the level asked for, and hands the controls the strengths while they change. */
@@ -1326,8 +1275,6 @@ private:
 	bool bFallEaseFromSet = false;
 	/** The rig as the tuning files give it (Tuning.Rig may carry the head of an asset that has one of its own). */
 	FSandboxBodyRig TunedRig;
-	/** The stagger's brake on the legs' frame as it is now (balance.stagger_brake_follow_s), cm. */
-	FVector2D StaggerBrakeCm = FVector2D::ZeroVector;
 
 	/** Lets a foot of the controller's go back to the pose, eased out. */
 	void ReleaseFoot(int32 Side, double BlendS);

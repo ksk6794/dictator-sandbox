@@ -78,9 +78,6 @@ namespace
 			Visitor(FString(TEXT("tone.brace_from_ns")), Tuning.Tone.BraceFromNs);
 			Visitor(FString(TEXT("tone.brace_delay_s")), Tuning.Tone.BraceDelayS);
 			Visitor(FString(TEXT("tone.brace_hold_s")), Tuning.Tone.BraceHoldS);
-			Visitor(FString(TEXT("tone.daze_from_ns")), Tuning.Tone.DazeFromNs);
-			Visitor(FString(TEXT("tone.daze_scale")), Tuning.Tone.DazeScale);
-			Visitor(FString(TEXT("tone.daze_s")), Tuning.Tone.DazeS);
 			Visitor(FString(TEXT("tone.fall_s")), Tuning.Tone.FallS);
 		}
 		Visitor(FString(TEXT("perception.enabled")), Tuning.Perception.Enabled);
@@ -173,13 +170,11 @@ namespace
 		Visitor(FString(TEXT("balance.swing_stiffness_scale")), Tuning.Balance.SwingStiffnessScale);
 		Visitor(FString(TEXT("balance.swing_damping_scale")), Tuning.Balance.SwingDampingScale);
 		Visitor(FString(TEXT("balance.swing_pose_velocity_share")), Tuning.Balance.SwingPoseVelocityShare);
-		Visitor(FString(TEXT("balance.swing_foot_n_per_m")), Tuning.Balance.SwingFootNPerM);
 		Visitor(FString(TEXT("balance.step_width_min_cm")), Tuning.Balance.StepWidthMinCm);
 		Visitor(FString(TEXT("balance.cross_offset_cm")), Tuning.Balance.CrossOffsetCm);
 		Visitor(FString(TEXT("balance.step_ease_s")), Tuning.Balance.StepEaseS);
 		Visitor(FString(TEXT("balance.lift_smooth")), Tuning.Balance.LiftSmooth);
 		Visitor(FString(TEXT("balance.settle_smooth")), Tuning.Balance.SettleSmooth);
-		Visitor(FString(TEXT("balance.reach_smooth")), Tuning.Balance.ReachSmooth);
 		Visitor(FString(TEXT("balance.release_smooth")), Tuning.Balance.ReleaseSmooth);
 		Visitor(FString(TEXT("balance.land_ease_s")), Tuning.Balance.LandEaseS);
 		Visitor(FString(TEXT("balance.fall_ease_s")), Tuning.Balance.FallEaseS);
@@ -195,8 +190,6 @@ namespace
 		Visitor(FString(TEXT("balance.lower_max_cm")), Tuning.Balance.LowerMaxCm);
 		Visitor(FString(TEXT("balance.cross_past_cm")), Tuning.Balance.CrossPastCm);
 		Visitor(FString(TEXT("balance.stagger_damping_s")), Tuning.Balance.StaggerDampingS);
-		Visitor(FString(TEXT("balance.stagger_brake_follow_s")), Tuning.Balance.StaggerBrakeFollowS);
-		Visitor(FString(TEXT("balance.lift_frame_s")), Tuning.Balance.LiftFrameS);
 		Visitor(FString(TEXT("balance.regroup_wait_s")), Tuning.Balance.RegroupWaitS);
 		Visitor(FString(TEXT("balance.regroup_tolerance_cm")), Tuning.Balance.RegroupToleranceCm);
 		Visitor(FString(TEXT("balance.regroup_max_steps")), Tuning.Balance.RegroupMaxSteps);
@@ -282,26 +275,6 @@ namespace
 		Visitor(FString(TEXT("getup.upright_deg")), Tuning.GetUp.UprightDeg);
 		Visitor(FString(TEXT("getup.rest_per_ns_s")), Tuning.GetUp.RestPerNsS);
 		Visitor(FString(TEXT("getup.rest_max_s")), Tuning.GetUp.RestMaxS);
-		Visitor(FString(TEXT("getup.slow_from")), Tuning.GetUp.SlowFrom);
-		Visitor(FString(TEXT("getup.rate_follow_s")), Tuning.GetUp.RateFollowS);
-		Visitor(FString(TEXT("getup.progress_cm")), Tuning.GetUp.ProgressCm);
-		Visitor(FString(TEXT("getup.progress_window_s")), Tuning.GetUp.ProgressWindowS);
-		Visitor(FString(TEXT("getup.progress_pelvis")), Tuning.GetUp.ProgressPelvis);
-		Visitor(FString(TEXT("getup.reached_feet")), Tuning.GetUp.ReachedFeet);
-		Visitor(FString(TEXT("getup.gather_s")), Tuning.GetUp.GatherS);
-		Visitor(FString(TEXT("getup.gather_rate")), Tuning.GetUp.GatherRate);
-		Visitor(FString(TEXT("getup.rise")), Tuning.GetUp.Rise);
-		Visitor(FString(TEXT("getup.rise_at_back_s")), Tuning.GetUp.RiseAtBackS);
-		Visitor(FString(TEXT("getup.rise_s")), Tuning.GetUp.RiseS);
-		Visitor(FString(TEXT("getup.rise_com_cm")), Tuning.GetUp.RiseComCm);
-		Visitor(FString(TEXT("getup.rise_lean_s")), Tuning.GetUp.RiseLeanS);
-		Visitor(FString(TEXT("getup.rise_lean_max_deg")), Tuning.GetUp.RiseLeanMaxDeg);
-		Visitor(FString(TEXT("getup.fast_rise")), Tuning.GetUp.FastRise);
-		Visitor(FString(TEXT("getup.fast_hand_cm")), Tuning.GetUp.FastHandCm);
-		Visitor(FString(TEXT("getup.fast_force_n")), Tuning.GetUp.FastForceN);
-		Visitor(FString(TEXT("getup.fast_torque_nm")), Tuning.GetUp.FastTorqueNm);
-		Visitor(FString(TEXT("getup.fast_ease_s")), Tuning.GetUp.FastEaseS);
-		Visitor(FString(TEXT("getup.end_one_foot")), Tuning.GetUp.EndOneFoot);
 		Visitor(FString(TEXT("getup.carry")), Tuning.GetUp.Carry);
 		Visitor(FString(TEXT("getup.carry_n_per_m_per_kg")), Tuning.GetUp.CarryNPerMPerKg);
 		Visitor(FString(TEXT("getup.carry_nm_per_rad_per_kg")), Tuning.GetUp.CarryNmPerRadPerKg);
@@ -323,7 +296,6 @@ namespace
 		Visitor(TEXT("getup.clip_front"), GetUp.ClipFront);
 		Visitor(TEXT("getup.clip_left"), GetUp.ClipLeft);
 		Visitor(TEXT("getup.clip_right"), GetUp.ClipRight);
-		Visitor(TEXT("getup.rise_clip_back"), GetUp.RiseClipBack);
 	}
 }
 
@@ -564,8 +536,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	}
 	if (!CheckRange(Tone.RiseS, 10.0, TEXT("tone"), TEXT("rise_s"), OutError) || !CheckRange(Tone.FallS, 10.0, TEXT("tone"), TEXT("fall_s"), OutError) ||
 		!CheckRange(Tone.BraceFromNs, 1000.0, TEXT("tone"), TEXT("brace_from_ns"), OutError) || !CheckRange(Tone.BraceDelayS, 2.0, TEXT("tone"), TEXT("brace_delay_s"), OutError) ||
-		!CheckRange(Tone.BraceHoldS, 30.0, TEXT("tone"), TEXT("brace_hold_s"), OutError) || !CheckRange(Tone.DazeFromNs, 1000.0, TEXT("tone"), TEXT("daze_from_ns"), OutError) ||
-		!CheckRange(Tone.DazeScale, 1.0, TEXT("tone"), TEXT("daze_scale"), OutError) || !CheckRange(Tone.DazeS, 60.0, TEXT("tone"), TEXT("daze_s"), OutError))
+		!CheckRange(Tone.BraceHoldS, 30.0, TEXT("tone"), TEXT("brace_hold_s"), OutError))
 	{
 		return false;
 	}
@@ -651,26 +622,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError) ||
 		!CheckRange(GetUp.RestPerNsS, 0.1, TEXT("getup"), TEXT("rest_per_ns_s"), OutError) ||
 		!CheckRange(GetUp.RestMaxS, 60.0, TEXT("getup"), TEXT("rest_max_s"), OutError) ||
-		!CheckRange(GetUp.SlowFrom, 0.99, TEXT("getup"), TEXT("slow_from"), OutError) ||
-		!CheckRange(GetUp.RateFollowS, 2.0, TEXT("getup"), TEXT("rate_follow_s"), OutError) ||
-		!CheckRange(GetUp.ProgressCm, 20.0, TEXT("getup"), TEXT("progress_cm"), OutError) ||
-		!CheckRange(GetUp.ProgressWindowS, 2.0, TEXT("getup"), TEXT("progress_window_s"), OutError) ||
-		!CheckRange(GetUp.ProgressPelvis, 1.0, TEXT("getup"), TEXT("progress_pelvis"), OutError) ||
-		!CheckRange(GetUp.ReachedFeet, 1.0, TEXT("getup"), TEXT("reached_feet"), OutError) ||
-		!CheckRange(GetUp.GatherS, 2.0, TEXT("getup"), TEXT("gather_s"), OutError) ||
-		!CheckRange(GetUp.GatherRate, 2.0, TEXT("getup"), TEXT("gather_rate"), OutError) ||
-		!CheckRange(GetUp.Rise, 1.0, TEXT("getup"), TEXT("rise"), OutError) ||
-		!CheckRange(GetUp.RiseAtBackS, 60.0, TEXT("getup"), TEXT("rise_at_back_s"), OutError) ||
-		!CheckRange(GetUp.RiseS, 10.0, TEXT("getup"), TEXT("rise_s"), OutError) ||
-		!CheckRange(GetUp.RiseComCm, 100.0, TEXT("getup"), TEXT("rise_com_cm"), OutError) ||
-		!CheckRange(GetUp.RiseLeanS, 10.0, TEXT("getup"), TEXT("rise_lean_s"), OutError) ||
-		!CheckRange(GetUp.RiseLeanMaxDeg, 60.0, TEXT("getup"), TEXT("rise_lean_max_deg"), OutError) ||
-		!CheckRange(GetUp.FastRise, 1.0, TEXT("getup"), TEXT("fast_rise"), OutError) ||
-		!CheckRange(GetUp.FastHandCm, 100.0, TEXT("getup"), TEXT("fast_hand_cm"), OutError) ||
-		!CheckRange(GetUp.FastForceN, 10000.0, TEXT("getup"), TEXT("fast_force_n"), OutError) ||
-		!CheckRange(GetUp.FastTorqueNm, 10000.0, TEXT("getup"), TEXT("fast_torque_nm"), OutError) ||
-		!CheckRange(GetUp.FastEaseS, 5.0, TEXT("getup"), TEXT("fast_ease_s"), OutError) ||
-		!CheckRange(GetUp.EndOneFoot, 1.0, TEXT("getup"), TEXT("end_one_foot"), OutError) ||
 		!CheckRange(GetUp.Carry, 1.0, TEXT("getup"), TEXT("carry"), OutError) ||
 		!CheckRange(GetUp.CarryNPerMPerKg, 10000.0, TEXT("getup"), TEXT("carry_n_per_m_per_kg"), OutError) ||
 		!CheckRange(GetUp.CarryNmPerRadPerKg, 1000.0, TEXT("getup"), TEXT("carry_nm_per_rad_per_kg"), OutError) ||
@@ -681,16 +632,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.CarryReleaseS, 5.0, TEXT("getup"), TEXT("carry_release_s"), OutError) ||
 		!CheckRange(GetUp.CarryYieldNs, 10000.0, TEXT("getup"), TEXT("carry_yield_ns"), OutError))
 	{
-		return false;
-	}
-	if (GetUp.Rise > 0.5 && GetUp.RiseS <= 0.0)
-	{
-		OutError = TEXT("getup.rise_s must be above 0 while getup.rise is on");
-		return false;
-	}
-	if (GetUp.ProgressCm > 0.0 && GetUp.ProgressWindowS <= 0.0)
-	{
-		OutError = TEXT("getup.progress_window_s must be above 0 while getup.progress_cm is");
 		return false;
 	}
 
@@ -774,13 +715,11 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.SwingStiffnessScale, 10.0, TEXT("balance"), TEXT("swing_stiffness_scale"), OutError) ||
 		!CheckRange(Balance.SwingDampingScale, 10.0, TEXT("balance"), TEXT("swing_damping_scale"), OutError) ||
 		!CheckRange(Balance.SwingPoseVelocityShare, 1.0, TEXT("balance"), TEXT("swing_pose_velocity_share"), OutError) ||
-		!CheckRange(Balance.SwingFootNPerM, MaxLinearStiffness, TEXT("balance"), TEXT("swing_foot_n_per_m"), OutError) ||
 		!CheckRange(Balance.StepWidthMinCm, 100.0, TEXT("balance"), TEXT("step_width_min_cm"), OutError) ||
 		!CheckRange(Balance.CrossOffsetCm, 100.0, TEXT("balance"), TEXT("cross_offset_cm"), OutError) ||
 		!CheckRange(Balance.StepEaseS, 2.0, TEXT("balance"), TEXT("step_ease_s"), OutError) ||
 		!CheckRange(Balance.LiftSmooth, 1.0, TEXT("balance"), TEXT("lift_smooth"), OutError) ||
 		!CheckRange(Balance.SettleSmooth, 1.0, TEXT("balance"), TEXT("settle_smooth"), OutError) ||
-		!CheckRange(Balance.ReachSmooth, 1.0, TEXT("balance"), TEXT("reach_smooth"), OutError) ||
 		!CheckRange(Balance.ReleaseSmooth, 1.0, TEXT("balance"), TEXT("release_smooth"), OutError) ||
 		!CheckRange(Balance.LandEaseS, 2.0, TEXT("balance"), TEXT("land_ease_s"), OutError) ||
 		!CheckRange(Balance.FallEaseS, 2.0, TEXT("balance"), TEXT("fall_ease_s"), OutError) ||
@@ -796,8 +735,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.LowerMaxCm, 60.0, TEXT("balance"), TEXT("lower_max_cm"), OutError) ||
 		!CheckRange(Balance.CrossPastCm, 300.0, TEXT("balance"), TEXT("cross_past_cm"), OutError) ||
 		!CheckRange(Balance.StaggerDampingS, 2.0, TEXT("balance"), TEXT("stagger_damping_s"), OutError) ||
-		!CheckRange(Balance.StaggerBrakeFollowS, 2.0, TEXT("balance"), TEXT("stagger_brake_follow_s"), OutError) ||
-		!CheckRange(Balance.LiftFrameS, 2.0, TEXT("balance"), TEXT("lift_frame_s"), OutError) ||
 		!CheckRange(Balance.RegroupWaitS, 10.0, TEXT("balance"), TEXT("regroup_wait_s"), OutError) ||
 		!CheckRange(Balance.RegroupToleranceCm, 100.0, TEXT("balance"), TEXT("regroup_tolerance_cm"), OutError) ||
 		!CheckRange(Balance.RegroupMaxSteps, 10.0, TEXT("balance"), TEXT("regroup_max_steps"), OutError) ||

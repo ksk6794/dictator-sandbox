@@ -112,15 +112,6 @@ struct FPhysicsJointSpec
 	bool bSoftLimit = false;
 	double LimitStiffness = 0.0;
 	double LimitDamping = 0.0;
-
-	/**
-	 * "limits_in": "child". The two swings are limited about the child's own axes, after the twist, instead of about
-	 * the parent's, before it: a hand turned palm down bends back by its own range and not by the range of the
-	 * sideways bend. The engine's solver limits the swings in the frame of the joint's second body. So the asset gets two
-	 * joints for this one: the rigid one as any other, which limits the twist and leaves the swings free, and beside it
-	 * one that holds no place, only the two swings, with the bodies the other way round ("<child>_swings").
-	 */
-	bool bLimitsInChild = false;
 };
 
 /**

@@ -160,23 +160,6 @@ bool FSandboxPoseRig::ReadJointLimits(const USkeletalMeshComponent* Mesh, FName 
 		OutLimits.bSwing1Free = Cone.Swing1Motion == ACM_Free;
 		OutLimits.bSwing2Free = Cone.Swing2Motion == ACM_Free;
 		OutLimits.bTwistFree = Twist.TwistMotion == ACM_Free;
-		// The swings in a joint of their own, limited in the child's frame: that one's swings, this one's twist.
-		for (const UPhysicsConstraintTemplate* Other : Asset->ConstraintSetup)
-		{
-			if (!Other || Other->DefaultInstance.ConstraintBone1 != Joint.ConstraintBone2 || Other->DefaultInstance.ConstraintBone2 != ChildBone)
-			{
-				continue;
-			}
-			const FConeConstraint& Swings = Other->DefaultInstance.ProfileInstance.ConeLimit;
-			OutLimits.bInChild = true;
-			OutLimits.ChildFrame = Other->DefaultInstance.GetRefFrame(EConstraintFrame::Frame2).GetRotation();
-			OutLimits.ParentFrame = Other->DefaultInstance.GetRefFrame(EConstraintFrame::Frame1).GetRotation();
-			OutLimits.Swing1Deg = Swings.Swing1Motion == ACM_Locked ? 0.0 : Swings.Swing1LimitDegrees;
-			OutLimits.Swing2Deg = Swings.Swing2Motion == ACM_Locked ? 0.0 : Swings.Swing2LimitDegrees;
-			OutLimits.bSwing1Free = Swings.Swing1Motion == ACM_Free;
-			OutLimits.bSwing2Free = Swings.Swing2Motion == ACM_Free;
-			break;
-		}
 		return true;
 	}
 	return false;
@@ -198,7 +181,7 @@ double FSandboxPoseRig::LimitExcessDeg(const FQuat& ParentBone, const FQuat& Chi
 	// (FPBDJointCachedSolver::InitPyramidSwingConstraint). A box, not an ellipse.
 	const FQuat Parent = ParentBone * Limits.ParentFrame;
 	const FQuat OfChild = ChildBone * Limits.ChildFrame;
-	const FQuat Relative = (Limits.bInChild ? OfChild.Inverse() * Parent : Parent.Inverse() * OfChild).GetNormalized();
+	const FQuat Relative = (Parent.Inverse() * OfChild).GetNormalized();
 	FQuat Swing, Twist;
 	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
 	if (Swing.W < 0.0)
@@ -231,7 +214,7 @@ FQuat FSandboxPoseRig::ClampToRange(const FQuat& ParentBone, const FQuat& ChildB
 	// The same three angles as LimitExcessDeg measures.
 	const FQuat Parent = ParentBone * Limits.ParentFrame;
 	const FQuat OfChild = ChildBone * Limits.ChildFrame;
-	const FQuat Relative = (Limits.bInChild ? OfChild.Inverse() * Parent : Parent.Inverse() * OfChild).GetNormalized();
+	const FQuat Relative = (Parent.Inverse() * OfChild).GetNormalized();
 	FQuat Swing, Twist;
 	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
 	if (Swing.W < 0.0)
@@ -265,7 +248,7 @@ FQuat FSandboxPoseRig::ClampToRange(const FQuat& ParentBone, const FQuat& ChildB
 	const double K = A * A + B * B;
 	const FQuat NewSwing(0.0, 2.0 * B / (1.0 + K), 2.0 * A / (1.0 + K), (1.0 - K) / (1.0 + K));
 	const FQuat NewRelative = NewSwing * FQuat(FVector::XAxisVector, TwistRad);
-	return ((Parent * (Limits.bInChild ? NewRelative.Inverse() : NewRelative)) * Limits.ChildFrame.Inverse()).GetNormalized();
+	return ((Parent * NewRelative) * Limits.ChildFrame.Inverse()).GetNormalized();
 }
 
 FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& ChildBone, const FSandboxJointLimits& Limits)
@@ -277,7 +260,7 @@ FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& Child
 	// The child's frame relative to the parent's: twist about X, then a swing whose axis lies in Y and Z.
 	const FQuat Parent = ParentBone * Limits.ParentFrame;
 	const FQuat OfChild = ChildBone * Limits.ChildFrame;
-	const FQuat Relative = (Limits.bInChild ? OfChild.Inverse() * Parent : Parent.Inverse() * OfChild).GetNormalized();
+	const FQuat Relative = (Parent.Inverse() * OfChild).GetNormalized();
 	FQuat Swing, Twist;
 	Relative.ToSwingTwist(FVector::XAxisVector, Swing, Twist);
 
@@ -333,7 +316,7 @@ FQuat FSandboxPoseRig::ClampToLimits(const FQuat& ParentBone, const FQuat& Child
 	const double Angle = SwingVector.Size();
 	const FQuat NewSwing = Angle > UE_SMALL_NUMBER ? FQuat(SwingVector / Angle, Angle) : FQuat::Identity;
 	const FQuat NewRelative = NewSwing * FQuat(FVector::XAxisVector, TwistRad);
-	return ((Parent * (Limits.bInChild ? NewRelative.Inverse() : NewRelative)) * Limits.ChildFrame.Inverse()).GetNormalized();
+	return ((Parent * NewRelative) * Limits.ChildFrame.Inverse()).GetNormalized();
 }
 
 void FSandboxPoseRig::BuildTurns(const FSandboxPose& Pose, double Weight, TArray<FSandboxPoseTurn>& OutTurns) const

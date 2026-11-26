@@ -89,7 +89,7 @@ public:
 	bool BodyAt(FName Bone, double TimeS, FTransform& OutTransform) const;
 	/**
 	 * The same, but where the body's bone is when its joints are as the muscles are asked for them (each held to its range) on
-	 * the mesh's own proportions, chained from the pelvis: a place the body can reach (N7, getup.reached_feet).
+	 * the mesh's own proportions, chained from the pelvis: a place the body can reach (the led get-up's targets, FSandboxCarry).
 	 */
 	bool ReachedBodyAt(FName Bone, double TimeS, FTransform& OutTransform) const;
 

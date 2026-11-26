@@ -312,13 +312,6 @@ struct FSandboxBalanceTuning
 	 */
 	double SwingPoseVelocityShare = 0.0;
 	/**
-	 * The balance assist's spring on the swinging foot (horizontal and vertical), pulling it along its swing,
-	 * the target moving with it: the "foot-planting control" of the assist (docs/PRD.md, "Control stack"),
-	 * which puts the foot where the step is aimed while the leg's muscles lag behind. Counted in the assist's
-	 * load like every assist spring. N/m; 0 leaves the swing to the muscles alone.
-	 */
-	double SwingFootNPerM = 0.0;
-	/**
 	 * The swing ends this far below the height the foot was planted at, so that the leg puts the foot down on the
 	 * floor rather than next to it in the air; it goes on until the foot touches (twice its time at most). cm.
 	 */
@@ -345,12 +338,10 @@ struct FSandboxBalanceTuning
 	 * LiftSmooth: at a lift the leg's frame goes over from the one the leg was last solved in (and not from the whole of
 	 * the one it was on its way to), and the foot's level and its ankle's limit come in over StepEaseS.
 	 * SettleSmooth: a foot that has landed settles from the height its leg was solved for, not from where its bone is.
-	 * ReachSmooth: the share of its length a leg is held to (LegExtensionMax) comes in with the placement's weight.
 	 * ReleaseSmooth: a leg let go as a fall begins goes back to the pose from the target it was solved for.
 	 */
 	double LiftSmooth = 0.0;
 	double SettleSmooth = 0.0;
-	double ReachSmooth = 0.0;
 	double ReleaseSmooth = 0.0;
 	/** Time over which the swinging leg's own strength goes once it has landed; 0: at once. Seconds. */
 	double LandEaseS = 0.0;
@@ -412,16 +403,6 @@ struct FSandboxBalanceTuning
 	 * from its anchor to where it is) by the body's speed times this: they brake it in proportion to its speed. s.
 	 */
 	double StaggerDampingS = 0.0;
-	/**
-	 * Time constant over which that brake follows the body's speed, in and out (0: at once, as it was). Taken from the speed
-	 * at once, the legs' frame moved by the speed a blow had given the body, 20 to 50 cm in one frame. s.
-	 */
-	double StaggerBrakeFollowS = 0.0;
-	/**
-	 * Time over which a lifting leg's frame goes over from the upright one it stood in to the body as it is (0: StepEaseS).
-	 * After a blow the two are 25 degrees apart, and over StepEaseS (0.05 s) the leg's targets turn by 6 degrees a frame and stop. s.
-	 */
-	double LiftFrameS = 0.0;
 	/**
 	 * After recovery steps, once the body has stood still this long, a foot steps back to its place beside the other
 	 * (0: the feet stay where the steps put them). Seconds.
@@ -686,13 +667,6 @@ struct FSandboxToneTuning
 	double BraceFromNs = 0.0;
 	double BraceDelayS = 0.0;
 	double BraceHoldS = 0.0;
-	/**
-	 * A hit on the head from DazeFromNs up to the knockdown's reactions.knockdown_head_ns dazes the body: its legs and spine
-	 * at DazeScale of their tone (graded with the hit, the whole of it at the knockdown's), coming back over DazeS. 0 never.
-	 */
-	double DazeFromNs = 0.0;
-	double DazeScale = 0.0;
-	double DazeS = 0.0;
 };
 
 /** The fall with an aim (N6, "fall.*"): the arms reach for the floor while the body goes down. */
@@ -870,69 +844,6 @@ struct FSandboxGetUpTuning
 	 */
 	double RestPerNsS = 0.0;
 	double RestMaxS = 0.0;
-	/**
-	 * N7: a clip that never stands still. Above 0 the clip's time slows as the body falls behind, from this share of the lags
-	 * that stop it (lag_cm, side_lag_cm, foot_lag_cm) to a stop at the whole of them, and it runs while the body eases in;
-	 * RateFollowS smooths each change of its speed (0: at once). 0, 0: the clip runs or stands, as it did. Share, seconds.
-	 */
-	double SlowFrom = 0.0;
-	double RateFollowS = 0.0;
-	/**
-	 * N7: the clip waits for a foot in the air (and with ProgressPelvis 1, for the pelvis) only while it comes closer by at least
-	 * this in every ProgressWindowS; a foot that does not come is not waited for until it is within the bound again (the clip
-	 * asked for where it cannot reach, and stood still until foot_wait_s ran out). 0: waited for as before. cm, s, 0 or 1.
-	 */
-	double ProgressCm = 0.0;
-	double ProgressWindowS = 0.0;
-	double ProgressPelvis = 0.0;
-	/**
-	 * N7: 1 aims the feet's assist, and measures a foot's lag, at where the foot is when the legs' joints are as the muscles are
-	 * asked for them (each held to its range, on the mesh's proportions; FSandboxClipPose::ReachedBodyAt), and not where the
-	 * clip's own foot is, which the body's foot stayed 17 to 18 cm from while the clip stood still for it. 0: the clip's own foot.
-	 */
-	double ReachedFeet = 0.0;
-	/**
-	 * N7, a wait that is not a freeze: while the clip waits for the body its time goes back by up to GatherS and comes again, at
-	 * GatherRate of its rate, over and over, instead of standing still; it never goes past where the wait began. 0: it stands.
-	 * Seconds of the clip, share.
-	 */
-	double GatherS = 0.0;
-	double GatherRate = 0.0;
-	/**
-	 * N7, a get-up made for this body (the owner's decision of 26 November). 1: from the back the body follows RiseClipBack only up to
-	 * its crouch at RiseAtBackS, and rises from there by itself: the muscles go over from the clip's crouch to the stance over RiseS, the
-	 * pelvis's assist rises to the standing height with its tilt to upright and keeps the centre of mass over the middle of the feet; the
-	 * rise waits while the pelvis lags or the centre of mass is more than RiseComCm outside the feet. 0: the clip to its end (the body
-	 * rose like a plank over its feet). 0 or 1, s, s, cm.
-	 */
-	double Rise = 0.0;
-	double RiseAtBackS = 0.0;
-	double RiseS = 0.0;
-	double RiseComCm = 0.0;
-	/**
-	 * ...and the body moves its own centre of mass over the feet while it rises, as the ankle strategy does standing: everything above the
-	 * feet leans toward where it should be, by the error over the centre of mass's height per RiseLeanS, at most RiseLeanMaxDeg. s, degrees.
-	 */
-	double RiseLeanS = 0.0;
-	double RiseLeanMaxDeg = 0.0;
-	FString RiseClipBack;
-	/**
-	 * N7, the rise as fast as the recording (the owner's decision of 26 November). 1: from the clip time at which the clip's hands
-	 * leave the floor for good (the last time either is lower than FastHandCm) the clip does not wait for the pelvis or a foot, and the
-	 * pelvis's assist may pull with up to FastForceN and turn with up to FastTorqueNm, eased in over FastEaseS. 0: the clip waits for the
-	 * body all the way (the body stayed in the forward lean that the recorded person passes in a moment). 0 or 1, cm, N, N*m, s.
-	 */
-	double FastRise = 0.0;
-	double FastHandCm = 0.0;
-	double FastForceN = 0.0;
-	double FastTorqueNm = 0.0;
-	double FastEaseS = 0.0;
-	/**
-	 * N7, the recording carried (the owner's decision of 26 November): 1, at the clip's end one foot on the floor is enough to stand,
-	 * with the pelvis upright within upright_deg; 0, both feet. (Carried hard, the pelvis was held at the clip's height and the other leg
-	 * did not reach the floor: the get-up never ended.) 0 or 1.
-	 */
-	double EndOneFoot = 0.0;
 	/**
 	 * The led get-up (docs/active-ragdoll.md, part R1): 1, every body of the character is pulled by the world toward where the clip
 	 * has it (FSandboxCarry; the clip's pose chained on the body's own proportions), the clip runs at its rate without waiting for

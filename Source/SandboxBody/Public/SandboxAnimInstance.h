@@ -55,8 +55,6 @@ struct FSandboxLimbTarget
 	 * one frame kicked the body off the floor.
 	 */
 	double ReachShare = 0.0;
-	/** The share of its length the limb is held to comes in with the placement's weight (whole at once, a leg that is placed for the first time jumps). */
-	bool bReachWithWeight = false;
 	/**
 	 * Which way the middle joint goes, in the mesh's space (the character faces +y, its left is +x): a knee forward, an elbow
 	 * back and out. And the axis it bends about when the limb is too straight to tell, signed so that a positive turn bends it:
@@ -179,9 +177,6 @@ public:
 	void MoveLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, const FTransform* Frame, const FQuat* EndFrame = nullptr,
 		double EndLimitWeight = 0.0, double ReachShare = 0.0);
 
-	/** From now on the share of its length a limb is held to comes in with its target's weight (FSandboxLimbTarget::bReachWithWeight). */
-	void SetReachWithWeight(bool bInReachWithWeight) { bReachWithWeight = bInReachWithWeight; }
-
 	/** The weight a limb target has now, part way through its blend; 0 without one. */
 	double GetLimbWeight(int32 EndMeshBoneIndex) const;
 
@@ -222,7 +217,6 @@ private:
 	/** Arms whose weight is eased a second time (a guard raised quickly); the others keep the limb's own ease. */
 	TSet<int32> EasedTwice;
 	TMap<int32, TPair<FSandboxJointLimits, FSandboxJointLimits>> Ranges;
-	bool bReachWithWeight = false;
 
 	double BlendS = 0.0;
 	/** Time since the current blend started. */

@@ -80,10 +80,7 @@
     "fall_s": 0.4,
     "brace_from_ns": 0,
     "brace_delay_s": 0.08,
-    "brace_hold_s": 1.0,
-    "daze_from_ns": 0,
-    "daze_scale": 0.5,
-    "daze_s": 3.0
+    "brace_hold_s": 1.0
   },
   "assist": {
     "pelvis": { "horizontal_n_per_m": 1500, "vertical_n_per_m": 0, "angular_nm_per_rad": 60, "damping_s": 0.2, "max_torque_nm": 0, "max_force_n": 0 },
@@ -148,13 +145,11 @@
     "swing_stiffness_scale": 2,
     "swing_damping_scale": 2,
     "swing_pose_velocity_share": 0.75,
-    "swing_foot_n_per_m": 0,
     "step_width_min_cm": 18,
     "cross_offset_cm": 22,
     "step_ease_s": 0.05,
     "lift_smooth": 1,
     "settle_smooth": 0,
-    "reach_smooth": 0,
     "release_smooth": 1,
     "land_ease_s": 0.05,
     "fall_ease_s": 0.1,
@@ -171,8 +166,6 @@
     "lower_max_cm": 15,
     "cross_past_cm": 12,
     "stagger_damping_s": 0.15,
-    "stagger_brake_follow_s": 0,
-    "lift_frame_s": 0,
     "regroup_wait_s": 0.6,
     "regroup_tolerance_cm": 8,
     "regroup_max_steps": 2,
@@ -225,26 +218,6 @@
     "upright_deg": 15,
     "rest_per_ns_s": 0,
     "rest_max_s": 0,
-    "slow_from": 0,
-    "rate_follow_s": 0,
-    "progress_cm": 0,
-    "progress_window_s": 0.15,
-    "progress_pelvis": 0,
-    "reached_feet": 0,
-    "gather_s": 0,
-    "gather_rate": 0.5,
-    "rise": 0,
-    "rise_at_back_s": 0.95,
-    "rise_s": 1.2,
-    "rise_com_cm": 3,
-    "rise_lean_s": 0.3,
-    "rise_lean_max_deg": 30,
-    "fast_rise": 0,
-    "fast_hand_cm": 9,
-    "fast_force_n": 400,
-    "fast_torque_nm": 500,
-    "fast_ease_s": 0.15,
-    "end_one_foot": 0,
     "carry": 1,
     "carry_n_per_m_per_kg": 400,
     "carry_nm_per_rad_per_kg": 4,
@@ -254,7 +227,6 @@
     "carry_max_nm_per_kg": 4,
     "carry_release_s": 0.4,
     "carry_yield_ns": 60,
-    "rise_clip_back": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_crouch_B.M_ragdoll_getup_crouch_B",
     "clip_back": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_B.M_ragdoll_getup_stand_B",
     "clip_front": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_F.M_ragdoll_getup_stand_F",
     "clip_left": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/M_ragdoll_getup_stand_L.M_ragdoll_getup_stand_L",
@@ -283,7 +255,6 @@
       "assist": {
         "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 0 },
         "chest": { "angular_nm_per_rad": 0 },
-        "head": { "angular_nm_per_rad": 0 },
         "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
       }
     },
@@ -294,7 +265,6 @@
       "assist": {
         "pelvis": { "horizontal_n_per_m": 3000, "vertical_n_per_m": 6000, "angular_nm_per_rad": 600, "max_torque_nm": 200, "max_force_n": 90 },
         "chest": { "angular_nm_per_rad": 0 },
-        "head": { "angular_nm_per_rad": 0 },
         "feet": { "horizontal_n_per_m": 2000, "vertical_n_per_m": 2000, "angular_nm_per_rad": 0, "max_force_n": 30 }
       }
     },
@@ -309,7 +279,6 @@
       "assist": {
         "pelvis": { "horizontal_n_per_m": 0, "angular_nm_per_rad": 0 },
         "chest": { "angular_nm_per_rad": 0 },
-        "head": { "angular_nm_per_rad": 0 },
         "feet": { "horizontal_n_per_m": 0, "vertical_n_per_m": 0, "angular_nm_per_rad": 0 }
       }
     }

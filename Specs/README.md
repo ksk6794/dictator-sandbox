@@ -49,7 +49,6 @@ eleven entries of its joints (18 joints with the mirrored ones) and two of the n
 | `joints[].child` | Child body. Its parent is the nearest ancestor bone that has a body. One joint per non-root body, written out or mirrored |
 | `joints[].mirror` | Child body of the same joint on the other side. It is generated as the exact mirror image, with the same ranges, so left and right cannot differ |
 | `joints[].along` | Bone the limb runs toward from the joint, or a direction `[x, y, z]` for a limb with no bone beyond it (the head). The twist axis points from the child bone to this bone, or along the direction |
-| `joints[].limits_in` | `"parent"` (the default) or `"child"`. The engine limits the two swings about the axes of the joint's second body, before the twist: a hand turned palm down then bends back by the range of the sideways bend. With `"child"` the swings are limited about the child's own axes, after the twist: the asset gets a second joint, `<child>_swings`, with the bodies the other way round, that holds no place and no twist and only the swings (not projected, since a projection moves the first body); the joint itself keeps the place and the twist and leaves the swings free. A pose's angles still count the swing in the parent's axes (`FSandboxPoseRig::JointTurn`), so a pose that turns such a joint about two axes at once is not counted as its limits count it |
 | `joints[].swing1_axis` | The axis the joint's main bending turns about: a direction `[x, y, z]` in the mesh's reference-pose space, `{"from": bone, "to": bone}`, or `"bend"` (see below). It is made perpendicular to the twist axis |
 | `joints[].swing1`, `swing2`, `twist` | `[min, max]` in degrees, `"locked"` or `"free"`. A range need not be symmetric |
 | `joints[].limit` | What the joint does at the end of its range: `"hard"`, or `{"stiffness": n, "damping": n}` for a soft limit (the engine's figures of a soft limit, the same for the two swings and the twist). Written for every joint; a mirrored joint has its twin's |
@@ -61,13 +60,16 @@ eleven entries of its joints (18 joints with the mirrored ones) and two of the n
 | --- | --- | --- |
 | `npc_body.json` | `PA_SandboxNPC` | The default body since the owner's decision of 26 November 2026: 19 bodies and 18 joints, the head a body of its own on the neck (`neck_01` and `head`, below). The run-time asset allows 144 pairs of its bodies to collide |
 | `npc_body_neck.json` | `PA_SandboxNPCNeck` | The body before it: 18 bodies, head and neck one body on one joint (127 pairs) |
-| `npc_body_wrist.json` | `PA_SandboxNPCWrist` | The one-piece neck with a wrist limited in the hand's own axes (`"limits_in": "child"`, swing1 -85 to 60). No-go and unused; to be removed at R2's step 0 (owner's decision of 26 November) |
 | `npc_body_toes.json` | `PA_SandboxNPCToes` | 20 bodies: the one-piece neck's 18 and a toe body on each foot (`ball_l`, `ball_r`; their muscles are the `toes` group). Put off; yes or no is decided before R4 |
 
 Every tool runs on another of these assets without a file changed: `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck` puts
 that asset in the place of `PA_SandboxNPC` in a copy of each scenario of the queue (`Tools\common.ps1`), and for an
-asset whose head is part of the neck (`PA_SandboxNPCNeck`, `PA_SandboxNPCWrist`, `PA_SandboxNPCToes`)
+asset whose head is part of the neck (`PA_SandboxNPCNeck`, `PA_SandboxNPCToes`)
 `SANDBOX_HEAD_BODY=neck_01` makes what a scenario does to `head` act on that bone.
+
+The wrist limited in the hand's own axes (`npc_body_wrist.json`, `PA_SandboxNPCWrist`, and the joint field `limits_in`
+that only it used) was a no-go of the natural-body track and was removed on 26 November 2026 (R2's step 0: decision 9,
+and the owner's choice of that day to take `limits_in` with it); a spec that still names `limits_in` is refused.
 
 ### Joints
 

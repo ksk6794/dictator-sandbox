@@ -114,7 +114,6 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 			if (Limb.Target.Weight > 0.0)
 			{
 				FSandboxLimbTarget& Added = Limbs.Add_GetRef(Limb.Target);
-				Added.bReachWithWeight = Instance->bReachWithWeight;
 				if (const TPair<FVector, FVector>* Bend = Instance->Bends.Find(Limb.Target.EndMeshBoneIndex))
 				{
 					Added.PoleDirection = Bend->Key;
@@ -219,8 +218,7 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		if (Limb.ReachShare > 0.0)
 		{
 			// Within reach (FSandboxLimbTarget::ReachShare), along the line from the root.
-			const double ReachShare = Limb.bReachWithWeight ? FMath::Lerp(1.0, Limb.ReachShare, FMath::Clamp(Limb.Weight, 0.0, 1.0)) : Limb.ReachShare;
-			const double ReachCm = ReachShare * (FVector::Dist(RootTransform.GetLocation(), MiddleTransform.GetLocation()) +
+			const double ReachCm = Limb.ReachShare *(FVector::Dist(RootTransform.GetLocation(), MiddleTransform.GetLocation()) +
 				FVector::Dist(MiddleTransform.GetLocation(), EndTransform.GetLocation()));
 			const FVector FromRoot = Effector - RootTransform.GetLocation();
 			if (FromRoot.SizeSquared() > ReachCm * ReachCm)

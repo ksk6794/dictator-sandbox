@@ -218,7 +218,7 @@ function New-ScenarioQueue {
         if ($job.File) { $scenario = [System.IO.Path]::GetFullPath($job.File) } else { $scenario = Join-Path $RepoRoot "Scenarios\$($job.Name).json" }
         # Another body for every run of a tool, without touching a scenario: SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck puts
         # that asset in the place of PA_SandboxNPC in a copy of each scenario, and where its head is part of another body
-        # (SANDBOX_HEAD_BODY=neck_01, in today's PA_SandboxNPCNeck, PA_SandboxNPCWrist and PA_SandboxNPCToes) what a
+        # (SANDBOX_HEAD_BODY=neck_01, in today's PA_SandboxNPCNeck and PA_SandboxNPCToes) what a
         # scenario does to the head it does to that.
         if ($env:SANDBOX_PHYSICS_ASSET) {
             if ($number -eq 0) { Write-Host "QUEUE NOTE: SANDBOX_PHYSICS_ASSET is set: every scenario of this queue runs on $($env:SANDBOX_PHYSICS_ASSET)" }

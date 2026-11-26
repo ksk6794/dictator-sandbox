@@ -16,7 +16,8 @@ R2, R3, the rest of M4, R4 with new tables, R5, R6, R7, M4b, R9; every part is j
 placed in the R parts. **Section 8 of this document is the one order of work of the project** and says where each part of the
 natural-body track went; the project's status is in `docs/PRD.md`, "Status". Decisions 18 to 24 were taken in the review of the
 audit (26 November). The player's movement in VR (decision 24) is built (26 November, decisions 25 to 28; the owner's look in the
-headset is to come); next is R2, beginning with a clean-up (its step 0). Nothing of R2 is begun.
+headset is to come); R2 has begun: its step 0, the clean-up, is done (26 November, decisions 9 and 29, every hash kept); next in R2 is decision 17,
+then the hold by one hand.
 
 ## 1. Audit: what exists
 
@@ -266,8 +267,8 @@ the headset"): the suite's 127 scenarios keep their hashes, five scenarios of th
 walks a made-up headset through it (`Tools\play.ps1 -Demo -Walk`, a step of the bootstrap); the owner's look in the headset is
 to come, when the owner says the headset is on. Then:
 
-1. **R2**, the get-up from however the body lies. Step 0 is a clean-up of dead switches (decision 9); then the hold by one hand,
-   then the matcher and the fit to the floor.
+1. **R2**, the get-up from however the body lies. Step 0 is a clean-up of dead switches (decision 9; done on 26 November); then
+   the hold by one hand, then the matcher and the fit to the floor.
 2. **R3**, the fall as the references drive it.
 3. **The rest of M4 and its gate in the headset** (`docs/PRD.md`, M4): part 2 closed, the rest of part 4 (things in the hand),
    part 5 (the desktop's verbs and locomotion; the headset's movement and the capsule come first, above), part 6 (the review in
@@ -348,13 +349,18 @@ in the physics step (not measured).
   `balance.swing_foot_n_per_m` (a force from the world on an upright body), the overrides of `assist.head` that repeat their
   base value, and the wrist's asset (`npc_body_wrist.json`, `PA_SandboxNPCWrist`). All are neutral, so the suite against `led`
   must keep every hash. The clip-following path (carry 0, also the fallback when a carry cannot be made) stays until R2 is
-  accepted.
+  accepted. **Done on 26 November 2026** (`docs/testing.md`, "R2, step 0: the clean-up"): every item of the list, with what
+  only they used (N7's own rise and its two metrics `rise_began_s` and `rise_wait_s`, the daze's count, the anim instance's
+  `SetReachWithWeight`), and the spec field `limits_in` that only the wrist used (decision 29). `balance.swing_foot_n_per_m`
+  was not a switch but the swinging foot's spring at 0: its name and value went, the rule stays in the code (the world gives
+  a swinging foot no pull). The suite kept all 132 hashes of `walk`; 49 unit tests (the wrist's one went).
 - **First, the hold by one hand** (decision 3): a hand that holds a body getting up slows it and two hold it; `grab_getup_held`
   passes again; measured on the stand with `-HoldHands 1` and `2` on three seeds. In numbers (decision 13, the criterion of
   25 November): held by one hand, 20 to 60 of 150 pull free and stand within the 15 s of the hold, the rest stand once let go;
   held by two, at most 5 of 150; the grip of `grab_getup_held` lasts its 500 frames; how much longer a held body takes to stand
   than one nobody holds is reported. Before R1: 46 of 146 and 0 (on the body R1 replaced, `n2on`: 49 of 147); with R1 (seed 1):
-  42 of 50 and 3 of 49. How (decision 14):
+  42 of 50 and 3 of 49; on three seeds (measured at step 0): 119 of 150 and 14 of 150, pressed with 300 N 50 of 150 stand under
+  it. How (decision 14):
   authority is taken away body by body, the held body and its chain to the pelvis hardly led while the rest are, and the clip's
   pace slows in proportion to the force of the hold (a press goes through the same force), so that a held body struggles instead
   of freezing. Today a press or a hold takes the pull off the whole body at once and the clip waits only from
@@ -537,6 +543,7 @@ One at a time, the recommended answer first.
 | 26 | Where the left stick's snap turn turns about | **Decided on 26 November 2026: about the head.** The head stays where it is in the world and the world turns about it, as nearly every game in a headset does; the body stays where it is. The hands catch up with their new places at `tools.headset.catch_up_speed_mps`, as for a controller found again, and are not flung at the speed of a blow. Not chosen: about the middle of the play space (a player a metre off the middle is carried 52 cm sideways at once, perhaps into the NPC or a table) |
 | 27 | The capsule and the stick on the desktop | **Decided on 26 November 2026: the desktop keeps its free camera.** It is a tool: it flies through walls and up, leaves the hands behind, aims the impulse and the drag handle. The desktop's session, its self-test, its demos and their record and replay are as they were. Walking on the desktop stays in M4's part 5, after R3, with the desktop's other verbs. Not chosen: the capsule on the desktop too, WASD moving it and the free flight behind a key; the free camera and a capsule behind a key, two modes |
 | 28 | The player's body walked into the standing NPC at the stick's full speed (1.4 m/s): its force cap of 300 N bounds a press, not what a collision delivers, which the mass sets. Measured: 70 kg (the patch's figure) brings 26 N*s into the chest as it touches and 43 N*s into the belly over its press, and the NPC doubles over (the rule made for a fist's blow at 40 N*s) and steps back; 25 kg brings 19 N*s, 10 kg 6 N*s, both stepping back; at 0.5 m/s 70 kg does not double the NPC over | **Decided on 26 November 2026: 10 kg.** A touch while walking is a push of the open hand; the press is still the cap's 300 N, as a hand's; the view does not depend on the body's mass. A body of the NPC that falls onto the player is held up by the cap alone. Not chosen: 25 kg; 70 kg, as decided in 24 (two people colliding while walking, with the doubling over a rule made for a punch) |
+| 29 | R2's step 0 removes the wrist's asset (decision 9); the spec field `"limits_in": "child"` (swings limited in the child's frame: a second joint in the asset, the generator's path for it, `FSandboxPoseRig`'s `bInChild` and its unit test) was used by that asset alone | **Decided on 26 November 2026: it goes with the asset.** No asset uses it, the run's hashes are the same, and without its asset the generator's test no longer passes through it: code that nothing checks. A spec that still names it is refused rather than built another way. Not chosen: the asset alone, `limits_in` kept as a possibility of the format |
 
 The owner's statement of the goal with these answers (26 November): the ragdoll is to look and move naturally, as a living
 person, and it must be possible to interact with it at every moment. Both halves bind every part: a behaviour that looks right

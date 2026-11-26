@@ -16,13 +16,6 @@ struct FPhysicsJointFrames
 	 * symmetric around this frame, which is how a range such as 0 to 150 degrees is expressed.
 	 */
 	FTransform Parent = FTransform::Identity;
-	/** The limb's own axes in the reference pose, with no middle of any range: the child side of every joint but those limited in the child. */
-	FTransform Plain = FTransform::Identity;
-	/** "limits_in": "child": the middle of the swings is in the child's frame, not in the parent's (FPhysicsJointSpec::bLimitsInChild). */
-	bool bLimitsInChild = false;
-
-	/** Name of the joint that holds the swings of a joint limited in the child. */
-	static FName SwingsName(FName ChildBone) { return FName(*(ChildBone.ToString() + TEXT("_swings"))); }
 	/** The ranges measured from the reference pose (for a "bend" axis the spec measures from the straight limb). */
 	FPhysicsAxisSpec Swing1;
 	FPhysicsAxisSpec Swing2;
