@@ -878,6 +878,20 @@ struct FSandboxGetUpTuning
 	double SlowFrom = 0.0;
 	double RateFollowS = 0.0;
 	/**
+	 * N7: the clip waits for a foot in the air (and with ProgressPelvis 1, for the pelvis) only while it comes closer by at least
+	 * this in every ProgressWindowS; a foot that does not come is not waited for until it is within the bound again (the clip
+	 * asked for where it cannot reach, and stood still until foot_wait_s ran out). 0: waited for as before. cm, s, 0 or 1.
+	 */
+	double ProgressCm = 0.0;
+	double ProgressWindowS = 0.0;
+	double ProgressPelvis = 0.0;
+	/**
+	 * N7: 1 aims the feet's assist, and measures a foot's lag, at where the foot is when the legs' joints are as the muscles are
+	 * asked for them (each held to its range, on the mesh's proportions; FSandboxClipPose::ReachedBodyAt), and not where the
+	 * clip's own foot is, which the body's foot stayed 17 to 18 cm from while the clip stood still for it. 0: the clip's own foot.
+	 */
+	double ReachedFeet = 0.0;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.

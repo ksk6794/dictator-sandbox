@@ -87,6 +87,11 @@ public:
 	 * False for a bone that is not one of the bodies.
 	 */
 	bool BodyAt(FName Bone, double TimeS, FTransform& OutTransform) const;
+	/**
+	 * The same, but where the body's bone is when its joints are as the muscles are asked for them (each held to its range) on
+	 * the mesh's own proportions, chained from the pelvis: a place the body can reach (N7, getup.reached_feet).
+	 */
+	bool ReachedBodyAt(FName Bone, double TimeS, FTransform& OutTransform) const;
 
 	/** How each joint fits, in the order the joints were given. */
 	const TArray<FSandboxClipJointFit>& GetFits() const { return Fits; }
@@ -121,6 +126,7 @@ private:
 	/** Every body's bone, key by key: the pelvis first, then the joints in their order. */
 	TArray<FName> BodyBones;
 	TArray<TArray<FTransform>> BodyTracks;
+	TArray<TArray<FTransform>> ReachedTracks;
 	int32 KeyCount = 0;
 	double KeyS = 0.0;
 };

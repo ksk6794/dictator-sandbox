@@ -4891,6 +4891,33 @@ film of `getup_back` with W4 (`Saved\Films\n7_getup_back_w4`) ends crouched on t
 the body not keeping up with the recorded clip, its feet and its pelvis; no value of the get-up as it is removes them without
 losing get-ups. Shortening the rest alone (R1) takes 0.6 s off the lying and misses the first attempts by three.
 
+**Why the feet lag** (the owner's question). In the waits for a foot the pelvis is in its place (2 cm aside, 1 cm in height) and the
+foot is off 18 cm as the wait begins and as it ends, half a second later, when `foot_wait_s` cuts it: the foot does not come (26 of
+the waits at one moment, stand_B at 0.72 s). The pelvis aside comes closer in some waits and hovers at its 20 cm in others. The feet's
+wait (and their assist) aims at the clip's own foot, the sample's skeleton scaled by the pelvis's height, not at where the body's legs
+put the foot. Three repairs, each behind a switch at 0 (the suite with the hashes of `n2`), each judged by the same limits
+(`Saved\Recon\n7_getup_plan.md`):
+
+| Variant | Stand, first attempt | Pause | Get-up | Suite |
+| --- | --- | --- | --- | --- |
+| P1 a foot is waited for only while it comes 1 cm closer every 0.15 s (`getup.progress_cm`) | 149, **114** | 1.79 s | 4.38 s | 2 get-ups fail |
+| P2 P1 and the pelvis too (`progress_pelvis`) | 148, **91** | 1.30 | 3.89 | 3 |
+| P3 P2 and `ease_s` 0.4 | 147, **91** | 1.11 | 3.70 | 1 |
+| S1 the get-up's legs 1200 N*m/rad (cap 350), spine 900 (400) | 149, **118** | 2.17 | 4.76 | 127 |
+| S2 legs 1600 (450), spine 1200 (500) | 150, **114** | 2.37 | 4.96 | 127 |
+| F1 the feet aimed at the foot of the pose asked of the muscles, chained on the mesh (`getup.reached_feet`, `FSandboxClipPose::ReachedBodyAt`) | 148, **101** | 2.23 | 4.82 | 3 |
+| F2 F1 and S1 | 147, **104** | **1.27** | **3.86** | 2 |
+
+What each showed. Not waiting for a foot that does not come lost first attempts: while the clip waits, the rest of the body
+settles, and that is what the wait buys. Stronger muscles let the pelvis keep up (its waits fell from 202 s to 54 over the stand) and
+the feet then waited longer. `ReachedBodyAt` was checked on `getup_back` before it was used: its foot is 5 to 10 cm from the clip's
+throughout, mostly the two skeletons' proportions; the 18 cm that a hip held 25 degrees short of the clip was predicted to give is not
+there (the prediction was wrong, and the code's comments say so). Aimed there, the feet wait less and the body fails more.
+
+**Over thirteen variants one result: every change that makes the pauses shorter makes fewer get-ups succeed at the first attempt**
+(85 to 126 of 150, against 130). A recorded clip with an assist gets the body up because it waits for it; the pauses are the price of
+that, and no value of the get-up as it is takes them away. Everything stays off; the switches and the measures stay for the next step.
+
 
 
 

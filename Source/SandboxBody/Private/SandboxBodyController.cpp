@@ -1498,7 +1498,8 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	for (FAssist& Assist : Assists)
 	{
 		FTransform InClip;
-		if (Assist.Slot == EAssistSlot::Feet && Clip->BodyAt(Assist.Bone, ClipHold.TimeS, InClip))
+		if (Assist.Slot == EAssistSlot::Feet && (Limits.ReachedFeet > 0.5 ? Clip->ReachedBodyAt(Assist.Bone, ClipHold.TimeS, InClip)
+			: Clip->BodyAt(Assist.Bone, ClipHold.TimeS, InClip)))
 		{
 			Assist.Target = InClip * GetUpRun.Frame;
 			Assist.Target.SetScale3D(FVector::OneVector);
@@ -1585,9 +1586,39 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	// lag would never ask them for more (a steady 300 N on the pelvis left it 18 cm low in a crouch, 2 cm past the
 	// lag, for as long as it pressed). The clip may then run further ahead in height (getup.pressed_lag_cm).
 	const double HeightLagCm = bPushesOn ? FMath::Max(Limits.LagCm, Limits.PressedLagCm) : Limits.LagCm;
-	const bool bPelvisBehind = FMath::Abs(PelvisOff.Z) > HeightLagCm || PelvisOff.Size2D() > Limits.SideLagCm;
+	bool bPelvisBehind = FMath::Abs(PelvisOff.Z) > HeightLagCm || PelvisOff.Size2D() > Limits.SideLagCm;
 	GetUpRun.FootWaitS = AirLagCm > Limits.FootLagCm ? GetUpRun.FootWaitS + DeltaTime : 0.0;
-	const bool bBehind = bHeldDown || bPelvisBehind || (AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS);
+	bool bFootWaited = AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS;
+	if (Limits.ProgressCm > 0.0)
+	{
+		// N7: a wait goes on only while what is waited for comes closer. A foot the clip had put where the body cannot reach stayed
+		// 18 cm off for the whole of foot_wait_s, and the clip stood still for it: a pause and nothing gained.
+		const auto Progress = [this, DeltaTime, &Limits](bool bBeyond, double LagCm, double& CheckS, double& LagAtCheck, bool& bNotWaited)
+		{
+			if (!bBeyond)
+			{
+				CheckS = 0.0;
+				LagAtCheck = LagCm;
+				bNotWaited = false;
+				return;
+			}
+			CheckS += DeltaTime;
+			if (CheckS >= Limits.ProgressWindowS)
+			{
+				bNotWaited = bNotWaited || LagAtCheck - LagCm < Limits.ProgressCm;
+				LagAtCheck = LagCm;
+				CheckS = 0.0;
+			}
+		};
+		Progress(bFootWaited, AirLagCm, GetUpRun.FootCheckS, GetUpRun.FootLagAtCheck, GetUpRun.bFootNotWaited);
+		bFootWaited = bFootWaited && !GetUpRun.bFootNotWaited;
+		if (Limits.ProgressPelvis > 0.5)
+		{
+			Progress(bPelvisBehind, PelvisOff.Size(), GetUpRun.PelvisCheckS, GetUpRun.PelvisLagAtCheck, GetUpRun.bPelvisNotWaited);
+			bPelvisBehind = bPelvisBehind && !GetUpRun.bPelvisNotWaited;
+		}
+	}
+	const bool bBehind = bHeldDown || bPelvisBehind || bFootWaited;
 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
 	double RateGoal = Ease < 1.0 || bBehind || bThrough ? 0.0 : Limits.Rate;
 	if (Limits.SlowFrom > 0.0 && !bBehind && !bThrough)
@@ -1606,9 +1637,9 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	}
 	if (Ease >= 1.0 && bBehind && !bThrough)
 	{
-		GetUpView.BehindHeightS += FMath::Abs(PelvisOff.Z) > HeightLagCm ? DeltaTime : 0.0;
-		GetUpView.BehindSideS += PelvisOff.Size2D() > Limits.SideLagCm ? DeltaTime : 0.0;
-		GetUpView.BehindFootS += AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS ? DeltaTime : 0.0;
+		GetUpView.BehindHeightS += bPelvisBehind && FMath::Abs(PelvisOff.Z) > HeightLagCm ? DeltaTime : 0.0;
+		GetUpView.BehindSideS += bPelvisBehind && PelvisOff.Size2D() > Limits.SideLagCm ? DeltaTime : 0.0;
+		GetUpView.BehindFootS += bFootWaited ? DeltaTime : 0.0;
 		GetUpView.BehindHeldS += bHeldDown ? DeltaTime : 0.0;
 	}
 	if (Ease >= 1.0 && (bBehind || bThrough))

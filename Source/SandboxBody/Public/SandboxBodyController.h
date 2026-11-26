@@ -783,6 +783,16 @@ private:
 		/** How long the clip has now waited for a foot in the air (getup.foot_wait_s). */
 		double FootWaitS = 0.0;
 		bool bEased = false;
+		/**
+		 * N7 (getup.progress_cm): a wait for a foot or for the pelvis goes on only while it comes closer; each has the time since
+		 * its last check, its lag then, and whether it has stopped being waited for (until its lag is under the bound again).
+		 */
+		double FootCheckS = 0.0;
+		double FootLagAtCheck = 0.0;
+		bool bFootNotWaited = false;
+		double PelvisCheckS = 0.0;
+		double PelvisLagAtCheck = 0.0;
+		bool bPelvisNotWaited = false;
 	};
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;

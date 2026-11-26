@@ -14,6 +14,7 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 	Pelvis.Reset();
 	BodyBones.Reset();
 	BodyTracks.Reset();
+	ReachedTracks.Reset();
 	KeyCount = 0;
 	KeyS = 0.0;
 
@@ -52,6 +53,8 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 		int32 Parent = INDEX_NONE;
 		/** From the parent body's bone to the bone the joint's bone is a child of, in the mesh's reference pose. */
 		FQuat ParentToBoneParent = FQuat::Identity;
+		/** Where the body's bone is from its parent body's, in that bone's frame, in the mesh's reference pose: its proportions. */
+		FVector OffsetInParent = FVector::ZeroVector;
 		FSandboxJointLimits Limits;
 	};
 	TArray<FBody> Bodies;
@@ -104,6 +107,8 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 		const int32 BoneParent = Target.GetParentIndex(Body.TargetBone);
 		Body.ParentToBoneParent = BoneParent != INDEX_NONE
 			? Bodies[Body.Parent].TargetReference.Inverse() * TargetReference(BoneParent).GetRotation() : FQuat::Identity;
+		Body.OffsetInParent = Bodies[Body.Parent].TargetReference.UnrotateVector(
+			TargetReference(Body.TargetBone).GetLocation() - TargetReference(Bodies[Body.Parent].TargetBone).GetLocation());
 		FSandboxPoseRig::ReadJointLimits(Mesh, Joint.ChildBone, Body.Limits);
 
 		FSandboxClipJointFit& Fit = Fits[Index];
@@ -202,6 +207,11 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 	}
 	Pelvis.Reserve(Keys);
 	BodyTracks.SetNum(Bodies.Num());
+	ReachedTracks.SetNum(Bodies.Num());
+	TArray<FQuat> InRanges;
+	InRanges.SetNum(InJoints.Num());
+	TArray<FTransform> Reached;
+	Reached.SetNum(Bodies.Num());
 	for (const FBody& Body : Bodies)
 	{
 		BodyBones.Add(Body.Bone);
@@ -233,6 +243,7 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 			const FQuat BoneParent = Orientation[Body.Parent] * Body.ParentToBoneParent;
 			const FQuat InRange = FSandboxPoseRig::ClampToRange(Orientation[Body.Parent], Orientation[Index + 1], Body.Limits);
 			Joints[Index].Rotations.Add((BoneParent.Inverse() * InRange).GetNormalized());
+			InRanges[Index] = InRange;
 
 			FVector Angles;
 			const double Excess = FSandboxPoseRig::LimitExcessDeg(Orientation[Body.Parent], Orientation[Index + 1], Body.Limits, &Angles);
@@ -243,6 +254,26 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 				Fit.LimitExcessAtS = Key / RateHz;
 				Fit.LimitAnglesDeg = Angles;
 			}
+		}
+		// Where each body is when its joints are as the muscles are asked for them (each within its range), on the mesh's own
+		// proportions (N7). The clip's own feet are where its skeleton put them; on stand_B these are 5 to 10 cm apart, mostly
+		// the two skeletons' proportions (a hip turned 25 degrees beyond its range moved the foot less than expected).
+		Reached[0] = BodyTracks[0].Last();
+		for (int32 Index = 1; Index < Bodies.Num(); ++Index)
+		{
+			const FBody& Body = Bodies[Index];
+			if (Body.Parent >= Index)
+			{
+				Reached[Index] = BodyTracks[Index].Last();
+				continue;
+			}
+			const FTransform& Up = Reached[Body.Parent];
+			const FQuat Own = (Up.GetRotation() * Orientation[Body.Parent].Inverse() * InRanges[Index - 1]).GetNormalized();
+			Reached[Index] = FTransform(Own, Up.GetLocation() + Up.GetRotation().RotateVector(Body.OffsetInParent));
+		}
+		for (int32 Index = 0; Index < Bodies.Num(); ++Index)
+		{
+			ReachedTracks[Index].Add(Reached[Index]);
 		}
 	}
 
@@ -290,6 +321,22 @@ bool FSandboxClipPose::BodyAt(FName Bone, double TimeS, FTransform& OutTransform
 	double Alpha;
 	Locate(TimeS, From, To, Alpha);
 	const TArray<FTransform>& Track = BodyTracks[Index];
+	OutTransform = FTransform(FQuat::Slerp(Track[From].GetRotation(), Track[To].GetRotation(), Alpha).GetNormalized(),
+		FMath::Lerp(Track[From].GetLocation(), Track[To].GetLocation(), Alpha));
+	return true;
+}
+
+bool FSandboxClipPose::ReachedBodyAt(FName Bone, double TimeS, FTransform& OutTransform) const
+{
+	const int32 Index = BodyBones.IndexOfByKey(Bone);
+	if (KeyCount == 0 || Index == INDEX_NONE || !ReachedTracks.IsValidIndex(Index))
+	{
+		return false;
+	}
+	int32 From, To;
+	double Alpha;
+	Locate(TimeS, From, To, Alpha);
+	const TArray<FTransform>& Track = ReachedTracks[Index];
 	OutTransform = FTransform(FQuat::Slerp(Track[From].GetRotation(), Track[To].GetRotation(), Alpha).GetNormalized(),
 		FMath::Lerp(Track[From].GetLocation(), Track[To].GetLocation(), Alpha));
 	return true;
