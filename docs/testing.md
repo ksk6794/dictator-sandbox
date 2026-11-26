@@ -4796,6 +4796,26 @@ before the head), and `settle_smooth` stays off until it is understood. The film
 (`n2_hold_chest_head*`, from the side and the front) show no difference that the eye can name between the repairs and none: in both
 a long lunge back, unnatural, and the feet together by 8.5 s.
 
+### The natural body, N6, the reach on today's body (26 November; kept off by the owner's decision)
+
+The night's third variant (`fall.aim` 1, `arm_reach_stiffness` 5, `arm_reach_damping` 2, `arm_yield_stiffness` 1,
+`arm_yield_damping` 2, `reach_back` 0, and the head kept off: the falling neck at 120 N*m/rad and the fall poses' neck angles) by
+`-Tune` on the head with four of N2's repairs (`Saved\Recon\bat_n6now`), against the same body without it (baseline and report `n2`):
+
+| | Without the reach | With it |
+| --- | --- | --- |
+| C15 the head strikes, by hand / by blows | 55% / 63% | **18% / 25%** |
+| C16 the head's speed at the floor, by hand / by blows | 4.16 / 3.00 m/s | 4.28 / **1.20** m/s |
+| C14 a hand first | 83% / 100% | 83% / 100% |
+| Knockdowns by blows / by hand | 8 / 8 | **6 / 5**: rest after up to 4.18 s (four falls over 3 s), and the shoves at 0 and 180 degrees no longer fell the body |
+| Most energy gained, blows / by hand | 14.2 / 32.1 J | 38.0 / 38.7 J |
+| The hand at the floor | under 30 rad/s | 35.3 rad/s (`hand_l`, the blow at 45 degrees) |
+| Stand, three seeds | 150, 130 | 148, 133 |
+| Matrix, suite | 160; 127 | 160; `hit_chest_200_side_falls` comes to rest too late |
+
+The head is kept off the floor far better, and the falls do not come to rest in time. The owner kept `fall.aim` off (question 4):
+the next work of N6 is why a fall with the reach comes to rest so late and why two shoves by hand no longer fell the body.
+
 
 
 
