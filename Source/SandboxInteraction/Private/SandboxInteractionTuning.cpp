@@ -6,6 +6,7 @@ namespace
 {
 	const FName HandKind(TEXT("hand"));
 	const FName FootKind(TEXT("foot"));
+	const FName BodyKind(TEXT("body"));
 
 	/** Calls Visitor(name, value) for every tunable number. TuningType is the tuning, const or not. */
 	template <typename TuningType, typename VisitorType>
@@ -67,6 +68,8 @@ namespace
 		};
 		Effector(TEXT("hand"), Tuning.Hand);
 		Body(TEXT("foot"), Tuning.Foot);
+		Body(TEXT("body"), Tuning.Body);
+		Visitor(FString(TEXT("effectors.body.half_height_cm")), Tuning.Body.HalfHeightCm);
 
 		Visitor(FString(TEXT("tools.hands.rest_forward_cm")), Tuning.Tools.HandRestForwardCm);
 		Visitor(FString(TEXT("tools.hands.rest_side_cm")), Tuning.Tools.HandRestSideCm);
@@ -105,6 +108,19 @@ namespace
 		Visitor(FString(TEXT("tools.headset.haptic_full_n")), Tuning.Tools.HeadsetHapticFullN);
 		Visitor(FString(TEXT("tools.headset.take_buzz_s")), Tuning.Tools.HeadsetTakeBuzzS);
 		Visitor(FString(TEXT("tools.headset.take_buzz_strength")), Tuning.Tools.HeadsetTakeBuzzStrength);
+		Visitor(FString(TEXT("tools.headset.move_speed_mps")), Tuning.Tools.HeadsetMoveSpeedMps);
+		Visitor(FString(TEXT("tools.headset.move_dead_zone")), Tuning.Tools.HeadsetMoveDeadZone);
+		Visitor(FString(TEXT("tools.headset.move_ease_s")), Tuning.Tools.HeadsetMoveEaseS);
+		Visitor(FString(TEXT("tools.headset.snap_turn_deg")), Tuning.Tools.HeadsetSnapTurnDeg);
+		Visitor(FString(TEXT("tools.headset.snap_press")), Tuning.Tools.HeadsetSnapPress);
+		Visitor(FString(TEXT("tools.headset.snap_release")), Tuning.Tools.HeadsetSnapRelease);
+		Visitor(FString(TEXT("tools.headset.vignette")), Tuning.Tools.HeadsetVignette);
+		Visitor(FString(TEXT("tools.headset.head_fade_cm")), Tuning.Tools.HeadsetHeadFadeCm);
+		Visitor(FString(TEXT("tools.headset.body_lean_cm")), Tuning.Tools.HeadsetBodyLeanCm);
+		Visitor(FString(TEXT("tools.headset.body_follow_speed_mps")), Tuning.Tools.HeadsetBodyFollowSpeedMps);
+		Visitor(FString(TEXT("tools.headset.body_floor_gap_cm")), Tuning.Tools.HeadsetBodyFloorGapCm);
+		Visitor(FString(TEXT("tools.headset.body_blocked_n")), Tuning.Tools.HeadsetBodyBlockedN);
+		Visitor(FString(TEXT("tools.headset.body_stopped_n")), Tuning.Tools.HeadsetBodyStoppedN);
 	}
 
 	/** Min <= Value <= Max, or Min < Value when bAboveMin. The bounds catch a slipped decimal point, not physics. */
@@ -135,7 +151,7 @@ bool FSandboxInteractionTuning::HasSameValues(const FSandboxInteractionTuning& O
 
 const FSandboxEffectorTuning* FSandboxInteractionTuning::Effector(FName Kind) const
 {
-	return Kind == HandKind ? &Hand : Kind == FootKind ? &Foot : nullptr;
+	return Kind == HandKind ? &Hand : Kind == FootKind ? &Foot : Kind == BodyKind ? &Body : nullptr;
 }
 
 void FSandboxInteractionTuning::DeclareParams(FSandboxParamStore& Params)
@@ -221,6 +237,21 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 	{
 		return false;
 	}
+	// The player's own body: the same reasons as for the hand's body and spring. Above its radius the half height
+	// makes it an upright capsule; at or below it a ball.
+	if (!CheckRange(TEXT("effectors.body.mass_kg"), Body.MassKg, 0.0, 300.0, true, OutError) ||
+		!CheckRange(TEXT("effectors.body.radius_cm"), Body.RadiusCm, 5.0, 60.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.body.half_height_cm"), Body.HalfHeightCm, 0.0, 120.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.body.stiffness_n_per_m"), Body.StiffnessNPerM, 0.0, 200000.0, true, OutError) ||
+		!CheckRange(TEXT("effectors.body.damping_s"), Body.DampingS, 0.0, 2.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.body.max_force_n"), Body.MaxForceN, 0.0, 10000.0, true, OutError) ||
+		!CheckRange(TEXT("effectors.body.angular_stiffness_nm_per_rad"), Body.AngularStiffnessNmPerRad, 0.0, 50000.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.body.angular_damping_s"), Body.AngularDampingS, 0.0, 2.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.body.max_torque_nm"), Body.MaxTorqueNm, 0.0, 50000.0, true, OutError) ||
+		!CheckRange(TEXT("effectors.body.snap_distance_cm"), Body.SnapDistanceCm, 0.0, 5000.0, true, OutError))
+	{
+		return false;
+	}
 	// The foot: the same reasons as for the hand's body and spring.
 	if (!CheckRange(TEXT("effectors.foot.mass_kg"), Foot.MassKg, 0.0, 50.0, true, OutError) ||
 		!CheckRange(TEXT("effectors.foot.radius_cm"), Foot.RadiusCm, 0.5, 30.0, false, OutError) ||
@@ -281,8 +312,31 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 		!CheckRange(TEXT("tools.headset.new_take_raise_cm"), Tools.HeadsetNewTakeRaiseCm, -100.0, 100.0, false, OutError) ||
 		!CheckRange(TEXT("tools.headset.haptic_full_n"), Tools.HeadsetHapticFullN, 0.0, 10000.0, true, OutError) ||
 		!CheckRange(TEXT("tools.headset.take_buzz_s"), Tools.HeadsetTakeBuzzS, 0.0, 5.0, false, OutError) ||
-		!CheckRange(TEXT("tools.headset.take_buzz_strength"), Tools.HeadsetTakeBuzzStrength, 0.0, 1.0, false, OutError))
+		!CheckRange(TEXT("tools.headset.take_buzz_strength"), Tools.HeadsetTakeBuzzStrength, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.move_speed_mps"), Tools.HeadsetMoveSpeedMps, 0.0, 10.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.move_dead_zone"), Tools.HeadsetMoveDeadZone, 0.0, 0.9, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.move_ease_s"), Tools.HeadsetMoveEaseS, 0.0, 5.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.snap_turn_deg"), Tools.HeadsetSnapTurnDeg, 0.0, 180.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.snap_press"), Tools.HeadsetSnapPress, 0.0, 1.0, true, OutError) ||
+		!CheckRange(TEXT("tools.headset.snap_release"), Tools.HeadsetSnapRelease, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.vignette"), Tools.HeadsetVignette, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.head_fade_cm"), Tools.HeadsetHeadFadeCm, 0.0, 50.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.body_lean_cm"), Tools.HeadsetBodyLeanCm, 0.0, 100.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.body_follow_speed_mps"), Tools.HeadsetBodyFollowSpeedMps, 0.0, 20.0, true, OutError) ||
+		!CheckRange(TEXT("tools.headset.body_floor_gap_cm"), Tools.HeadsetBodyFloorGapCm, 0.0, 50.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.body_blocked_n"), Tools.HeadsetBodyBlockedN, 0.0, 10000.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.body_stopped_n"), Tools.HeadsetBodyStoppedN, 0.0, 10000.0, false, OutError))
 	{
+		return false;
+	}
+	if (Tools.HeadsetSnapRelease >= Tools.HeadsetSnapPress)
+	{
+		OutError = FString::Printf(TEXT("tools.headset.snap_release = %g must be below tools.headset.snap_press = %g: a stick held at a tilt between them would turn and turn"), Tools.HeadsetSnapRelease, Tools.HeadsetSnapPress);
+		return false;
+	}
+	if (Tools.HeadsetBodyStoppedN <= Tools.HeadsetBodyBlockedN)
+	{
+		OutError = FString::Printf(TEXT("tools.headset.body_stopped_n = %g must be above tools.headset.body_blocked_n = %g"), Tools.HeadsetBodyStoppedN, Tools.HeadsetBodyBlockedN);
 		return false;
 	}
 	if (Tools.SlowMotionDivisor != FMath::RoundToDouble(Tools.SlowMotionDivisor))

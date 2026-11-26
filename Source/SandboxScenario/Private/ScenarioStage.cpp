@@ -221,7 +221,8 @@ void FScenarioStage::TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArr
 	{
 		for (const USandboxEffectorComponent* Effector : Rig->GetEffectors())
 		{
-			if (Effector)
+			// The player's own body is no hand coming at the body: it is not told of (seeing the player is R5's).
+			if (Effector && Effector->GetId() != SandboxEffectors::Body)
 			{
 				FSandboxSeen& Thing = Seen.AddDefaulted_GetRef();
 				Thing.Name = Effector->GetId();

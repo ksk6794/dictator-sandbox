@@ -10,6 +10,8 @@ namespace SandboxEffectors
 	/** The kicking feet: effectors of the kind "foot", heavier and stronger than a hand, and never open. */
 	inline const FName FootLeft(TEXT("foot_left"));
 	inline const FName FootRight(TEXT("foot_right"));
+	/** The player's own body, as far as it is felt: an upright capsule that pushes what stands in its way with a capped force. */
+	inline const FName Body(TEXT("body"));
 
 	/** "hand" for "hand_left": the name of the effector's group in the tuning files. */
 	SANDBOXINTERACTION_API FName KindOf(FName Effector);

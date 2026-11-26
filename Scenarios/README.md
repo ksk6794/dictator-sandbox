@@ -105,8 +105,8 @@ Event types. Unknown types are a parse error.
   nothing else: the running session has to notice the edit by itself, as it would after a save in an
   editor. A scenario with such an event runs on its own copy of the tuning files in `<Out>\tuning`, so
   `Config/Tuning` is never written to. Active control only.
-- `effector` moves one of the player's hands (`"effector": "hand_left"` or `"hand_right"`), or a kicking foot
-  (`"foot_left"` or `"foot_right"`), along a `path`. See below.
+- `effector` moves one of the player's hands (`"effector": "hand_left"` or `"hand_right"`), a kicking foot
+  (`"foot_left"` or `"foot_right"`), or the player's body (`"body"`), along a `path`. See below.
 
 ## Hands
 
@@ -239,7 +239,19 @@ A run with props also checks that every one of them is there and simulated
 (`props_simulated`). Props are part of a run's hash.
 
 The effectors are `hand_left`, `hand_right` and the kicking feet `foot_left` and `foot_right` (heavier and
-stronger, `effectors.foot.*`; a foot is always a ball and takes no `"grip"`).
+stronger, `effectors.foot.*`; a foot is always a ball and takes no `"grip"`), and the player's own body in a headset,
+`body` (`effectors.body.*`: an upright capsule 160 cm tall, 22 cm in radius, of 10 kg on a spring capped at 300 N; give
+its keys at its middle, 82 cm above the floor for a bottom 2 cm above it). The body has an object type of its own: the
+hands and the feet pass through it, and it is blocked by the character, the room and the things. A scenario walks it
+along a path as it walks a hand; the session in the headset moves it with the stick (FR-42). The perception of the
+character (`"perception"`) is not told of it.
+
+**The player's body** (`body_*`): `body_walks_into_npc` walks it into the standing character at 1.4 m/s, with the 0.2 s
+of the stick's easing, and holds its target 17 cm into it for 3 s (the character flinches and steps back, and stands);
+`body_walks_into_npc_slow` the same at 0.5 m/s; `body_walks_into_table` into the table of the get-up room, where it
+stops and presses with its cap; `body_pushes_low_box` through a box 20 cm high lying on the floor, which it pushes along
+(a ball at the capsule's middle would have passed over it); `body_hands_pass` sends a hand, which opens on its way back,
+and a foot through it, and neither touches anything.
 
 An `effector` event may say `"at_bone": "spine_04"`: its keys after the first are then measured from where
 that body of the character is (its centre of mass) at the moment the event begins, along the world's axes, and
@@ -271,7 +283,11 @@ hashes. A session and a scenario are different runs (a session's process runs no
 its first frame), so they agree to the first contact and by figures after it, not bit for bit.
 `-Recorded <name>` checks a recording a person made. The drag handle, the impulse tool and the reset are not
 recorded: a session that used them will not replay to the same end. Pause and slow motion do no harm: only
-the frames on which the world stepped are kept.
+the frames on which the world stepped are kept. In a headset the player's body is recorded with the hands (a third
+effector, `body`), and its replay walks it as the stick did. `Tools\record-replay.ps1 -Walk` checks that way without a
+person or a headset (`play.ps1 -Demo -Walk`): the body shoves the character for seconds, so what holds by design is
+judged (every effector's first contact, the body recorded, two replays alike) and the outcome after the shove is shown
+and not judged.
 
 ## Tunnelling and penetration
 

@@ -80,7 +80,44 @@ bool FSandboxXRControllers::GetController(FName Effector, FSandboxControllerStat
 		}
 	}
 	OutState.Squeeze = ReadSqueeze(bLeft);
+	OutState.Stick = ReadStick(bLeft);
 	return true;
+}
+
+bool FSandboxXRControllers::GetHead(FVector& OutLocation, FQuat& OutRotation) const
+{
+	OutLocation = FVector::ZeroVector;
+	OutRotation = FQuat::Identity;
+	if (!GEngine || !GEngine->XRSystem.IsValid())
+	{
+		return false;
+	}
+	// In tracking space and in the world's units (cm), as the camera under the play space is moved by the engine.
+	return GEngine->XRSystem->GetCurrentPose(IXRTrackingSystem::HMDDeviceId, OutRotation, OutLocation);
+}
+
+FVector2D FSandboxXRControllers::ReadStick(bool bLeft) const
+{
+	const APlayerController* Controller = Player.Get();
+	if (!Controller)
+	{
+		return FVector2D::ZeroVector;
+	}
+	// The PS VR2 controllers arrive as the Touch profile (session vr_check3: OculusTouch_*_Thumbstick_X, _Y and _2D).
+	const TPair<FKey, FKey> Sticks[] = {
+		{ bLeft ? EKeys::OculusTouch_Left_Thumbstick_X : EKeys::OculusTouch_Right_Thumbstick_X, bLeft ? EKeys::OculusTouch_Left_Thumbstick_Y : EKeys::OculusTouch_Right_Thumbstick_Y },
+		{ bLeft ? EKeys::ValveIndex_Left_Thumbstick_X : EKeys::ValveIndex_Right_Thumbstick_X, bLeft ? EKeys::ValveIndex_Left_Thumbstick_Y : EKeys::ValveIndex_Right_Thumbstick_Y },
+		{ bLeft ? EKeys::MixedReality_Left_Thumbstick_X : EKeys::MixedReality_Right_Thumbstick_X, bLeft ? EKeys::MixedReality_Left_Thumbstick_Y : EKeys::MixedReality_Right_Thumbstick_Y } };
+	FVector2D Stick = FVector2D::ZeroVector;
+	for (const TPair<FKey, FKey>& Axes : Sticks)
+	{
+		const FVector2D Each(Controller->GetInputAnalogKeyState(Axes.Key), Controller->GetInputAnalogKeyState(Axes.Value));
+		if (Each.SizeSquared() > Stick.SizeSquared())
+		{
+			Stick = Each;
+		}
+	}
+	return Stick;
 }
 
 void FSandboxXRControllers::Buzz(bool bLeft, float Amplitude) const

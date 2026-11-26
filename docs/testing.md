@@ -5261,6 +5261,90 @@ outside the repository (a fall at 3 s, the hands sent at 6 s by `at_bone`, grab 
   (the suite 46 s, the push matrix 47 s, the knockdowns 18 s, the stand 43 s, the record and replay 33 s, its three takes 49 s,
   the grab demo 10 s, the session's self-test 10 s).
 
+### The player's movement in the headset (FR-42, decision 24; 26 November, decisions 25 to 28)
+
+The player's side only (`SandboxInteraction`; the session's demo in `SandboxScenario`); no value of the character changed. Built
+without the headset: arithmetic by unit tests, the player's body by scenarios, the way through the pawn by a session without a
+person in a made-up headset. Not yet tried in the headset.
+
+**The patch of the capsule** (`docs/recon/m4_part5_body.patch`) applied to the tree of 26 November as it was (`git apply`), and
+built on:
+
+- **Its masks did not do what they were for.** In Chaos 5.8 a body's `FMaskFilter` filters scene queries only
+  (`FQueryFilterData::NarrowFilter`); the simulation's pairs read channels and block masks (`FShapeUnionFilterData::BroadFilter`).
+  The capsule has an object type of its own, `PlayerBody` (`ECC_GameTraceChannel1` in `Config/DefaultEngine.ini`, blocked by every
+  profile by default), and the hands, the open hand's plate and the feet ignore it. `body_hands_pass`: a hand (opening on its way
+  back) and a foot go through the capsule at 2 m/s, 0 N*s between them and anything.
+- **The first way of ignoring it changed two scenarios.** Set in the effector's constructor, the response dropped the collision
+  profile the constructor had named (the engine applies a named profile only in `PostInitProperties`, and a response set before
+  that clears it): `grab_drag_fallen_two` (a hand's impulse 114.5 to 723.6 N*s) and `grab_two_hands_one_arm` took other hashes,
+  again on a second run; with the response removed and the channel kept in the ini, both had `led`'s hashes again. Set after
+  `Super::PostInitProperties()`, every scenario keeps its hashes.
+- **The capsule was a ball.** The component is registered, and its body made, before it has its tuning; the patch changed the
+  shape afterwards. The body is now made again from the capsule's shape in `Start` (the effector of kind `body` only), and the
+  capsule's own shape is made once (the engine asks for it again and again). `body_pushes_low_box`: a box of 10 kg, 40 by 40 by
+  20 cm, lying on the floor, is pushed 166 to 170 cm by the capsule (a ball at the capsule's middle, 58 to 102 cm above the floor,
+  would have passed over it).
+- **Pressed at rest against the table it slept a substep in six**: its contact force read 300, 300 and 150 N in turn at no speed.
+  It never sleeps now; then 300 N in every frame (`body_walks_into_table`: it stops at the table's edge, 0 cm in it, pressing with
+  its cap).
+
+**The body's mass (decision 28).** `body_walks_into_npc`: the capsule walks into the standing character from 1.5 m, its target
+eased in over 0.2 s as the stick's is, to 1.4 m/s, and held 17 cm into it for 3 s. Contact at 1.39 to 1.43 m/s.
+
+| Mass | First hit (chest) | Belly over the press | What the character did |
+| --- | --- | --- | --- |
+| 70 kg (the patch; `damping_s` 0.2, near critical) | 26.0 N*s | 42.6 N*s | flinch, doubled over (the rule at 40 N*s), stagger, three steps back, standing |
+| 25 kg | 19.0 N*s | 29.6 N*s | flinch, stagger, steps back, standing |
+| 10 kg (decision 28; `damping_s` 0.08, near critical) | 6.2 N*s | 25.5 N*s | flinch, stagger, steps back, standing; 143 N*s in all over the press |
+
+With the patch's first damping (0.08 on 70 kg, a damping ratio of 0.37) and a path that left at full speed, the capsule fell 23 cm
+behind its target (300 N moves 70 kg at 4.3 m/s^2 at most) and caught up at 2.4 m/s: 40.5 N*s into the belly. At 0.5 m/s
+(`body_walks_into_npc_slow`) 70 kg did not double the character over (7.9 N*s on the chest; it stepped back). At 10 kg the slow
+walk is 5.3 N*s on the chest, then stagger and steps, standing. Filmed (`Saved\Films\body_walks_into_npc`): the character takes the
+touch, steps back with its arms forward, catches itself and stands.
+
+**The arithmetic** (`FSandboxLocomotion`; `DictatorSandbox.Interaction.Locomotion.StickTurnAndBody` and
+`...Source.TrackedHandsRideThePlaySpace`, 50 unit tests in all): the dead zone and the tilt past it; full speed after 0.2 s, 14.78 cm
+gone on the way, and rest after another 0.2 s; forward and right taken from where the head looks, also straight down; a snap of 30
+degrees about a head 50 cm off the play space's middle leaves the head where it was to 1e-6 cm, one turn a tilt, the next after the
+stick came back under 0.3; the body stays while the head leans 15 cm and follows at 2 m/s beyond 20 cm; a push halfway between 100
+and 250 N takes half the walk into it, past 250 N all of it, and none of a walk along it; standing still, a pressed body's target is
+put where the body is. The tracked hands get the play space's velocity (without it 0) and a snap's jump of 15.5 cm, less than a
+hand moves in a frame, is caught up with only because it is told as a jump. Broken on purpose (the snap's sign, the play space's
+velocity left out): two tests failed, each on its line.
+
+**The session without a person in a made-up headset** (`Tools\play.ps1 -Demo -Walk`; `FSandboxStandInHeadset`: the head 40 cm ahead
+and 30 to the left of its play space's middle, turned 20 degrees and 5 down, the controllers beside the hips, grips closed): 8 of 8
+checks.
+
+| Check | Figure |
+| --- | --- |
+| The head stands where the session put it, facing the character | 0.00 cm, 0.00 degrees |
+| The stick into the character is held back | in 199 frames, all of it at most |
+| The body pushes no harder than a hand | touching in 121 of 160 frames of the press, 72 N on average (428 N in one frame at most); the character steps back and the player follows |
+| The view is not darkened by walking into it | 0% |
+| Forward and right along the character slides | 64.1 cm to the right in 1 s |
+| Snap turns about the head | 30.00 and -30.00 degrees, the head 0.000 cm from where it was |
+| The hands are not flung by a turn | 1.68 m/s at most (a blow begins at 2) |
+| The hands keep up with a walk | 1.26 cm behind their targets at most |
+
+Broken on purpose (the push's sign turned): the head walked into the character and the view went black (100%), and the run failed.
+The session walked 4.38 m.
+
+**Its record and replay** (`Tools\record-replay.ps1 -Walk -Twice`): the recording has three effectors (`hand_left`, `hand_right`,
+`body`); the replay's body first touches `spine_02` at 1.42 m/s as the session's did, the right hand `hand_l` at 0.62 m/s, and two
+replays have the same hashes (`a7928716`). After three seconds of shoving the replay ends 5.5 cm from the session's pelvis, with one
+flinch fewer, and the hands' and the body's impulses 10 to 11% apart (the left hand touched nothing in the replay): a session with a
+shove is not replayed to the end. Those rows are shown and not judged.
+
+**Hashes.** `Tools\suite.ps1 -Baseline led`: 126 scenarios with the same hashes, none changed, `strike_punch_belly_falls` with
+`led`'s hashes of its old name (`bb7cb4a7`), five new (`body_*`, all passing); 131 of 132 with `grab_getup_held` counted apart.
+The desktop session's self-test (14 of 14), the grab demo, `record-replay.ps1 -Twice` (13 of 13) and `-Takes` (3 of 3) pass as
+before: the desktop is untouched (decision 27). Saved as the baseline `walk` (132 scenarios). The bootstrap, with the walk as its
+15th step, passed every step in 327 s: the suite 50 s, the push matrix 50 s (160 runs), the knockdowns 18 s (8 of 8), the stand of
+seed 1 45 s (50 of 50, 48 at the first attempt), the session's self-test 10 s, the record and replay 34 s, its three takes 50 s,
+the grab demo 10 s, the walk with its replay 37 s.
 
 
 

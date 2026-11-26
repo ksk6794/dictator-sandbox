@@ -10,6 +10,8 @@
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/PhysicsSettings.h"
+#include "Physics/Experimental/PhysInterface_Chaos.h"
+#include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 
 namespace
 {
@@ -29,7 +31,7 @@ FName SandboxEffectors::KindOf(FName Effector)
 
 bool SandboxEffectors::IsKnown(FName Effector)
 {
-	return Effector == HandLeft || Effector == HandRight || Effector == FootLeft || Effector == FootRight;
+	return Effector == HandLeft || Effector == HandRight || Effector == FootLeft || Effector == FootRight || Effector == Body;
 }
 
 USandboxPalmComponent::USandboxPalmComponent()
@@ -43,6 +45,14 @@ USandboxPalmComponent::USandboxPalmComponent()
 	BodyInstance.bNotifyRigidBodyCollision = true;
 	BodyInstance.LinearDamping = 0.0f;
 	BodyInstance.AngularDamping = 0.0f;
+}
+
+void USandboxPalmComponent::PostInitProperties()
+{
+	// The profile named in the constructor is applied here; a response set in the constructor would have dropped it.
+	Super::PostInitProperties();
+	// A hand passes through the player's own body.
+	BodyInstance.SetResponseToChannel(USandboxEffectorComponent::PlayerBodyChannel, ECR_Ignore);
 }
 
 void USandboxPalmComponent::OnDestroyPhysicsState()
@@ -66,6 +76,17 @@ USandboxEffectorComponent::USandboxEffectorComponent()
 	// Nothing but the spring and contacts may slow the body: the engine's default damping is a force too.
 	BodyInstance.LinearDamping = 0.0f;
 	BodyInstance.AngularDamping = 0.0f;
+}
+
+void USandboxEffectorComponent::PostInitProperties()
+{
+	// The engine applies a collision profile named in a constructor only here, after the constructors; a response set
+	// in the constructor drops it (FBodyInstance::SetResponseToChannel clears the pending profile), and the hands were
+	// then bodies of no profile: two scenarios with two holding hands changed.
+	Super::PostInitProperties();
+	// Hands and feet pass through the player's own body; the body itself takes that object type in Start. Set before
+	// any physics body exists, so nothing is updated in the solver.
+	BodyInstance.SetResponseToChannel(PlayerBodyChannel, ECR_Ignore);
 }
 
 void USandboxEffectorComponent::OnDestroyPhysicsState()
@@ -132,8 +153,21 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 
 	Id = InId;
 	Tuning = InTuning;
+	const bool bCapsule = IsCapsule();
+	if (bCapsule)
+	{
+		// The player's own body. Its physics body was made a ball when the component was registered, before it had
+		// its tuning: it is made again from the capsule (UpdateBodySetup), with an object type of its own that the
+		// player's hands and feet ignore.
+		DestroyPhysicsState();
+		SetCollisionObjectType(PlayerBodyChannel);
+	}
 	SetSphereRadius(static_cast<float>(Tuning.RadiusCm), /*bUpdateOverlaps*/ false);
 	SetWorldTransform(FTransform(Pose.GetRotation(), Pose.GetLocation()));
+	if (bCapsule)
+	{
+		CreatePhysicsState();
+	}
 	SetSimulatePhysics(true);
 
 	Visual = NewObject<UStaticMeshComponent>(GetOwner());
@@ -142,6 +176,17 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 	Visual->SetGenerateOverlapEvents(false);
 	Visual->SetStaticMesh(Sphere);
 	Visual->SetRelativeScale3D(FVector(Tuning.RadiusCm / SphereMeshRadiusCm));
+	if (bCapsule)
+	{
+		// The engine's cylinder is 100 cm across and 100 cm high. Looked at only in pictures of a scenario: a player is
+		// inside it, and does not see it (the pawn owns the rig in a headset).
+		if (UStaticMesh* Cylinder = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder")))
+		{
+			Visual->SetStaticMesh(Cylinder);
+			Visual->SetRelativeScale3D(FVector(Tuning.RadiusCm / SphereMeshRadiusCm, Tuning.RadiusCm / SphereMeshRadiusCm, Tuning.HalfHeightCm / SphereMeshRadiusCm));
+		}
+		Visual->SetOwnerNoSee(true);
+	}
 	Visual->RegisterComponent();
 
 	// The open hand, for the eye. Without the engine's cube there is none, and nothing else changes.
@@ -168,6 +213,16 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 		return false;
 	}
 
+	if (bCapsule)
+	{
+		// The player's body never sleeps: pressed at rest against a table it slept one substep in six, with no contact
+		// in it (its contact force read 300, 300 and 150 N in turn). The hands are left as they were.
+		FPhysicsCommand::ExecuteWrite(Body->GetPhysicsActor(), [](const FPhysicsActorHandle& Actor)
+		{
+			Actor->GetGameThreadAPI().SetSleepType(Chaos::ESleepType::NeverSleep);
+		});
+	}
+
 	OnComponentHit.AddUniqueDynamic(this, &USandboxEffectorComponent::OnEffectorHit);
 	Target.Location = Pose.GetLocation();
 	Target.Rotation = Pose.GetRotation();
@@ -178,12 +233,43 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 	return true;
 }
 
+void USandboxEffectorComponent::UpdateBodySetup()
+{
+	if (!IsCapsule())
+	{
+		Super::UpdateBodySetup();
+		return;
+	}
+	// The player's body is an upright capsule and not a ball: a shape of its own, made once (the engine asks for the
+	// body setup again and again, and a body keeps only a weak pointer to the one it was made from). The ball's shape
+	// may be one that all balls share, and is not touched.
+	const double LengthCm = 2.0 * (Tuning.HalfHeightCm - Tuning.RadiusCm);
+	const bool bMade = ShapeBodySetup && !bUseArchetypeBodySetup && ShapeBodySetup->AggGeom.SphylElems.Num() == 1 &&
+		ShapeBodySetup->AggGeom.SphereElems.Num() == 0 && FMath::IsNearlyEqual(ShapeBodySetup->AggGeom.SphylElems[0].Length, static_cast<float>(LengthCm));
+	if (!bMade)
+	{
+		bUseArchetypeBodySetup = false;
+		ShapeBodySetup = NewObject<UBodySetup>(this, NAME_None, RF_Transient);
+		ShapeBodySetup->CollisionTraceFlag = CTF_UseSimpleAsComplex;
+		ShapeBodySetup->bNeverNeedsCookedCollisionData = true;
+		ShapeBodySetup->AggGeom.SphylElems.Add(FKSphylElem(static_cast<float>(Tuning.RadiusCm), static_cast<float>(LengthCm)));
+	}
+}
+
+FBoxSphereBounds USandboxEffectorComponent::CalcBounds(const FTransform& LocalToWorld) const
+{
+	return IsCapsule()
+		? FBoxSphereBounds(FBox(FVector(-Tuning.RadiusCm, -Tuning.RadiusCm, -Tuning.HalfHeightCm), FVector(Tuning.RadiusCm, Tuning.RadiusCm, Tuning.HalfHeightCm))).TransformBy(LocalToWorld)
+		: Super::CalcBounds(LocalToWorld);
+}
+
 void USandboxEffectorComponent::ApplyTuning(const FSandboxEffectorTuning& InTuning)
 {
 	// The radius and the plate are the sizes of bodies that already exist.
 	const FSandboxEffectorTuning Made = Tuning;
 	Tuning = InTuning;
 	Tuning.RadiusCm = Made.RadiusCm;
+	Tuning.HalfHeightCm = Made.HalfHeightCm;
 	Tuning.PalmLengthCm = Made.PalmLengthCm;
 	Tuning.PalmWidthCm = Made.PalmWidthCm;
 	Tuning.PalmThicknessCm = Made.PalmThicknessCm;
@@ -289,9 +375,10 @@ void USandboxEffectorComponent::GetProbe(FCollisionShape& OutShape, FVector& Out
 	}
 	else
 	{
-		// A ball looks the same however it is turned.
-		OutShape = FCollisionShape::MakeSphere(GetScaledSphereRadius());
-		OutRotation = FQuat::Identity;
+		// A ball looks the same however it is turned; the player's body is a capsule along its own z, as turned as it is.
+		const bool bCapsule = IsCapsule();
+		OutShape = bCapsule ? FCollisionShape::MakeCapsule(static_cast<float>(Tuning.RadiusCm), static_cast<float>(Tuning.HalfHeightCm)) : FCollisionShape::MakeSphere(GetScaledSphereRadius());
+		OutRotation = bCapsule ? BodyPose.GetRotation() : FQuat::Identity;
 		OutThinHalfCm = GetScaledSphereRadius();
 	}
 }
@@ -504,7 +591,8 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 		bHeldBlow = false;
 	}
 	// The contacts reported since the last Update belong to the step that has just ended.
-	Stats.LastFrameImpulseNs = ImpulseFrame == Frame ? FrameImpulseNs.Size() : 0.0;
+	LastFrameImpulseNs = ImpulseFrame == Frame ? FrameImpulseNs : FVector::ZeroVector;
+	Stats.LastFrameImpulseNs = LastFrameImpulseNs.Size();
 	++Frame;
 	FrameDt = DeltaTime;
 

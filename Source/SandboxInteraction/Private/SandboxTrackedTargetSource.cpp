@@ -15,10 +15,11 @@ FVector FSandboxTrackedTargetSource::BodyOffset(const FSandboxEffectorTuning& Ha
 	return FVector(Hand.OffsetThumbCm, bLeft ? Hand.OffsetPalmCm : -Hand.OffsetPalmCm, -Hand.OffsetKnucklesCm);
 }
 
-void FSandboxTrackedTargetSource::Update(const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Hand, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous)
+void FSandboxTrackedTargetSource::Update(const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Hand, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous,
+	const FSandboxPlaySpaceMotion& Motion)
 {
-	UpdateHand(Left, SandboxEffectors::HandLeft, /*bLeft*/ true, Tracker, Origin, Hand, Tools, DeltaTime, bContinuous);
-	UpdateHand(Right, SandboxEffectors::HandRight, /*bLeft*/ false, Tracker, Origin, Hand, Tools, DeltaTime, bContinuous);
+	UpdateHand(Left, SandboxEffectors::HandLeft, /*bLeft*/ true, Tracker, Origin, Hand, Tools, DeltaTime, bContinuous, Motion);
+	UpdateHand(Right, SandboxEffectors::HandRight, /*bLeft*/ false, Tracker, Origin, Hand, Tools, DeltaTime, bContinuous, Motion);
 }
 
 void FSandboxTrackedTargetSource::SetWaitingPose(FName Effector, const FTransform& Pose)
@@ -32,7 +33,8 @@ void FSandboxTrackedTargetSource::SetWaitingPose(FName Effector, const FTransfor
 	}
 }
 
-void FSandboxTrackedTargetSource::UpdateHand(FHand& Hand, FName Effector, bool bLeft, const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Tuning, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous)
+void FSandboxTrackedTargetSource::UpdateHand(FHand& Hand, FName Effector, bool bLeft, const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Tuning, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous,
+	const FSandboxPlaySpaceMotion& Motion)
 {
 	FSandboxControllerState State;
 	const bool bAnswered = Tracker.GetController(Effector, State);
@@ -106,15 +108,18 @@ void FSandboxTrackedTargetSource::UpdateHand(FHand& Hand, FName Effector, bool b
 	// The hand's own frame, off the grip pose's by a fixed turn (effectors.hand.grip_*_deg).
 	const FQuat GripToHand = FRotator(Tuning.GripPitchDeg, Tuning.GripYawDeg, Tuning.GripRollDeg).Quaternion();
 	Wanted.Rotation = (Origin.GetRotation() * State.Rotation * GripToHand).GetNormalized();
-	Wanted.Velocity = Origin.GetRotation().RotateVector(Linear + FVector::CrossProduct(Angular, Arm));
+	// A play space that moves (the stick) carries the hand along: without its velocity the spring's damping would hold a
+	// hand 6 cm behind a walk (FSandboxLocomotion).
+	Wanted.Velocity = Origin.GetRotation().RotateVector(Linear + FVector::CrossProduct(Angular, Arm)) + Motion.VelocityCmS;
 	Wanted.Grip = FMath::Clamp(State.Squeeze, 0.0f, 1.0f);
 
 	// The target follows the controller, but it does not jump: found again after it was lost (or tracked for
-	// the first time, away from where its hand waits), or moved further in one frame than a hand moves, the
-	// controller is caught up with at a set speed on top of its own.
+	// the first time, away from where its hand waits), moved further in one frame than a hand moves, or carried
+	// off by a snap turn of the play space, the controller is caught up with at a set speed on top of its own. (A
+	// hand flung after a snap would sweep 15 to 26 cm at the speed of a blow through whatever is near.)
 	const double StepS = DeltaTime > 0.0f ? DeltaTime : 0.0;
 	const double GapCm = Hand.bHasTarget ? FVector::Dist(Wanted.Location, Hand.Target.Location) : 0.0;
-	if (Hand.bHasTarget && !Hand.bCatchingUp && (!Hand.Last.bTracked || GapCm > Tools.HeadsetMaxHandSpeedMps * 100.0 * StepS) && GapCm > UE_KINDA_SMALL_NUMBER && StepS > 0.0)
+	if (Hand.bHasTarget && !Hand.bCatchingUp && (!Hand.Last.bTracked || Motion.bJumped || GapCm > Tools.HeadsetMaxHandSpeedMps * 100.0 * StepS) && GapCm > UE_KINDA_SMALL_NUMBER && StepS > 0.0)
 	{
 		// One step at the catch-up speed is no jump: a controller found again where it was lost is simply followed.
 		if (GapCm > (Tools.HeadsetCatchUpSpeedMps * 100.0 + Wanted.Velocity.Size()) * StepS)
@@ -162,6 +167,14 @@ FSandboxTrackedTargetSource::FHand* FSandboxTrackedTargetSource::Find(FName Effe
 
 bool FSandboxTrackedTargetSource::GetTarget(FName Effector, FSandboxEffectorTarget& OutTarget) const
 {
+	if (Effector == SandboxEffectors::Body)
+	{
+		if (bHasBodyTarget)
+		{
+			OutTarget = BodyTarget;
+		}
+		return bHasBodyTarget;
+	}
 	// Before a controller's first pose, and with no waiting pose given, there is nothing to say.
 	const FHand* Hand = Find(Effector);
 	if (!Hand || !Hand->bHasTarget)

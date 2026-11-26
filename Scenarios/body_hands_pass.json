@@ -1,0 +1,52 @@
+{
+  "name": "body_hands_pass",
+  "duration_s": 6.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [400, 260, 150],
+    "look_at_cm": [150, 100, 80]
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "effector",
+      "effector": "body",
+      "path": [
+        {"t": 0.0, "location_cm": [150, 100, 82]}
+      ]
+    },
+    {
+      "t": 2.0,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {"t": 0.0, "location_cm": [150, 220, 120]},
+        {"t": 1.2, "location_cm": [150, -20, 120]},
+        {"t": 2.4, "location_cm": [150, 220, 120], "grip": 0}
+      ]
+    },
+    {
+      "t": 2.0,
+      "type": "effector",
+      "effector": "foot_right",
+      "path": [
+        {"t": 0.0, "location_cm": [170, 220, 40]},
+        {"t": 1.2, "location_cm": [170, -20, 40]},
+        {"t": 2.4, "location_cm": [170, 220, 40]}
+      ]
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "hit_events": 0,
+    "max_effector_impulse_ns": 0
+  }
+}

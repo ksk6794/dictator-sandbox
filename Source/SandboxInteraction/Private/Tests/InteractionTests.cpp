@@ -6,6 +6,7 @@
 #include "Misc/Paths.h"
 #include "SandboxDesktopTargetSource.h"
 #include "SandboxInteractionTuning.h"
+#include "SandboxLocomotion.h"
 #include "SandboxParamStore.h"
 #include "SandboxScriptedTargetSource.h"
 #include "SandboxTargetRecording.h"
@@ -73,6 +74,9 @@ bool FInteractionTuningRepoFilesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the hand has a force cap"), Tuning.Hand.MaxForceN > 0.0);
 	TestTrue(TEXT("the kind of an effector finds its tuning"), Tuning.Effector(SandboxEffectors::KindOf(SandboxEffectors::HandLeft)) == &Tuning.Hand);
 	TestTrue(TEXT("an unknown kind has none"), Tuning.Effector(TEXT("tail")) == nullptr);
+	TestTrue(TEXT("the player's body has a tuning of its own"), Tuning.Effector(SandboxEffectors::KindOf(SandboxEffectors::Body)) == &Tuning.Body);
+	TestTrue(TEXT("which makes it an upright capsule, not a ball"), Tuning.Body.HalfHeightCm > Tuning.Body.RadiusCm);
+	TestTrue(TEXT("and a hand has no half height: it stays a ball"), Tuning.Hand.HalfHeightCm == 0.0 && Tuning.Foot.HalfHeightCm == 0.0);
 
 	// Every listed value comes from the files, under the name it is listed with.
 	TArray<TPair<FString, double>> Values;
@@ -229,6 +233,8 @@ bool FInteractionScriptedSourceTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the kind of a hand"), SandboxEffectors::KindOf(SandboxEffectors::HandLeft), FName(TEXT("hand")));
 	TestTrue(TEXT("both hands are effectors"), SandboxEffectors::IsKnown(SandboxEffectors::HandLeft) && SandboxEffectors::IsKnown(SandboxEffectors::HandRight));
 	TestFalse(TEXT("a tail is not"), SandboxEffectors::IsKnown(TEXT("tail_left")));
+	TestTrue(TEXT("the player's own body is an effector"), SandboxEffectors::IsKnown(SandboxEffectors::Body));
+	TestEqual(TEXT("of a kind of its own"), SandboxEffectors::KindOf(SandboxEffectors::Body), FName(TEXT("body")));
 	return true;
 }
 
@@ -766,6 +772,236 @@ bool FInteractionTrackedSourceTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and at least open"), Left.Grip, 0.0f);
 	const FSandboxTrackedHandStats* LeftStats = Source.GetStats(SandboxEffectors::HandLeft);
 	TestTrue(TEXT("the most a grip was closed is kept"), LeftStats && LeftStats->MaxGrip == 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteractionTrackedPlaySpaceTest, "DictatorSandbox.Interaction.Source.TrackedHandsRideThePlaySpace", InteractionTestFlags)
+bool FInteractionTrackedPlaySpaceTest::RunTest(const FString& Parameters)
+{
+	// A play space that moves carries the hands with it, and one that jumps (a snap turn) is caught up with.
+	const float Dt = 1.0f / 90.0f;
+	FMadeUpControllers Controllers;
+	FSandboxToolTuning Tools;
+	Tools.HeadsetMaxHandSpeedMps = 20.0;
+	Tools.HeadsetCatchUpSpeedMps = 1.5;
+	Tools.HeadsetRuntimeVelocityShare = 1.0;
+	FSandboxControllerState State;
+	State.bTracked = true;
+	State.Location = FVector(30.0, 0.0, 120.0);
+	State.bHasLinearVelocity = true;
+	State.bHasAngularVelocity = true;
+	Controllers.States.Add(SandboxEffectors::HandRight, State);
+	FSandboxEffectorTarget Right;
+
+	FSandboxPlaySpaceMotion Walking;
+	Walking.VelocityCmS = FVector(140.0, 0.0, 0.0);
+	FSandboxTrackedTargetSource Source;
+	Source.Update(Controllers, FTransform::Identity, FSandboxEffectorTuning(), Tools, Dt, false, Walking);
+	Source.GetTarget(SandboxEffectors::HandRight, Right);
+	TestEqual(TEXT("a still controller's hand moves with the walking play space"), Right.Velocity, FVector(140.0, 0.0, 0.0), 1.0e-6f);
+
+	// Turned by 30 degrees about the middle, the hand's place jumps 15.5 cm: less than a hand moves in a frame, so only
+	// the play space's word that it jumped stops the hand from being flung after it.
+	const FTransform Turned(FRotator(0.0, 30.0, 0.0), FVector::ZeroVector);
+	{
+		FSandboxTrackedTargetSource Unflagged = Source;
+		Unflagged.Update(Controllers, Turned, FSandboxEffectorTuning(), Tools, Dt, true);
+		Unflagged.GetTarget(SandboxEffectors::HandRight, Right);
+		TestFalse(TEXT("unflagged, a jump of 15 cm would be followed at once"), Unflagged.IsCatchingUp(SandboxEffectors::HandRight));
+	}
+	FSandboxPlaySpaceMotion Snapped;
+	Snapped.bJumped = true;
+	const FVector Before = FVector(30.0, 0.0, 120.0);
+	Source.Update(Controllers, Turned, FSandboxEffectorTuning(), Tools, Dt, true, Snapped);
+	Source.GetTarget(SandboxEffectors::HandRight, Right);
+	TestTrue(TEXT("a snap of the play space is caught up with"), Source.IsCatchingUp(SandboxEffectors::HandRight));
+	TestEqual(TEXT("one step at the catch-up speed"), FVector::Dist(Right.Location, Before), 150.0 / 90.0, 1.0e-6);
+
+	// The player's own body: the source says where it is to be once it has been told.
+	FSandboxTrackedTargetSource Fresh;
+	FSandboxEffectorTarget Body;
+	TestFalse(TEXT("no body before it is told of one"), Fresh.GetTarget(SandboxEffectors::Body, Body));
+	FSandboxEffectorTarget Told;
+	Told.Location = FVector(1.0, 2.0, 82.0);
+	Told.Velocity = FVector(140.0, 0.0, 0.0);
+	Fresh.SetBodyTarget(Told);
+	TestTrue(TEXT("and then where it was told"), Fresh.GetTarget(SandboxEffectors::Body, Body) && Body.Location == Told.Location && Body.Velocity == Told.Velocity);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteractionLocomotionTest, "DictatorSandbox.Interaction.Locomotion.StickTurnAndBody", InteractionTestFlags)
+bool FInteractionLocomotionTest::RunTest(const FString& Parameters)
+{
+	// The player's movement in a headset, on made-up sticks and heads: no headset, no world.
+	const float Dt = 1.0f / 90.0f;
+	FSandboxToolTuning Tools;
+	Tools.HeadsetMoveSpeedMps = 1.4;
+	Tools.HeadsetMoveDeadZone = 0.15;
+	Tools.HeadsetMoveEaseS = 0.2;
+	Tools.HeadsetSnapTurnDeg = 30.0;
+	Tools.HeadsetSnapPress = 0.7;
+	Tools.HeadsetSnapRelease = 0.3;
+	Tools.HeadsetBodyLeanCm = 20.0;
+	Tools.HeadsetBodyFollowSpeedMps = 2.0;
+	Tools.HeadsetBodyFloorGapCm = 2.0;
+	Tools.HeadsetBodyBlockedN = 100.0;
+	Tools.HeadsetBodyStoppedN = 250.0;
+	FSandboxToolTuning AtOnce = Tools;
+	AtOnce.HeadsetMoveEaseS = 0.0;
+	FSandboxEffectorTuning Body;
+	Body.RadiusCm = 22.0;
+	Body.HalfHeightCm = 80.0;
+
+	// The dead zone, and the tilt past it.
+	TestEqual(TEXT("inside the dead zone the stick is nothing"), FSandboxLocomotion::PastDeadZone(FVector2D(0.1, 0.05), 0.15), FVector2D::ZeroVector);
+	TestTrue(TEXT("at full tilt it is all of it"), FSandboxLocomotion::PastDeadZone(FVector2D(0.0, 1.0), 0.15).Equals(FVector2D(0.0, 1.0), 1.0e-9));
+	TestTrue(TEXT("halfway past the dead zone it is half, in the stick's own direction"),
+		FSandboxLocomotion::PastDeadZone(FVector2D(0.575, 0.575) / FMath::Sqrt(2.0), 0.15).Equals(FVector2D(0.5, 0.5) / FMath::Sqrt(2.0), 1.0e-9));
+	TestEqual(TEXT("a stick that reads beyond its full tilt is held to it"), FSandboxLocomotion::PastDeadZone(FVector2D(1.0, 1.0), 0.15).Size(), 1.0, 1.0e-9);
+
+	// A head 30 cm ahead and 40 to the right of the play space's middle, looking left and a little down, is put over the
+	// stand point looking along +y.
+	{
+		const FVector HeadLocal(30.0, 40.0, 170.0);
+		const FQuat HeadTurn = FRotator(-10.0, -90.0, 0.0).Quaternion();
+		const FTransform Placed = FSandboxLocomotion::PlaceHead(HeadLocal, HeadTurn, FVector(100.0, 200.0, 0.0), 90.0);
+		const FVector Head = Placed.TransformPositionNoScale(HeadLocal);
+		TestEqual(TEXT("the head stands over the stand point"), FVector(Head.X, Head.Y, 0.0), FVector(100.0, 200.0, 0.0), 1.0e-6f);
+		TestEqual(TEXT("at its own height"), Head.Z, 170.0, 1.0e-6);
+		TestEqual(TEXT("looking the way asked"), FSandboxLocomotion::LevelForward(Placed.GetRotation() * HeadTurn), FVector(0.0, 1.0, 0.0), 1.0e-6f);
+	}
+
+	// Walking: the head looks along +x. The speed grows to full in 0.2 s and falls back in as long, and the body's target
+	// goes along with the play space.
+	FSandboxLocomotionInput Input;
+	Input.HeadLocation = FVector(0.0, 0.0, 170.0);
+	Input.MoveStick = FVector2D(0.0, 1.0);
+	FSandboxLocomotion Walk;
+	Walk.Reset(FTransform::Identity, Input.HeadLocation);
+	Walk.Update(Input, Tools, Dt);
+	TestEqual(TEXT("one frame of easing is a ninetieth of 0.2 s's way to full speed"), Walk.GetOriginVelocity(), FVector(140.0 / 18.0, 0.0, 0.0), 1.0e-6f);
+	for (int32 Frame = 2; Frame <= 18; ++Frame)
+	{
+		Walk.Update(Input, Tools, Dt);
+	}
+	TestEqual(TEXT("full speed after 0.2 s"), Walk.GetOriginVelocity(), FVector(140.0, 0.0, 0.0), 1.0e-6f);
+	TestEqual(TEXT("having gone as far as the easing says"), Walk.GetOrigin().GetLocation().X, 140.0 * 19.0 / 180.0, 1.0e-6);
+	const FSandboxEffectorTarget Carried = Walk.GetBodyTarget(Body, Tools);
+	TestEqual(TEXT("the body's target went with it, its bottom 2 cm above the floor"), Carried.Location, FVector(140.0 * 19.0 / 180.0, 0.0, 82.0), 1.0e-6f);
+	TestEqual(TEXT("and moves as it does"), Carried.Velocity, FVector(140.0, 0.0, 0.0), 1.0e-6f);
+	TestEqual(TEXT("the speed is all of the full speed"), Walk.GetSpeedShare(Tools), 1.0, 1.0e-9);
+	Input.MoveStick = FVector2D::ZeroVector;
+	for (int32 Frame = 1; Frame <= 18; ++Frame)
+	{
+		Walk.Update(Input, Tools, Dt);
+	}
+	TestEqual(TEXT("let go, the stick brings the player to rest in 0.2 s"), Walk.GetOriginVelocity(), FVector::ZeroVector, 1.0e-6f);
+	// 14.78 cm speeding up and 13.22 slowing down: as far as 0.2 s at full speed.
+	TestEqual(TEXT("the walk is counted"), Walk.GetStats().WalkedCm, 140.0 * 18.0 / 90.0, 1.0e-6);
+
+	// Relative to the head: looking along +y and almost straight down, right is -x; straight down, forward is +y still.
+	{
+		FSandboxLocomotion Side;
+		Side.Reset(FTransform::Identity, FVector(0.0, 0.0, 170.0));
+		FSandboxLocomotionInput Looking;
+		Looking.HeadLocation = FVector(0.0, 0.0, 170.0);
+		Looking.HeadRotation = FRotator(-85.0, 90.0, 0.0).Quaternion();
+		Looking.MoveStick = FVector2D(1.0, 0.0);
+		Side.Update(Looking, AtOnce, Dt);
+		TestEqual(TEXT("the right of a head that looks along +y is -x"), Side.GetOriginVelocity(), FVector(-140.0, 0.0, 0.0), 1.0e-6f);
+		Looking.HeadRotation = FRotator(-90.0, 90.0, 0.0).Quaternion();
+		Looking.MoveStick = FVector2D(0.0, 1.0);
+		Side.Update(Looking, AtOnce, Dt);
+		TestEqual(TEXT("a head that looks straight down goes the way its face is turned"), Side.GetOriginVelocity(), FVector(0.0, 140.0, 0.0), 1.0e-6f);
+	}
+
+	// A snap turn, about a head that is 50 cm off the play space's middle: the head stays where it is in the world.
+	{
+		FSandboxLocomotion Turning;
+		FSandboxLocomotionInput Snap;
+		Snap.HeadLocation = FVector(50.0, 0.0, 170.0);
+		Turning.Reset(FTransform::Identity, Snap.HeadLocation);
+		const FVector HeadBefore = Turning.GetOrigin().TransformPositionNoScale(Snap.HeadLocation);
+		const FVector BodyBefore = Turning.GetBodyTarget(Body, Tools).Location;
+		Snap.TurnStick = FVector2D(0.8, 0.0);
+		Turning.Update(Snap, Tools, Dt);
+		TestTrue(TEXT("a tilt past the press turns"), Turning.HasSnapped());
+		TestEqual(TEXT("the head stays where it was in the world"), Turning.GetOrigin().TransformPositionNoScale(Snap.HeadLocation), HeadBefore, 1.0e-6f);
+		TestEqual(TEXT("and looks 30 degrees to the right"), FSandboxLocomotion::LevelForward(Turning.GetOrigin().GetRotation()),
+			FVector(FMath::Cos(FMath::DegreesToRadians(30.0)), FMath::Sin(FMath::DegreesToRadians(30.0)), 0.0), 1.0e-6f);
+		TestEqual(TEXT("the body's target does not move with a turn"), Turning.GetBodyTarget(Body, Tools).Location, BodyBefore, 1.0e-6f);
+		Turning.Update(Snap, Tools, Dt);
+		TestFalse(TEXT("held, the stick turns once"), Turning.HasSnapped());
+		Snap.TurnStick = FVector2D(0.5, 0.0);
+		Turning.Update(Snap, Tools, Dt);
+		Snap.TurnStick = FVector2D(-0.9, 0.0);
+		Turning.Update(Snap, Tools, Dt);
+		TestFalse(TEXT("not back under the release, it does not turn again"), Turning.HasSnapped());
+		Snap.TurnStick = FVector2D(0.2, 0.0);
+		Turning.Update(Snap, Tools, Dt);
+		Snap.TurnStick = FVector2D(-0.9, 0.0);
+		Turning.Update(Snap, Tools, Dt);
+		TestTrue(TEXT("back under it, a tilt the other way turns the other way"), Turning.HasSnapped());
+		TestEqual(TEXT("back to looking along +x"), FSandboxLocomotion::LevelForward(Turning.GetOrigin().GetRotation()), FVector(1.0, 0.0, 0.0), 1.0e-6f);
+		TestTrue(TEXT("one turn each way is counted"), Turning.GetStats().SnapsRight == 1 && Turning.GetStats().SnapsLeft == 1);
+	}
+
+	// The body stays while the head leans, and follows it beyond the lean, no faster than 2 m/s.
+	{
+		FSandboxLocomotion Lean;
+		FSandboxLocomotionInput Leaning;
+		Leaning.HeadLocation = FVector(0.0, 0.0, 170.0);
+		Lean.Reset(FTransform::Identity, Leaning.HeadLocation);
+		Leaning.HeadLocation = FVector(15.0, 0.0, 170.0);
+		Lean.Update(Leaning, Tools, Dt);
+		TestEqual(TEXT("a lean of 15 cm leaves the body where it is"), Lean.GetBodyTarget(Body, Tools).Location.X, 0.0, 1.0e-9);
+		Leaning.HeadLocation = FVector(35.0, 0.0, 170.0);
+		Lean.Update(Leaning, Tools, Dt);
+		TestEqual(TEXT("a head further away draws the body a walk's step"), Lean.GetBodyTarget(Body, Tools).Location.X, 200.0 / 90.0, 1.0e-6);
+		TestEqual(TEXT("and says how fast"), Lean.GetBodyTarget(Body, Tools).Velocity, FVector(200.0, 0.0, 0.0), 1.0e-6f);
+		for (int32 Frame = 0; Frame < 20; ++Frame)
+		{
+			Lean.Update(Leaning, Tools, Dt);
+		}
+		TestEqual(TEXT("until the head is a lean away from it"), Lean.GetBodyTarget(Body, Tools).Location.X, 15.0, 1.0e-6);
+		TestEqual(TEXT("and then it rests"), Lean.GetBodyTarget(Body, Tools).Velocity, FVector::ZeroVector, 1.0e-6f);
+	}
+
+	// Pressed back: the body is pushed toward -x while the player walks along +x.
+	{
+		FSandboxLocomotion Blocked;
+		FSandboxLocomotionInput Pressed;
+		Pressed.HeadLocation = FVector(0.0, 0.0, 170.0);
+		Pressed.MoveStick = FVector2D(0.0, 1.0);
+		Pressed.bHasBody = true;
+		Pressed.BodyLocation = FVector(0.0, 0.0, 82.0);
+		Blocked.Reset(FTransform::Identity, Pressed.HeadLocation);
+		Pressed.BodyContactN = FVector(-175.0, 0.0, 30.0);
+		Blocked.Update(Pressed, AtOnce, Dt);
+		TestEqual(TEXT("a push halfway between blocked and stopped takes half the walk into it"), Blocked.GetOriginVelocity(), FVector(70.0, 0.0, 0.0), 1.0e-6f);
+		TestEqual(TEXT("and says so"), Blocked.GetHeldBack(), 0.5, 1.0e-9);
+		Pressed.BodyContactN = FVector(-300.0, 0.0, 0.0);
+		Blocked.Update(Pressed, AtOnce, Dt);
+		TestEqual(TEXT("a push past stopped takes all of it"), Blocked.GetOriginVelocity(), FVector::ZeroVector, 1.0e-6f);
+		Pressed.MoveStick = FVector2D(1.0, 1.0);
+		Blocked.Update(Pressed, AtOnce, Dt);
+		TestEqual(TEXT("the walk along what presses it back goes on"), Blocked.GetOriginVelocity(), FVector(0.0, 140.0 / FMath::Sqrt(2.0), 0.0), 1.0e-6f);
+		Pressed.BodyContactN = FVector(-50.0, 0.0, 0.0);
+		Blocked.Update(Pressed, AtOnce, Dt);
+		TestEqual(TEXT("a push below blocked takes nothing"), Blocked.GetOriginVelocity(), FVector(1.0, 1.0, 0.0) * 140.0 / FMath::Sqrt(2.0), 1.0e-6f);
+		TestTrue(TEXT("the frames held back are counted"), Blocked.GetStats().HeldBackFrames == 3 && Blocked.GetStats().MostHeldBack == 1.0);
+
+		// Standing still, pressed back, the body rests against what touches it instead of leaning on it.
+		FSandboxLocomotion Resting;
+		FSandboxLocomotionInput Leaning;
+		Leaning.HeadLocation = FVector(0.0, 0.0, 170.0);
+		Leaning.bHasBody = true;
+		Leaning.BodyLocation = FVector(-4.0, 0.0, 82.0);
+		Leaning.BodyContactN = FVector(-300.0, 0.0, 0.0);
+		Resting.Reset(FTransform::Identity, Leaning.HeadLocation);
+		Resting.Update(Leaning, Tools, Dt);
+		TestEqual(TEXT("a body 4 cm short of its target, pressed back, gets its target where it is"), Resting.GetBodyTarget(Body, Tools).Location.X, -4.0, 1.0e-6);
+	}
 	return true;
 }
 

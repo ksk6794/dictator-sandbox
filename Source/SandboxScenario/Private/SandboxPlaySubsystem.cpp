@@ -20,6 +20,7 @@
 #include "SandboxParamStore.h"
 #include "SandboxPawn.h"
 #include "SandboxRagdollActor.h"
+#include "SandboxStandInHeadset.h"
 #include "SandboxTargetRecording.h"
 #include "SandboxTrackedTargetSource.h"
 #include "ScenarioStage.h"
@@ -88,7 +89,8 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	bSmoke = FParse::Param(FCommandLine::Get(), TEXT("PlaySmoke"));
 	bDemoTakes = !bSmoke && FParse::Param(FCommandLine::Get(), TEXT("PlayDemoTakes"));
 	bDemoGrab = !bSmoke && !bDemoTakes && FParse::Param(FCommandLine::Get(), TEXT("PlayDemoGrab"));
-	bDemo = !bSmoke && (bDemoTakes || bDemoGrab || FParse::Param(FCommandLine::Get(), TEXT("PlayDemo")));
+	bDemoWalk = !bSmoke && !bDemoTakes && !bDemoGrab && FParse::Param(FCommandLine::Get(), TEXT("PlayDemoWalk"));
+	bDemo = !bSmoke && (bDemoTakes || bDemoGrab || bDemoWalk || FParse::Param(FCommandLine::Get(), TEXT("PlayDemo")));
 	bRecordFromStart = FParse::Value(FCommandLine::Get(), TEXT("Record="), RecordName) && !RecordName.IsEmpty() && !bDemo && !bSmoke;
 	bPerception = FParse::Param(FCommandLine::Get(), TEXT("PlayPerception"));
 	FParse::Value(FCommandLine::Get(), TEXT("PlaySeconds="), PlaySeconds);
@@ -155,7 +157,18 @@ bool USandboxPlaySubsystem::AdoptPawn(UWorld& World)
 
 	const FVector Location = Spec.bHasCamera ? Spec.CameraLocationCm : Spec.SpawnLocationCm + FVector(-250.0, 150.0, 160.0);
 	const FVector LookAt = Spec.bHasCamera ? Spec.CameraLookAtCm : Spec.SpawnLocationCm + FVector(0.0, 0.0, 110.0);
-	if (FScenarioStage::IsStereo())
+	if (bDemoWalk)
+	{
+		// A session without a person in a headset that a made-up one stands in for, before the pawn begins to play: a
+		// head 40 cm ahead and 30 to the left of the play space's middle, turned 20 degrees to the right and a little
+		// down, with the controllers held beside the hips.
+		StandIn = MakeShared<FSandboxStandInHeadset>();
+		StandIn->HeadLocation = FVector(40.0, -30.0, 165.0);
+		StandIn->HeadRotation = FRotator(-5.0, 20.0, 0.0).Quaternion();
+		StandIn->HoldHandsByTheHips();
+		Found->UseStandInHeadset(StandIn);
+	}
+	if (FScenarioStage::IsStereo() || bDemoWalk)
 	{
 		// In the headset the pawn is the middle of the play space. It is put on the floor, on the side of the
 		// character the desktop camera starts on, at arm's length from what that camera looks at, facing it.
@@ -169,7 +182,9 @@ bool USandboxPlaySubsystem::AdoptPawn(UWorld& World)
 		const double DistanceCm = FSandboxInteractionTuning::FromParams(FSandboxParamStore::Get(), Tuning, TuningError) ? Tuning.Tools.HeadsetStandDistanceCm : 0.0;
 		const FVector Floor(LookAt.X + Away.X * DistanceCm, LookAt.Y + Away.Y * DistanceCm, Spec.SpawnLocationCm.Z);
 		Found->SetView(Floor, (-Away).Rotation());
-		UE_LOG(LogSandbox, Display, TEXT("Play session: in the headset, the play space is centred at %.0f, %.0f on the floor, %.0f cm from the character, facing it"), Floor.X, Floor.Y, DistanceCm);
+		WalkStandPoint = Floor;
+		WalkStandYawDeg = (-Away).Rotation().Yaw;
+		UE_LOG(LogSandbox, Display, TEXT("Play session: in the headset, the player's head is put over %.0f, %.0f on the floor, %.0f cm from the character, facing it"), Floor.X, Floor.Y, DistanceCm);
 	}
 	else
 	{
@@ -481,6 +496,21 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 		Hands->SetObjectField(Effector->GetId().ToString(), Hand);
 	}
 	Seen->SetObjectField(TEXT("hands"), Hands);
+	if (Pawn.IsValid() && Pawn->IsInHeadset())
+	{
+		// In a headset: how the player moved through the session so far (FR-42).
+		const FSandboxLocomotionStats& Moved = Pawn->GetLocomotion().GetStats();
+		const TSharedRef<FJsonObject> Moves = MakeShared<FJsonObject>();
+		Moves->SetNumberField(TEXT("walked_m"), Moved.WalkedCm * 0.01);
+		Moves->SetNumberField(TEXT("moving_frames"), Moved.MovingFrames);
+		Moves->SetNumberField(TEXT("max_speed_mps"), Moved.MaxSpeedCmS * 0.01);
+		Moves->SetNumberField(TEXT("snaps_left"), Moved.SnapsLeft);
+		Moves->SetNumberField(TEXT("snaps_right"), Moved.SnapsRight);
+		Moves->SetNumberField(TEXT("held_back_frames"), Moved.HeldBackFrames);
+		Moves->SetNumberField(TEXT("max_body_gap_cm"), Moved.MaxBodyGapCm);
+		Moves->SetNumberField(TEXT("max_view_darkening"), Pawn->GetMaxHeadFade());
+		Seen->SetObjectField(TEXT("moves"), Moves);
+	}
 	FString Error;
 	if (!SandboxJson::SaveObject(FPaths::Combine(Dir, Name + TEXT(".session.json")), Seen, Error))
 	{
@@ -504,6 +534,11 @@ void USandboxPlaySubsystem::TickDemo()
 			LastRecordingError = TEXT("the player has no ASandboxPawn");
 			FinishDemo();
 		}
+		return;
+	}
+	if (bDemoWalk)
+	{
+		TickWalkDemo(*Player);
 		return;
 	}
 	// Looking at the character's front from the side it faces (+y), level, at arm's length.
@@ -710,10 +745,184 @@ void USandboxPlaySubsystem::TickDemo()
 	++DemoFrame;
 }
 
+void USandboxPlaySubsystem::TickWalkDemo(ASandboxPawn& Player)
+{
+	// The way a person in the headset takes, without one (FR-42): the head stands where the session put it; the right
+	// stick walks the player into the character and on along it; the left stick turns to the right and back; the stick
+	// walks the player away. What each did is measured as it happens and judged at the end (DescribeWalk). The sticks
+	// set here are read by the pawn in the next frame.
+	FSandboxStandInHeadset& Headset = *StandIn;
+	const ASandboxEffectorRig* Rig = Player.GetRig();
+	const USandboxEffectorComponent* Body = Rig ? Rig->FindEffector(SandboxEffectors::Body) : nullptr;
+	const auto Facing = [&Player, &Headset]() { return FSandboxLocomotion::LevelForward(Player.GetActorQuat() * Headset.HeadRotation); };
+	const auto YawDeg = [](const FVector& Direction) { return FMath::RadiansToDegrees(FMath::Atan2(Direction.Y, Direction.X)); };
+	const auto EachHand = [Rig](TFunctionRef<void(const USandboxEffectorComponent&)> Each)
+	{
+		for (const FName Hand : { SandboxEffectors::HandLeft, SandboxEffectors::HandRight })
+		{
+			if (const USandboxEffectorComponent* Effector = Rig ? Rig->FindEffector(Hand) : nullptr)
+			{
+				Each(*Effector);
+			}
+		}
+	};
+	const int32 Frame = DemoFrame;
+	if (Frame == 10)
+	{
+		if (!Player.IsInHeadset() || !Rig || !Body)
+		{
+			LastRecordingError = TEXT("the pawn did not take the stand-in for a headset, or made no hands and no body in it");
+			FinishDemo();
+			return;
+		}
+		Walk.bChecked = true;
+		Walk.PlacedOffCm = FVector::Dist2D(Player.GetHeadLocation(), WalkStandPoint);
+		Walk.PlacedOffDeg = FMath::Abs(FRotator::NormalizeAxis(YawDeg(Facing()) - WalkStandYawDeg));
+	}
+	else if (Frame == 60 && !Player.StartRecording())
+	{
+		LastRecordingError = TEXT("the pawn could not start a recording (see the log)");
+		FinishDemo();
+		return;
+	}
+
+	FVector2D Move = FVector2D::ZeroVector;
+	FVector2D Turn = FVector2D::ZeroVector;
+	// Into the character at full speed, pressing on for 3 s; then forward and to the right, so that what holds the body
+	// back takes the forward half and the player slides along.
+	if (Frame >= 90 && Frame < 360)
+	{
+		Move = FVector2D(0.0, 1.0);
+	}
+	else if (Frame >= 360 && Frame < 450)
+	{
+		Move = FVector2D(1.0, 1.0) / FMath::Sqrt(2.0);
+	}
+	else if (Frame >= 540 && Frame < 630)
+	{
+		Move = FVector2D(0.0, -1.0);
+	}
+	if (Frame == 360)
+	{
+		const FVector Ahead = Facing();
+		Walk.SlideStart = Player.GetHeadLocation();
+		Walk.SlideRight = FVector(-Ahead.Y, Ahead.X, 0.0);
+	}
+	else if (Frame == 450)
+	{
+		Walk.SlideCm = FVector::DotProduct(Player.GetHeadLocation() - Walk.SlideStart, Walk.SlideRight);
+	}
+	// Two snap turns, to the right and back: the head stays where it is, and the hands are not flung.
+	if ((Frame >= 480 && Frame < 490) || (Frame >= 520 && Frame < 530))
+	{
+		Turn = FVector2D(Frame < 500 ? 1.0 : -1.0, 0.0);
+	}
+	if (Frame == 479 || Frame == 519)
+	{
+		Walk.HeadBeforeSnap = Player.GetHeadLocation();
+		Walk.YawBeforeSnapDeg = YawDeg(Facing());
+	}
+	else if (Frame == 490 || Frame == 530)
+	{
+		Walk.SnapHeadOffCm = FMath::Max(Walk.SnapHeadOffCm, FVector::Dist(Player.GetHeadLocation(), Walk.HeadBeforeSnap));
+		Walk.SnapTurnsDeg[Frame == 490 ? 0 : 1] = FRotator::NormalizeAxis(YawDeg(Facing()) - Walk.YawBeforeSnapDeg);
+	}
+	if (Frame >= 480 && Frame < 560)
+	{
+		EachHand([this](const USandboxEffectorComponent& Hand) { Walk.HandsMaxSpeedAfterSnapMps = FMath::Max(Walk.HandsMaxSpeedAfterSnapMps, Hand.GetHandVelocity().Size() * 0.01); });
+	}
+	// The hands keep up with a walk: before the body meets the character, and walking away from it.
+	if ((Frame >= 100 && Frame < 120) || (Frame >= 560 && Frame < 630))
+	{
+		EachHand([this](const USandboxEffectorComponent& Hand) { Walk.HandsMaxGapWalkingCm = FMath::Max(Walk.HandsMaxGapWalkingCm, Hand.GetGapCm()); });
+	}
+	// The body pressed against the character, and what it pushes with; the view while walking into it.
+	if (Frame >= 200 && Frame < 360 && Body)
+	{
+		Walk.BodyForceSumN += Body->GetContactForceN();
+		++Walk.BodyForceFrames;
+		Walk.BodyTouchingFrames += Body->GetContactForceN() > 1.0 ? 1 : 0;
+		Walk.BodyMaxForceN = FMath::Max(Walk.BodyMaxForceN, Body->GetContactForceN());
+	}
+	if (Frame >= 90 && Frame < 450)
+	{
+		Walk.MaxFadeWalking = FMath::Max(Walk.MaxFadeWalking, Player.GetHeadFade());
+	}
+	if (Frame == 690)
+	{
+		Player.StopRecording();
+		const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
+		Walk.CharacterStateAtEnd = Controller ? FSandboxBodyTuning::StateName(Controller->GetState()) : FString();
+		FinishDemo();
+		return;
+	}
+	Headset.Right.Stick = Move;
+	Headset.Left.Stick = Turn;
+	++DemoFrame;
+}
+
+TSharedRef<FJsonObject> USandboxPlaySubsystem::DescribeWalk(bool& bOutPass) const
+{
+	const TSharedRef<FJsonObject> Out = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> Checks;
+	bOutPass = Walk.bChecked;
+	const auto Check = [&](const TCHAR* Name, bool bPass, const FString& Detail)
+	{
+		const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+		Entry->SetStringField(TEXT("name"), Name);
+		Entry->SetBoolField(TEXT("pass"), bPass);
+		Entry->SetStringField(TEXT("detail"), Detail);
+		Checks.Add(MakeShared<FJsonValueObject>(Entry));
+		bOutPass = bOutPass && bPass;
+	};
+	const ASandboxPawn* Player = Pawn.Get();
+	if (!Player)
+	{
+		bOutPass = false;
+		return Out;
+	}
+	const FSandboxInteractionTuning& Tuning = Player->GetTuning();
+	const FSandboxLocomotionStats& Moved = Player->GetLocomotion().GetStats();
+	const double MeanForceN = Walk.BodyForceFrames > 0 ? Walk.BodyForceSumN / Walk.BodyForceFrames : 0.0;
+	Check(TEXT("head_stands_where_put"), Walk.PlacedOffCm >= 0.0 && Walk.PlacedOffCm <= 1.0 && Walk.PlacedOffDeg <= 1.0,
+		FString::Printf(TEXT("%.2f cm from the stand point, %.2f degrees from facing the character"), Walk.PlacedOffCm, Walk.PlacedOffDeg));
+	Check(TEXT("walk_stops_at_the_character"), Moved.HeldBackFrames > 30 && Moved.MostHeldBack >= 0.99,
+		FString::Printf(TEXT("the stick was held back in %d frames, by %.0f%% at most"), Moved.HeldBackFrames, Moved.MostHeldBack * 100.0));
+	// The character gives way and steps back, and the player follows it: the body touches it in part of the frames, and
+	// pushes on average no harder than its cap (a blow of a frame is no push).
+	Check(TEXT("body_pushes_no_harder_than_a_hand"), Walk.BodyTouchingFrames * 4 >= Walk.BodyForceFrames && Walk.BodyForceFrames > 0 && MeanForceN <= 1.05 * Tuning.Body.MaxForceN,
+		FString::Printf(TEXT("touching in %d of %d frames, with %.0f N on average (%.0f N in one frame at most); the body's cap is %.0f N"),
+			Walk.BodyTouchingFrames, Walk.BodyForceFrames, MeanForceN, Walk.BodyMaxForceN, Tuning.Body.MaxForceN));
+	Check(TEXT("view_not_darkened_by_walking_into_it"), Walk.MaxFadeWalking < 0.5,
+		FString::Printf(TEXT("darkened by %.0f%% at most while walking into the character and along it"), Walk.MaxFadeWalking * 100.0));
+	Check(TEXT("slides_along_the_character"), Walk.SlideCm >= 30.0, FString::Printf(TEXT("%.1f cm to the right in 1 s of forward and right"), Walk.SlideCm));
+	Check(TEXT("snap_turns_about_the_head"), Walk.SnapHeadOffCm <= 0.1 && FMath::Abs(Walk.SnapTurnsDeg[0] - Tuning.Tools.HeadsetSnapTurnDeg) <= 0.1 && FMath::Abs(Walk.SnapTurnsDeg[1] + Tuning.Tools.HeadsetSnapTurnDeg) <= 0.1,
+		FString::Printf(TEXT("turned %.2f and %.2f degrees, the head %.3f cm from where it was at most"), Walk.SnapTurnsDeg[0], Walk.SnapTurnsDeg[1], Walk.SnapHeadOffCm));
+	Check(TEXT("hands_not_flung_by_a_turn"), Walk.HandsMaxSpeedAfterSnapMps <= Tuning.Hand.StrikeSpeedMps,
+		FString::Printf(TEXT("%.2f m/s at most after the turns (a blow begins at %.1f)"), Walk.HandsMaxSpeedAfterSnapMps, Tuning.Hand.StrikeSpeedMps));
+	Check(TEXT("hands_keep_up_with_a_walk"), Walk.HandsMaxGapWalkingCm > 0.0 && Walk.HandsMaxGapWalkingCm <= 4.0,
+		FString::Printf(TEXT("%.2f cm behind their targets at most while walking"), Walk.HandsMaxGapWalkingCm));
+	Out->SetArrayField(TEXT("checks"), Checks);
+	Out->SetNumberField(TEXT("walked_m"), Moved.WalkedCm * 0.01);
+	Out->SetNumberField(TEXT("max_speed_mps"), Moved.MaxSpeedCmS * 0.01);
+	Out->SetNumberField(TEXT("snaps_left"), Moved.SnapsLeft);
+	Out->SetNumberField(TEXT("snaps_right"), Moved.SnapsRight);
+	Out->SetNumberField(TEXT("max_body_gap_cm"), Moved.MaxBodyGapCm);
+	Out->SetNumberField(TEXT("max_view_darkening"), Player->GetMaxHeadFade());
+	Out->SetStringField(TEXT("character_state_at_end"), Walk.CharacterStateAtEnd);
+	return Out;
+}
+
 void USandboxPlaySubsystem::FinishDemo()
 {
 	bool bPass = LastRecordingError.IsEmpty() && !LastRecordingScenario.IsEmpty();
 	const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	if (bDemoWalk)
+	{
+		bool bWalkPass = false;
+		Root->SetObjectField(TEXT("walk"), DescribeWalk(bWalkPass));
+		bPass = bPass && bWalkPass;
+	}
 	if (bDemoGrab)
 	{
 		bPass = bGrabHeld && bGrabLostOnReset && bGrabHeldAgain && bGrabLetGo && bKickLanded;

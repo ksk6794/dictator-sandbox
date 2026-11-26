@@ -34,6 +34,8 @@ struct FSandboxControllerState
 	FVector AngularVelocity = FVector::ZeroVector;
 	/** The squeeze (grip) axis, 0 open to 1 closed. */
 	float Squeeze = 0.0f;
+	/** The controller's thumbstick: x to the right, y forward, each -1 to 1 (FR-42: the right one moves the player, the left one turns). */
+	FVector2D Stick = FVector2D::ZeroVector;
 };
 
 /**
@@ -47,6 +49,19 @@ public:
 
 	/** The controller that moves an effector ("hand_left", "hand_right"). False for a name it has no controller for. */
 	virtual bool GetController(FName Effector, FSandboxControllerState& OutState) const = 0;
+
+	/** The head's pose in tracking space, cm. False when there is none (a tracker of hands alone). */
+	virtual bool GetHead(FVector& OutLocation, FQuat& OutRotation) const { return false; }
+};
+
+/**
+ * How the play space itself moved in a frame (FSandboxLocomotion): its velocity, cm/s, which every tracked hand moves with
+ * besides its controller, and whether it jumped (a snap turn), which a hand catches up with instead of following.
+ */
+struct FSandboxPlaySpaceMotion
+{
+	FVector VelocityCmS = FVector::ZeroVector;
+	bool bJumped = false;
 };
 
 /** What the tracked source has seen of one hand since it began. For the log, the HUD and a session's file. */
@@ -105,9 +120,18 @@ public:
 	/**
 	 * Origin is the play space's origin in the world, without scale. bContinuous is false when the world did
 	 * not step in the frame before (the first frame, or after a pause): a missing velocity is then not made
-	 * up from two poses that are more than a step apart.
+	 * up from two poses that are more than a step apart. Motion is how the play space moves (FSandboxLocomotion): its
+	 * velocity is added to every hand's, and a jump of it is caught up with as a jump of the tracking is.
 	 */
-	void Update(const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Hand, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous);
+	void Update(const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Hand, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous,
+		const FSandboxPlaySpaceMotion& Motion = FSandboxPlaySpaceMotion());
+
+	/** Where the player's own body is to be (the effector "body"), as FSandboxLocomotion says; GetTarget answers for it from then on. */
+	void SetBodyTarget(const FSandboxEffectorTarget& Target)
+	{
+		BodyTarget = Target;
+		bHasBodyTarget = true;
+	}
 
 	/**
 	 * Where a hand waits before its controller has a pose (where its body was made). The target then catches
@@ -143,10 +167,13 @@ private:
 		FSandboxTrackedHandStats Stats;
 	};
 
-	void UpdateHand(FHand& Hand, FName Effector, bool bLeft, const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Tuning, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous);
+	void UpdateHand(FHand& Hand, FName Effector, bool bLeft, const ISandboxControllerTracker& Tracker, const FTransform& Origin, const FSandboxEffectorTuning& Tuning, const FSandboxToolTuning& Tools, float DeltaTime, bool bContinuous,
+		const FSandboxPlaySpaceMotion& Motion);
 	const FHand* Find(FName Effector) const;
 	FHand* Find(FName Effector);
 
 	FHand Left;
 	FHand Right;
+	FSandboxEffectorTarget BodyTarget;
+	bool bHasBodyTarget = false;
 };

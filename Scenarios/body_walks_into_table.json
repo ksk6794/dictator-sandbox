@@ -1,0 +1,39 @@
+{
+  "name": "body_walks_into_table",
+  "map": "/Game/Generated/Maps/GetUpRoom",
+  "duration_s": 7.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [-200, 150, 0],
+    "control": "active"
+  },
+  "camera": {
+    "location_cm": [220, -220, 170],
+    "look_at_cm": [0, -60, 70]
+  },
+  "events": [
+    {
+      "t": 2.0,
+      "type": "effector",
+      "effector": "body",
+      "path": [
+        {"t": 0.0, "location_cm": [0, -180, 82]},
+        {"t": 0.05, "location_cm": [0, -179.125, 82]},
+        {"t": 0.1, "location_cm": [0, -176.5, 82]},
+        {"t": 0.15, "location_cm": [0, -172.125, 82]},
+        {"t": 0.2, "location_cm": [0, -166, 82]},
+        {"t": 1.3857, "location_cm": [0, 0, 82]}
+      ]
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "hit_events": 0,
+    "max_effector_penetration_cm": 1.0,
+    "min_effector_final_force_n": 250
+  }
+}

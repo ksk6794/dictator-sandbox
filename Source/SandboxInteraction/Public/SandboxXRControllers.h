@@ -29,6 +29,9 @@ public:
 
 	virtual bool GetController(FName Effector, FSandboxControllerState& OutState) const override;
 
+	/** The headset's pose in tracking space, as the XR system has it for this frame. */
+	virtual bool GetHead(FVector& OutLocation, FQuat& OutRotation) const override;
+
 	/**
 	 * Makes one controller vibrate at this strength, 0 to 1 (0 stops it), through the player's haptics. The
 	 * engine makes a vibration last one frame, so a vibration that is to go on is asked for in every frame.
@@ -53,6 +56,8 @@ public:
 
 private:
 	float ReadSqueeze(bool bLeft) const;
+	/** The thumbstick of every profile is asked, as the grip is, and the one tilted most counts. */
+	FVector2D ReadStick(bool bLeft) const;
 
 	TWeakObjectPtr<APlayerController> Player;
 	/** Filled as the keys are read, which is a question and changes nothing else. */

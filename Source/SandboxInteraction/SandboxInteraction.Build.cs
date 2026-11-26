@@ -12,6 +12,7 @@ public class SandboxInteraction : ModuleRules
 		// Json: a recording of the hands is a text file (FSandboxTargetRecording).
 		// HeadMountedDisplay: where the headset's controllers are (FSandboxXRControllers, the only file that asks).
 		// It is the engine's own interface to any XR system; the OpenXR plugin is not linked against.
-		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "Json", "HeadMountedDisplay" });
+		// Chaos: the player's own body never sleeps (USandboxEffectorComponent::Start).
+		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "EnhancedInput", "Json", "HeadMountedDisplay", "Chaos" });
 	}
 }

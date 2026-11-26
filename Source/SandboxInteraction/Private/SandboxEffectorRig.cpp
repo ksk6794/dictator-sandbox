@@ -29,7 +29,7 @@ USandboxEffectorComponent* ASandboxEffectorRig::AddEffector(FName Id, const FTra
 	const FSandboxEffectorTuning* EffectorTuning = SandboxEffectors::IsKnown(Id) ? Tuning.Effector(SandboxEffectors::KindOf(Id)) : nullptr;
 	if (!Params || !EffectorTuning)
 	{
-		OutError = Params ? FString::Printf(TEXT("'%s' is not an effector (hand_left, hand_right, foot_left, foot_right)"), *Id.ToString()) : FString(TEXT("The effector rig is not started"));
+		OutError = Params ? FString::Printf(TEXT("'%s' is not an effector (hand_left, hand_right, foot_left, foot_right, body)"), *Id.ToString()) : FString(TEXT("The effector rig is not started"));
 		return nullptr;
 	}
 	if (FindEffector(Id))

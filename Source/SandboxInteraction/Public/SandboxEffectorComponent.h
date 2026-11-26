@@ -89,6 +89,7 @@ class SANDBOXINTERACTION_API USandboxPalmComponent : public UBoxComponent
 public:
 	USandboxPalmComponent();
 
+	virtual void PostInitProperties() override;
 	virtual void OnDestroyPhysicsState() override;
 
 	TWeakObjectPtr<USandboxEffectorComponent> Hand;
@@ -176,6 +177,8 @@ public:
 	double GetMaxContactForceN() const { return FrameDt > 0.0 ? Stats.MaxFrameImpulseNs / FrameDt : 0.0; }
 	/** Net contact force over the last completed physics step, N. A hand held against something reads its force cap. */
 	double GetContactForceN() const { return FrameDt > 0.0 ? Stats.LastFrameImpulseNs / FrameDt : 0.0; }
+	/** The same as a vector, N, world: the way the contacts pushed the effector (the player's body is held back by it). */
+	FVector GetContactPushN() const { return FrameDt > 0.0 ? LastFrameImpulseNs / FrameDt : FVector::ZeroVector; }
 	/** Distance from the body to its target now, cm. */
 	double GetGapCm() const { return ActiveSpring().GetGapCm(); }
 	/** The force the spring law asked for at the last Update, before its cap, N. */
@@ -194,6 +197,22 @@ public:
 	 */
 	void GetProbe(FCollisionShape& OutShape, FVector& OutCenter, FQuat& OutRotation, double& OutThinHalfCm) const;
 
+	/**
+	 * The object type of the player's own body ("PlayerBody" in Config/DefaultEngine.ini). The body has it, and every
+	 * other effector, a hand's plate among them, ignores it: the player's hands and feet pass through the player's
+	 * body, which blocks everything else.
+	 */
+	static constexpr ECollisionChannel PlayerBodyChannel = ECC_GameTraceChannel1;
+
+	/** True for an upright capsule (effectors.body: a half height above the radius), false for a ball. */
+	bool IsCapsule() const { return Tuning.HalfHeightCm > Tuning.RadiusCm; }
+
+	/** A ball, or for the player's body an upright capsule (effectors.body.half_height_cm). */
+	virtual void UpdateBodySetup() override;
+	virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
+
+	/** Hands and feet are made to ignore the player's own body here, once the collision profile is applied. */
+	virtual void PostInitProperties() override;
 	/** The spring lets go here, while the body it holds still exists. */
 	virtual void OnDestroyPhysicsState() override;
 	/** The meshes and the plate that ride on the hand go with it. */
@@ -292,6 +311,8 @@ private:
 	int64 Frame = 0;
 	int64 ImpulseFrame = -1;
 	FVector FrameImpulseNs = FVector::ZeroVector;
+	/** The net contact impulse of the last completed step, N*s, world (Stats.LastFrameImpulseNs is its size). */
+	FVector LastFrameImpulseNs = FVector::ZeroVector;
 	double FrameDt = 0.0;
 	/** Speed of the body at the last Update: at the start of the step whose contacts are reported next. */
 	double StepStartSpeedCmS = 0.0;

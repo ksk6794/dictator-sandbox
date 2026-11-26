@@ -1,8 +1,12 @@
 #include "SandboxPawn.h"
 
 #include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/OverlapResult.h"
+#include "PhysicsEngine/BodyInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
@@ -33,6 +37,10 @@ namespace
 	constexpr double MaxPitchDeg = 89.0;
 	// A controller whose tracking comes and goes is not written into the log more often than this.
 	constexpr int32 MaxTrackingAnnouncements = 40;
+	// A headset that gives no pose of the head within this many frames gets its hands all the same (a second), with
+	// the head taken to be where a standing person's is.
+	constexpr int32 MaxHeadWaitFrames = 90;
+	const FVector StandingHeadCm(0.0, 0.0, 165.0);
 
 	const TCHAR* ToolName(ESandboxTool Tool)
 	{
@@ -92,12 +100,25 @@ void ASandboxPawn::BeginPlay()
 		return;
 	}
 
-	// In a headset the hands wait in front of the player, at a set height above the floor, until their
-	// controllers are tracked; their springs then take them there.
-	const bool bHeadset = FSandboxXRControllers::IsHeadsetOn();
-	if (bHeadset)
+	// In a headset, or a stand-in for one: the hands and the player's body are made once the head's pose is known
+	// (MakeHeadsetRig, from the first stepped tick), so that the head, and not the middle of the play space, stands
+	// where the session put the player.
+	if (StandIn.IsValid() || FSandboxXRControllers::IsHeadsetOn())
 	{
-		HandAnchor = FTransform(GetActorQuat(), GetActorLocation() + FVector(0.0, 0.0, Tuning.Tools.HeadsetHandsHeightCm + Tuning.Tools.HandRestDownCm));
+		if (StandIn.IsValid())
+		{
+			Tracker = StandIn;
+		}
+		else
+		{
+			Controllers = MakeShared<FSandboxXRControllers>();
+			Controllers->Start();
+			Tracker = Controllers;
+		}
+		TrackedSource = MakeShared<FSandboxTrackedTargetSource>();
+		UE_LOG(LogSandbox, Display, TEXT("The pawn is in a headset, %s: its hands follow the grip poses of the controllers, the right stick moves it, the left stick turns it"),
+			StandIn.IsValid() ? TEXT("a stand-in for one (no person)") : *FSandboxXRControllers::DescribeSystem());
+		return;
 	}
 
 	FString Error;
@@ -106,24 +127,10 @@ void ASandboxPawn::BeginPlay()
 		Rig->AddEffector(SandboxEffectors::HandLeft, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ true, Tuning.Tools), Error) &&
 		Rig->AddEffector(SandboxEffectors::HandRight, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ false, Tuning.Tools), Error) &&
 		// The kicking foot, on the desktop: in a headset a kick waits for a button that is known to arrive.
-		(bHeadset || Rig->AddEffector(SandboxEffectors::FootRight, FSandboxDesktopTargetSource::FootRestPose(HandAnchor, Tuning.Tools), Error)))
+		Rig->AddEffector(SandboxEffectors::FootRight, FSandboxDesktopTargetSource::FootRestPose(HandAnchor, Tuning.Tools), Error))
 	{
-		if (bHeadset)
-		{
-			Controllers = MakeShared<FSandboxXRControllers>();
-			Controllers->Start();
-			TrackedSource = MakeShared<FSandboxTrackedTargetSource>();
-			// The targets start where the hands were made and catch up with the controllers from there.
-			TrackedSource->SetWaitingPose(SandboxEffectors::HandLeft, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ true, Tuning.Tools));
-			TrackedSource->SetWaitingPose(SandboxEffectors::HandRight, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ false, Tuning.Tools));
-			Rig->SetSource(TrackedSource);
-			UE_LOG(LogSandbox, Display, TEXT("The pawn is in a headset, %s: its hands follow the grip poses of the controllers"), *FSandboxXRControllers::DescribeSystem());
-		}
-		else
-		{
-			HandSource = MakeShared<FSandboxDesktopTargetSource>();
-			Rig->SetSource(HandSource);
-		}
+		HandSource = MakeShared<FSandboxDesktopTargetSource>();
+		Rig->SetSource(HandSource);
 	}
 	else
 	{
@@ -237,50 +244,36 @@ void ASandboxPawn::Tick(float DeltaTime)
 		}
 	}
 
-	if (bStepping && Rig && TrackedSource)
+	if (bStepping && TrackedSource)
 	{
-		// The squeeze is read from the input of whoever possesses the pawn now.
-		Controllers->SetPlayer(Cast<APlayerController>(GetController()));
-		TrackedSource->Update(*Controllers, OriginTransform(), Tuning.Hand, Tuning.Tools, DeltaTime, bSteppedLastFrame);
-		RemakeHandsForTake();
-		Rig->UpdateTargets(DeltaTime);
-		AnnounceTracking();
-
-		// Both grips held closed with both hands above the eyes: a new take. Closed grips alone will not do: a
-		// person who punches holds both closed all the time. It fires once a hold, and the controllers say that
-		// it has.
-		FSandboxEffectorTarget LeftTarget, RightTarget;
-		const double RaisedZ = View.GetLocation().Z + Tuning.Tools.HeadsetNewTakeRaiseCm;
-		const bool bBothClosed = TrackedSource->IsTracked(SandboxEffectors::HandLeft) && TrackedSource->IsTracked(SandboxEffectors::HandRight) &&
-			TrackedSource->GetTarget(SandboxEffectors::HandLeft, LeftTarget) && TrackedSource->GetTarget(SandboxEffectors::HandRight, RightTarget) &&
-			LeftTarget.Grip > Tuning.Hand.FistGrip && RightTarget.Grip > Tuning.Hand.FistGrip && LeftTarget.Location.Z > RaisedZ && RightTarget.Location.Z > RaisedZ;
-		GripsHeldS = bBothClosed ? GripsHeldS + DeltaTime : 0.0;
-		if (!bBothClosed)
+		if (Controllers)
 		{
-			bGripsArmed = true;
+			// The squeeze and the sticks are read from the input of whoever possesses the pawn now.
+			Controllers->SetPlayer(Cast<APlayerController>(GetController()));
 		}
-		else if (bGripsArmed && Tuning.Tools.HeadsetNewTakeHoldS > 0.0 && GripsHeldS >= Tuning.Tools.HeadsetNewTakeHoldS)
+		// The head as the runtime has it for this frame (a stand-in's is put on the camera here, as a runtime's is by the
+		// engine). A head that is not seen keeps the pose it was last seen in; a pose of exactly nothing, which a runtime
+		// may give before it tracks, is none (the head is put where the session wants it by its first real pose).
+		FVector Head;
+		FQuat HeadRotation;
+		if (Tracker && Tracker->GetHead(Head, HeadRotation) && !Head.IsZero())
 		{
-			bGripsArmed = false;
-			RequestNewTake();
+			HeadLocal = Head;
+			HeadLocalRotation = HeadRotation.GetNormalized();
+			bHeadSeen = true;
 		}
-		// The controllers vibrate with what their hands press or strike with (the hands' own contacts: the pawn
-		// knows nothing of what they touch), and for a moment when a take begins.
-		const float TakeBuzz = BuzzLeftS > 0.0 ? static_cast<float>(Tuning.Tools.HeadsetTakeBuzzStrength) : 0.0f;
-		BuzzLeftS = FMath::Max(BuzzLeftS - DeltaTime, 0.0);
-		const FName Hands[2] = { SandboxEffectors::HandLeft, SandboxEffectors::HandRight };
-		for (int32 Index = 0; Index < 2; ++Index)
+		if (StandIn)
 		{
-			const USandboxEffectorComponent* Effector = Rig->FindEffector(Hands[Index]);
-			// What the hand presses with, or what it pulls with on a thing it holds, whichever is more.
-			const double FeltN = Effector ? FMath::Max(Effector->GetContactForceN(), Effector->GetGrabForceN()) : 0.0;
-			const float Amplitude = FMath::Max(TakeBuzz, FSandboxXRControllers::HapticAmplitude(FeltN, Tuning.Tools.HeadsetHapticFullN));
-			// One call is one frame of vibration: asked for in every frame it is to go on, and once more to stop it.
-			if (Amplitude > 0.0f || LastHaptic[Index] > 0.0f)
-			{
-				Controllers->Buzz(Index == 0, Amplitude);
-			}
-			LastHaptic[Index] = Amplitude;
+			Camera->SetRelativeLocationAndRotation(HeadLocal, HeadLocalRotation);
+		}
+		// The hands and the body are made once the head is known; a headset that gives no head is not waited for long.
+		if (!Rig && (bHeadSeen || ++HeadWaitFrames >= MaxHeadWaitFrames))
+		{
+			MakeHeadsetRig();
+		}
+		if (Rig)
+		{
+			UpdateHeadset(DeltaTime);
 		}
 	}
 	else if (bStepping && Rig && HandSource)
@@ -362,6 +355,205 @@ void ASandboxPawn::LogTrackingSummary() const
 	{
 		UE_LOG(LogSandbox, Display, TEXT("Headset: controller keys that reached the player's input: %s"), *Controllers->DescribeKeysSeen());
 	}
+	const FSandboxLocomotionStats& Moved = Locomotion.GetStats();
+	UE_LOG(LogSandbox, Display, TEXT("Headset: the stick moved the player %.1f m in %d frames, at %.2f m/s at most; %d snap turns to the left and %d to the right; the body was held back in %d frames (%.0f%% of the motion at most), %.1f cm from its target at most; the view was darkened by %.0f%% at most"),
+		Moved.WalkedCm * 0.01, Moved.MovingFrames, Moved.MaxSpeedCmS * 0.01, Moved.SnapsLeft, Moved.SnapsRight, Moved.HeldBackFrames, Moved.MostHeldBack * 100.0, Moved.MaxBodyGapCm, MaxHeadFade * 100.0);
+}
+
+bool ASandboxPawn::MakeHeadsetRig()
+{
+	if (!bHeadSeen)
+	{
+		HeadLocal = StandingHeadCm;
+		HeadLocalRotation = FQuat::Identity;
+		UE_LOG(LogSandbox, Warning, TEXT("Headset: no pose of the head in %d frames; the hands are made for a head %.0f cm above the middle of the play space"), MaxHeadWaitFrames, StandingHeadCm.Z);
+	}
+	// The head, not the middle of the play space, stands where the session put the player, looking the way it said.
+	if (bHasStand)
+	{
+		const FTransform Placed = FSandboxLocomotion::PlaceHead(HeadLocal, HeadLocalRotation, StandPoint, StandYawDeg);
+		SetActorLocationAndRotation(Placed.GetLocation(), Placed.GetRotation());
+	}
+	Locomotion.Reset(OriginTransform(), HeadLocal);
+
+	// The hands wait in front of the head at a set height above the floor until their controllers are tracked, and
+	// catch up with them from there; the body is made under the head.
+	const FTransform PlaySpace = OriginTransform();
+	const FVector Head = PlaySpace.TransformPositionNoScale(HeadLocal);
+	const FVector Facing = FSandboxLocomotion::LevelForward(PlaySpace.GetRotation() * HeadLocalRotation);
+	HandAnchor = FTransform(Facing.Rotation(), FVector(Head.X, Head.Y, PlaySpace.GetLocation().Z + Tuning.Tools.HeadsetHandsHeightCm + Tuning.Tools.HandRestDownCm));
+	const FSandboxEffectorTarget Body = Locomotion.GetBodyTarget(Tuning.Body, Tuning.Tools);
+
+	FString Error;
+	Rig = GetWorld()->SpawnActor<ASandboxEffectorRig>();
+	if (!Rig || !Rig->Start(FSandboxParamStore::Get(), Error) ||
+		!Rig->AddEffector(SandboxEffectors::HandLeft, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ true, Tuning.Tools), Error) ||
+		!Rig->AddEffector(SandboxEffectors::HandRight, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ false, Tuning.Tools), Error) ||
+		!Rig->AddEffector(SandboxEffectors::Body, FTransform(Body.Rotation, Body.Location), Error))
+	{
+		UE_LOG(LogSandbox, Error, TEXT("The pawn has no hands: %s"), *Error);
+		if (Rig)
+		{
+			Rig->Destroy();
+			Rig = nullptr;
+		}
+		return false;
+	}
+	// The player is inside the body and does not see it (its mesh is owner-no-see).
+	Rig->SetOwner(this);
+	TrackedSource->SetWaitingPose(SandboxEffectors::HandLeft, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ true, Tuning.Tools));
+	TrackedSource->SetWaitingPose(SandboxEffectors::HandRight, FSandboxDesktopTargetSource::RestPose(HandAnchor, /*bLeft*/ false, Tuning.Tools));
+	TrackedSource->SetBodyTarget(Body);
+	Rig->SetSource(TrackedSource);
+	UE_LOG(LogSandbox, Display, TEXT("Headset: the head stands at %.0f, %.0f, %.0f cm, looking along %.0f degrees; the hands and the player's body are made (simulated frame %lld)"),
+		Head.X, Head.Y, Head.Z, FMath::RadiansToDegrees(FMath::Atan2(Facing.Y, Facing.X)), SimulatedFrames);
+	return true;
+}
+
+void ASandboxPawn::UpdateHeadset(float DeltaTime)
+{
+	// The sticks, the head and the body as they are at the start of this step; the play space moves, and the hands and
+	// the body are told where to be in it.
+	FSandboxLocomotionInput Input;
+	FSandboxControllerState Left, Right;
+	if (Tracker)
+	{
+		Tracker->GetController(SandboxEffectors::HandLeft, Left);
+		Tracker->GetController(SandboxEffectors::HandRight, Right);
+	}
+	Input.MoveStick = Right.Stick;
+	Input.TurnStick = Left.Stick;
+	Input.HeadLocation = HeadLocal;
+	Input.HeadRotation = HeadLocalRotation;
+	if (const USandboxEffectorComponent* Body = Rig->FindEffector(SandboxEffectors::Body))
+	{
+		Input.bHasBody = true;
+		Input.BodyLocation = Body->GetHandTransform().GetLocation();
+		Input.BodyContactN = Body->GetContactPushN();
+	}
+	Locomotion.Update(Input, Tuning.Tools, DeltaTime);
+	SetActorLocationAndRotation(Locomotion.GetOrigin().GetLocation(), Locomotion.GetOrigin().GetRotation());
+	TrackedSource->SetBodyTarget(Locomotion.GetBodyTarget(Tuning.Body, Tuning.Tools));
+	FSandboxPlaySpaceMotion Motion;
+	Motion.VelocityCmS = Locomotion.GetOriginVelocity();
+	Motion.bJumped = Locomotion.HasSnapped();
+	TrackedSource->Update(*Tracker, OriginTransform(), Tuning.Hand, Tuning.Tools, DeltaTime, bSteppedLastFrame, Motion);
+	RemakeHandsForTake();
+	Rig->UpdateTargets(DeltaTime);
+	AnnounceTracking();
+
+	// Both grips held closed with both hands above the eyes: a new take. Closed grips alone will not do: a
+	// person who punches holds both closed all the time. It fires once a hold, and the controllers say that
+	// it has.
+	const FVector Eyes = GetHeadLocation();
+	FSandboxEffectorTarget LeftTarget, RightTarget;
+	const double RaisedZ = Eyes.Z + Tuning.Tools.HeadsetNewTakeRaiseCm;
+	const bool bBothClosed = TrackedSource->IsTracked(SandboxEffectors::HandLeft) && TrackedSource->IsTracked(SandboxEffectors::HandRight) &&
+		TrackedSource->GetTarget(SandboxEffectors::HandLeft, LeftTarget) && TrackedSource->GetTarget(SandboxEffectors::HandRight, RightTarget) &&
+		LeftTarget.Grip > Tuning.Hand.FistGrip && RightTarget.Grip > Tuning.Hand.FistGrip && LeftTarget.Location.Z > RaisedZ && RightTarget.Location.Z > RaisedZ;
+	GripsHeldS = bBothClosed ? GripsHeldS + DeltaTime : 0.0;
+	if (!bBothClosed)
+	{
+		bGripsArmed = true;
+	}
+	else if (bGripsArmed && Tuning.Tools.HeadsetNewTakeHoldS > 0.0 && GripsHeldS >= Tuning.Tools.HeadsetNewTakeHoldS)
+	{
+		bGripsArmed = false;
+		RequestNewTake();
+	}
+	// The controllers vibrate with what their hands press or strike with (the hands' own contacts: the pawn
+	// knows nothing of what they touch), and for a moment when a take begins. A stand-in has nothing to vibrate.
+	const float TakeBuzz = BuzzLeftS > 0.0 ? static_cast<float>(Tuning.Tools.HeadsetTakeBuzzStrength) : 0.0f;
+	BuzzLeftS = FMath::Max(BuzzLeftS - DeltaTime, 0.0);
+	const FName Hands[2] = { SandboxEffectors::HandLeft, SandboxEffectors::HandRight };
+	for (int32 Index = 0; Controllers && Index < 2; ++Index)
+	{
+		const USandboxEffectorComponent* Effector = Rig->FindEffector(Hands[Index]);
+		// What the hand presses with, or what it pulls with on a thing it holds, whichever is more.
+		const double FeltN = Effector ? FMath::Max(Effector->GetContactForceN(), Effector->GetGrabForceN()) : 0.0;
+		const float Amplitude = FMath::Max(TakeBuzz, FSandboxXRControllers::HapticAmplitude(FeltN, Tuning.Tools.HeadsetHapticFullN));
+		// One call is one frame of vibration: asked for in every frame it is to go on, and once more to stop it.
+		if (Amplitude > 0.0f || LastHaptic[Index] > 0.0f)
+		{
+			Controllers->Buzz(Index == 0, Amplitude);
+		}
+		LastHaptic[Index] = Amplitude;
+	}
+
+	// The view darkens as the eyes come near the NPC or the furniture (decision 25: the head may go in, the view goes
+	// dark), and at its edges while the stick moves it, if the tuning asks for that. Both only look at the world.
+	HeadFade = MeasureHeadFade(Eyes);
+	MaxHeadFade = FMath::Max(MaxHeadFade, HeadFade);
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (PlayerController && PlayerController->PlayerCameraManager && (HeadFade > 0.0 || AppliedFade > 0.0))
+	{
+		PlayerController->PlayerCameraManager->SetManualCameraFade(static_cast<float>(HeadFade), FLinearColor::Black, /*bFadeAudio*/ false);
+		AppliedFade = HeadFade;
+	}
+	if (Tuning.Tools.HeadsetVignette > 0.0 || Camera->PostProcessSettings.bOverride_VignetteIntensity)
+	{
+		Camera->PostProcessSettings.bOverride_VignetteIntensity = Tuning.Tools.HeadsetVignette > 0.0;
+		Camera->PostProcessSettings.VignetteIntensity = static_cast<float>(Tuning.Tools.HeadsetVignette * Locomotion.GetSpeedShare(Tuning.Tools));
+	}
+}
+
+double ASandboxPawn::MeasureHeadFade(const FVector& Eyes) const
+{
+	const double RadiusCm = Tuning.Tools.HeadsetHeadFadeCm;
+	const UWorld* World = GetWorld();
+	if (RadiusCm <= 0.0 || !World)
+	{
+		return 0.0;
+	}
+	// A ball at the eyes: how deep it lies in the NPC, a thing or the room is how near the eyes are to its surface. By
+	// object type, as the aim is (a character's bodies do not answer the visibility channel); the player's own hands
+	// and body are left out.
+	const FCollisionShape Ball = FCollisionShape::MakeSphere(static_cast<float>(RadiusCm));
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SandboxHeadFade), /*bTraceComplex*/ false, this);
+	if (Rig)
+	{
+		Params.AddIgnoredActor(Rig);
+	}
+	TArray<FOverlapResult> Overlaps;
+	World->OverlapMultiByObjectType(Overlaps, Eyes, FQuat::Identity, Objects, Ball, Params);
+	double DepthCm = 0.0;
+	TArray<const UPrimitiveComponent*, TInlineAllocator<4>> Seen;
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		UPrimitiveComponent* Component = Overlap.GetComponent();
+		if (!Component || Seen.Contains(Component))
+		{
+			continue;
+		}
+		Seen.Add(Component);
+		FMTDResult Separation;
+		if (const USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(Component))
+		{
+			// A skeletal mesh answers an overlap as one thing: its bodies are asked one by one.
+			for (const FBodyInstance* Part : Skeletal->Bodies)
+			{
+				if (Part && Part->IsValidBodyInstance() && Part->OverlapTest(Eyes, FQuat::Identity, Ball, &Separation))
+				{
+					DepthCm = FMath::Max(DepthCm, static_cast<double>(Separation.Distance));
+				}
+			}
+		}
+		else if (Component->ComputePenetration(Separation, Ball, Eyes, FQuat::Identity))
+		{
+			DepthCm = FMath::Max(DepthCm, static_cast<double>(Separation.Distance));
+		}
+	}
+	// The ball's radius deep: the eyes are at the surface, and the view is black.
+	return FMath::Clamp(DepthCm / RadiusCm, 0.0, 1.0);
+}
+
+FVector ASandboxPawn::GetHeadLocation() const
+{
+	return TrackedSource ? OriginTransform().TransformPositionNoScale(HeadLocal) : ViewTransform().GetLocation();
 }
 
 void ASandboxPawn::UpdateTimeControl()
@@ -652,9 +844,27 @@ void ASandboxPawn::StopRecording()
 
 void ASandboxPawn::SetView(const FVector& Location, const FRotator& Rotation)
 {
-	// In a headset the pawn is the play space: a pitched one would tilt the whole world for the wearer.
-	const double Pitch = FSandboxXRControllers::IsHeadsetOn() ? 0.0 : FMath::Clamp(Rotation.Pitch, -MaxPitchDeg, MaxPitchDeg);
-	SetActorLocationAndRotation(Location, FRotator(Pitch, Rotation.Yaw, 0.0));
+	if (StandIn.IsValid() || FSandboxXRControllers::IsHeadsetOn())
+	{
+		// In a headset the pawn is the play space: a pitched one would tilt the whole world for the wearer. The head is
+		// put over the point once its pose is known (MakeHeadsetRig); after that, at once, with the play space's
+		// movement begun again from there (the hands and the body catch up).
+		StandPoint = Location;
+		StandYawDeg = Rotation.Yaw;
+		bHasStand = true;
+		if (Rig)
+		{
+			const FTransform Placed = FSandboxLocomotion::PlaceHead(HeadLocal, HeadLocalRotation, StandPoint, StandYawDeg);
+			SetActorLocationAndRotation(Placed.GetLocation(), Placed.GetRotation());
+			Locomotion.Reset(OriginTransform(), HeadLocal);
+		}
+		else
+		{
+			SetActorLocationAndRotation(Location, FRotator(0.0, Rotation.Yaw, 0.0));
+		}
+		return;
+	}
+	SetActorLocationAndRotation(Location, FRotator(FMath::Clamp(Rotation.Pitch, -MaxPitchDeg, MaxPitchDeg), Rotation.Yaw, 0.0));
 }
 
 bool ASandboxPawn::TraceAim(FHitResult& OutHit) const

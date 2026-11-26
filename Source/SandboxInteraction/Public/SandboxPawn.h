@@ -4,12 +4,14 @@
 #include "GameFramework/Pawn.h"
 #include "SandboxDragHandle.h"
 #include "SandboxInteractionTuning.h"
+#include "SandboxLocomotion.h"
 #include "SandboxPawn.generated.h"
 
 class ASandboxEffectorRig;
 class FSandboxDesktopTargetSource;
 class FSandboxTrackedTargetSource;
 class FSandboxXRControllers;
+class ISandboxControllerTracker;
 struct FSandboxTargetRecording;
 class UCameraComponent;
 class USceneComponent;
@@ -51,7 +53,13 @@ enum class ESandboxTool : uint8
  * player's play space: it stands on the floor, level, and does not fly or turn with the mouse; the camera is
  * the head, moved by the engine; and the hands' target source is the tracked one, which follows the
  * controllers (FSandboxTrackedTargetSource). The hands, the rig, the recording and the time control are the
- * same. Walking is M4 part 5.
+ * same. Once the head's pose is known, the play space is put so that the head stands where the session put the
+ * player (SetView), and the hands and the player's own body are made: an upright capsule on a capped spring
+ * (the effector "body") that does not pass through the NPC or the furniture and pushes them no harder than a hand.
+ * The right stick moves the play space, the left stick turns it about the head by snaps (FSandboxLocomotion,
+ * FR-42); nothing else moves the view. The view darkens as the eyes come near the NPC or the furniture
+ * (tools.headset.head_fade_cm), and its edges while the stick moves it (tools.headset.vignette, 0 in the files).
+ * A session without a person can stand a made-up headset in for the real one (UseStandInHeadset).
  *
  * The pawn knows nothing about the character. The drag handle pulls whatever body the crosshair is on. The
  * two tools that need the character itself, the calibrated impulse and the reset, are requests: the pawn
@@ -129,9 +137,25 @@ public:
 
 	/**
 	 * Puts the camera somewhere, looking along a rotation. The hands follow unless they are detached. In a
-	 * headset it is the middle of the play space that is put there, level: give it a point of the floor.
+	 * headset it is the player's head that is put over that point, looking along the rotation's yaw, once the
+	 * head's pose is known (until then the middle of the play space is there): give it a point of the floor.
 	 */
 	void SetView(const FVector& Location, const FRotator& Rotation);
+
+	/**
+	 * Before the pawn begins to play: a headset that this tracker stands in for, for a session without a person
+	 * (Tools\play.ps1 -Demo -Walk). The pawn then does all it does in a headset, and moves its camera to the
+	 * tracker's head as a headset's runtime would. Nothing vibrates and no key is listened to.
+	 */
+	void UseStandInHeadset(TSharedPtr<ISandboxControllerTracker> InTracker) { StandIn = MoveTemp(InTracker); }
+
+	/** In a headset: the movement of the play space (FR-42). */
+	const FSandboxLocomotion& GetLocomotion() const { return Locomotion; }
+	/** In a headset: how dark the view is because the eyes are near the NPC or the furniture, 0 to 1, and the darkest it has been. */
+	double GetHeadFade() const { return HeadFade; }
+	double GetMaxHeadFade() const { return MaxHeadFade; }
+	/** In a headset: where the head is in the world, as the pawn last knew it. */
+	FVector GetHeadLocation() const;
 
 	// Requests the pawn cannot carry out itself.
 
@@ -185,6 +209,15 @@ private:
 	/** In the first stepped tick of a take: the hands are made anew where their source wants them. */
 	void RemakeHandsForTake();
 	void LogTrackingSummary() const;
+	/**
+	 * In a headset, once the head's pose is known: the play space is put so that the head stands where SetView said,
+	 * and the hands and the player's body are made. False with the reason in the log if the rig could not be made.
+	 */
+	bool MakeHeadsetRig();
+	/** In a headset, a stepped frame: the sticks move the play space, the hands and the body follow, the view darkens. */
+	void UpdateHeadset(float DeltaTime);
+	/** How deep a ball of tools.headset.head_fade_cm at the eyes lies in the NPC or the furniture, as a share of its radius. */
+	double MeasureHeadFade(const FVector& Eyes) const;
 
 	void OnMove(const FInputActionValue& Value);
 	void OnLook(const FInputActionValue& Value);
@@ -223,7 +256,23 @@ private:
 	/** The hands' source: one of the two. */
 	TSharedPtr<FSandboxDesktopTargetSource> HandSource;
 	TSharedPtr<FSandboxTrackedTargetSource> TrackedSource;
+	/** The headset's controllers (null with a stand-in), and whatever answers where the controllers and the head are. */
 	TSharedPtr<FSandboxXRControllers> Controllers;
+	TSharedPtr<ISandboxControllerTracker> StandIn;
+	TSharedPtr<ISandboxControllerTracker> Tracker;
+	/** In a headset: the play space's movement, where the head was last seen (tracking space), and where SetView wants it. */
+	FSandboxLocomotion Locomotion;
+	FVector HeadLocal = FVector::ZeroVector;
+	FQuat HeadLocalRotation = FQuat::Identity;
+	bool bHeadSeen = false;
+	int32 HeadWaitFrames = 0;
+	FVector StandPoint = FVector::ZeroVector;
+	double StandYawDeg = 0.0;
+	bool bHasStand = false;
+	/** How dark the view is made now and was at most, and what the camera's fade was last set to. */
+	double HeadFade = 0.0;
+	double MaxHeadFade = 0.0;
+	double AppliedFade = 0.0;
 	/** Whether each hand's controller was tracked at the last look, and how often a change has been logged. */
 	bool bWasTracked[2] = { false, false };
 	int32 TrackingAnnouncements = 0;

@@ -131,6 +131,18 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   (128.8 cm against 128.7). The spring's figure (`effort.joints.<joint>.torque_final_nm`) read 3.2 N*m left over all the same, at every
   stiffness from 10 to 80 and every angle from 24 to 70 degrees, and was taken for a delivery of 65 to 75% for a night. A figure that moves
   with neither the stiffness nor the angle is a figure to check against where the body ends: a stiff arm's place is the known answer.
+- **In Chaos 5.8 a body's `FMaskFilter` filters scene queries only, not the simulation.** The patch of the player's capsule
+  (`docs/recon/m4_part5_body.patch`) gave the hands and the capsule masks with a shared bit so that they would not collide;
+  `FQueryFilterData::NarrowFilter` reads the mask, the pairs of the simulation (`FShapeUnionFilterData::BroadFilter`) read the
+  channels and the block masks alone. Bodies that must pass through each other and block everything else need object types that
+  ignore each other: the capsule is `PlayerBody` (`ECC_GameTraceChannel1`, `Config/DefaultEngine.ini`), which the hands and feet
+  ignore. Checked by a scenario in which a hand and a foot go through it (`body_hands_pass`), not by reading.
+- **A collision response set in a component's constructor drops the profile named in it.** `SetCollisionProfileName` in a
+  constructor only marks the profile as pending, to be applied in `PostInitProperties`; `SetCollisionResponseToChannel` after it
+  clears the pending mark (`FBodyInstance::SetResponseToChannel`), and the component kept the engine's default responses and object
+  type. Every hand became a body of no profile; two scenarios with two holding hands changed their hashes (one hand's impulse 114
+  to 724 N*s) and every other kept them. Set a response after `Super::PostInitProperties()`, before any physics body exists
+  (`USandboxEffectorComponent::PostInitProperties`).
 
 ## Measuring, runs and tests
 
@@ -523,6 +535,15 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A test that strikes at a point of the world is written for the shape that was there.** The slap's path ended 4 cm inside the
   old head; the new, narrower head met it at the end of its path, at 1.4 m/s. And the plate of the open hand reaches 18 cm past the
   hand's own point: held with the fingers forward, it met the face with its rear edge. Change the body and these change with it.
+- **An effector pressed at rest against the static world sleeps one substep in six.** The player's capsule held against a table
+  read a contact force of 300, 300 and 150 N in turn at no speed: the island slept a substep in every six, with no contact in it
+  (the pitfall of the solver's sleep in `CLAUDE.md`). The player's body never sleeps (`USandboxEffectorComponent::Start`); the
+  hands are left as they were, and a hand's force held against the floor or a wall may read short the same way.
+- **A spring's force cap does not bound what a collision delivers; the mass does.** The player's body of 70 kg on a spring capped
+  at 300 N walked into the standing character at 1.4 m/s with 26 N*s into the chest and 43 into the belly over its press, and the
+  character doubled over (the rule is made for a fist's blow at 40 N*s). At 10 kg (decision 28) the touch is 6 N*s. And a scenario's
+  path that starts at full speed asks a body to accelerate faster than its cap lets it: it fell 23 cm behind and caught up at
+  2.4 m/s; a path for a body that a person moves eases in as the person's control does (the stick's 0.2 s).
 
 ## The session, recordings and the headset
 
@@ -600,7 +621,14 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   reader of the code, not by a test: nothing here can feel a controller.
 - **A session with hard blows is not reproduced by its replay.** `vr_check3` replayed ended 153 cm from where
   the session did, with none of its eight falls; `vr_check2`, with weak punches, to 0.00 cm. What happened in
-  such a session is in the session's own log, not in `Tools\recording-report.ps1`, which reads a replay.
+  such a session is in the session's own log, not in `Tools\recording-report.ps1`, which reads a replay. Nor is one whose
+  player's body shoves the character for seconds (`demo_walk`, 26 November): the body's first contact replays to the bone and
+  the speed, the outcome 5.5 cm and a flinch apart; `Tools\record-replay.ps1 -Walk` judges the first and only shows the second.
+- **A hand carried by a moving play space has the play space's velocity too.** The tracked source gave a hand's target the
+  controller's velocity in tracking space alone; with the stick moving the play space at 1.4 m/s, the spring's damping (135 N*s/m)
+  would have held every hand 6 cm behind a walk. The play space's velocity is added (`FSandboxPlaySpaceMotion`), and a snap turn,
+  which carries a hand 15 to 26 cm in a frame (less than a hand moves in one, so not taken for a jump of the tracking), is told
+  as a jump: the hand catches up with its new place instead of being flung through what is near at the speed of a blow.
 - **A recording replayed with other hands measures nothing after its first hit.** The body stands elsewhere
   from then on and the recorded hands strike the air (9 hits of 51).
 - **The HUD in the headset is one canvas across both eyes.** Text was cut between them and unreadable; the pawn's

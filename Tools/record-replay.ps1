@@ -12,6 +12,9 @@
 #   ... -Takes                      the session of three takes (play.ps1 -Demo -Takes): the character is put back
 #                                   before each, each take is a recording of its own, and each is replayed and held
 #                                   against what the session saw of that take
+#   ... -Walk                       the way a person in the headset takes, with a made-up headset (play.ps1 -Demo -Walk,
+#                                   recorded as demo_walk): the stick walks the player's body into the character, along
+#                                   it, turns and walks away; the hands and the body are replayed and held against it
 # A session and a scenario are not the same run: the session's hands exist from its first frame, and a scenario's
 # hashes are of every frame of its own. So the replay is held to the session by figures, and to itself by hashes.
 # Exit code: 0 the replay ends as the session did, 1 it does not, 2 something could not run.
@@ -23,6 +26,7 @@ param(
     [int]$Frames = 1,
     [switch]$Twice,
     [switch]$Takes,
+    [switch]$Walk,
     [switch]$Perception
 )
 . "$PSScriptRoot\common.ps1"
@@ -60,6 +64,7 @@ if (-not $recordName) {
     $recordName = 'demo_hands'
     $seeing = @()
     if ($Perception) { $recordName = 'demo_seeing'; $seeing = @('-Perception') }
+    if ($Walk) { $recordName = 'demo_walk'; $seeing += '-Walk' }
     $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Record $recordName @seeing
     if ($LASTEXITCODE -ne 0) {
         Write-Output "RECORD REPLAY ERROR: the session did not give a recording"
@@ -92,9 +97,16 @@ if (-not $replay) { Stop-NoReplay }
 
 $rows = @()
 $bad = 0
-function Add-Row([string]$What, [string]$Session, [string]$Replayed, [bool]$Same) {
+$shown = 0
+# The walk (-Walk) shoves the character for seconds: a session with a shove is not reproduced by its replay after the
+# shove (docs/pitfalls.md, "A session with hard blows..."). What holds by design is judged (the first contact of each
+# effector, and two replays alike); the outcome after the shove is shown and not judged.
+$judgeOutcome = -not $Walk
+function Add-Row([string]$What, [string]$Session, [string]$Replayed, [bool]$Same, [bool]$Judged = $true) {
     $mark = 'ok  '
-    if (-not $Same) { $mark = 'FAIL'; $script:bad++ }
+    if (-not $Same) {
+        if ($Judged) { $mark = 'FAIL'; $script:bad++ } else { $mark = 'info'; $script:shown++ }
+    }
     $script:rows += ("  [{0}] {1,-34} session {2,-28} replay {3}" -f $mark, $What, $Session, $Replayed)
 }
 
@@ -103,7 +115,7 @@ $seenStates = @($seen.states)
 $replayStates = @($replay.control.states)
 $seenNames = ($seenStates | ForEach-Object { $_.state }) -join '>'
 $replayNames = ($replayStates | ForEach-Object { $_.state }) -join '>'
-Add-Row 'states of the body' $seenNames $replayNames ($seenNames -eq $replayNames)
+Add-Row 'states of the body' $seenNames $replayNames ($seenNames -eq $replayNames) $judgeOutcome
 if ($seenNames -eq $replayNames) {
     $worst = 0
     for ($i = 0; $i -lt $seenStates.Count; $i++) {
@@ -112,7 +124,7 @@ if ($seenNames -eq $replayNames) {
     }
     $seenFrames = ($seenStates | ForEach-Object { $_.frame }) -join ','
     $replayFrames = ($replayStates | ForEach-Object { $_.frame }) -join ','
-    Add-Row "their frames (within $Frames)" $seenFrames $replayFrames ($worst -le $Frames)
+    Add-Row "their frames (within $Frames)" $seenFrames $replayFrames ($worst -le $Frames) $judgeOutcome
 }
 
 # Where the pelvis ended.
@@ -121,7 +133,7 @@ if ($pelvis -and $seen.pelvis_cm) {
     $a = $seen.pelvis_cm
     $b = $pelvis.final_location_cm
     $apart = [Math]::Sqrt([Math]::Pow($a[0] - $b[0], 2) + [Math]::Pow($a[1] - $b[1], 2) + [Math]::Pow($a[2] - $b[2], 2))
-    Add-Row "pelvis (within $PelvisCm cm)" ('{0:N2},{1:N2},{2:N2}' -f $a[0], $a[1], $a[2]) ('{0:N2},{1:N2},{2:N2}; {3:N3} cm apart' -f $b[0], $b[1], $b[2], $apart) ($apart -le $PelvisCm)
+    Add-Row "pelvis (within $PelvisCm cm)" ('{0:N2},{1:N2},{2:N2}' -f $a[0], $a[1], $a[2]) ('{0:N2},{1:N2},{2:N2}; {3:N3} cm apart' -f $b[0], $b[1], $b[2], $apart) ($apart -le $PelvisCm) $judgeOutcome
 } else {
     Add-Row 'pelvis' 'none' 'none' $false
 }
@@ -134,12 +146,18 @@ foreach ($hand in $seen.hands.PSObject.Properties) {
         Add-Row $hand.Name 'recorded' 'not in the replay' $false
         continue
     }
-    Add-Row "$($hand.Name) first touched" "$($mine.first_touched)" "$($theirs.first_touched)" ("$($mine.first_touched)" -eq "$($theirs.first_touched)")
+    # In the walk the hands touch the character only after the body's shove has begun: their first touch is its outcome.
+    $firstJudged = $judgeOutcome -or $hand.Name -eq 'body'
+    Add-Row "$($hand.Name) first touched" "$($mine.first_touched)" "$($theirs.first_touched)" ("$($mine.first_touched)" -eq "$($theirs.first_touched)") $firstJudged
     $base = [Math]::Max([Math]::Abs([double]$mine.contact_impulse_ns), 1.0e-6)
     $pct = 100.0 * [Math]::Abs([double]$mine.contact_impulse_ns - [double]$theirs.contact_impulse_ns) / $base
     if ([double]$mine.contact_impulse_ns -eq 0 -and [double]$theirs.contact_impulse_ns -eq 0) { $pct = 0 }
-    Add-Row "$($hand.Name) impulse (within $ImpulsePct%)" ('{0:N2} N*s' -f $mine.contact_impulse_ns) ('{0:N2} N*s; {1:N2}% off' -f $theirs.contact_impulse_ns, $pct) ($pct -le $ImpulsePct)
-    Add-Row "$($hand.Name) arrived at" ('{0:N2} m/s' -f $mine.first_contact_speed_mps) ('{0:N2} m/s' -f $theirs.first_contact_speed_mps) ([Math]::Abs([double]$mine.first_contact_speed_mps - [double]$theirs.first_contact_speed_mps) -le 0.1)
+    Add-Row "$($hand.Name) impulse (within $ImpulsePct%)" ('{0:N2} N*s' -f $mine.contact_impulse_ns) ('{0:N2} N*s; {1:N2}% off' -f $theirs.contact_impulse_ns, $pct) ($pct -le $ImpulsePct) $judgeOutcome
+    Add-Row "$($hand.Name) arrived at" ('{0:N2} m/s' -f $mine.first_contact_speed_mps) ('{0:N2} m/s' -f $theirs.first_contact_speed_mps) ([Math]::Abs([double]$mine.first_contact_speed_mps - [double]$theirs.first_contact_speed_mps) -le 0.1) $firstJudged
+}
+if ($Walk) {
+    $hasBody = @($seen.hands.PSObject.Properties | Where-Object { $_.Name -eq 'body' }).Count -eq 1
+    Add-Row "the player's body is recorded" "$hasBody" "$([bool]$replay.effectors.list.body)" ($hasBody -and [bool]$replay.effectors.list.body)
 }
 $touched = @($seen.hands.PSObject.Properties | Where-Object { [double]$_.Value.contact_impulse_ns -gt 0 }).Count
 if ($touched -eq 0) {
@@ -156,8 +174,10 @@ if ($Twice) {
 
 $verdict = 'OK'
 if ($bad -gt 0) { $verdict = 'FAILED' }
-Write-Output ("RECORD REPLAY {0}: '{1}', {2} frames of the hands from frame {3} of the body's life; {4} of {5} comparisons hold; hashes bodies={6} bones={7}" -f
-    $verdict, $recordName, $seen.frames, $seen.start_frame, ($rows.Count - $bad), $rows.Count, $replay.hashes.bodies, $replay.hashes.bones)
+$notJudged = ''
+if ($shown -gt 0) { $notJudged = "; $shown more differ after the shove and are shown, not judged" }
+Write-Output ("RECORD REPLAY {0}: '{1}', {2} frames of the hands from frame {3} of the body's life; {4} of {5} comparisons hold{6}; hashes bodies={7} bones={8}" -f
+    $verdict, $recordName, $seen.frames, $seen.start_frame, ($rows.Count - $shown - $bad), ($rows.Count - $shown), $notJudged, $replay.hashes.bodies, $replay.hashes.bones)
 $rows | ForEach-Object { Write-Output $_ }
 Write-Output "  replay scenario: $replayFile"
 if ($bad -gt 0) { exit 1 }

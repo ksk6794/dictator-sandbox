@@ -117,6 +117,8 @@ struct FSandboxEffectorTuning
 	double StrikeSpeedMps = 0.0;
 	double StrikeFullSpeedMps = 0.0;
 	double PalmMassKg = 0.0;
+	/** Above the radius: the effector is an upright capsule of this half height, cm (the player's body). 0: a ball. */
+	double HalfHeightCm = 0.0;
 };
 
 /** A spring with a force cap, as the drag handle uses it ("tools.drag..."). */
@@ -212,6 +214,43 @@ struct FSandboxToolTuning
 	/** In a headset: how long, s, and how strongly, 0 to 1, both controllers vibrate when a take begins. */
 	double HeadsetTakeBuzzS = 0.0;
 	double HeadsetTakeBuzzStrength = 0.0;
+
+	/**
+	 * In a headset, the player's movement (FR-42, FSandboxLocomotion). The right stick moves the player in every
+	 * direction, relative to where the head looks, at a speed in proportion to how far it is tilted past a dead zone
+	 * (a share of the full tilt), up to HeadsetMoveSpeedMps at full tilt; the speed goes from rest to full and back in
+	 * HeadsetMoveEaseS (0: at once).
+	 */
+	double HeadsetMoveSpeedMps = 0.0;
+	double HeadsetMoveDeadZone = 0.0;
+	double HeadsetMoveEaseS = 0.0;
+	/**
+	 * The left stick tilted to a side past HeadsetSnapPress (a share of the full tilt) turns the player about the head by
+	 * HeadsetSnapTurnDeg that way, once; the next turn waits until the stick has come back under HeadsetSnapRelease.
+	 * 0 degrees: no turning.
+	 */
+	double HeadsetSnapTurnDeg = 0.0;
+	double HeadsetSnapPress = 0.0;
+	double HeadsetSnapRelease = 0.0;
+	/** The edges of the view darken while the player moves by the stick: this much at full speed, 0 to 1, in proportion below it. 0: never. */
+	double HeadsetVignette = 0.0;
+	/**
+	 * The view darkens as the eyes come within this distance of the surface of the NPC or of the furniture, cm, and is
+	 * black at the surface and inside (the owner's decision 25: the head may go in, the view goes dark). 0: never.
+	 */
+	double HeadsetHeadFadeCm = 0.0;
+	/**
+	 * The player's own body (the effector "body", effectors.body). It stays where it is while the head is within
+	 * HeadsetBodyLeanCm of it, so that the player leans over a table or a body without pushing it, and follows the head
+	 * beyond that at HeadsetBodyFollowSpeedMps at most (a target never jumps). Its bottom is HeadsetBodyFloorGapCm above
+	 * the floor. The stick's motion toward whatever presses the body back fades from HeadsetBodyBlockedN of that push to
+	 * none at HeadsetBodyStoppedN: the player cannot walk through the NPC or the furniture, and slides along them.
+	 */
+	double HeadsetBodyLeanCm = 0.0;
+	double HeadsetBodyFollowSpeedMps = 0.0;
+	double HeadsetBodyFloorGapCm = 0.0;
+	double HeadsetBodyBlockedN = 0.0;
+	double HeadsetBodyStoppedN = 0.0;
 };
 
 /**
@@ -227,6 +266,8 @@ struct SANDBOXINTERACTION_API FSandboxInteractionTuning
 	 * hand, the grab, the place on a controller) it has not, and those stay 0: a foot is always a fist.
 	 */
 	FSandboxEffectorTuning Foot;
+	/** The player's own body: an upright capsule on a spring with a force cap, that pushes what is in its way instead of passing through it. */
+	FSandboxEffectorTuning Body;
 	FSandboxToolTuning Tools;
 
 	/** Tells a parameter store the names of this module and adds the range checks of Validate to it. */

@@ -1,0 +1,43 @@
+{
+  "name": "body_pushes_low_box",
+  "duration_s": 8.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "props": [
+    {
+      "name": "low_box",
+      "size_cm": [40, 40, 20],
+      "mass_kg": 10,
+      "location_cm": [150, 60, 10]
+    }
+  ],
+  "camera": {
+    "location_cm": [450, 250, 160],
+    "look_at_cm": [150, 40, 50]
+  },
+  "events": [
+    {
+      "t": 2.0,
+      "type": "effector",
+      "effector": "body",
+      "path": [
+        {"t": 0.0, "location_cm": [150, 200, 82]},
+        {"t": 2.6, "location_cm": [150, -60, 82]}
+      ]
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "hit_events": 0,
+    "min_prop_travel_cm": 50,
+    "max_prop_speed_mps": 3,
+    "max_effector_penetration_cm": 1.0
+  }
+}

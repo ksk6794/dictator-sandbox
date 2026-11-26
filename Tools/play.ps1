@@ -35,6 +35,12 @@
 #   ... -Demo -Takes                the same in three takes: the character is put back before each (the N key of
 #                                   a session; in the headset both grips held for a second), and each take is a
 #                                   recording of its own (Saved\Recordings\demo_takes, demo_takes_2, demo_takes_3)
+#   ... -Demo -Walk                 the way a person in the headset takes, without one or a headset: a made-up headset
+#                                   stands in (the head off the middle of its play space, the controllers by the hips);
+#                                   the head is put at arm's length, the right stick walks into the character, presses
+#                                   on and slides along it, the left stick turns right and back, the stick walks away;
+#                                   each is checked (FR-42) and the hands and the player's body are recorded
+#                                   (Saved\Recordings\demo_walk). Tools\record-replay.ps1 -Walk replays it
 #   ... -VR                         in the headset (headset on, SteamVR running): the same session, the hands
 #                                   follow the controllers' grip poses, the grip is the squeeze, the headset paces
 #                                   the frames. The player stands at arm's length in front of the character; the
@@ -54,6 +60,7 @@ param(
     [switch]$Smoke,
     [switch]$Demo,
     [switch]$Takes,
+    [switch]$Walk,
     [switch]$Grab,
     [switch]$Perception,
     [switch]$VR,
@@ -119,7 +126,7 @@ if ($VR -and ($Demo -or $Smoke)) {
     Write-Output 'PLAY ERROR: -VR is a session with a person in the headset; -Smoke and -Demo run without one'
     exit 2
 }
-if ($Demo -and -not $Grab -and -not $Record) { $Record = 'demo_hands'; if ($Takes) { $Record = 'demo_takes' } }
+if ($Demo -and -not $Grab -and -not $Record) { $Record = 'demo_hands'; if ($Takes) { $Record = 'demo_takes' } elseif ($Walk) { $Record = 'demo_walk' } }
 if ($Record) {
     if ($Record -notmatch '^[A-Za-z0-9_\-]+$') {
         Write-Output "PLAY ERROR: -Record takes a name of letters, digits, '_' and '-', not '$Record'"
@@ -129,7 +136,7 @@ if ($Record) {
 }
 
 if ($Demo) {
-    if ($Grab) { $arguments += ' -PlayDemoGrab -nullrhi' } elseif ($Takes) { $arguments += ' -PlayDemoTakes -nullrhi' } else { $arguments += ' -PlayDemo -nullrhi' }
+    if ($Grab) { $arguments += ' -PlayDemoGrab -nullrhi' } elseif ($Takes) { $arguments += ' -PlayDemoTakes -nullrhi' } elseif ($Walk) { $arguments += ' -PlayDemoWalk -nullrhi' } else { $arguments += ' -PlayDemo -nullrhi' }
     if ($TimeoutSec -le 0) { $TimeoutSec = 300 }
     $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
     $result = Read-JsonFile $resultFile
@@ -152,6 +159,25 @@ if ($Demo) {
         }
         Write-Output "PLAY GRAB OK on '$Name': $told"
         exit 0
+    }
+    if ($Walk) {
+        $moved = $result.walk
+        $checks = @($moved.checks)
+        $failed = @($checks | Where-Object { -not $_.pass })
+        $verdict = 'OK'
+        if (-not $result.pass -or $errors.Count -gt 0 -or $checks.Count -eq 0) { $verdict = 'FAILED' }
+        Write-Output ("PLAY WALK {0} on '{1}': {2} of {3} checks passed; walked {4:N2} m at {5:N2} m/s at most, {6} snap turn(s) to the left and {7} to the right; the character ends {8}" -f
+            $verdict, $Name, ($checks.Count - $failed.Count), $checks.Count, [double]$moved.walked_m, [double]$moved.max_speed_mps, $moved.snaps_left, $moved.snaps_right, $moved.character_state_at_end)
+        foreach ($check in $checks) {
+            $mark = 'ok  '
+            if (-not $check.pass) { $mark = 'FAIL' }
+            Write-Output ("  [{0}] {1}: {2}" -f $mark, $check.name, $check.detail)
+        }
+        if ($result.error) { Write-Output "  error: $($result.error)" }
+        $errors | ForEach-Object { Write-Output "  log: $_" }
+        Write-Output "  replay: $($result.replay_scenario)"
+        if ($verdict -eq 'OK') { exit 0 }
+        exit 1
     }
     if (-not $result.pass -or $errors.Count -gt 0) {
         Write-Output "PLAY DEMO FAILED: no recording of the hands on '$Name': $($result.error)"

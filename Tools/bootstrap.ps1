@@ -1,6 +1,6 @@
 # Takes a clean clone to a verified build: stock content, the clips of Epic's Game Animation Sample, compile, asset generation, lighting bake, unit tests,
 # scenario suite, push matrix, knockdowns, the stand of falls and get-ups, self-test of the interactive session,
-# a session's hands recorded and replayed.
+# a session's hands recorded and replayed, the grab's session, and the headset's walk with a made-up headset.
 #   powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1
 # Needs: Epic's Game Animation Sample as a project of its own (a manual download; Tools\fetch-sample-anims.ps1 says
 # where it is looked for), Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
@@ -21,7 +21,10 @@ $steps = @(
     @{ name = 'play-smoke';          script = 'play.ps1'; arguments = @('-Smoke') },
     @{ name = 'record-replay';       script = 'record-replay.ps1'; arguments = @('-Twice') },
     @{ name = 'record-replay-takes'; script = 'record-replay.ps1'; arguments = @('-Takes') },
-    @{ name = 'play-grab';           script = 'play.ps1'; arguments = @('-Demo', '-Grab') }
+    @{ name = 'play-grab';           script = 'play.ps1'; arguments = @('-Demo', '-Grab') },
+    # The headset's way without a person or a headset (FR-42): a made-up headset walks the player's body into the
+    # character, along it, turns and walks away; checked, recorded and replayed twice.
+    @{ name = 'record-replay-walk';  script = 'record-replay.ps1'; arguments = @('-Walk', '-Twice') }
 )
 
 $results = @()

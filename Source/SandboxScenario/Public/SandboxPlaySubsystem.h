@@ -8,6 +8,7 @@
 
 class ASandboxPawn;
 class ASandboxRagdollActor;
+class FSandboxStandInHeadset;
 struct FSandboxTargetRecording;
 
 /**
@@ -24,6 +25,10 @@ struct FSandboxTargetRecording;
  *   -PlayDemoTakes         as -PlayDemo, in three takes (ASandboxPawn::RequestNewTake): the character is put
  *                          back before each, and each is written as a recording of its own (<name>, <name>_2,
  *                          <name>_3)
+ *   -PlayDemoWalk          as -PlayDemo, in a headset that a made-up one stands in for (FSandboxStandInHeadset):
+ *                          the head is put at arm's length, the right stick walks the player into the character
+ *                          and along it, the left stick turns twice, the stick walks back; what each did is checked
+ *                          (the player's movement, FR-42) and the hands and the body are recorded
  *   -Record=<name>         the hands are recorded from the first frame until the session ends, or until the K
  *                          key ends it; K starts and ends further recordings. Each is written to
  *                          Saved/Recordings/<name>/ as <name>.recording.json, with a scenario that replays it
@@ -84,6 +89,10 @@ private:
 	void SaveRecording(const TSharedRef<FSandboxTargetRecording>& Recording, int64 FirstFrame);
 	void TickDemo();
 	void FinishDemo();
+	/** -PlayDemoWalk: one frame of the walk in a stand-in headset, and its checks. */
+	void TickWalkDemo(ASandboxPawn& Player);
+	/** The checks of the walk, as a JSON object, and whether all of them passed. */
+	TSharedRef<FJsonObject> DescribeWalk(bool& bOutPass) const;
 
 	FString ScenarioFile;
 	FString RecordName;
@@ -118,6 +127,34 @@ private:
 	int32 KickHitsBefore = 0;
 	double KickImpulseNs = 0.0;
 	int32 DemoFrame = 0;
+
+	/** -PlayDemoWalk: the headset that stands in for a real one, where the session put the player, and what the walk did. */
+	bool bDemoWalk = false;
+	TSharedPtr<FSandboxStandInHeadset> StandIn;
+	FVector WalkStandPoint = FVector::ZeroVector;
+	double WalkStandYawDeg = 0.0;
+	struct FWalkSeen
+	{
+		bool bChecked = false;
+		double PlacedOffCm = -1.0;
+		double PlacedOffDeg = -1.0;
+		double BodyForceSumN = 0.0;
+		int32 BodyForceFrames = 0;
+		int32 BodyTouchingFrames = 0;
+		double BodyMaxForceN = 0.0;
+		double MaxFadeWalking = 0.0;
+		double SlideCm = 0.0;
+		FVector SlideStart = FVector::ZeroVector;
+		FVector SlideRight = FVector::ZeroVector;
+		FVector HeadBeforeSnap = FVector::ZeroVector;
+		double YawBeforeSnapDeg = 0.0;
+		double SnapHeadOffCm = 0.0;
+		double SnapTurnsDeg[2] = { 0.0, 0.0 };
+		double HandsMaxSpeedAfterSnapMps = 0.0;
+		double HandsMaxGapWalkingCm = 0.0;
+		FString CharacterStateAtEnd;
+	};
+	FWalkSeen Walk;
 
 	FScenarioSpec Spec;
 	FString OutDir;
