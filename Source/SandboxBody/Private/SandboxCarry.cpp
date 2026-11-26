@@ -1,0 +1,243 @@
+#include "SandboxCarry.h"
+
+#include "Components/SkeletalMeshComponent.h"
+#include "PhysicsControlComponent.h"
+#include "PhysicsEngine/BodyInstance.h"
+
+namespace
+{
+	const FName CarrySet(TEXT("Carry"));
+
+	// As in the body controller: Physics Control's strength is a spring of (2 pi strength)^2, used as it is in force mode.
+	float CarryStrengthForSpring(double SpringUnrealUnits)
+	{
+		return static_cast<float>(FMath::Sqrt(FMath::Max(SpringUnrealUnits, 0.0)) / UE_DOUBLE_TWO_PI);
+	}
+
+	// 1 N*m = 1e4 kg*cm^2/s^2; Chaos multiplies angular drive stiffness and damping by 1.5, divided out here.
+	constexpr double CarryTorqueToUnreal = 1.0e4;
+	constexpr double CarryChaosAngularDriveScale = 1.5;
+	constexpr double GravityMps2 = 9.81;
+}
+
+bool FSandboxCarry::Create(UPhysicsControlComponent* InControl, USkeletalMeshComponent* InMesh, FString& OutError)
+{
+	if (!InControl || !InMesh)
+	{
+		OutError = TEXT("no Physics Control component or mesh to carry");
+		return false;
+	}
+	Bodies.Reset();
+	for (const FBodyInstance* Body : InMesh->Bodies)
+	{
+		if (!Body || !Body->IsValidBodyInstance())
+		{
+			continue;
+		}
+		FBody Entry;
+		Entry.Bone = InMesh->GetBoneName(Body->InstanceBoneIndex);
+		Entry.ControlName = FName(*FString::Printf(TEXT("Carry_%s"), *Entry.Bone.ToString()));
+		Entry.MassKg = Body->GetBodyMass();
+		Entry.Target = Body->GetUnrealWorldTransform();
+		Entry.Target.SetScale3D(FVector::OneVector);
+
+		// The target is the pose of the body's bone; the spring itself acts at the centre of mass.
+		FPhysicsControlTarget Target;
+		Target.TargetPosition = Entry.Target.GetLocation();
+		Target.TargetOrientation = Entry.Target.Rotator();
+		Target.bApplyControlPointToTarget = true;
+		FPhysicsControlData Data;
+		Data.bUseAccelerationDriveMode = false;
+		Data.LinearStrength = 0.0f;
+		Data.LinearDampingRatio = 0.0f;
+		Data.LinearExtraDamping = 0.0f;
+		Data.AngularStrength = 0.0f;
+		Data.AngularDampingRatio = 0.0f;
+		Data.AngularExtraDamping = 0.0f;
+		Data.bUseSkeletalAnimation = false;
+		if (!InControl->CreateNamedControl(Entry.ControlName, nullptr, NAME_None, InMesh, Entry.Bone, Data, Target, CarrySet))
+		{
+			OutError = FString::Printf(TEXT("Could not create the carry control for '%s'"), *Entry.Bone.ToString());
+			Bodies.Reset();
+			return false;
+		}
+		InControl->SetControlEnabled(Entry.ControlName, false);
+		Bodies.Add(Entry);
+	}
+	Control = InControl;
+	Mesh = InMesh;
+	AppliedShare = 0.0;
+	bEnabled = false;
+	return true;
+}
+
+void FSandboxCarry::SetTarget(int32 Index, const FTransform& World, double DeltaTime)
+{
+	FBody& Body = Bodies[Index];
+	FTransform Next = World;
+	Next.SetScale3D(FVector::OneVector);
+	if (Body.bHasTarget && Body.bHasVelocity && DeltaTime > 0.0)
+	{
+		Body.VelocityCmS = (Next.GetLocation() - Body.Target.GetLocation()) / DeltaTime;
+		const FQuat Turn = (Next.GetRotation() * Body.Target.GetRotation().Inverse()).GetShortestArcWith(FQuat::Identity);
+		Body.AngularVelocityRadS = Turn.ToRotationVector() / DeltaTime;
+	}
+	else
+	{
+		Body.VelocityCmS = FVector::ZeroVector;
+		Body.AngularVelocityRadS = FVector::ZeroVector;
+	}
+	Body.Target = Next;
+	Body.bHasTarget = true;
+	Body.bHasVelocity = true;
+}
+
+void FSandboxCarry::ForgetTargets()
+{
+	for (FBody& Body : Bodies)
+	{
+		Body.bHasVelocity = false;
+		Body.VelocityCmS = FVector::ZeroVector;
+		Body.AngularVelocityRadS = FVector::ZeroVector;
+	}
+}
+
+void FSandboxCarry::Apply(const FSandboxCarrySettings& Settings, double Share)
+{
+	if (!Control)
+	{
+		return;
+	}
+	Share = FMath::Clamp(Share, 0.0, 1.0);
+	// A cap of 0 would mean no cap to the engine: with next to nothing left of the caps, nothing pulls.
+	const bool bWanted = Share > 0.0 && Settings.CapShare > 0.01;
+	if (!bWanted && !bEnabled)
+	{
+		AppliedShare = 0.0;
+		return;
+	}
+	for (const FBody& Body : Bodies)
+	{
+		const bool bOn = bWanted && Body.bHasTarget;
+		Control->SetControlEnabled(Body.ControlName, bOn);
+		if (!bOn)
+		{
+			continue;
+		}
+		const double LinearSpring = Settings.LinearNPerMPerKg * Body.MassKg * Share;
+		const double AngularSpring = Settings.AngularNmPerRadPerKg * Body.MassKg * Share * CarryTorqueToUnreal / CarryChaosAngularDriveScale;
+		FPhysicsControlData Data;
+		Data.bUseAccelerationDriveMode = false;
+		Data.LinearStrength = CarryStrengthForSpring(LinearSpring);
+		Data.LinearDampingRatio = 0.0f;
+		Data.LinearExtraDamping = static_cast<float>(LinearSpring * Settings.DampingS);
+		Data.AngularStrength = CarryStrengthForSpring(AngularSpring);
+		Data.AngularDampingRatio = 0.0f;
+		Data.AngularExtraDamping = static_cast<float>(AngularSpring * Settings.DampingS);
+		// 1 N = 100 kg*cm/s^2. The caps do not go down with the share: the springs do, and a cap of 0 would mean none.
+		Data.MaxForce = static_cast<float>(Settings.CapShare * Settings.MaxWeights * Body.MassKg * GravityMps2 * 100.0);
+		Data.MaxTorque = static_cast<float>(Settings.CapShare * Settings.MaxNmPerKg * Body.MassKg * CarryTorqueToUnreal);
+		// The reference's own velocity is given with the target; nothing is taken from the mesh's pose.
+		Data.LinearTargetVelocityMultiplier = 0.0f;
+		Data.AngularTargetVelocityMultiplier = 0.0f;
+		Data.bUseSkeletalAnimation = false;
+		Control->SetControlData(Body.ControlName, Data);
+		// The vertical cap is its own: what the world may carry of the body's weight.
+		FPhysicsControlMultiplier Multiplier;
+		Multiplier.MaxForceMultiplier = FVector(1.0, 1.0, Settings.MaxWeights > 0.0 ? Settings.MaxUpWeights / Settings.MaxWeights : 1.0);
+		Control->SetControlMultiplier(Body.ControlName, Multiplier);
+
+		FPhysicsControlTarget Target;
+		Target.TargetPosition = Body.Target.GetLocation() + FVector(0.0, 0.0, RaiseCm(Body));
+		Target.TargetOrientation = Body.Target.Rotator();
+		Target.TargetVelocity = Body.VelocityCmS;
+		// Physics Control takes an angular velocity in revolutions per second.
+		Target.TargetAngularVelocity = Body.AngularVelocityRadS / UE_DOUBLE_TWO_PI;
+		Target.bApplyControlPointToTarget = true;
+		Control->SetControlTarget(Body.ControlName, Target);
+	}
+	AppliedShare = Share;
+	bEnabled = bWanted;
+}
+
+double FSandboxCarry::RaiseCm(const FBody& Body) const
+{
+	const FBodyInstance* Instance = Mesh ? Mesh->GetBodyInstance(Body.Bone) : nullptr;
+	if (!Instance || !Instance->IsValidBodyInstance())
+	{
+		return 0.0;
+	}
+	const double TargetComZ = Body.Target.TransformPositionNoScale(Instance->GetMassSpaceLocal().GetLocation()).Z;
+	return FMath::Max(Instance->GetCOMPosition().Z - TargetComZ, 0.0);
+}
+
+FVector FSandboxCarry::ForceOn(int32 Index, const FSandboxCarrySettings& Settings, double Share) const
+{
+	const FBody& Body = Bodies[Index];
+	const FBodyInstance* Instance = Mesh && Body.bHasTarget && Share > 0.0 ? Mesh->GetBodyInstance(Body.Bone) : nullptr;
+	if (!Instance || !Instance->IsValidBodyInstance())
+	{
+		return FVector::ZeroVector;
+	}
+	const FVector TargetCom = Body.Target.TransformPositionNoScale(Instance->GetMassSpaceLocal().GetLocation());
+	FVector ErrorM = (TargetCom - Instance->GetCOMPosition()) * 0.01;
+	// A body above its reference is given the reference at its own height (Apply, RaiseCm).
+	ErrorM.Z = FMath::Max(ErrorM.Z, 0.0);
+	// The reference's velocity at the centre of mass, as the control has it.
+	const FVector Arm = TargetCom - Body.Target.GetLocation();
+	const FVector GoalVelocityMps = (Body.VelocityCmS + FVector::CrossProduct(Body.AngularVelocityRadS, Arm)) * 0.01;
+	const FVector VelocityMps = Instance->GetUnrealWorldVelocity() * 0.01 - GoalVelocityMps;
+	const double Stiffness = Settings.LinearNPerMPerKg * Body.MassKg * Share;
+	FVector CommandN = Stiffness * (ErrorM - VelocityMps * Settings.DampingS);
+	if (Settings.CapShare <= 0.01)
+	{
+		return FVector::ZeroVector;
+	}
+	const double CapN = Settings.CapShare * Settings.MaxWeights * Body.MassKg * GravityMps2;
+	const double CapUpN = Settings.CapShare * Settings.MaxUpWeights * Body.MassKg * GravityMps2;
+	if (CapN > 0.0)
+	{
+		CommandN.X = FMath::Clamp(CommandN.X, -CapN, CapN);
+		CommandN.Y = FMath::Clamp(CommandN.Y, -CapN, CapN);
+		CommandN.Z = FMath::Clamp(CommandN.Z, -CapUpN, CapUpN);
+	}
+	return CommandN;
+}
+
+double FSandboxCarry::LoadN(const FSandboxCarrySettings& Settings, double Share, FVector* OutNetN) const
+{
+	double ForceN = 0.0;
+	FVector NetN = FVector::ZeroVector;
+	for (int32 Index = 0; Index < Bodies.Num(); ++Index)
+	{
+		const FVector CommandN = ForceOn(Index, Settings, Share);
+		ForceN += CommandN.Size();
+		NetN += CommandN;
+	}
+	if (OutNetN)
+	{
+		*OutNetN = NetN;
+	}
+	return ForceN;
+}
+
+FString FSandboxCarry::Describe(const FSandboxCarrySettings& Settings, double Share, int32 Count) const
+{
+	TArray<TPair<double, int32>> BySize;
+	for (int32 Index = 0; Index < Bodies.Num(); ++Index)
+	{
+		BySize.Emplace(ForceOn(Index, Settings, Share).Size(), Index);
+	}
+	BySize.Sort([](const TPair<double, int32>& A, const TPair<double, int32>& B) { return A.Key > B.Key; });
+	FString Text;
+	for (int32 Rank = 0; Rank < FMath::Min(Count, BySize.Num()); ++Rank)
+	{
+		const int32 Index = BySize[Rank].Value;
+		const FVector CommandN = ForceOn(Index, Settings, Share);
+		const FBodyInstance* Instance = Mesh->GetBodyInstance(Bodies[Index].Bone);
+		const FVector OffCm = Instance ? Instance->GetCOMPosition() - Bodies[Index].Target.TransformPositionNoScale(Instance->GetMassSpaceLocal().GetLocation()) : FVector::ZeroVector;
+		Text += FString::Printf(TEXT("%s%s %.0f N (%.0f, %.0f, %.0f), %.0f cm off (%.0f up)"), Rank > 0 ? TEXT("; ") : TEXT(""),
+			*Bodies[Index].Bone.ToString(), CommandN.Size(), CommandN.X, CommandN.Y, CommandN.Z, OffCm.Size(), OffCm.Z);
+	}
+	return Text;
+}

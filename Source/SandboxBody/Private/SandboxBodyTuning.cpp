@@ -301,6 +301,16 @@ namespace
 		Visitor(FString(TEXT("getup.fast_force_n")), Tuning.GetUp.FastForceN);
 		Visitor(FString(TEXT("getup.fast_torque_nm")), Tuning.GetUp.FastTorqueNm);
 		Visitor(FString(TEXT("getup.fast_ease_s")), Tuning.GetUp.FastEaseS);
+		Visitor(FString(TEXT("getup.end_one_foot")), Tuning.GetUp.EndOneFoot);
+		Visitor(FString(TEXT("getup.carry")), Tuning.GetUp.Carry);
+		Visitor(FString(TEXT("getup.carry_n_per_m_per_kg")), Tuning.GetUp.CarryNPerMPerKg);
+		Visitor(FString(TEXT("getup.carry_nm_per_rad_per_kg")), Tuning.GetUp.CarryNmPerRadPerKg);
+		Visitor(FString(TEXT("getup.carry_damping_s")), Tuning.GetUp.CarryDampingS);
+		Visitor(FString(TEXT("getup.carry_max_weights")), Tuning.GetUp.CarryMaxWeights);
+		Visitor(FString(TEXT("getup.carry_max_up_weights")), Tuning.GetUp.CarryMaxUpWeights);
+		Visitor(FString(TEXT("getup.carry_max_nm_per_kg")), Tuning.GetUp.CarryMaxNmPerKg);
+		Visitor(FString(TEXT("getup.carry_release_s")), Tuning.GetUp.CarryReleaseS);
+		Visitor(FString(TEXT("getup.carry_yield_ns")), Tuning.GetUp.CarryYieldNs);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
@@ -659,7 +669,17 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.FastHandCm, 100.0, TEXT("getup"), TEXT("fast_hand_cm"), OutError) ||
 		!CheckRange(GetUp.FastForceN, 10000.0, TEXT("getup"), TEXT("fast_force_n"), OutError) ||
 		!CheckRange(GetUp.FastTorqueNm, 10000.0, TEXT("getup"), TEXT("fast_torque_nm"), OutError) ||
-		!CheckRange(GetUp.FastEaseS, 5.0, TEXT("getup"), TEXT("fast_ease_s"), OutError))
+		!CheckRange(GetUp.FastEaseS, 5.0, TEXT("getup"), TEXT("fast_ease_s"), OutError) ||
+		!CheckRange(GetUp.EndOneFoot, 1.0, TEXT("getup"), TEXT("end_one_foot"), OutError) ||
+		!CheckRange(GetUp.Carry, 1.0, TEXT("getup"), TEXT("carry"), OutError) ||
+		!CheckRange(GetUp.CarryNPerMPerKg, 10000.0, TEXT("getup"), TEXT("carry_n_per_m_per_kg"), OutError) ||
+		!CheckRange(GetUp.CarryNmPerRadPerKg, 1000.0, TEXT("getup"), TEXT("carry_nm_per_rad_per_kg"), OutError) ||
+		!CheckRange(GetUp.CarryDampingS, 5.0, TEXT("getup"), TEXT("carry_damping_s"), OutError) ||
+		!CheckRange(GetUp.CarryMaxWeights, 100.0, TEXT("getup"), TEXT("carry_max_weights"), OutError) ||
+		!CheckRange(GetUp.CarryMaxUpWeights, 100.0, TEXT("getup"), TEXT("carry_max_up_weights"), OutError) ||
+		!CheckRange(GetUp.CarryMaxNmPerKg, 1000.0, TEXT("getup"), TEXT("carry_max_nm_per_kg"), OutError) ||
+		!CheckRange(GetUp.CarryReleaseS, 5.0, TEXT("getup"), TEXT("carry_release_s"), OutError) ||
+		!CheckRange(GetUp.CarryYieldNs, 10000.0, TEXT("getup"), TEXT("carry_yield_ns"), OutError))
 	{
 		return false;
 	}

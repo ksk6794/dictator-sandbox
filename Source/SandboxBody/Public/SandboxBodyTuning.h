@@ -928,6 +928,31 @@ struct FSandboxGetUpTuning
 	double FastTorqueNm = 0.0;
 	double FastEaseS = 0.0;
 	/**
+	 * N7, the recording carried (the owner's decision of 26 November): 1, at the clip's end one foot on the floor is enough to stand,
+	 * with the pelvis upright within upright_deg; 0, both feet. (Carried hard, the pelvis was held at the clip's height and the other leg
+	 * did not reach the floor: the get-up never ended.) 0 or 1.
+	 */
+	double EndOneFoot = 0.0;
+	/**
+	 * The led get-up (docs/active-ragdoll.md, part R1): 1, every body of the character is pulled by the world toward where the clip
+	 * has it (FSandboxCarry; the clip's pose chained on the body's own proportions), the clip runs at its rate without waiting for
+	 * the pelvis or a foot and is not laid over the feet, and the get-up's assist on pelvis and feet is off. 0: the get-up as it was,
+	 * bit for bit. The springs per kg of each body (CarryNPerMPerKg, CarryNmPerRadPerKg), their damping as a time (CarryDampingS),
+	 * their caps in weights of the body and in N*m per kg (CarryMaxWeights over the floor, CarryMaxUpWeights upward: what the world
+	 * may carry of each body's weight; it never pushes a body down; CarryMaxNmPerKg). They come up with the get-up's ease and go
+	 * over CarryReleaseS, by their own clock, once the get-up has ended. A hit felt of CarryYieldNs or more while getting up lets
+	 * the body go at once and the attempt is given up (0: never).
+	 */
+	double Carry = 0.0;
+	double CarryNPerMPerKg = 0.0;
+	double CarryNmPerRadPerKg = 0.0;
+	double CarryDampingS = 0.0;
+	double CarryMaxWeights = 0.0;
+	double CarryMaxUpWeights = 0.0;
+	double CarryMaxNmPerKg = 0.0;
+	double CarryReleaseS = 0.0;
+	double CarryYieldNs = 0.0;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.

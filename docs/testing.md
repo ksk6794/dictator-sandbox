@@ -5034,6 +5034,85 @@ Side videos of whole get-ups for the owner: `Saved\Films\n7_whole_back_today`, `
 **The owner on those videos: nothing is better.** The last part of the get-up is still wooden, a rocket raised on its launcher, and
 the get-up still reads as separate animations glued together with pauses between them. The switch stays at 0.
 
+**The recording, carried** (the owner's choice, against the track's principle 1 for the get-up; `Saved\Recon\n7_carried_plan.md`). Values
+only, by `-Tune`: no waits (`lag_cm`, `side_lag_cm`, `foot_lag_cm` 500), the clip not laid over the loaded feet (`frame_follow_s` 0), the
+pelvis's assist 6000, 8000 N/m and 2000 N*m/rad capped at 600 N and 600 N*m, the feet's 4000 N/m across and 1000 up capped at 300 N, and
+in C-a the legs 2000 N*m/rad (cap 600) and the spine 1500 (600). One switch was needed and is in the code at 0: `getup.end_one_foot`
+(carried hard, the pelvis was held at the clip's height and one leg did not reach the floor, 0 N on it, so the get-up never ended).
+
+| Variant | Stand, first attempt | Pause | Get-up | Plank while + after | Assist | Suite |
+| --- | --- | --- | --- | --- | --- | --- |
+| Today | 150, 130 | 2.42 s | 5.01 s | 1.36 + 0.24 = 1.61 s | 0.28 | 127 |
+| C-a, carried, muscles too | 149, 140 | 0.61 | 3.20 | **1.37 + 0.48 = 1.97** | 1.17 | **`grab_getup_held`** |
+| C-b, carried by the world alone | 148, 134 | 0.61 | 3.20 | **1.86** | 1.03 | **`grab_getup_held`** |
+
+Every get-up now takes the clip's own time and pauses only while the muscles come up. By the measure the world holds the body longer,
+not shorter: with one leg short of the floor the centre of mass is outside the one foot that carries it. One hand no longer keeps hold
+of a body getting up (the grip held 376 frames of the 500 the scenario asks). Videos: `Saved\Films\n7_whole_back_carried`,
+`n7_whole_front_carried`.
+
+### R1: the led get-up (26 November, the second architecture, `docs/active-ragdoll.md`; behind `getup.carry` at 0, for the owner's look)
+
+The owner asked for the body to be rebuilt as a hybrid active ragdoll; the audit, the causes and the plan are in
+`docs/active-ragdoll.md`. Its first part is the "recording, carried" above done for the whole body: `FSandboxCarry`, a spring from
+the world on each of the 19 bodies toward where the clip has it (`FSandboxClipPose::ReachedBodyAt`, the pose asked of the muscles
+chained on this body's proportions), stiffness and caps per kg of the body, the reference's velocity given with the target; the
+clip runs at its rate and waits only for a press that holds the body down; the clip is not laid over the feet; the old assist on
+pelvis and feet is off; a hit of `carry_yield_ns` (60) or more lets the body go at once. The controls are made when a led get-up
+first begins. With the switch at 0 the suite has the hashes of `n2` (127), and the 48 unit tests pass.
+
+**What the world was doing, read from a log line added for it** (the force on each body, four times a second). The first build
+gave 1.57 of the body's weight on the stand, and most of it pressed the body **down**: 700 to 980 N of a weight of 784 N, with the
+trunk's bodies 4 to 10 cm above their targets while lying and sitting. The reference lies lower than the floor lets this body lie
+(another skeleton, the pelvis's height scaled). So: the world never pushes a body down; a body above its reference is given the
+reference at its own height.
+
+| Variant (`-Tune "getup.carry=1"` and) | Stand of 150, first attempt | Assist, mean | Suite |
+| --- | --- | --- | --- |
+| Today (`getup.carry` 0) | 150, 130 | 0.28 | 127 |
+| First build: pushes down too, 2 weights each way | 148, 127 | 1.57 | - |
+| No push down, the world lifts at most 0.5 of each body's weight | **140, 70** | 1.23 | 2 fail |
+| No push down, at most 1 weight | 148, **107** | 1.19 | - |
+| **No push down, at most 2 weights (the values in the file)** | 149, **139** | 1.16 | 126 (`grab_getup_held`) |
+
+Capping what the world may lift costs get-ups and saves no assist: the legs do not keep up with the recording on their own, as in
+every variant of this day, and a failed attempt costs a second one. What is left of the 1.16 is mostly sideways: a thigh pulled
+with 200 to 300 N toward a reference whose foot is 20 cm from where this body's loaded foot stands. Laying the clip over the
+loaded feet again (`frame_follow_s` in the led get-up) gave 0.97 against 1.05 on `getup_back` and a body that leant longer after it
+stood (0.73 s against 0.13); not kept.
+
+**The four get-ups, led** (`Saved\Suites\r1_led`): each at the first attempt in 3.20 s (today 5.0 s in the median, 2.4 s of it
+paused), paused 0.61 s (the ease). As the pelvis passes 70 cm the trunk is 22 to 30 degrees from upright and the farther foot 20 to
+26 cm from the pelvis (today's medians: 70 degrees, 37 cm). The plank's measure reads 0.10 to 0.20 s while getting up and 0.22 to
+0.58 s after (today 1.36 + 0.24 in the median of 150). The sheet `Saved\Films\r1_back_led_sheet` shows the body sit up, roll over a
+foot into a crouch and rise with its feet under it.
+
+**FR-18 on the led get-up.** A push of 30 N*s does not stop it. A blow of 200 N*s lets it go ("hit with 200 N*s while it was
+led"), it falls and gets up at the second attempt. Pressed with 1500 N it is held down, gives up after 3 s and gets up afterwards.
+A press and a hold first did nothing to it: two pressing hands did not slow it and one holding hand was torn off, the world getting
+the body up against them. So a press or a hold takes the pull away in proportion (nothing left at `getup.hold_force_n`, back by
+the release's clock). With that, on the stand of 50 (seed 1): pressed with 300 N, 15 of 50 stand under it (today 39 of 150); held by
+two hands, 3 of 49 pull free (today none); **held by one hand, 42 of 50 pull free** (today 47 of 146), and `grab_getup_held` fails
+(the grip does not last its 500 frames). One hand no longer slows a led get-up: open, the next thing to repair.
+
+**A mistake of mine on the way.** A helper written in the shell to add one tuning name to five files replaced every tab of two
+source files with a letter and doubled the line breaks of three (a nested array of one pair is flattened in PowerShell, and
+`String.Replace` then got two characters). Both files were taken back from git and the edits made again by hand; nothing else was
+lost. `CLAUDE.md` already warns of the array; the lesson added there is to make such edits with the editor, not a script.
+
+Videos for the owner, the same camera, real time: `Saved\Films\r1_back_today`, `r1_back_led`, `r1_front_today`, `r1_front_led`.
+
+**The owner on the videos: the led get-ups look natural, the ones before do not; switch it on.** `getup.carry` is 1 in the file
+since 26 November. Before that, one more try at the hold by one hand: with the caps of the world's pull taken down with a press as
+well as the springs, two hands hold every body (0 of 49 pull free) and one hand still does not (34 of 50), but only 2 of 50 stand
+under a press of 300 N (15 without it, 13 on the body before); not kept, the caps stay whole. Switched on: 48 unit tests; the suite
+126 of 127 (`grab_getup_held`: the grip of one scripted hand does not last its 500 frames on a body that gets up in 3.2 s; left
+failing, not loosened, the first thing of R2); against `n2` 112 scenarios with the same hashes and 15 changed, each one with a
+get-up (the `getup_*`, `effector_shove_knockdown_gets_up` and the others that get up): shorter rest after the fall (8.2 to 9.7 s
+against 10 to 11), the run's mean assist share 0.16 to 0.29 against 0.06 to 0.12, and `getup_hit_strong` now falls to its blow and
+gets up at the second attempt. New baseline `led`. The stand 149 and 139; the session's self-test 14 of 14, its grab demo and the
+record and replay hold. Not run: the bootstrap, the session with a person, the headset.
+
 
 
 

@@ -1688,6 +1688,20 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		return;
 	}
 	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	// Led (getup.carry), the world pulls every body toward the clip, and what it gives it would give against a blow too: a hit
+	// that is felt this hard lets the body go at once, and the attempt is over. Each hit is judged once.
+	const bool bLed = IsLed();
+	if (bLed && Limits.CarryYieldNs > 0.0 && FlinchStartedS >= StateEnteredS && FlinchStartedS > CarryYieldSeenS)
+	{
+		CarryYieldSeenS = FlinchStartedS;
+		if (FlinchImpulseNs.Size() >= Limits.CarryYieldNs)
+		{
+			CarryShare = 0.0;
+			Carry.Apply(CarrySettings(), 0.0);
+			GiveUpGetUp(FString::Printf(TEXT("hit with %.0f N*s while it was led"), FlinchImpulseNs.Size()));
+			return;
+		}
+	}
 	// The muscles and the assist come up from nothing (MuscleScale, PushTuningToControls).
 	const double Ease = GetUpEase();
 	if (!GetUpRun.bEased)
@@ -1754,7 +1768,9 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 			}
 		}
 	}
-	if (CarriedN > 0.0 && Limits.FrameFollowS > 0.0 && WeightN > 0.0)
+	// A led body is brought to the clip, feet and all; the clip is not laid over where the body happens to be. (Laid over the
+	// loaded feet as well, the world gave 0.97 of the body's weight instead of 1.05 and the body leant longer after it stood.)
+	if (!bLed && CarriedN > 0.0 && Limits.FrameFollowS > 0.0 && WeightN > 0.0)
 	{
 		const double Share = FMath::Clamp(CarriedN / WeightN, 0.0, 1.0);
 		const FVector2D Shift = (CarriedOff / CarriedN) * FMath::Min(Share * DeltaTime / Limits.FrameFollowS, 1.0);
@@ -1775,7 +1791,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	const bool bHeldDown = Limits.HoldForceN > 0.0 && PressedN >= Limits.HoldForceN;
 	const bool bPushesOn = Limits.HoldForceN > 0.0 && PressedN > 0.0 && !bHeldDown;
 	GetUpView.PressedMaxN = FMath::Max(GetUpView.PressedMaxN, PressedN);
-	if (Limits.PelvisFollowS > 0.0)
+	if (!bLed && Limits.PelvisFollowS > 0.0)
 	{
 		const double OnFeet = WeightN > 0.0 ? FMath::Clamp(CarriedN / WeightN, 0.0, 1.0) : 0.0;
 		const FVector Off = Now.GetLocation() - Goal.GetLocation();
@@ -1793,6 +1809,13 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 			ElapsedS, ClipHold.TimeS, LagCm, Off.X, Off.Y, Off.Z, Now.GetLocation().Z - LastSupportHeightCm,
 			FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Leans.Z, -1.0, 1.0))), FootLagCm[0], FootLagCm[1],
 			Balance.bValid ? Balance.FootForceN[0] : 0.0, Balance.bValid ? Balance.FootForceN[1] : 0.0, AssistLoad.ForceShare);
+		if (bLed && Carry.GetShare() > 0.0)
+		{
+			FVector NetN;
+			const double SumN = Carry.LoadN(CarrySettings(), Carry.GetShare(), &NetN);
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: led at %.2f s: the world gives %.0f N in all, net (%.0f, %.0f, %.0f) of a weight of %.0f N; hardest: %s"),
+				ElapsedS, SumN, NetN.X, NetN.Y, NetN.Z, WeightN, *Carry.Describe(CarrySettings(), Carry.GetShare(), 4));
+		}
 	}
 	// The clip's time waits for a body that does not keep up, and stops at the time by which the clip stands.
 	// A foot in the air is waited for, but not without end (getup.foot_wait_s).
@@ -1832,6 +1855,13 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 			Progress(bPelvisBehind, PelvisOff.Size(), GetUpRun.PelvisCheckS, GetUpRun.PelvisLagAtCheck, GetUpRun.bPelvisNotWaited);
 			bPelvisBehind = bPelvisBehind && !GetUpRun.bPelvisNotWaited;
 		}
+	}
+	if (bLed)
+	{
+		// Led, the clip runs at its own rate: the body is brought along, and a body that cannot be (something is in the way)
+		// is told by the pelvis's distance above. Only a press that holds it down stops the clip.
+		bPelvisBehind = false;
+		bFootWaited = false;
 	}
 	if (Limits.FastRise > 0.5 && GetUpRun.FastFromS >= 0.0)
 	{
@@ -1952,7 +1982,9 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	{
 		const FVector Up = (Now.GetRotation() * Goal.GetRotation().Inverse()).RotateVector(FVector::UpVector);
 		const double TiltDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Up.Z, -1.0, 1.0)));
-		const bool bOnFeet = Balance.bValid && Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0;
+		// N7 (getup.end_one_foot): a body carried through its clip may end with one leg short of the floor; standing lets it down.
+		const bool bOnFeet = Balance.bValid && (Limits.EndOneFoot > 0.5 ? Balance.FootForceN[0] > 0.0 || Balance.FootForceN[1] > 0.0
+			: Balance.FootForceN[0] > 0.0 && Balance.FootForceN[1] > 0.0);
 		if (!bBehind && TiltDeg <= Limits.UprightDeg && bOnFeet)
 		{
 			++GetUpView.Successes;
@@ -1982,6 +2014,77 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		GiveUpGetUp(FString::Printf(TEXT("the clip waited %.1f s in all for the body and is at %.2f s (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
 			GetUpRun.FreeWaitS, ClipHold.TimeS, LagCm, FootLagCm[0], FootLagCm[1]));
 	}
+}
+
+FSandboxCarrySettings USandboxBodyController::CarrySettings() const
+{
+	FSandboxCarrySettings Settings;
+	Settings.LinearNPerMPerKg = Tuning.GetUp.CarryNPerMPerKg;
+	Settings.AngularNmPerRadPerKg = Tuning.GetUp.CarryNmPerRadPerKg;
+	Settings.DampingS = Tuning.GetUp.CarryDampingS;
+	Settings.MaxWeights = Tuning.GetUp.CarryMaxWeights;
+	Settings.MaxUpWeights = Tuning.GetUp.CarryMaxUpWeights;
+	Settings.MaxNmPerKg = Tuning.GetUp.CarryMaxNmPerKg;
+	// The caps stay whole under a press (CapShare 1); only the springs' share goes down with it. With the caps taken down as well,
+	// 2 bodies of 50 stood under a press of 300 N (15 without, 13 before the led get-up) and one hand still did not hold.
+	return Settings;
+}
+
+void USandboxBodyController::UpdateCarry(double DeltaTime)
+{
+	const bool bLed = IsLed();
+	if (!bLed && CarryShare <= 0.0)
+	{
+		// Nothing is carried and nothing fades: a run without getup.carry does nothing here.
+		bCarryAimed = false;
+		return;
+	}
+	if (bLed && !Carry.IsCreated())
+	{
+		FString Error;
+		if (!Carry.Create(Control, Mesh, Error))
+		{
+			bCarryBroken = true;
+			UE_LOG(LogSandbox, Warning, TEXT("Body controller: the get-up is not led: %s"), *Error);
+			return;
+		}
+	}
+	const FSandboxClipPose* Clip = bLed && !GetUpRun.bRising ? Clips.Find(GetUpRun.Path) : nullptr;
+	if (Clip)
+	{
+		if (!bCarryAimed)
+		{
+			Carry.ForgetTargets();
+		}
+		for (int32 Index = 0; Index < Carry.Num(); ++Index)
+		{
+			FTransform InClip;
+			if (Clip->ReachedBodyAt(Carry.BoneAt(Index), ClipHold.TimeS, InClip))
+			{
+				Carry.SetTarget(Index, InClip * GetUpRun.Frame, DeltaTime);
+			}
+		}
+		// Up with the get-up's ease; a share left from a get-up that has just ended is not taken down by a new one.
+		CarryShare = FMath::Max(CarryShare, GetUpEase());
+	}
+	else
+	{
+		// Down by its own clock, the last targets kept: let go in one step, the body would drop what the world still held.
+		if (bCarryAimed)
+		{
+			Carry.ForgetTargets();
+		}
+		CarryShare = Tuning.GetUp.CarryReleaseS > 0.0 ? FMath::Max(CarryShare - DeltaTime / Tuning.GetUp.CarryReleaseS, 0.0) : 0.0;
+	}
+	bCarryAimed = Clip != nullptr;
+	// A press or a hold from outside takes the world's pull away, in proportion: what a hand does to a body getting up is for the
+	// body's own muscles to answer. At the force that holds a get-up down (getup.hold_force_n) nothing is left of it. It goes at
+	// once and comes back by the release's clock. (Without this, one hand that held the chest was torn off and two that pressed
+	// did not slow the body: the world got it up against them.)
+	const double Pressed = Tuning.GetUp.HoldForceN > 0.0 ? FMath::Clamp(SustainedN.Size() / Tuning.GetUp.HoldForceN, 0.0, 1.0) : 0.0;
+	const double Free = 1.0 - Pressed;
+	CarryFree = Free < CarryFree || Tuning.GetUp.CarryReleaseS <= 0.0 ? Free : FMath::Min(Free, CarryFree + DeltaTime / Tuning.GetUp.CarryReleaseS);
+	Carry.Apply(CarrySettings(), FMath::SmoothStep(0.0, 1.0, CarryShare) * CarryFree);
 }
 
 double USandboxBodyController::MuscleScale(ESandboxMuscleGroup Group) const
@@ -5093,8 +5196,8 @@ void USandboxBodyController::PushTuningToControls()
 		}
 		if (State == ESandboxBodyState::GetUp)
 		{
-			// The pull that helps the body up comes up from nothing, as its muscles do.
-			const double Ease = GetUpEase();
+			// The pull that helps the body up comes up from nothing, as its muscles do. Led, the carry pulls instead (FSandboxCarry).
+			const double Ease = IsLed() ? 0.0 : GetUpEase();
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
@@ -5194,6 +5297,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateState(DeltaTime);
 	UpdateHeld(DeltaTime);
 	UpdateGetUp(DeltaTime);
+	UpdateCarry(DeltaTime);
 	// The plank after a get-up, measured (read only): the same rule as while getting up, for 3 s after it ended standing.
 	if (State != ESandboxBodyState::GetUp && GetUpView.DurationS >= 0.0 && ElapsedS - (GetUpView.StartedS + GetUpView.DurationS) <= 3.0 &&
 		Balance.bValid && Balance.IsSupported() && WeightN > 0.0 &&
@@ -5646,7 +5750,7 @@ void USandboxBodyController::UpdateAssistLoad()
 		const FVector VelocityMps = Body->GetUnrealWorldVelocity() * 0.01 - GoalVelocityMps;
 		if (State == ESandboxBodyState::GetUp)
 		{
-			const double Ease = GetUpEase();
+			const double Ease = IsLed() ? 0.0 : GetUpEase();
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
@@ -5676,6 +5780,11 @@ void USandboxBodyController::UpdateAssistLoad()
 		TorqueNm += Slot.MaxTorqueNm > 0.0 ? FMath::Min(SlotTorqueNm, Slot.MaxTorqueNm) : SlotTorqueNm;
 	}
 
+	// What the carry asks of the world is assist like any other.
+	if (Carry.GetShare() > 0.0)
+	{
+		ForceN += Carry.LoadN(CarrySettings(), Carry.GetShare());
+	}
 	AssistLoad.ForceShare = WeightN > 0.0 ? ForceN / WeightN : 0.0;
 	AssistLoad.TorqueShare = WeightN > 0.0 ? TorqueNm / (WeightN * StandingComHeightM) : 0.0;
 	for (int32 SlotIndex = 0; SlotIndex < FSandboxAssistLoad::SlotCount; ++SlotIndex)

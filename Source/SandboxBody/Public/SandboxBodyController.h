@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyTuning.h"
+#include "SandboxCarry.h"
 #include "SandboxClipPose.h"
 #include "SandboxFingerRig.h"
 #include "SandboxIdleMotion.h"
@@ -870,6 +871,25 @@ private:
 	 */
 	FVector2D RiseLeanRad = FVector2D::ZeroVector;
 	void GiveUpGetUp(const FString& Reason);
+	/**
+	 * The led get-up (getup.carry; docs/active-ragdoll.md, part R1): every body pulled by the world toward where the clip has it.
+	 * The springs are made when a led get-up first begins. Their share follows the get-up's ease up, and goes down by its own clock
+	 * (getup.carry_release_s) when the get-up has ended, with the last targets kept; a hit that throws the body out of the get-up
+	 * (getup.carry_yield_ns) takes it to 0 at once.
+	 */
+	FSandboxCarry Carry;
+	double CarryShare = 0.0;
+	/** How much of the carry a press or a hold from outside leaves, 0 to 1: down at once, back by the release's clock. */
+	double CarryFree = 1.0;
+	bool bCarryBroken = false;
+	/** Whether the last tick aimed the carry at a clip: a get-up that begins makes no velocity from the targets of the one before. */
+	bool bCarryAimed = false;
+	/** When the last hit judged for carry_yield_ns was felt: each hit is judged once. */
+	double CarryYieldSeenS = -1.0;
+	bool IsLed() const { return State == ESandboxBodyState::GetUp && Tuning.GetUp.Carry > 0.5 && !bCarryBroken; }
+	FSandboxCarrySettings CarrySettings() const;
+	/** Aims the carry at the clip (while getting up, led) and steps its share. After UpdateGetUp, before the controls are updated. */
+	void UpdateCarry(double DeltaTime);
 	/** How far the muscles and the assist have come up since the get-up began, 0 to 1 (1 in any other state). */
 	double GetUpEase() const;
 	/** Whether the body as a whole moves and turns no faster than thresholds.rest_*. */
