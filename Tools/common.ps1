@@ -216,9 +216,10 @@ function New-ScenarioQueue {
         }
         Get-ChildItem $out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
         if ($job.File) { $scenario = [System.IO.Path]::GetFullPath($job.File) } else { $scenario = Join-Path $RepoRoot "Scenarios\$($job.Name).json" }
-        # Another body for every run of a tool, without touching a scenario: SANDBOX_PHYSICS_ASSET=PA_SandboxNPCHead puts
-        # that asset in the place of PA_SandboxNPC in a copy of each scenario, and where its head is a body of its own
-        # (SANDBOX_HEAD_BODY=head) what a scenario does to neck_01 it does to that.
+        # Another body for every run of a tool, without touching a scenario: SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck puts
+        # that asset in the place of PA_SandboxNPC in a copy of each scenario, and where its head is part of another body
+        # (SANDBOX_HEAD_BODY=neck_01, in today's PA_SandboxNPCNeck, PA_SandboxNPCWrist and PA_SandboxNPCToes) what a
+        # scenario does to the head it does to that.
         if ($env:SANDBOX_PHYSICS_ASSET) {
             if ($number -eq 0) { Write-Host "QUEUE NOTE: SANDBOX_PHYSICS_ASSET is set: every scenario of this queue runs on $($env:SANDBOX_PHYSICS_ASSET)" }
             $copy = Join-Path $queue ('scenario_{0:D5}' -f $number)
@@ -227,7 +228,7 @@ function New-ScenarioQueue {
             $scenarioText = [System.IO.File]::ReadAllText($scenario)
             $scenarioText = $scenarioText -creplace 'PA_SandboxNPC\.PA_SandboxNPC"', "$($env:SANDBOX_PHYSICS_ASSET).$($env:SANDBOX_PHYSICS_ASSET)`""
             if ($env:SANDBOX_HEAD_BODY) {
-                $scenarioText = $scenarioText -creplace '("(?:body|at_bone|bone)"\s*:\s*)"neck_01"', "`$1`"$($env:SANDBOX_HEAD_BODY)`""
+                $scenarioText = $scenarioText -creplace '("(?:body|at_bone|bone|equals)"\s*:\s*)"head"', "`$1`"$($env:SANDBOX_HEAD_BODY)`""
             }
             [System.IO.File]::WriteAllText($copyFile, $scenarioText, (New-Object System.Text.UTF8Encoding($false)))
             $scenario = $copyFile

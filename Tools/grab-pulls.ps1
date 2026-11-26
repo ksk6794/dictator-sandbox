@@ -30,7 +30,7 @@
 # Prints one row per pull, writes <Out>\grab_pulls.json. Exit code: 0 every pull passes, 1 one does not,
 # 2 a run produced no result.
 param(
-    [string]$Bodies = 'lowerarm_l,hand_l,upperarm_l,neck_01,spine_04,thigh_l,calf_l',
+    [string]$Bodies = 'lowerarm_l,hand_l,upperarm_l,head,spine_04,thigh_l,calf_l',
     [string]$Speeds = '1,2,4',
     [string]$Directions = 'left,front,back,up,down',
     [double]$DistanceCm = 60.0,

@@ -30,7 +30,7 @@
     "tuning_changes": 1,
     "measures": {
       "control.fall.first_touch_bone": {
-        "equals": "neck_01"
+        "equals": "head"
       },
       "control.fall.head_touched": {
         "equals": true
@@ -46,7 +46,7 @@
         "equals": true
       },
       "control.fall.hands_ahead_first": {
-        "equals": false
+        "equals": true
       },
       "control.fall.touches.0.ahead_cm": {
         "equals": null

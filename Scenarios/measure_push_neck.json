@@ -29,7 +29,7 @@
     {
       "t": 3.0,
       "type": "impulse",
-      "body": "neck_01",
+      "body": "head",
       "impulse_ns": 30,
       "duration_s": 1.5,
       "direction": [
@@ -48,12 +48,12 @@
         "max": 20.01
       },
       "control.pushes.0.stiffness_n_per_cm": {
-        "min": 14.8,
-        "max": 16.4
+        "min": 10.8,
+        "max": 12.0
       },
       "control.pushes.0.settled_displacement_cm": {
-        "min": 1.22,
-        "max": 1.35
+        "min": 1.66,
+        "max": 1.84
       },
       "control.pushes.0.whole_body_cm": {
         "min": 0,

@@ -4693,6 +4693,75 @@ world's origin and never let go), and a guard on a body posed from outside. Left
 before the face moves the guard's point fast; the guard needs `perception.anticipate` on and says nothing when it is off. The same limits again: 69 cm, 9.0 cm, 0.48 degrees, no guard for the jab and the
 hovering hand.
 
+### The natural body, N8 A taken: the head is the default body (26 November, the owner's decision)
+
+The owner chose the head (question 1 of the night's report), and, once C25 had been measured (below), to keep it with C25's
+baseline at 512 N*m. The plan and limits were written before the runs (`Saved\Recon\head_switch_plan.md`). What changed:
+
+- `Specs/physics/npc_body.json` is the night's head spec, so `PA_SandboxNPC` has the head as a body of its own on the neck; the
+  body before it is kept as `npc_body_neck.json`, `PA_SandboxNPCNeck` (the wrist's and the toes' assets are still made from the
+  body before). Every scenario and tool names `PA_SandboxNPC` as before.
+- `assist.head.angular_nm_per_rad` 0 (was 10: the world's hold on the head) and `muscles.neck.damping_s` 0.05 (0.1).
+- What a scenario or a tool did to `neck_01` meaning the head it now does to `head`: `hit_head_30_stands`, `measure_push_neck`,
+  the first touch of `measure_drop_head_first`, the bodies of the push matrix, the compliance table and the grab pulls, the stand's
+  blows on the head. A pose's `neck_01` stays (its angles are shared out between the two joints). `SANDBOX_HEAD_BODY` has turned
+  round: it names the bone that stands for the head in an asset whose head is part of the neck (`neck_01` for `PA_SandboxNPCNeck`,
+  `PA_SandboxNPCWrist`, `PA_SandboxNPCToes`), and a scenario's `head` (in `body`, `at_bone`, `bone`, `equals`) becomes that bone.
+- The pose database (`Tools\pose-prior.ps1 -Build`) was built again: it refuses one made for another body, and the scorecard
+  stopped on it. Its pose figures are not to be compared with `before_track`'s.
+
+**The same body as the night's.** Every one of the 117 scenarios of `hold` ends with the hashes the night's battery on the head
+had (`bat_head2`, 117 of 117, the edited ones among them): what the night measured by `-Tune` and a copy of each scenario is what
+the files give now.
+
+**The eight scenarios, set anew** (accepted by the owner with the decision; each changed to what the new head does, and why):
+
+| Scenario | Was | Now | Why |
+| --- | --- | --- | --- |
+| `effector_hit_head` | falls, lying | stands (`fell` false, `standing`) | The fist is felt by the head as 31.0 N*s (by the body before it as 35.3, an edge against the knockdown's 35); the hand delivered 40.0 against 45.5. Ended at x = 3 it is felt as 31.9. A fist at 5.5 m/s (`strike_punch_head`) still fells it: 36.1. The path is as it was |
+| `palm_slap_head` | path to x = 5 | path to x = 3 | 4 cm inside the narrower head, as it ended inside the old one: 7.2 N*s, the head turns 10.7 degrees, standing > flinch > standing |
+| `measure_drop_head_first` | first touch `neck_01`, `hands_ahead_first` false | `head`, true | The left hand lands 3.6 cm ahead of the chest 0.1 s after the head and before the trunk: by C14's rule a hand ahead first. An edge of 3.6 cm |
+| `measure_push_neck` | the push on `neck_01`, 14.8 to 16.4 N/cm, 1.22 to 1.35 cm | on `head`, 10.8 to 12.0 N/cm, 1.66 to 1.84 cm | Two joints of 40 N*m/rad together are softer than one: 11.4 N/cm and 1.75 cm settled; 5% either way as before |
+| `strike_punch_shoulder` | 2 hits, joints under 30 rad/s | 1 hit, under 32 | A lucky spot. At its point (140 cm) the collarbone turned at 8.2 rad/s on the body before; at 136, 138, 142 and 144 cm at 26.6, 28.1, 31.0 and 5.6. The head body: 26.3, 27.6, 30.7 (its point), 31.4, 5.4. The head moved the contact by a frame (913 N against 646) and showed what was there (`Saved\Recon\shoulder`). Pre-existing: a punch at 8 m/s on the shoulder turns the collarbone at about 30 rad/s two centimetres off this point |
+| `tune_live_file`, `tune_live_override` | joints under 30 rad/s | under 40 | A body with its legs switched off falls on its head, and the light neck is whipped: 37.7 and 35.8 rad/s (24.8 and 25.2 before, then a forearm). The whip is the known cost of the head: 37 to 46 rad/s in falls where the body before had 16 to 36 |
+| `room_movable_fall_gets_up` | 20 s | 40 s | The body stands at 31.9 s, at its third attempt (the first two fall back at 15.9 and 23.7 s); the body before stood within the 20 s |
+
+**The battery on the default body** (`Saved\Recon\bat_headdefault`), the limits of the plan beside it:
+
+| | Limit | Result |
+| --- | --- | --- |
+| Tests, suite | pass | 48 tests; 127 of 127, and 128 with `-Long` (the 10-minute stand) |
+| Push matrix | 160 | 160 |
+| Knockdowns | 8 and 8 | 8 by a blow (24.4 J at most, rest after 2.18 s), 8 by hand (28.5 J, 1.88 s) |
+| Stand, three seeds | 147 of 150, 129 at the first attempt | 150, 134 (46, 45, 43): the night's figures |
+| Grab pulls | 93, at most 3 falls | 93, 0 falls |
+| Record and replay, the session | pass | `-Twice` 13 of 13, `-Takes` 3 of 3, the self-test and the grab demo pass |
+
+The stands that written claims rest on, with the body before it (`PA_SandboxNPCNeck` with its old values, the same code) run the
+same hour:
+
+| Stand | Head | Before |
+| --- | --- | --- |
+| Movable furniture room, seeds 1 to 3 | 49, 50, 49 of 50 (48, 46, 38 at the first attempt) | claimed 50, 49, 50 |
+| Pressed with 300 N | 142 of 150 stand; 39 stood while pressed (11, 14, 14) | 144; 50 (12, 23, 15) |
+| Held by one hand | 138 of 150 (the tool's 45 a seed missed by seed 2: 44); 46 pulled free and stood | 143; 46 |
+| Held by two hands | 141 of 150; none pulled free | 139 (seed 2: 44, missed); none |
+
+Pressed, one in four gets up instead of one in three (39 against 50; the seeds go from 11 to 23, so the difference is about the
+spread). Held, both bodies are on the tool's edge of 45 a seed, each missing it once.
+
+**The scorecard** (`Tools\natural.ps1 -Quick`, `Saved\Natural\head_default`): C14 by hand 83% of 6 (86% of 7 before the track),
+by blows 100% of 5 (80%); **C15, the head strikes the floor, by blows 63% of 8 against 50%, C16 the head's speed there 3.68 m/s
+against 2.82: the light head on a soft neck meets the floor harder after a blow**; C17 within (2.18 s, 24.4 J, 0.79 cm); the
+others as before. **C25, missed against decision 15:** the largest jump of a command over the suite is 512 N*m (`calf_r`,
+`grab_pull_standing` at 5.10 s: a foot's target turns 37 degrees in a frame at a lift, case a of decision 13) against 429 on the
+body before (`foot_l`, the same scenario), run the same hour; 38 scenarios over 200 N*m against 41. With the jumps' repairs "all
+but reach" by `-Tune` the head's largest is 440 (`getup_left`, `hit_chest_200_side_falls`) and 10 scenarios are over 200; with them
+`effector_hit_head` falls again. N8 A's own limits had no C25; it was found here, after the owner had chosen, and the owner kept the
+head with C25's baseline at 512 (`docs/natural-body.md`, decision 15).
+
+Baseline `head` (127 scenarios) from here on.
+
 
 
 

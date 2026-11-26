@@ -2,7 +2,7 @@
 # names the outcome of each push and judges it against the owner's outcome table of M3 (docs/PRD.md).
 #   powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1
 #   ... -Impulses "10,30,80,200"                             newton-seconds
-#   ... -Bodies "neck_01,spine_04,pelvis,thigh_l,thigh_r"    bones of the bodies to push
+#   ... -Bodies "head,spine_04,pelvis,thigh_l,thigh_r"    bones of the bodies to push
 #   ... -Directions 8                                        evenly spaced horizontal directions
 #   ... -PushSeconds 0.1                                     time over which each impulse is delivered; 0 is a single blow
 #   ... -Enforce "10,30,80,200"                                impulses whose rows are judged; the others are reported only
@@ -43,7 +43,7 @@
 # 1 a rule is broken, 2 a run produced no result.
 param(
     [string]$Impulses = '10,30,80,200',
-    [string]$Bodies = 'neck_01,spine_04,pelvis,thigh_l,thigh_r',
+    [string]$Bodies = 'head,spine_04,pelvis,thigh_l,thigh_r',
     [int]$Directions = 8,
     [double]$PushSeconds = 0,
     [string]$Enforce = '10,30,80,200',

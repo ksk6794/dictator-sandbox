@@ -217,7 +217,7 @@ function New-Trial([string]$kind, [int]$number) {
                 $number, $kind, $place.location[0], $place.location[1], $room.furniture, $room.wall)
         }
     }
-    $struck = Pick @('spine_04', 'spine_04', 'neck_01')
+    $struck = Pick @('spine_04', 'spine_04', 'head')
     $impulse = [Math]::Round((Roll 200 320))
     $push = Pick @(0.0, 0.0, 0.1, 0.2)
     $angle = [Math]::Round(($place.angle + 360.0) % 360.0, 1)

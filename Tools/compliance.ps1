@@ -16,7 +16,7 @@
 #
 # Prints one row a push, writes <Out>\compliance.json. Exit code: 0 every push was measured, 2 one was not.
 param(
-    [string]$Bodies = 'neck_01,spine_04,pelvis,upperarm_l,lowerarm_l,hand_l,thigh_l,calf_l',
+    [string]$Bodies = 'head,spine_04,pelvis,upperarm_l,lowerarm_l,hand_l,thigh_l,calf_l',
     [string]$Forces = '20,60',
     [string]$Ways = 'front,back,side',
     [double]$PushS = 1.5,

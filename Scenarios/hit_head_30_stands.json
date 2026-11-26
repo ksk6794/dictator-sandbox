@@ -18,7 +18,7 @@
     {
       "t": 3.0,
       "type": "impulse",
-      "body": "neck_01",
+      "body": "head",
       "impulse_ns": 30,
       "direction": [
         1,

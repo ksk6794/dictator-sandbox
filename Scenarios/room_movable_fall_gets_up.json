@@ -1,6 +1,6 @@
 {
   "name": "room_movable_fall_gets_up",
-  "duration_s": 20.0,
+  "duration_s": 40.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
     "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
