@@ -917,6 +917,17 @@ struct FSandboxGetUpTuning
 	double RiseLeanMaxDeg = 0.0;
 	FString RiseClipBack;
 	/**
+	 * N7, the rise as fast as the recording (the owner's decision of 26 November). 1: from the clip time at which the clip's hands
+	 * leave the floor for good (the last time either is lower than FastHandCm) the clip does not wait for the pelvis or a foot, and the
+	 * pelvis's assist may pull with up to FastForceN and turn with up to FastTorqueNm, eased in over FastEaseS. 0: the clip waits for the
+	 * body all the way (the body stayed in the forward lean that the recorded person passes in a moment). 0 or 1, cm, N, N*m, s.
+	 */
+	double FastRise = 0.0;
+	double FastHandCm = 0.0;
+	double FastForceN = 0.0;
+	double FastTorqueNm = 0.0;
+	double FastEaseS = 0.0;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.

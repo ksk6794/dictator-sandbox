@@ -296,6 +296,11 @@ namespace
 		Visitor(FString(TEXT("getup.rise_com_cm")), Tuning.GetUp.RiseComCm);
 		Visitor(FString(TEXT("getup.rise_lean_s")), Tuning.GetUp.RiseLeanS);
 		Visitor(FString(TEXT("getup.rise_lean_max_deg")), Tuning.GetUp.RiseLeanMaxDeg);
+		Visitor(FString(TEXT("getup.fast_rise")), Tuning.GetUp.FastRise);
+		Visitor(FString(TEXT("getup.fast_hand_cm")), Tuning.GetUp.FastHandCm);
+		Visitor(FString(TEXT("getup.fast_force_n")), Tuning.GetUp.FastForceN);
+		Visitor(FString(TEXT("getup.fast_torque_nm")), Tuning.GetUp.FastTorqueNm);
+		Visitor(FString(TEXT("getup.fast_ease_s")), Tuning.GetUp.FastEaseS);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
@@ -649,7 +654,12 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.RiseS, 10.0, TEXT("getup"), TEXT("rise_s"), OutError) ||
 		!CheckRange(GetUp.RiseComCm, 100.0, TEXT("getup"), TEXT("rise_com_cm"), OutError) ||
 		!CheckRange(GetUp.RiseLeanS, 10.0, TEXT("getup"), TEXT("rise_lean_s"), OutError) ||
-		!CheckRange(GetUp.RiseLeanMaxDeg, 60.0, TEXT("getup"), TEXT("rise_lean_max_deg"), OutError))
+		!CheckRange(GetUp.RiseLeanMaxDeg, 60.0, TEXT("getup"), TEXT("rise_lean_max_deg"), OutError) ||
+		!CheckRange(GetUp.FastRise, 1.0, TEXT("getup"), TEXT("fast_rise"), OutError) ||
+		!CheckRange(GetUp.FastHandCm, 100.0, TEXT("getup"), TEXT("fast_hand_cm"), OutError) ||
+		!CheckRange(GetUp.FastForceN, 10000.0, TEXT("getup"), TEXT("fast_force_n"), OutError) ||
+		!CheckRange(GetUp.FastTorqueNm, 10000.0, TEXT("getup"), TEXT("fast_torque_nm"), OutError) ||
+		!CheckRange(GetUp.FastEaseS, 5.0, TEXT("getup"), TEXT("fast_ease_s"), OutError))
 	{
 		return false;
 	}

@@ -1462,6 +1462,26 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	{
 		GetUpRun.RiseAtS = FMath::Min(Tuning.GetUp.RiseAtBackS, Best->GetLengthS());
 	}
+	if (Tuning.GetUp.FastRise > 0.5)
+	{
+		// N7 (getup.fast_rise): the rise begins where the clip's hands leave the floor for good.
+		static const FName HandBones[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+		const double ClipEndS = FMath::Min(Tuning.GetUp.EndS, Best->GetLengthS());
+		constexpr double StepS = 1.0 / 60.0;
+		for (int32 Index = 0; Index * StepS <= ClipEndS; ++Index)
+		{
+			const double TimeS = Index * StepS;
+			for (const FName& Hand : HandBones)
+			{
+				FTransform At;
+				if (Best->BodyAt(Hand, TimeS, At) && At.GetLocation().Z < Tuning.GetUp.FastHandCm)
+				{
+					GetUpRun.FastFromS = TimeS;
+				}
+			}
+		}
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: the clip's hands leave the floor at %.2f s of it: the rise goes at the clip's rate from there"), GetUpRun.FastFromS);
+	}
 	Pelvis->Target = First * Frame;
 	Pelvis->Target.SetScale3D(FVector::OneVector);
 	SetAssistTarget(*Pelvis);
@@ -1811,6 +1831,28 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		{
 			Progress(bPelvisBehind, PelvisOff.Size(), GetUpRun.PelvisCheckS, GetUpRun.PelvisLagAtCheck, GetUpRun.bPelvisNotWaited);
 			bPelvisBehind = bPelvisBehind && !GetUpRun.bPelvisNotWaited;
+		}
+	}
+	if (Limits.FastRise > 0.5 && GetUpRun.FastFromS >= 0.0)
+	{
+		// N7 (getup.fast_rise): in the rise the clip does not wait for the body, and the pelvis's pull is stronger. Waiting there, the body
+		// stood in the forward lean that the recorded person passes in a moment, and the world held it like a plank.
+		const bool bFast = Ease >= 1.0 && ClipHold.TimeS >= GetUpRun.FastFromS;
+		if (bFast)
+		{
+			bPelvisBehind = false;
+			bFootWaited = false;
+			if (GetUpRun.FastShare <= 0.0)
+			{
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: getting up at %.2f s: the rise, at the clip's rate, from %.2f s of it"), ElapsedS, ClipHold.TimeS);
+			}
+		}
+		const double FastBefore = GetUpRun.FastShare;
+		const double FastStep = Limits.FastEaseS > 0.0 ? DeltaTime / Limits.FastEaseS : 1.0;
+		GetUpRun.FastShare = FMath::Clamp(GetUpRun.FastShare + (bFast ? FastStep : -FastStep), 0.0, 1.0);
+		if (GetUpRun.FastShare != FastBefore)
+		{
+			PushTuningToControls();
 		}
 	}
 	const bool bBehind = bHeldDown || bPelvisBehind || bFootWaited;
@@ -5056,6 +5098,7 @@ void USandboxBodyController::PushTuningToControls()
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
+			ApplyFastRiseCaps(Assist, Slot);
 		}
 		{
 			// What the legs and the trunk give of it the world does not.
@@ -5559,6 +5602,17 @@ void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) co
 	}
 }
 
+void USandboxBodyController::ApplyFastRiseCaps(const FAssist& Assist, FSandboxAssistTuning& Slot) const
+{
+	// N7 (getup.fast_rise): the rise's stronger pull on the pelvis, eased in and out.
+	if (State == ESandboxBodyState::GetUp && Assist.Slot == EAssistSlot::Pelvis && GetUpRun.FastShare > 0.0)
+	{
+		const double Fast = FMath::SmoothStep(0.0, 1.0, GetUpRun.FastShare);
+		Slot.MaxForceN = FMath::Lerp(Slot.MaxForceN, Tuning.GetUp.FastForceN, Fast);
+		Slot.MaxTorqueNm = FMath::Lerp(Slot.MaxTorqueNm, Tuning.GetUp.FastTorqueNm, Fast);
+	}
+}
+
 void USandboxBodyController::UpdateAssistLoad()
 {
 	// The solver does not report drive forces, so the load is rebuilt from the spring law: stiffness times
@@ -5596,6 +5650,7 @@ void USandboxBodyController::UpdateAssistLoad()
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
+			ApplyFastRiseCaps(Assist, Slot);
 		}
 		{
 			const double WorldShare = WorldShareOf(Assist.Slot);

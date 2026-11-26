@@ -724,6 +724,8 @@ private:
 	void RefreshSolverIsland();
 	void ReleaseIslandRefresh();
 	void UpdateAssistLoad();
+	/** The pelvis's caps while a get-up rises at the clip's rate (getup.fast_rise); nothing otherwise. */
+	void ApplyFastRiseCaps(const FAssist& Assist, FSandboxAssistTuning& Slot) const;
 	/** Hands the pose of the tuning to the animation instance, which blends to it if it is new. */
 	void ApplyPose();
 	/** Works out the turns added on top of the pose this tick (the flinch's offset) and hands them over. */
@@ -827,6 +829,12 @@ private:
 		FQuat RiseFromTurn = FQuat::Identity;
 		FQuat RiseToTurn = FQuat::Identity;
 		FVector2D RiseOffsetCm = FVector2D::ZeroVector;
+		/**
+		 * N7 (getup.fast_rise): the clip's time at which its hands leave the floor for good (below 0: no fast rise), and how far the
+		 * rise's stronger pull has come in (0 to 1).
+		 */
+		double FastFromS = -1.0;
+		double FastShare = 0.0;
 	};
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;

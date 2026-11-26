@@ -5014,6 +5014,26 @@ the body is tilted more than 25 to 32 degrees, before a hand-over is possible, a
 hold (150 N*m on the pelvis) instead of the get-up's assist. Of the 150 handed over at 25 degrees, the first-attempt ones fell by 17:
 a step does not catch a body that far ahead of its feet.
 
+**The rise as fast as the recording** (the owner's choice; `getup.fast_rise`, 0 in the file; limits before the runs:
+`Saved\Recon\n7_fast_plan.md`). From the clip time at which the clip's hands leave the floor for good (the last time either is lower
+than `fast_hand_cm` 9 above its floor; stand_B 1.30 s) the clip does not wait for the pelvis or a foot, and the pelvis's assist may
+pull with up to `fast_force_n` and turn with up to `fast_torque_nm`, eased in over `fast_ease_s`; both the controls and the assist's
+measured load take those caps (`ApplyFastRiseCaps`). The suite with the switch at 0 has the hashes of `n2`.
+
+| Variant | Stand, first attempt | Plank while getting up + after | Get-up | Assist | Suite |
+| --- | --- | --- | --- | --- | --- |
+| Today | 150, 130 | 1.36 + 0.24 = 1.61 s | 5.01 s | 0.28 | 127 |
+| F-a, 400 N and 500 N*m in the rise | 150, 135 | **0.87 + 0.17 = 1.04** | 4.01 | 0.33 | 127 |
+| F-b, no more pull, only no waits | **148, 74** | **1.41** | 3.86 | 0.27 | **4 fail** |
+
+F-a misses the point's limit (half of today's plank, 0.81 s) and meets the others: more first attempts, a second shorter, the assist
+within the 0.35 allowed. The plank is a third shorter. Without the stronger pull (F-b) the body falls behind its clip and is lost.
+Side videos of whole get-ups for the owner: `Saved\Films\n7_whole_back_today`, `n7_whole_back_fast`, `n7_whole_front_today`,
+`n7_whole_front_fast`. The switch stays at 0 until the owner has looked.
+
+**The owner on those videos: nothing is better.** The last part of the get-up is still wooden, a rocket raised on its launcher, and
+the get-up still reads as separate animations glued together with pauses between them. The switch stays at 0.
+
 
 
 
