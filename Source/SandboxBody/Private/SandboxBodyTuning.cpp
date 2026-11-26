@@ -194,6 +194,7 @@ namespace
 		Visitor(FString(TEXT("reactions.double_over_from")), Tuning.Reactions.DoubleOverFrom);
 		Visitor(FString(TEXT("reactions.double_over_to")), Tuning.Reactions.DoubleOverTo);
 		Visitor(FString(TEXT("reactions.knockdown_head_ns")), Tuning.Reactions.KnockdownHeadNs);
+		Visitor(FString(TEXT("reactions.reflex_delay_s")), Tuning.Reactions.ReflexDelayS);
 		Visitor(FString(TEXT("reactions.pressure_s")), Tuning.Reactions.PressureS);
 		Visitor(FString(TEXT("reactions.held_push_s")), Tuning.Reactions.HeldPushS);
 		Visitor(FString(TEXT("reactions.thing_support")), Tuning.Reactions.ThingSupport);
@@ -727,7 +728,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		}
 	}
 	if (!CheckRange(Reactions.FlinchPoseFullNs, 1000.0, TEXT("reactions"), TEXT("flinch_pose_full_ns"), OutError) ||
-		!CheckRange(Reactions.FlinchGiveDeg, 90.0, TEXT("reactions"), TEXT("flinch_give_deg"), OutError))
+		!CheckRange(Reactions.FlinchGiveDeg, 90.0, TEXT("reactions"), TEXT("flinch_give_deg"), OutError) ||
+		!CheckRange(Reactions.ReflexDelayS, 30.0, TEXT("reactions"), TEXT("reflex_delay_s"), OutError))
 	{
 		return false;
 	}

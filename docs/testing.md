@@ -4552,6 +4552,45 @@ from the side, from the front: in both the body goes over straight, knees unbent
 camera loses the body after 4.1 s). **Recommended for the owner's look, not switched on:** these values; what they still need is the wrist's speed at the floor (N8 A's wrist model) and the trunk and legs of step 6.
 
 
+### The natural body, N4 step 1: mechanics first (the same night; not met, off; for the owner to confirm)
+
+Built behind `reactions.reflex_delay_s` (0 in the file: the hashes of `hold`). A hit felt while standing starts the clock, unless it runs already; until it ends the flinch (its state, pose offset and
+weakening) and a doubling over wait, the balance strategies keep the goals they had (`UpdateStrategies` returns), and no step is decided; a fall by the posture and the knockdown by a hit on the head do not wait.
+The clocks of the plan's step and intent (`balance.step_delay_s`, `reactions.intent_delay_s`) are not built: a step is decided as soon as the reflex's delay is over.
+
+Limits written before the runs (R1 to R6), at a delay of 0.08 s (C9's human range is 0.07 to 0.11):
+
+| | Limit | Result |
+| --- | --- | --- |
+| R1 | the hashes of `hold` with the delay at 0 | 117 the same |
+| R2 | the run at 0.08 and the run with everything held back (10 s, standing for "every reaction off") the same until the hit + 0.08 | the first frame that differs is 3.100 s (the flinch at 3.089): **met**, but two runs that both delay share whatever is not delayed, so R3 is the test that counts |
+| R3 | `react_unseen_chest_30`: the first change of a muscle's target 0.058 to 0.102 s after the hit; no step before | 0.100 s (today 0.011), the first change of strength 0.089 (today 0); no step: **met** |
+| R4 | `react_two_hits`: a second hit 30 ms later does not start the clock again | the flinch at 3.089, as with one hit: **met** |
+| R5 | the push matrix at 0.05, 0.08, 0.11, beside the owner's table (for the owner) | **156, 155, 153 of 160** (today 160). Fewer steps at 30 N*s (3 against 6); at 80 and 200 N*s cells that call for a step end "held": the standing assist's pull keeps working while the body waits and takes back what the step would have caught |
+| R6 | at 0.08: knockdowns 8 of 8 both ways; the stand no worse than 149, 132; the suite read | knockdowns 8 and 8; **the stand 145, 120**; the suite fails five: `measure_reaction` (it holds N1's known answer, a strength change within 0.012 s, which the delay changes on purpose), `head_slap_cheek_turns`, `prop_fall_on_box`, `strike_kick_calf`, `strike_kick_torso` |
+
+**Not met (R5, R6); nothing is switched on.** What the delay shows is the plan's first risk: while the body waits the assist holds it, so it steps less and a cell that wants a step reads "held"; the plan's fallback is
+to apply the delay once N2's step 5 (the assist as the joints' own torques) is done. The largest jump of a command over the suite at 0.08 is 487 N*m (35 scenarios over 200), against today's 429 (39). The film of a hit
+of 30 N*s from the side (`Saved\Films\n4_hit30_today`, `n4_hit30_reflex08`, every 33 ms from 3.0 s) shows no difference at that scale: the trunk goes back a few centimetres in both; the figures above are where
+it shows. `react_unseen_chest_30` and `react_two_hits` are in the suite and switch the delay on themselves.
+
+**A second attempt, after an independent reading of the code.** The reader found the neutral claim holding and four defects in the delay: the standing assist kept pulling the body back while it waited (the
+cells "held"), the waiting flinch added up every crossing of the threshold in a contact (about 60 N*s against 10), a hit on the frame the delay ended started it again, and a fall left the strategies held to the
+end of the delay. Made again: the state is a flinch at the hit, so the assist lets go as in any flinch, and only the flinch's pose and weakening, the strategies' new goals and a step wait (`FlinchStartedS` is the
+end of the delay); a brace comes no earlier than the reflex; a fall ends the hold. Still neutral (the hashes of `hold`). The same limits:
+
+| | First attempt | Second |
+| --- | --- | --- |
+| R2, first frame that differs | 3.100 s | 3.100 s |
+| R3, first target change; step | 0.100 s; none | 0.100 s; a step lifts at 0.089 (the reflex): the hit of 30 N*s that today's body stands now takes two steps |
+| R5, push matrix at 0.05 / 0.08 / 0.11 | 156, 155, 153 | **155, 156, 155** (left: "held" at 80 N*s on a thigh, and blows on the head at 30 N*s that step) |
+| R6, knockdowns by a blow; by hand | 8; 8 | **6** (one at rest after 4.1 s); 8 |
+| R6, the stand | 145, 120 | 150, **127** |
+| R6, the suite | five fail | eleven fail (two of them `react_*`, whose own tuning event changes nothing once the run is tuned already) |
+
+**Not met either way; off.** The second form is the one in the code.
+
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

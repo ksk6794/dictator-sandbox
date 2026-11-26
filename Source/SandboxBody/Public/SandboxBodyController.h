@@ -1025,6 +1025,14 @@ private:
 	/** The fall with an aim (fall.*): the way the body goes down, followed every tick, and the hands sent to the floor along it. */
 	void UpdateFallAim(double DeltaTime);
 	void StopFallAim();
+	/**
+	 * N4, the order of reactions (reactions.reflex_delay_s): until when the body moves by mechanics alone after a hit, and
+	 * when a doubling over may begin. The flinch's state begins at the hit (the assist lets go of the body, as it does in a
+	 * flinch), its pose and weakening at FlinchStartedS, the end of the delay.
+	 */
+	double MechanicsUntilS = -1.0;
+	double DoubledFromS = -1.0;
+	bool InMechanics() const { return MechanicsUntilS >= 0.0 && ElapsedS < MechanicsUntilS - KINDA_SMALL_NUMBER; }
 	bool bFallAiming = false;
 	FVector2D FallWayNow = FVector2D::ZeroVector;
 	double FallFloorZ = 0.0;

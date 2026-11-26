@@ -581,7 +581,7 @@ void USandboxBodyController::UpdatePoseTurns()
 	// the muscles are back to full strength. It fades by its own clock, not with the state: a hit that knocks
 	// the body over ends the flinch at once, and an offset dropped in one step had the muscles snap the body
 	// back (13.8 J put into a falling body). Once the body lies, nothing is left of it.
-	if (FlinchStartedS >= 0.0 && State != ESandboxBodyState::Lying)
+	if (FlinchStartedS >= 0.0 && ElapsedS >= FlinchStartedS && State != ESandboxBodyState::Lying)
 	{
 		const FSandboxReactionTuning& Reactions = Tuning.Reactions;
 		const double Strength = FMath::Clamp(FlinchImpulseNs.Size() / Reactions.FlinchPoseFullNs, 0.0, 1.0);
@@ -951,6 +951,11 @@ void USandboxBodyController::UpdateIdle(double DeltaTime)
 
 void USandboxBodyController::UpdateStrategies(double DeltaTime)
 {
+	// Mechanics first (N4): the goals of the strategies, the arms' and the lean's stay what they were at the hit.
+	if (InMechanics())
+	{
+		return;
+	}
 	const FSandboxBalanceTuning& Limits = Tuning.Balance;
 	const bool bUpright = IsUpright();
 	FVector2D LeanGoal = FVector2D::ZeroVector;
@@ -1570,7 +1575,7 @@ double USandboxBodyController::MuscleScale(ESandboxMuscleGroup Group) const
 	}
 	// A flinch that turns into a stagger keeps its weakening: it fades by its own clock from the hit, so that the
 	// change of state does not hand the hit muscles their full strength back in one step.
-	if ((State != ESandboxBodyState::Flinch && State != ESandboxBodyState::Stagger) || Group != FlinchGroup || FlinchStartedS < 0.0)
+	if ((State != ESandboxBodyState::Flinch && State != ESandboxBodyState::Stagger) || Group != FlinchGroup || FlinchStartedS < 0.0 || FlinchStartedS > ElapsedS)
 	{
 		return 1.0;
 	}
@@ -1650,6 +1655,8 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 			Muscle.FallFromVelocityShare = Muscle.PoseVelocityShare;
 		}
 		bFallEaseFromSet = true;
+		// The strategies' goals let go of as in any fall, not held to the end of a reflex's delay (N4).
+		MechanicsUntilS = -1.0;
 		// The pose of the fall is chosen once, as the fall starts (ApplyTuning below asks for it).
 		ChooseFallWay();
 		static const TCHAR* const WayNames[] = { TEXT("backward"), TEXT("forward"), TEXT("to the left"), TEXT("to the right") };
@@ -3132,7 +3139,7 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		{
 			if (BraceUntilS < ElapsedS)
 			{
-				BraceFromS = ElapsedS + Tuning.Tone.BraceDelayS;
+				BraceFromS = ElapsedS + FMath::Max(Tuning.Tone.BraceDelayS, Tuning.Reactions.ReflexDelayS);
 				++Braces;
 			}
 			BraceUntilS = ElapsedS + Tuning.Tone.BraceDelayS + Tuning.Tone.BraceHoldS;
@@ -3168,7 +3175,9 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			if (Reactions.DoubleOverNs > 0.0 && !bBellyDoubled && bUpright && BellyHitNs >= Reactions.DoubleOverNs)
 			{
 				bBellyDoubled = true;
-				DoubledUntilS = ElapsedS + Reactions.DoubleOverS;
+				// After the reflex's delay (N4), counted from the hit that started the clocks.
+				DoubledFromS = Reactions.ReflexDelayS > 0.0 ? (InMechanics() ? MechanicsUntilS : ElapsedS + Reactions.ReflexDelayS) : ElapsedS;
+				DoubledUntilS = DoubledFromS + Reactions.DoubleOverS;
 				++DoubleOvers;
 				UE_LOG(LogSandbox, Display, TEXT("Body controller: doubled over at %.3f s (hit of %.1f N*s into the belly, on %s)"), ElapsedS, BellyHitNs, *FrameBone.ToString());
 				FSandboxBodyEvent Event;
@@ -3234,6 +3243,15 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			FlinchBone = FrameBone;
 			FlinchImpulseNs = HitImpulseNs;
 			FlinchStartedS = ElapsedS;
+			if (Reactions.ReflexDelayS > 0.0)
+			{
+				// Mechanics first (N4): the flinch's pose and weakening, new goals of the strategies and a decision to step wait
+				// for the reflex. The state is a flinch at once, so that the assist lets go of the body as in any flinch: held
+				// by it while the body waits, a blow was taken back and the step it called for was not needed.
+				MechanicsUntilS = ElapsedS + Reactions.ReflexDelayS;
+				FlinchStartedS = MechanicsUntilS;
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: hit of %.1f N*s on %s at %.3f s; mechanics alone until %.3f s"), HitImpulseNs.Size(), *FrameBone.ToString(), ElapsedS, MechanicsUntilS);
+			}
 			bFlinchWeakeningOver = false;
 			EnterState(ESandboxBodyState::Flinch, FString::Printf(TEXT("hit of %.1f N*s on %s"), HitImpulseNs.Size(), *FrameBone.ToString()));
 			HitImpulseNs = FVector::ZeroVector;
@@ -3258,7 +3276,7 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 	// target that jumps puts energy into the body). A body that lies or gets up lets it go.
 	if (DeltaTime > 0.0)
 	{
-		const bool bHeld = ElapsedS < DoubledUntilS && State != ESandboxBodyState::Lying && State != ESandboxBodyState::GetUp;
+		const bool bHeld = ElapsedS < DoubledUntilS && ElapsedS >= DoubledFromS && State != ESandboxBodyState::Lying && State != ESandboxBodyState::GetUp;
 		DoubledWeight = bHeld
 			? FMath::Min(DoubledWeight + DeltaTime / Reactions.DoubleOverInS, 1.0)
 			: FMath::Max(DoubledWeight - DeltaTime / Reactions.DoubleOverOutS, 0.0);
@@ -3373,7 +3391,7 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 			EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("capture point %.1f cm outside the support, %.0f cm by the time a step lands: beyond a step"),
 				-LastDecisionMarginCm, AtLandingCm));
 		}
-		else if (bStepNeeded && State != ESandboxBodyState::Stagger && PlacedFeet.Num() == 0)
+		else if (bStepNeeded && State != ESandboxBodyState::Stagger && PlacedFeet.Num() == 0 && !InMechanics())
 		{
 			// A body whose legs are placed from outside (a scenario's foot_target) cannot step: a step it needs is held
 			// by the assist and reported, as before the stagger existed. (Staggering, it lost the assist's pull and fell
@@ -3422,7 +3440,7 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 
 	if (State == ESandboxBodyState::Flinch)
 	{
-		if (ElapsedS - StateEnteredS >= Tuning.Reactions.FlinchRecoveryS)
+		if (ElapsedS - FMath::Max(StateEnteredS, FlinchStartedS) >= Tuning.Reactions.FlinchRecoveryS)
 		{
 			bFlinchWeakeningOver = true;
 			EnterState(ESandboxBodyState::Standing, TEXT("recovered from the hit"));

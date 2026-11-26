@@ -571,6 +571,8 @@ A body that waits catches less: the capture point runs away by e^(ωt), about 1.
 
 ### Steps
 
+**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N4 step 1"):** the reflex's clock is built behind `reactions.reflex_delay_s` (0); the step's and the intent's are not. At 0.08 s the first change of a target comes at 0.100 s instead of 0.011, a second hit does not restart the clock, the knockdowns pass; the push matrix is 156, 155 and 153 of 160 at 0.05, 0.08 and 0.11 (cells that want a step end "held" while the assist holds the waiting body) and the stand is 145 and 120: the first risk below, with its fallback (after N2's step 5). Made again after an independent reading (the assist lets go at the hit, as in a flinch): matrix 155 to 156, the stand 150 and 127, the knockdowns by a blow 6 of 8. Off.
+
 1. The three clocks and the frozen goals; `react_passive_first` first, since it proves the phase of mechanics.
 2. The step's delay and the aim with the delay counted in.
 3. The matrix at four settings, for the owner.

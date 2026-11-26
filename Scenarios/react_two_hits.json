@@ -1,0 +1,57 @@
+{
+  "name": "react_two_hits",
+  "duration_s": 8.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune reactions.reflex_delay_s=0.08"
+    },
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 30,
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    },
+    {
+      "t": 3.03,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 10,
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "max_joint_stretch_cm": 2.0,
+    "fell": false,
+    "measures": {
+      "control.reactions.0.first_target_change_s": {
+        "min": 0.0577,
+        "max": 0.1023
+      }
+    }
+  }
+}

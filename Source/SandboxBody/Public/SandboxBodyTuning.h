@@ -499,6 +499,12 @@ struct FSandboxReactionTuning
 	 */
 	double KnockdownHeadNs = 0.0;
 	/**
+	 * After a hit felt while standing, the body moves by mechanics alone for this long (N4): the flinch and its weakening,
+	 * a doubling over, the balance strategies' new goals and a decision to step wait for it; a fall by the posture does not.
+	 * 0: all at once, as before. Seconds.
+	 */
+	double ReflexDelayS = 0.0;
+	/**
 	 * What the body feels is split in two: pressure, the felt force smoothed over this time, and the hit, the
 	 * impulse beyond that pressure. Only a hit makes the body flinch, so a hand held against it is felt once,
 	 * as it lands, and not again for as long as it presses. Seconds.

@@ -174,7 +174,8 @@
     "double_over_out_s": 0.8,
     "double_over_from": -0.15,
     "double_over_to": 0.53,
-    "knockdown_head_ns": 35
+    "knockdown_head_ns": 35,
+    "reflex_delay_s": 0
   },
   "getup": {
     "rest_s": 1.5,
