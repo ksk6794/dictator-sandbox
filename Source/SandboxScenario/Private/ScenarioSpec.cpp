@@ -527,6 +527,15 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 		}
 		OutSpec.bGetUp = GetUp->AsBool();
 	}
+	if (const TSharedPtr<FJsonValue> Perception = (*Body)->TryGetField(TEXT("perception")))
+	{
+		if (Perception->Type != EJson::Boolean)
+		{
+			OutError = TEXT("'body.perception' must be true or false");
+			return false;
+		}
+		OutSpec.bPerception = Perception->AsBool();
+	}
 
 	if ((*Body)->HasField(TEXT("control")))
 	{

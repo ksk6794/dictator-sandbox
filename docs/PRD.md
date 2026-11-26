@@ -1107,7 +1107,7 @@ Asked for by the owner on 25 November 2026: a body that behaves and reacts as a 
 | N3 | Strength joint by joint and a tone that rises and falls | Before M4b; **begun 26 Nov** (values, tone, brace, daze, all neutral; the caps miss the stand) |
 | N6 | The fall with an aim: a hand target, arms that reach and brake, the head kept off the floor | Before M4b; **begun 26 Nov** (the hand target built; the reach behind a switch misses the energy and the stand) |
 | N4 | Mechanics, then reflex, then intent, at a person's delays | Before M4b; **begun 26 Nov** (the reflex's clock behind a switch; the matrix and the stand miss) |
-| N5 | Perception: gaze, bracing before a blow that is seen, the answer to a hold | Before M4b, with a headset session |
+| N5 | Perception: gaze, bracing before a blow that is seen, the answer to a hold | Before M4b, with a headset session; **begun 26 Nov** (perception that judges and the gaze, behind switches; the time to contact reckoned 0.08 s long) |
 | N8 D | Toes, as an experiment | Just before M4b |
 | N7 | Life on the floor and a get-up that never holds a pose | With M4b |
 | N9, N8 C | Variation from a seed; skin at twisted joints | After M4b, before M5 |

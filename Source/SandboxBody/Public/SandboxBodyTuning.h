@@ -715,6 +715,54 @@ struct FSandboxFallAimTuning
 	double YieldDamping = 0.0;
 };
 
+/** What the body makes of what moves near it (N5, "perception.*"). Step 1 judges and does nothing with it. */
+struct FSandboxPerceptionTuning
+{
+	/** 1 judges what it is told (a scenario's body only with "perception": true); 0 not at all. */
+	double Enabled = 0.0;
+	/** In view: within this angle of where the head faces. Degrees. */
+	double ViewHalfAngleDeg = 0.0;
+	/** Noticed: this long in view. Seconds. */
+	double NoticeS = 0.0;
+	/** A threat: closing on the head or the trunk at least this fast with at most this long to the contact; or this near the face. */
+	double ThreatSpeedMps = 0.0;
+	double ThreatTimeS = 0.0;
+	double ThreatNearCm = 0.0;
+	/** The sizes contact is reckoned with: the head's and the trunk's, and a thing's that is told with none. Centimetres. */
+	double HeadRadiusCm = 0.0;
+	double TrunkRadiusCm = 0.0;
+	double ThingRadiusCm = 0.0;
+	/** Gaze (N5 step 2): 1 turns the head toward what the body attends to; 0 not. */
+	double Gaze = 0.0;
+	/** How much of the angle the head takes (the eyes the rest, in M5), how fast it turns, how far. Share, deg/s, deg. */
+	double GazeHeadShare = 0.0;
+	double GazeSpeedDps = 0.0;
+	double GazeMaxYawDeg = 0.0;
+	double GazeMaxPitchDeg = 0.0;
+	/** How long it stays on a thing before another may take its place (a threat always may), and how fast a thing must move to be looked at. */
+	double GazeDwellS = 0.0;
+	double GazeMoveMps = 0.0;
+	/** How long the head takes to come up to its turning speed: the neck's target never starts or stops turning in one frame. Seconds. */
+	double GazeRiseS = 0.0;
+	/**
+	 * Anticipation (N5 step 4): 1 braces the body and draws the head in before the contact of a threat it noticed; 0 not. It begins react_s
+	 * after the threat (a person's reaction to what is seen), holds anticipate_hold_s, and its pose comes in over anticipate_pose_s.
+	 */
+	double Anticipate = 0.0;
+	double ReactS = 0.0;
+	double AnticipateHoldS = 0.0;
+	double AnticipatePoseS = 0.0;
+	/**
+	 * The guarding arm (N5 step 5): 1 raises the near arm against a threat to the head that has at least guard_time_s to the contact, or is near the
+	 * face; its hand goes guard_reach_cm from the face toward the threat, for guard_hold_s, eased over guard_blend_s. 0 not.
+	 */
+	double Guard = 0.0;
+	double GuardTimeS = 0.0;
+	double GuardReachCm = 0.0;
+	double GuardHoldS = 0.0;
+	double GuardBlendS = 0.0;
+};
+
 /** How the weight torques are worked out ("muscles.weight_*"). */
 struct FSandboxWeightTuning
 {
@@ -865,6 +913,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxJointScale Joints[SandboxJointKindCount];
 	FSandboxToneTuning Tone;
 	FSandboxFallAimTuning FallAim;
+	FSandboxPerceptionTuning Perception;
 	/** The values of the joint whose child is this bone (its kind with the side taken off); null for a bone of no kind. */
 	const FSandboxJointScale* JointScale(FName ChildBone) const;
 

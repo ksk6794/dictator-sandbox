@@ -78,6 +78,62 @@ struct FSandboxBodyHold
 	FVector PointCm = FVector::ZeroVector;
 };
 
+/** What moves near the body (N5), told once a frame by whoever knows both sides: a hand, a foot, a thing, the player's head. */
+enum class ESandboxSeenKind : uint8
+{
+	Hand,
+	Foot,
+	Thing,
+	Viewer
+};
+struct FSandboxSeen
+{
+	FName Name;
+	ESandboxSeenKind Kind = ESandboxSeenKind::Thing;
+	/** World, cm and cm/s; its size, cm (0: perception.thing_radius_cm). */
+	FVector LocationCm = FVector::ZeroVector;
+	FVector VelocityCmS = FVector::ZeroVector;
+	double RadiusCm = 0.0;
+};
+/** A thing the body took for a threat, at the moment it did. */
+struct FSandboxThreatEvent
+{
+	FName Name;
+	/** What it was closing on: the head or the trunk. */
+	FName Part;
+	double TimeS = 0.0;
+	/** How long it would take to touch, at the speed it closed with then; its gap; that speed. */
+	double TimeToContactS = 0.0;
+	double GapCm = 0.0;
+	double ClosingMps = 0.0;
+	bool bNear = false;
+};
+/** What the body's perception made of what it was told (USandboxBodyController::GetPerceptionView). */
+struct FSandboxPerceptionView
+{
+	bool bOn = false;
+	int32 TellFrames = 0;
+	int32 SeenFrames = 0;
+	int32 Noticed = 0;
+	TArray<FSandboxThreatEvent> Threats;
+	/** Gaze: frames it looked at something, the mean angle between where the head faced and that thing, frames at the neck's bound, and changes of what it looked at. */
+	int32 GazeFrames = 0;
+	double GazeErrorSumDeg = 0.0;
+	int32 GazeAtLimitFrames = 0;
+	int32 GazeShifts = 0;
+	/** Of those, the frames it looked at where it is held, and the mean angle then. */
+	int32 GazeHoldFrames = 0;
+	double GazeHoldErrorSumDeg = 0.0;
+	/** Anticipation: how often it began, how long before the contact that followed (sum, count), and how often no contact followed within a second. */
+	int32 Anticipations = 0;
+	/** Guards raised. */
+	int32 Guards = 0;
+	double AnticipationLeadSumS = 0.0;
+	int32 AnticipationLeads = 0;
+	int32 FalseAlarms = 0;
+	double GazeErrorMeanDeg() const { return GazeFrames > 0 ? GazeErrorSumDeg / GazeFrames : 0.0; }
+};
+
 /**
  * One thing that happened to the body, for whoever listens (USandboxBodyController::OnBodyEvent): sound, a
  * face, a health system, a result file. The body tells; it does not know who hears, and a listener changes
@@ -328,6 +384,14 @@ public:
 	 * tells it otherwise.
 	 */
 	void SetGetUpAllowed(bool bAllowed) { bGetUpAllowed = bAllowed; }
+
+	/**
+	 * What moves near the body this frame (N5). The body only judges it (in view, noticed, a threat) and keeps count; step 1
+	 * of N5 does nothing with it. Judged only once SetPerceptionAllowed and perception.enabled.
+	 */
+	void TellSeen(TConstArrayView<FSandboxSeen> InSeen) { Seen = InSeen; }
+	void SetPerceptionAllowed(bool bAllowed) { bPerceptionAllowed = bAllowed; }
+	const FSandboxPerceptionView& GetPerceptionView() const { return PerceptionView; }
 	const FSandboxGetUpView& GetGetUpView() const { return GetUpView; }
 
 	/** Lets the clip's pose go: the target goes back to the state's pose within poses.blend_s. */
@@ -1033,6 +1097,61 @@ private:
 	double MechanicsUntilS = -1.0;
 	double DoubledFromS = -1.0;
 	bool InMechanics() const { return MechanicsUntilS >= 0.0 && ElapsedS < MechanicsUntilS - KINDA_SMALL_NUMBER; }
+	/** N5: what the body was told moves near it, what it makes of each thing, and its count. */
+	struct FSeenTrack
+	{
+		FName Name;
+		double InViewS = 0.0;
+		bool bNoticed = false;
+		bool bThreat = false;
+		/** The time to the contact it reckoned last, for choosing which threat to look at. */
+		double TimeToContactS = 0.0;
+	};
+	TArray<FSandboxSeen> Seen;
+	TArray<FSeenTrack> SeenTracks;
+	bool bPerceptionAllowed = false;
+	FSandboxPerceptionView PerceptionView;
+	/** Where the head body faces, in its own frame (the mesh faces +y in the reference pose). */
+	FVector HeadForwardLocal = FVector::YAxisVector;
+	/** Gaze (N5): the neck's and the chest's reference rotations in the component, the neck's bone, what it looks at and since when, and the turn now. */
+	FQuat NeckRefRotation = FQuat::Identity;
+	FQuat ChestRefRotation = FQuat::Identity;
+	int32 NeckMeshIndex = INDEX_NONE;
+	FName GazeOn;
+	double GazeOnSinceS = 0.0;
+	double GazeYawDeg = 0.0;
+	double GazePitchDeg = 0.0;
+	double GazeYawRateDps = 0.0;
+	double GazePitchRateDps = 0.0;
+	/** Moves the gaze's turn toward a goal at its limited speed and acceleration. */
+	void StepGaze(double DeltaTime, double GoalYawDeg, double GoalPitchDeg);
+	void UpdateGaze(double DeltaTime, const FVector& Facing);
+	/** Anticipation (N5 step 4): when it is due, from when to when it holds, how much of its pose is on, and the hit that followed. */
+	double AnticipateDueS = -1.0;
+	double AnticipateFromS = -1.0;
+	double AnticipateUntilS = -1.0;
+	/** Until when its pose holds; and the flinch's own pose weight this tick, which the anticipation's is not laid on top of. */
+	double AnticipatePoseUntilS = -1.0;
+	double FlinchPoseWeightNow = 0.0;
+	double AnticipateWeight = 0.0;
+	double LastHitS = -1.0;
+	bool bAnticipationJudged = true;
+	void UpdateAnticipation(double DeltaTime);
+	/** The guarding arm (N5 step 5): which hand (-1 none), until when, toward what, and where its point was last. */
+	int32 GuardSide = -1;
+	int32 GuardWantedSide = -1;
+	FName GuardWantedOn;
+	FName GuardOn;
+	double GuardUntilS = -1.0;
+	FVector GuardPointCm = FVector::ZeroVector;
+	/** Whether the guard's hand has been placed yet; and the hand a fall's reach leaves to the guard's release for that whole fall. */
+	bool bGuardPlaced = false;
+	int32 FallSkipSide = -1;
+	void UpdateGuard();
+	void StopGuard();
+	/** An arm's hand placed at a point, as SetFootTarget does, but not one of the placed feet (which keep the body from stepping). */
+	bool PlaceArm(FName Hand, const FVector& WorldLocation, double Weight, double BlendS, bool bElbowDown = false);
+	void UpdatePerception(double DeltaTime);
 	bool bFallAiming = false;
 	FVector2D FallWayNow = FVector2D::ZeroVector;
 	double FallFloorZ = 0.0;

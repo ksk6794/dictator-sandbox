@@ -86,6 +86,9 @@ Event types. Unknown types are a parse error.
   elbow bent back and out, the hand turns with its forearm, and the shoulder and the elbow are held to their
   ranges. It is reported with the feet, under `control.foot_targets`, and checked by
   `max_foot_target_error_cm`. Active control only.
+- A scenario's `body` may say `"perception": true` (false when left out): the run then tells the body every frame
+  where the hands, the feet and the things with mass are and how fast they go, and the body judges what it sees
+  (N5, `perception.*`); `control.perception` has its count and every threat. It changes nothing the body does yet.
 - `tone` asks the body for a tone (`level`: `limp`, `relaxed`, `ready` or `braced`) for `duration_s`; the
   muscles go over to it at `tone.rise_s` or `tone.fall_s` and back to their standing levels after it. With
   every level at 1 (the file's values) it changes nothing. Active control only.

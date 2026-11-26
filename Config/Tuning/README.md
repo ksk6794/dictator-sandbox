@@ -31,6 +31,18 @@ are four: `body.json` (the character), `poses.json` (the poses the character's m
 | `tone.standing.<group>` | level | The level a group stands at with nothing happening: 0 limp, 1 relaxed, 2 ready, 3 braced. A scenario's `tone` event asks the whole body for a level for a time |
 | `tone.brace_from_ns`, `brace_delay_s`, `brace_hold_s` | N*s, s, s | A hit of at least this braces the whole body that much after it (a reflex) for that long; 0 never |
 | `tone.daze_from_ns`, `daze_scale`, `daze_s` | N*s, factor, s | A hit on the head from this much up to the knockdown's dazes the body: legs and spine at down to `daze_scale` of their tone, graded with the hit, back over `daze_s`; 0 never |
+| `perception.enabled` | 0 or 1 | The body judges what moves near it (N5, step 1: it judges and does nothing). A scenario's body only with `"perception": true` in its `body`; a session's not yet |
+| `perception.view_half_angle_deg`, `perception.notice_s` | deg, s | In view: within this angle of where the head faces; noticed: this long in view |
+| `perception.threat_speed_mps`, `threat_time_s`, `threat_near_cm` | m/s, s, cm | A threat: something noticed that closes on the head or the trunk at least this fast with at most this long to the contact, or is this near the face |
+| `perception.head_radius_cm`, `trunk_radius_cm`, `thing_radius_cm` | cm | The sizes the contact is reckoned with; the last for a thing told with no size |
+| `perception.gaze` | 0 or 1 | 1: the head turns toward what the body attends to (a threat, else the nearest thing it noticed that moves), through the neck's target (N5 step 2); 0: not |
+| `perception.gaze_head_share`, `gaze_speed_dps`, `gaze_max_yaw_deg`, `gaze_max_pitch_deg` | share, deg/s, deg | How much of the angle the head takes (the eyes the rest, in M5), how fast it turns, how far to a side and up or down |
+| `perception.gaze_dwell_s`, `gaze_move_mps` | s, m/s | How long it stays on a thing before another may take its place (a threat always may); how fast a thing must move to be looked at |
+| `perception.anticipate` | 0 or 1 | 1: a threat the body noticed braces it (the tone's braced level, the whole body) and draws its head in (the flinch's pose) before the contact (N5 step 4); 0: not |
+| `perception.react_s`, `anticipate_hold_s`, `anticipate_pose_s` | s | How long after the threat the anticipation begins (a person's reaction to what is seen), how long it holds, how fast its pose comes in and goes |
+| `perception.guard` | 0 or 1 | 1: a threat to the head with time to spare, or held near the face, raises the near arm into its way (N5 step 5); 0: not |
+| `perception.guard_time_s`, `guard_reach_cm`, `guard_hold_s`, `guard_blend_s` | s, cm, s, s | The least time to the contact for a guard; how far from the face the hand goes toward the threat; how long it holds; how fast it comes and goes |
+| `perception.gaze_rise_s` | s | How long the head takes to come up to its turning speed, and down from it: the neck's target never starts or stops turning in one frame |
 | `fall.aim` | 0 or 1 | 1: while the body falls the hands reach for the floor along the way it goes (N6); 0: today's fall, bit for bit |
 | `fall.reach_ahead_cm`, `fall.hand_height_cm` | cm | Where a hand is sent: this far from its shoulder along the fall's way, its wrist this high above the floor |
 | `fall.reach_blend_s`, `fall.way_follow_s` | s | How fast the reach comes in; how fast the fall's way follows the body |

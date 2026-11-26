@@ -120,6 +120,13 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 					Added.PoleDirection = Bend->Key;
 					Added.HingeFallback = Bend->Value;
 					Added.bArm = true;
+					// A guard's arm has its weight eased once more on top of the limb's own ease (CurrentWeight): raised in 0.2 s, its upper arm's
+					// target turned 9 degrees beyond its motion as the weight began. (Other arms, and every leg, keep the limb's own ease.)
+					if (Instance->EasedTwice.Contains(Limb.Target.EndMeshBoneIndex))
+					{
+						Added.Weight = FMath::SmoothStep(0.0, 1.0, FMath::Clamp(Added.Weight, 0.0, 1.0));
+						Added.bJointBlend = true;
+					}
 				}
 				if (const TPair<FSandboxJointLimits, FSandboxJointLimits>* Range = Instance->Ranges.Find(Limb.Target.EndMeshBoneIndex))
 				{
@@ -206,7 +213,9 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		FTransform MiddleTransform = ComponentPose.GetComponentSpaceTransform(Middle);
 		FTransform EndTransform = ComponentPose.GetComponentSpaceTransform(End);
 		const FVector Target = (Limb.bInFrame ? Limb.Frame : Component).InverseTransformPosition(Limb.WorldLocation);
-		FVector Effector = FMath::Lerp(EndTransform.GetLocation(), Target, FMath::Clamp(Limb.Weight, 0.0, 1.0));
+		// An arm is solved for the whole of its target, and the weight blends its joints' turns afterwards (below): blended by the end's place,
+		// a hand on its way from the hip to before the face went past the shoulder, and the arm folded there in a frame (9 to 13 degrees).
+		FVector Effector = Limb.bJointBlend ? Target : FMath::Lerp(EndTransform.GetLocation(), Target, FMath::Clamp(Limb.Weight, 0.0, 1.0));
 		if (Limb.ReachShare > 0.0)
 		{
 			// Within reach (FSandboxLimbTarget::ReachShare), along the line from the root.
@@ -235,10 +244,11 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 		{
 			Bend = (PoleWay - Along * (Along | PoleWay)).GetSafeNormal();
 		}
-		if (Limb.bArm)
+		if (Limb.bArm && !Limb.bJointBlend)
 		{
 			// The elbow starts where the pose has it and goes over to the pole's side with the weight: taken at once, the
-			// stance's elbow (back) was turned 22 degrees out about the arm in the first frame of a target.
+			// stance's elbow (back) was turned 22 degrees out about the arm in the first frame of a target. (A joint-blended arm's
+			// elbow is on the pole's side in its solution; the weight's blend of the turns starts it from the pose's own.)
 			const FVector Elbow = MiddleTransform.GetLocation() - RootTransform.GetLocation();
 			const FVector OwnBend = (Elbow - Line * (Line | Elbow)).GetSafeNormal();
 			if (!OwnBend.IsNearlyZero())
@@ -322,8 +332,9 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 					Bone.SetRotation((Fix * Bone.GetRotation()).GetNormalized());
 				};
 				// By the target's weight, as the placement itself: held at once, a pose outside a range would snap into it in the
-				// target's first frame and back as it is let go.
-				const double Hold = FMath::Clamp(Limb.Weight, 0.0, 1.0);
+				// target's first frame and back as it is let go. (A joint-blended arm: the whole of the ranges on the whole solution,
+				// the weight's blend below keeping the pose's own where the weight is small.)
+				const double Hold = Limb.bJointBlend ? 1.0 : FMath::Clamp(Limb.Weight, 0.0, 1.0);
 				const FQuat RootClamped = FSandboxPoseRig::ClampToLimits(ComponentPose.GetComponentSpaceTransform(Above).GetRotation(), RootTransform.GetRotation(), Limb.RootLimits);
 				const FQuat RootHeld = FQuat::Slerp(RootTransform.GetRotation(), RootClamped, Hold).GetNormalized();
 				const FQuat RootFix = (RootHeld * RootTransform.GetRotation().Inverse()).GetNormalized();
@@ -336,6 +347,21 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 				Carry(MiddleFix, MiddleTransform.GetLocation(), EndTransform);
 				MiddleTransform.SetRotation(MiddleHeld);
 			}
+		}
+		if (Limb.bJointBlend && Limb.Weight < 1.0)
+		{
+			// The weight blends the turns of the arm's joints from the pose's to the solution's, each in its parent's frame; the bones keep their lengths.
+			const double Share = FMath::Clamp(Limb.Weight, 0.0, 1.0);
+			const FQuat RootTurned = FQuat::Slerp(RootBefore.GetRotation(), RootTransform.GetRotation(), Share).GetNormalized();
+			const FQuat MiddleLocal = FQuat::Slerp(RootBefore.GetRotation().Inverse() * MiddleBefore.GetRotation(), RootTransform.GetRotation().Inverse() * MiddleTransform.GetRotation(), Share).GetNormalized();
+			const FQuat EndLocal = FQuat::Slerp(MiddleBefore.GetRotation().Inverse() * EndRotationBefore, MiddleTransform.GetRotation().Inverse() * EndTransform.GetRotation(), Share).GetNormalized();
+			const FVector MiddleOffset = RootBefore.GetRotation().UnrotateVector(MiddleBefore.GetLocation() - RootBefore.GetLocation());
+			const FVector EndOffset = MiddleBefore.GetRotation().UnrotateVector(EndBefore - MiddleBefore.GetLocation());
+			RootTransform.SetRotation(RootTurned);
+			MiddleTransform.SetRotation((RootTurned * MiddleLocal).GetNormalized());
+			MiddleTransform.SetLocation(RootTransform.GetLocation() + RootTurned.RotateVector(MiddleOffset));
+			EndTransform.SetRotation((MiddleTransform.GetRotation() * EndLocal).GetNormalized());
+			EndTransform.SetLocation(MiddleTransform.GetLocation() + MiddleTransform.GetRotation().RotateVector(EndOffset));
 		}
 		if (Limb.bEndInFrame)
 		{

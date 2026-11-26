@@ -4591,6 +4591,112 @@ end of the delay); a brace comes no earlier than the reflex; a fall ends the hol
 **Not met either way; off.** The second form is the one in the code.
 
 
+### The natural body, N5 step 1: perception that judges and does nothing (the same night; for the owner to confirm)
+
+The body is told what moves near it (`USandboxBodyController::TellSeen`, a list of `FSandboxSeen`: a name, a kind, a place, a velocity, a size) and judges it in `UpdatePerception`: in view within
+`perception.view_half_angle_deg` (100) of where the head faces, noticed after `perception.notice_s` (0.1 s) in view, a threat when something noticed closes on the head or the trunk at
+`perception.threat_speed_mps` (1.5) or faster with `perception.threat_time_s` (0.4 s) or less to the contact, or is within `perception.threat_near_cm` (30) of the face. It does nothing with it yet.
+A run tells it the hands, the feet and the things with mass (`FScenarioStage::TellBodyWhatMoves`) only when the scenario's `body` says `"perception": true`; a session does not tell it yet.
+`control.perception` has the frames told and seen, the things noticed, and every threat with the part, the time to the contact it reckoned, the gap and the closing speed.
+
+Limits written before the runs (P1 to P5):
+
+| | Limit | Result |
+| --- | --- | --- |
+| P1 | a scenario without `"perception"`: the hashes of `hold` | 117 the same |
+| P2 | with `"perception": true` the same hashes as without | `perceive_hand_front` and the same file with `false`: the same: **met** |
+| P3 | a hand at the face from the front is a threat before the contact, its time to contact within 0.05 s of the real one; from behind not seen; a hand hovering by the chest no threat; with the view broken on purpose the front hand not seen | front: a threat at 3.522 s by the body's clock (3.533 by the run's, one frame later: the pitfall of the two clocks), the contact at 3.744: before it, but **0.290 s reckoned against 0.211: 0.079 off, missed** (0.068 was first written with the two clocks mixed) (the hand still gathers speed, 2.36 m/s then and 2.96 at the contact, and the reckoning takes the speed as it is); behind: seen in 0 frames, no threat; hovering at 0.3 m/s: noticed, no threat; the view at 0.5 degrees: seen in 6 frames, never noticed, the scenario fails |
+| P4 | the same hashes twice | the same |
+| P5 | `SandboxBody` includes nothing of `SandboxInteraction` | nothing |
+
+`perceive_hand_front`, `perceive_hand_behind` and `perceive_hand_hover` are in the suite. What would put P3 right is the closing speed's change in the reckoning; not done.
+
+**Step 2, the gaze** (`perception.gaze`, 0 in the file). The body attends to a threat first, else the nearest thing it has noticed that moves (`gaze_move_mps` 0.2), and stays on it for `gaze_dwell_s`
+(0.5) before another may take its place. The neck's target turns toward it: the way to it seen from the chest, `gaze_head_share` (0.7) of the angle (the eyes, in M5, the rest), at most
+`gaze_max_yaw_deg` 35 and `gaze_max_pitch_deg` 25, no faster than `gaze_speed_dps` 200. The head's assist is not turned with it. Limits written before (G1 to G4):
+
+| | Limit | Result |
+| --- | --- | --- |
+| G1 | with the gaze off, the hashes of `hold` and of the three `perceive_*` | the same |
+| G2 | `gaze_follows_hand` (a hand circling 1 m in front, 50 cm round, 0.5 m/s): mean error under 15 degrees, the neck never at its bound; broken on purpose, above 20 | **10.5 degrees**, 0 frames at the bound; with the head's share at 0: 24.3, and the scenario fails |
+| G3 | the neck's target never jumps (under 1 degree beyond its motion) | 0.88 degrees: met, near the limit |
+| G4 | no step, no fall | none |
+
+**Met.** The close-up (`Saved\Films\n5_gaze_close\sheet.png`, six moments of the loop) shows the head turning up, aside and down after the hand. What looks wrong: the eyes do not move (the plan's risk of a stare;
+the eyes are M5's), the head follows the hand without a pause like a camera on a slow, steady circle, and with the hand low the head bows so far that the face is hidden. `gaze_follows_hand` is in the suite.
+`gaze_rests_on_viewer` needs the player's head, which a run does not tell yet.
+
+**After an independent reading of steps 1 and 2.** The neutral claims, the signs and the turn's conversion were found right. Put right, each neutral (the hashes of `hold` and of the three `perceive_*`):
+a gaze switched off while the head is turned brings it back at its own pace (it stayed turned for good); the head goes back while the body falls, lies, gets up or is posed from outside; a hand held near the face
+is one threat, not one at every sway of the head (no closing speed asked for near the face, and a threat stays one while it still closes in twice the time); a hand on a course that passes the head is no threat
+(the nearest the two come, within their sizes); the view is reckoned from the head's middle, not the base of the neck, and straight above the head keeps its yaw; the neck's target comes up to its turning speed
+over `perception.gaze_rise_s` (0.1 s) and slows to arrive; the threat looked at is the one nearest its contact. After them: `gaze_follows_hand` 10.5 degrees, the neck's largest jump 0.48 degrees (0.88 before);
+with the gaze on and a hand coming at the face, the largest jump of any target is the struck forearm's at the hit (4.5 degrees, the flinch), not the neck's. P3's time to the contact was tried once more, with the closing speed's gain from one frame to the next counted in: the hand that had just started read 0.091 s for 0.222, 0.131 off the other
+way (the jolt of a start is no measure of what follows); taken out, P3 stays missed. Left: the neck's turn assumes the neck in its reference
+pose (the flinch and the fall poses tilt it by up to 40 degrees); a long thing's size is its bounding sphere (a stick reads as near the face from 85 cm); the threat's time is the body's clock.
+
+**Step 3 in part: the look at a hold.** With the gaze on, the body looks at the place it is held at, after a threat and before anything that moves, whether that place is in view or not (it is felt);
+the brace of the held chain and the free hand to the holder are not built. Limits written before (K1 to K3), on `hold_arm_answer` (kept in `Saved\Recon\n5`, not in the suite: the left forearm taken
+by a hand with the grab on and pulled 8 cm to the side for 3 s):
+
+| | Limit | Result |
+| --- | --- | --- |
+| K1 | the gaze off: every hash as before | 117 of `hold`, the three `perceive_*` and `gaze_follows_hand`: the same |
+| K2 | a pull of about 150 N: the body leans against it 2 cm or more; the head within 20 degrees of the hold on average | **the pull was 53 N on average (76 at most), a third of the plan's**; the pelvis 2.7 cm and the chest 2.0 cm away from it (the hold's own lean, `reactions.hold_felt`, as without the gaze); **the head 62.6 degrees from the hold: missed**. The forearm hangs at the hip, 99 degrees from straight ahead; the head may turn 35 degrees and bow 25 and takes 0.7 of the angle by design, so the limit as written could not be met there; it was written before the geometry was looked at |
+| K3 | no step, no fall; the neck's target does not jump | none, none; the largest jump is the held forearm's at the grab (4.1 degrees, the flinch), not the neck's |
+
+**Step 4: anticipation** (`perception.anticipate`, 0 in the file). A threat the body noticed starts, `perception.react_s` (0.15 s) later and unless the blow has landed already, the brace (the
+tone's braced level, the whole body, for `anticipate_hold_s` 1 s) and the flinch's pose (shoulders up, head in), eased in over `anticipate_pose_s` (0.1 s); `control.perception` counts the anticipations,
+their lead before the contact and the false alarms (no contact within a second). The guarding arm is step 5, not built. Limits written before (A1 to A5), with the tone's levels proposed for N3 by `-Tune`
+(the file's are 1); the scenarios are kept in `Saved\Recon\n5`:
+
+| | Limit | Result |
+| --- | --- | --- |
+| A1 | anticipation off: every hash as before | 117 of `hold` and the four perception scenarios: the same |
+| A2 | a slow punch at the chest (2 m/s from 70 cm) seen from the front against the same from behind: the brace at least 50 ms before the contact; the chest moves 0.7 times as far or less | braced 0.10 s before: met; **the chest 16.6 cm seen against 8.6 behind: missed**. The two are not alike (32.8 against 24.9 N*s, the chest's front against its back); **the same punch from the front with the anticipation off moves the chest 15.6 cm**: the brace changes nothing that shows, as N3 found (the chest's give is the whole body's lean on its feet) |
+| A3 | a jab at 5 m/s from 50 cm: no anticipation | none (the blow lands before the reaction is due) |
+| A4 | a hand hovering by the chest: no anticipation, no false alarm | none, none |
+| A5 | the pose comes in without a jump | not separable: the run's largest jump is a recovery step's (10.8 degrees on the calf, 0.3 s after the hit), the pose itself is eased by its own clock |
+
+**A2 missed; off.** What the plan's figure asks of a brace is more than the tone's levels can give the trunk. At the head it shows (information, not a limit): the same slow punch at the face moves
+the head 17.5 cm braced against 25.1 without (0.70), braced 0.11 s before; but the braced body then takes two steps where the other stands (23.5 against 20.6 N*s: the braced neck passes more of the blow on).
+
+**After an independent reading of steps 3 and 4.** The neutral claims held. Put right (neutral, the hashes of `hold` and of the perception scenarios): the brace is a tone of its own beside N3's,
+gated off in a fall and on the floor (it had taken the one slot a scenario's `tone` event uses, and held a falling body stiff); the bookkeeping runs after what the body felt in the frame and keeps an
+anticipation until it is judged, so that no lead or false alarm is lost; a threat while it holds keeps it holding; with the hit's own flinch on, the anticipation adds only what it has beyond it (the two
+were laid on each other, up to twice the flinch's pose); `anticipate_pose_s` must be above 0 while it is on; a hold on the head is not looked at (the neck chased it), and of two holds the stronger is.
+The same runs after them: the chest 16.5 cm with the anticipation against 15.6 without (A2 still missed); the face 18.0 against 25.1 (0.72); the fast jab and the hovering hand as before. An ending
+of the pose at the hit was tried in between and took the head to 31.8 cm: the pose has to hold through the contact. Left: the legs' weight terms of `assist.internal_share` and
+`balance.ankle_as_torque` can still change in one frame as the body leaves upright (both off and not recommended).
+
+**Step 5 in part: the guarding arm** (`perception.guard`, 0 in the file; it rises with the anticipation, so that is on too). A threat to the head with `guard_time_s` (0.3 s) or more to the
+contact, or held near the face, raises the arm on its side: its hand goes `guard_reach_cm` (30) from the face toward the threat and follows it, for `guard_hold_s` (1 s), the elbow kept down so that
+the forearm stands before the face; the hand is placed as a hand target is but is not one of the placed feet (that list keeps the body from stepping). The free hand to a holder is not built.
+Limits written before (U1 to U4), on `seen_fist_raised_guards` (a fist brought slowly to 30 cm before the face and held there a second; kept in `Saved\Recon\n5`):
+
+| | Limit | Result |
+| --- | --- | --- |
+| U1 | the guard off: every hash as before | 117 of `hold`, the perception scenarios and both `pose_hand_place`: the same (see below for the arm's blend, which first applied to every arm and moved them) |
+| U2 | the near hand rises 30 cm or more and comes within 15 cm of the line from the face to the fist; no fall, no flinch | 69 cm, 9.0 cm; standing, no flinch: **met** |
+| U3 | a fast jab and the hovering hand raise no guard | none, none: met |
+| U4 | the arm's targets do not jump (under 1 degree) | **0.48 degrees, met after three changes**: first 9.2 (a raise in 0.2 s); the arm's weight is now eased a second time on top of the limb's own ease, and the arm is solved for its whole target and blended by its joints' turns, not by where its hand is (blended by the hand's place, the hand went past the shoulder on its way from the hip to the face and the arm folded there); and the raise takes `guard_blend_s` 0.5 s, the anticipation's pose `anticipate_pose_s` 0.2 s (in a raise of 0.2 s the arm's own swing of 110 degrees is about 2 degrees by this measure). At 0.2 s the guard's hand also met the fist and made the body flinch |
+
+The close-ups (`Saved\Films\n5_guard_close` before the elbow was kept down, `n5_guard_close2` after): with the elbow down the forearm stands before the face and the hand is at the fist from 4.3 to
+4.6 s; on the way up and down the arm swings out to the side, and before (`n5_guard_close`) the arm pointed at the fist, straight, like a reach. **For the owner to look at.** The arm's blend by its joints' turns (and its weight eased twice) is the guard's alone (`FSandboxLimbTarget::bJointBlend`): made for
+every arm at first, it moved both `pose_hand_place` scenarios and the fall's reach (the recommended variant: 44.7 J by hand instead of 38.3, the head struck in 33% of the falls by hand instead
+of 17%), so the hand target and the reach keep the blend they were measured with (their hashes and figures as before: 28.4 and 38.3 J again). The anticipation's figures above were taken with
+`anticipate_pose_s` 0.1 (0.2 in the file now).
+
+After an independent reading of the guard: put right, each neutral (the hashes of `hold`), a guard and the fall's reach fighting over one hand (a fall leaves a guarding hand to the guard's release for the
+whole fall), a guard's side left over from a threat that started no anticipation (it rose seconds later toward the old thing), a guard whose thing was gone on its first frame (the hand was sent to the
+world's origin and never let go), and a guard on a body posed from outside. Left: a second guard on the same hand within the first's release starts from where the first was; a threat that passes close
+before the face moves the guard's point fast; the guard needs `perception.anticipate` on and says nothing when it is off. The same limits again: 69 cm, 9.0 cm, 0.48 degrees, no guard for the jab and the
+hovering hand.
+
+
+
+
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

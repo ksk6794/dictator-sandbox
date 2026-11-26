@@ -534,6 +534,8 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 		HeadBone = Controller->GetTuning().Rig.Head;
 		// A scenario's body stays down unless the scenario is about getting up.
 		Controller->SetGetUpAllowed(Spec.bGetUp);
+		// And it judges what moves near it only when the scenario is about that (N5).
+		Controller->SetPerceptionAllowed(Spec.bPerception);
 	}
 
 	// Where the body starts: the reference for the drift metrics. The pelvis is the root body.
@@ -832,6 +834,10 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		PreviousBodies = Bodies;
 	}
 	FScenarioStage::TellBodyOfHolds(EffectorRig, Ragdoll);
+	if (Spec.bPerception)
+	{
+		FScenarioStage::TellBodyWhatMoves(EffectorRig, Props, Ragdoll);
+	}
 
 	// The scenario's things with mass: part of the run and of its hash. (A run without any hashes what it did before.)
 	for (int32 Index = 0; Index < Props.Num(); ++Index)
@@ -2691,6 +2697,43 @@ void UScenarioRunnerSubsystem::Finish()
 			FeetJson.Add(MakeShared<FJsonValueObject>(Entry));
 		}
 		ControlJson->SetArrayField(TEXT("foot_targets"), FeetJson);
+
+		// What the body made of what moved near it (N5), when the scenario asked it to look.
+		if (Spec.bPerception)
+		{
+			const FSandboxPerceptionView& Perceived = Controller->GetPerceptionView();
+			const TSharedRef<FJsonObject> PerceptionJson = MakeShared<FJsonObject>();
+			PerceptionJson->SetBoolField(TEXT("on"), Perceived.bOn);
+			PerceptionJson->SetNumberField(TEXT("tell_frames"), Perceived.TellFrames);
+			PerceptionJson->SetNumberField(TEXT("seen_frames"), Perceived.SeenFrames);
+			PerceptionJson->SetNumberField(TEXT("noticed"), Perceived.Noticed);
+			PerceptionJson->SetNumberField(TEXT("threats"), Perceived.Threats.Num());
+			TArray<TSharedPtr<FJsonValue>> ThreatsJson;
+			for (const FSandboxThreatEvent& Threat : Perceived.Threats)
+			{
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("name"), Threat.Name.ToString());
+				Entry->SetStringField(TEXT("part"), Threat.Part.ToString());
+				Entry->SetNumberField(TEXT("t"), Threat.TimeS);
+				Entry->SetField(TEXT("time_to_contact_s"), Threat.TimeToContactS < 1.0e6 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Threat.TimeToContactS)) : MakeShared<FJsonValueNull>());
+				Entry->SetNumberField(TEXT("gap_cm"), Threat.GapCm);
+				Entry->SetNumberField(TEXT("closing_mps"), Threat.ClosingMps);
+				Entry->SetBoolField(TEXT("near"), Threat.bNear);
+				ThreatsJson.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+			PerceptionJson->SetArrayField(TEXT("threat_events"), ThreatsJson);
+			PerceptionJson->SetNumberField(TEXT("gaze_frames"), Perceived.GazeFrames);
+			PerceptionJson->SetNumberField(TEXT("gaze_error_mean_deg"), Perceived.GazeErrorMeanDeg());
+			PerceptionJson->SetNumberField(TEXT("gaze_at_limit_frames"), Perceived.GazeAtLimitFrames);
+			PerceptionJson->SetNumberField(TEXT("gaze_shifts"), Perceived.GazeShifts);
+			PerceptionJson->SetNumberField(TEXT("gaze_hold_frames"), Perceived.GazeHoldFrames);
+			PerceptionJson->SetNumberField(TEXT("anticipations"), Perceived.Anticipations);
+			PerceptionJson->SetNumberField(TEXT("guards"), Perceived.Guards);
+			PerceptionJson->SetField(TEXT("anticipation_lead_s"), Perceived.AnticipationLeads > 0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Perceived.AnticipationLeadSumS / Perceived.AnticipationLeads)) : MakeShared<FJsonValueNull>());
+			PerceptionJson->SetNumberField(TEXT("false_alarms"), Perceived.FalseAlarms);
+			PerceptionJson->SetNumberField(TEXT("gaze_hold_error_mean_deg"), Perceived.GazeHoldFrames > 0 ? Perceived.GazeHoldErrorSumDeg / Perceived.GazeHoldFrames : 0.0);
+			ControlJson->SetObjectField(TEXT("perception"), PerceptionJson);
+		}
 
 		// The get-ups: how many the body began and how many ended standing, the last one's clip and times, and what
 		// the assist did while the body was getting up.

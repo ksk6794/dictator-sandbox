@@ -1,0 +1,80 @@
+{
+  "name": "perceive_hand_hover",
+  "duration_s": 8.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active",
+    "perception": true
+  },
+  "events": [
+    {
+      "t": 1.0,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            25,
+            35,
+            125
+          ]
+        },
+        {
+          "t": 1.0,
+          "location_cm": [
+            -25,
+            35,
+            125
+          ]
+        },
+        {
+          "t": 2.67,
+          "location_cm": [
+            25,
+            35,
+            125
+          ]
+        },
+        {
+          "t": 4.34,
+          "location_cm": [
+            -25,
+            35,
+            125
+          ]
+        },
+        {
+          "t": 6.01,
+          "location_cm": [
+            25,
+            35,
+            125
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "fell": false,
+    "measures": {
+      "control.perception.threats": {
+        "min": 0,
+        "max": 0
+      },
+      "control.perception.noticed": {
+        "min": 1,
+        "max": 1
+      }
+    }
+  }
+}

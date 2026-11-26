@@ -343,6 +343,26 @@ bool USandboxBodyController::Start(USkeletalMeshComponent* InMesh, const FSandbo
 	ApplyPose();
 
 	FingerRig.Init(Mesh->GetSkeletalMeshAsset()->GetRefSkeleton());
+	{
+		// Where the head faces, in the head body's frame: the mesh faces +y in its reference pose (N5).
+		const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		const int32 HeadIndex = Skeleton.FindBoneIndex(Tuning.Rig.Head);
+		if (HeadIndex != INDEX_NONE)
+		{
+			const FTransform HeadRef = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, HeadIndex);
+			HeadForwardLocal = HeadRef.GetRotation().UnrotateVector(FVector::YAxisVector);
+		}
+		// The gaze turns the joint of the bone that carries the head (neck_01 in the NPC's asset), seen from the chest.
+		const int32 NeckIndex = Skeleton.FindBoneIndex(TunedRig.Head);
+		const int32 ChestIndex = Skeleton.FindBoneIndex(Tuning.Rig.Chest);
+		if (NeckIndex != INDEX_NONE && ChestIndex != INDEX_NONE)
+		{
+			NeckRefRotation = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, NeckIndex).GetRotation();
+			ChestRefRotation = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, ChestIndex).GetRotation();
+			NeckMeshIndex = NeckIndex;
+		}
+	}
+
 	// The idle's motion, for the bones the muscles of trunk, neck and arms take their targets from: each such
 	// joint's own bone and the bones between it and the body it hangs on.
 	IdleMotion = FSandboxIdleMotion();
@@ -587,6 +607,7 @@ void USandboxBodyController::UpdatePoseTurns()
 		const double Strength = FMath::Clamp(FlinchImpulseNs.Size() / Reactions.FlinchPoseFullNs, 0.0, 1.0);
 		const double Left = Reactions.FlinchRecoveryS > 0.0 ? FMath::Clamp(1.0 - (ElapsedS - FlinchStartedS) / Reactions.FlinchRecoveryS, 0.0, 1.0) : 0.0;
 		const double Weight = Strength * Left;
+		FlinchPoseWeightNow = Weight;
 		PoseRig.BuildTurns(Tuning.Poses.Flinch, Weight, Turns);
 
 		// The struck body gives way: its joint turns so that the body moves along the hit, about the axis
@@ -610,6 +631,41 @@ void USandboxBodyController::UpdatePoseTurns()
 					Turns.Add(FSandboxPoseTurn{ StruckIndex, Give });
 				}
 			}
+		}
+	}
+	// Anticipation (N5): the flinch's pose before the contact, eased in and out by its own clock. Once the hit's own flinch is on, only
+	// what this one has beyond it is added: the two are the same pose, and laid on each other they asked for twice of it.
+	const double AnticipateExtra = FMath::SmoothStep(0.0, 1.0, AnticipateWeight) - FlinchPoseWeightNow;
+	FlinchPoseWeightNow = 0.0;
+	if (AnticipateExtra > 0.0)
+	{
+		TArray<FSandboxPoseTurn> Drawn;
+		PoseRig.BuildTurns(Tuning.Poses.Flinch, AnticipateExtra, Drawn);
+		for (const FSandboxPoseTurn& Each : Drawn)
+		{
+			const int32 Bone = Each.MeshBoneIndex;
+			if (FSandboxPoseTurn* Existing = Turns.FindByPredicate([Bone](const FSandboxPoseTurn& Turn) { return Turn.MeshBoneIndex == Bone; }))
+			{
+				Existing->Turn = (Existing->Turn * Each.Turn).GetNormalized();
+			}
+			else
+			{
+				Turns.Add(Each);
+			}
+		}
+	}
+	// The gaze (N5): the neck turned toward what the body looks at, as a turn in the component's frame made one of the neck's own.
+	if (NeckMeshIndex != INDEX_NONE && (GazeYawDeg != 0.0 || GazePitchDeg != 0.0))
+	{
+		const FQuat InComponent = (FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(GazeYawDeg)) * FQuat(FVector::XAxisVector, FMath::DegreesToRadians(GazePitchDeg))).GetNormalized();
+		const FQuat Look = (NeckRefRotation.Inverse() * InComponent * NeckRefRotation).GetNormalized();
+		if (FSandboxPoseTurn* Existing = Turns.FindByPredicate([this](const FSandboxPoseTurn& Turn) { return Turn.MeshBoneIndex == NeckMeshIndex; }))
+		{
+			Existing->Turn = (Existing->Turn * Look).GetNormalized();
+		}
+		else
+		{
+			Turns.Add(FSandboxPoseTurn{ NeckMeshIndex, Look });
 		}
 	}
 	// Doubled over: the pose of it, as much as is on now (FeelFrame), on top of whatever else turns the joints.
@@ -3146,6 +3202,7 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		}
 		if (bFirstOfContact || bBlowIntoContact)
 		{
+			LastHitS = ElapsedS;
 			FSandboxBodyEvent Event;
 			Event.Type = ESandboxBodyEventType::Hit;
 			Event.TimeS = ElapsedS;
@@ -3983,7 +4040,8 @@ void USandboxBodyController::UpdateTone(double DeltaTime)
 	{
 		// A level asked for from outside, or the standing level of the group. (The states' own strengths are the states'.)
 		const bool bUprightState = State != ESandboxBodyState::Falling && State != ESandboxBodyState::Lying;
-		const bool bBraced = bUprightState && BraceFromS >= 0.0 && ElapsedS >= BraceFromS && ElapsedS < BraceUntilS;
+		const bool bBraced = bUprightState && ((BraceFromS >= 0.0 && ElapsedS >= BraceFromS && ElapsedS < BraceUntilS) ||
+			(AnticipateFromS >= 0.0 && ElapsedS < AnticipateUntilS));
 		const int32 Level = AskedTone >= 0 ? AskedTone : bBraced ? static_cast<int32>(ESandboxTone::Braced) : FMath::Clamp(FMath::RoundToInt32(Tone.Standing[Group]), 0, SandboxToneCount - 1);
 		double GoalStiffness = Tone.Stiffness[Level][Group];
 		double GoalDampingNow = Tone.Damping[Level][Group];
@@ -4074,6 +4132,7 @@ void USandboxBodyController::UpdateFallAim(double DeltaTime)
 	const bool bStarting = !bFallAiming;
 	if (bStarting)
 	{
+		FallSkipSide = GuardSide;
 		FallWayNow = Way;
 		FallFloorZ = LastSupportHeightCm;
 		HandTouchedS[0] = HandTouchedS[1] = -1.0;
@@ -4096,7 +4155,7 @@ void USandboxBodyController::UpdateFallAim(double DeltaTime)
 	{
 		const FBodyInstance* Shoulder = Mesh->GetBodyInstance(Shoulders[Side]);
 		const int32 End = Skeleton.FindBoneIndex(Hands[Side]);
-		if (!Animation || !Shoulder || End == INDEX_NONE || HandTouchedS[Side] >= 0.0)
+		if (!Animation || !Shoulder || End == INDEX_NONE || HandTouchedS[Side] >= 0.0 || Side == FallSkipSide || Side == GuardSide)
 		{
 			// A hand on the floor stays where its target was.
 			continue;
@@ -4114,6 +4173,369 @@ void USandboxBodyController::UpdateFallAim(double DeltaTime)
 			PlacedFeet.Add(End, Point);
 		}
 	}
+}
+
+void USandboxBodyController::UpdatePerception(double DeltaTime)
+{
+	// It reads the bodies and what it is told, and writes only its own account: measuring changes nothing.
+	const FSandboxPerceptionTuning& Look = Tuning.Perception;
+	PerceptionView.bOn = true;
+	++PerceptionView.TellFrames;
+	const FBodyInstance* Head = Mesh->GetBodyInstance(Tuning.Rig.Head);
+	const FBodyInstance* Trunk = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	if (!Head || !Head->IsValidBodyInstance() || !Trunk || !Trunk->IsValidBodyInstance())
+	{
+		return;
+	}
+	const FTransform HeadNow = Head->GetUnrealWorldTransform();
+	const FVector Facing = HeadNow.GetRotation().RotateVector(HeadForwardLocal);
+	const double CosHalf = FMath::Cos(FMath::DegreesToRadians(Look.ViewHalfAngleDeg));
+	const struct { const FBodyInstance* Body; FName Name; double RadiusCm; bool bHead; } Parts[] = {
+		{ Head, Tuning.Rig.Head, Look.HeadRadiusCm, true }, { Trunk, Tuning.Rig.Chest, Look.TrunkRadiusCm, false } };
+	TArray<FSeenTrack> Next;
+	Next.Reserve(Seen.Num());
+	bool bAnyInView = false;
+	for (const FSandboxSeen& Thing : Seen)
+	{
+		if (Thing.Kind == ESandboxSeenKind::Viewer)
+		{
+			continue;
+		}
+		const FSeenTrack* Before = SeenTracks.FindByPredicate([&Thing](const FSeenTrack& Track) { return Track.Name == Thing.Name; });
+		FSeenTrack Track = Before ? *Before : FSeenTrack{ Thing.Name };
+		const FVector To = Thing.LocationCm - Head->GetCOMPosition();
+		const bool bInView = !To.IsNearlyZero() && (To.GetSafeNormal() | Facing) >= CosHalf;
+		bAnyInView = bAnyInView || bInView;
+		Track.InViewS = bInView ? Track.InViewS + DeltaTime : 0.0;
+		const bool bNoticed = bInView && Track.InViewS >= Look.NoticeS - KINDA_SMALL_NUMBER;
+		if (bNoticed && !Track.bNoticed)
+		{
+			++PerceptionView.Noticed;
+		}
+		Track.bNoticed = Track.bNoticed || bNoticed;
+		// A threat: closing on the head or the trunk fast, with little time left, or held near the face. Only what is noticed.
+		bool bThreat = false;
+		FSandboxThreatEvent Worst;
+		Worst.TimeToContactS = TNumericLimits<double>::Max();
+		for (const auto& Part : Parts)
+		{
+			const FVector Gap = Thing.LocationCm - Part.Body->GetCOMPosition();
+			const double DistanceCm = Gap.Size();
+			const double GapCm = DistanceCm - Part.RadiusCm - (Thing.RadiusCm > 0.0 ? Thing.RadiusCm : Look.ThingRadiusCm);
+			const double ClosingCmS = DistanceCm > 1.0 ? -((Thing.VelocityCmS - Part.Body->GetUnrealWorldVelocity()) | Gap) / DistanceCm : 0.0;
+			// At the speed it closes with now. (With the gain of that speed counted in, from one frame to the next, a hand that had just
+			// started read 0.09 s for 0.22: the start's jolt is no measure of what follows.)
+			const double TimeS = ClosingCmS > 0.0 ? FMath::Max(GapCm, 0.0) / ClosingCmS : TNumericLimits<double>::Max();
+			// On a course that meets the part: the nearest the two come, at the speed they close with now, within their sizes. (Asked of
+			// the closing speed alone, a hand that would pass half a metre from the head counted.)
+			const FVector Relative = Thing.VelocityCmS - Part.Body->GetUnrealWorldVelocity();
+			const double RelativeSq = Relative.SizeSquared();
+			const double Along = RelativeSq > 1.0 ? FMath::Max(-(Gap | Relative) / RelativeSq, 0.0) : 0.0;
+			const double MissCm = (Gap + Relative * Along).Size() - Part.RadiusCm - (Thing.RadiusCm > 0.0 ? Thing.RadiusCm : Look.ThingRadiusCm);
+			const bool bOnCourse = MissCm <= 0.0;
+			const bool bComing = bOnCourse && ClosingCmS >= Look.ThreatSpeedMps * 100.0 && TimeS <= Look.ThreatTimeS;
+			// Once a threat, it stays one while it still closes in twice the time: a speed or a time on its threshold made one hand many threats.
+			const bool bStill = Track.bThreat && bOnCourse && ClosingCmS > 0.0 && TimeS <= 2.0 * Look.ThreatTimeS;
+			const bool bNear = Part.bHead && GapCm <= Look.ThreatNearCm;
+			if (bNoticed && (bComing || bStill || bNear) && (!bThreat || TimeS < Worst.TimeToContactS))
+			{
+				bThreat = true;
+				Worst.Part = Part.Name;
+				Worst.TimeToContactS = TimeS;
+				Worst.GapCm = GapCm;
+				Worst.ClosingMps = ClosingCmS * 0.01;
+				Worst.bNear = !bComing && !bStill;
+			}
+		}
+		Track.TimeToContactS = bThreat ? Worst.TimeToContactS : TNumericLimits<double>::Max();
+		if (bThreat && !Track.bThreat)
+		{
+			Worst.Name = Thing.Name;
+			Worst.TimeS = ElapsedS;
+			PerceptionView.Threats.Add(Worst);
+			if (Look.Guard > 0.5 && Worst.Part == Tuning.Rig.Head && (Worst.bNear || Worst.TimeToContactS >= Look.GuardTimeS) && GuardSide < 0 &&
+				Look.Anticipate > 0.5 && AnticipateDueS < 0.0 && ElapsedS >= AnticipateUntilS)
+			{
+				// Only with an anticipation that falls due: the guard rises with it, or not at all (left over, it rose later for another threat).
+				// The near arm: the threat's side of the chest (the mesh's left is +x).
+				const FVector Across = Trunk->GetUnrealWorldTransform().GetRotation().UnrotateVector(Thing.LocationCm - Trunk->GetCOMPosition());
+				const FVector Side = ChestRefRotation.RotateVector(Across);
+				GuardWantedSide = Side.X >= 0.0 ? 0 : 1;
+				GuardWantedOn = Thing.Name;
+			}
+			if (Look.Anticipate > 0.5 && AnticipateDueS < 0.0 && ElapsedS >= AnticipateUntilS)
+			{
+				AnticipateDueS = ElapsedS + Look.ReactS;
+			}
+			else if (Look.Anticipate > 0.5 && AnticipateFromS >= 0.0 && ElapsedS < AnticipateUntilS)
+			{
+				// Another threat while it holds: it holds on, rather than letting go before that one lands.
+				AnticipateUntilS = FMath::Max(AnticipateUntilS, ElapsedS + Look.ReactS + Look.AnticipateHoldS);
+				AnticipatePoseUntilS = FMath::Max(AnticipatePoseUntilS, AnticipateUntilS);
+			}
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: %s is a threat to %s at %.3f s (%.2f s to the contact, %.1f cm, %.2f m/s%s)"), *Thing.Name.ToString(), *Worst.Part.ToString(),
+				ElapsedS, Worst.TimeToContactS < 1.0e6 ? Worst.TimeToContactS : -1.0, Worst.GapCm, Worst.ClosingMps, Worst.bNear ? TEXT(", near the face") : TEXT(""));
+		}
+		Track.bThreat = bThreat;
+		Next.Add(Track);
+	}
+	SeenTracks = MoveTemp(Next);
+	if (bAnyInView)
+	{
+		++PerceptionView.SeenFrames;
+	}
+	if (Look.Gaze > 0.5)
+	{
+		UpdateGaze(DeltaTime, Facing);
+	}
+}
+
+void USandboxBodyController::UpdateGaze(double DeltaTime, const FVector& Facing)
+{
+	const FSandboxPerceptionTuning& Look = Tuning.Perception;
+	const FBodyInstance* Head = Mesh->GetBodyInstance(Tuning.Rig.Head);
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	if (!Head || !Chest || NeckMeshIndex == INDEX_NONE)
+	{
+		return;
+	}
+	const FVector Eye = Head->GetCOMPosition();
+	// What it attends to: a threat first, the one nearest its contact; else the nearest thing it has noticed that moves. It stays on a
+	// thing for gaze_dwell_s before another may take its place, unless that one is a threat.
+	const FSandboxSeen* Threat = nullptr;
+	const FSandboxSeen* Mover = nullptr;
+	const FSandboxSeen* Current = nullptr;
+	double MoverCm = TNumericLimits<double>::Max();
+	double ThreatS = TNumericLimits<double>::Max();
+	for (const FSandboxSeen& Thing : Seen)
+	{
+		const FSeenTrack* Track = SeenTracks.FindByPredicate([&Thing](const FSeenTrack& Each) { return Each.Name == Thing.Name; });
+		if (!Track || Track->InViewS < Look.NoticeS - KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+		if (Thing.Name == GazeOn)
+		{
+			Current = &Thing;
+		}
+		if (Track->bThreat && (!Threat || Track->TimeToContactS < ThreatS))
+		{
+			Threat = &Thing;
+			ThreatS = Track->TimeToContactS;
+		}
+		const double DistanceCm = FVector::Dist(Thing.LocationCm, Eye);
+		if (Thing.VelocityCmS.Size() >= Look.GazeMoveMps * 100.0 && DistanceCm < MoverCm)
+		{
+			Mover = &Thing;
+			MoverCm = DistanceCm;
+		}
+	}
+	const bool bDwelling = Current && ElapsedS - GazeOnSinceS < Look.GazeDwellS;
+	// Only an upright body whose pose is its own looks about: falling, lying, getting up or posed from outside, the head goes back.
+	const bool bLooks = IsUpright() && State != ESandboxBodyState::GetUp && !IsPosedFromOutside();
+	// After a threat, the place it is held at (N5 step 3): felt, so looked at whether it was in view or not.
+	const FSandboxBodyHold* Held = nullptr;
+	if (bLooks && !Threat)
+	{
+		for (const FSandboxBodyHold& Hold : Holds)
+		{
+			// A hold on the head moves with the head: the neck would chase it. The strongest other is looked at.
+			if (FSandboxBodyTuning::GroupOfBone(Hold.Bone) != ESandboxMuscleGroup::Neck && (!Held || Hold.ForceN > Held->ForceN))
+			{
+				Held = &Hold;
+			}
+		}
+	}
+	const FSandboxSeen* Target = !bLooks || Held ? nullptr : Threat ? Threat : bDwelling ? Current : Mover ? Mover : Current;
+	const FName TargetName = Held ? Held->Holder : Target ? Target->Name : NAME_None;
+	const FVector TargetCm = Held ? Held->PointCm : Target ? Target->LocationCm : FVector::ZeroVector;
+	if (TargetName != GazeOn)
+	{
+		GazeOn = TargetName;
+		GazeOnSinceS = ElapsedS;
+		++PerceptionView.GazeShifts;
+	}
+	// The way to it, seen from the chest as the reference pose has it: yaw about up, pitch about the side.
+	double GoalYawDeg = 0.0;
+	double GoalPitchDeg = 0.0;
+	if (Target || Held)
+	{
+		const FVector Way = ChestRefRotation.RotateVector(Chest->GetUnrealWorldTransform().GetRotation().UnrotateVector(TargetCm - Eye)).GetSafeNormal();
+		// Straight above or below the yaw means nothing: the head keeps the yaw it has.
+		GoalYawDeg = FVector2D(Way.X, Way.Y).Size() > 0.2 ? FMath::RadiansToDegrees(FMath::Atan2(-Way.X, Way.Y)) * Look.GazeHeadShare : GazeYawDeg;
+		GoalPitchDeg = FMath::RadiansToDegrees(FMath::Atan2(Way.Z, FVector2D(Way.X, Way.Y).Size())) * Look.GazeHeadShare;
+		const double ErrorDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Facing | (TargetCm - Eye).GetSafeNormal(), -1.0, 1.0)));
+		++PerceptionView.GazeFrames;
+		PerceptionView.GazeErrorSumDeg += ErrorDeg;
+		if (Held)
+		{
+			++PerceptionView.GazeHoldFrames;
+			PerceptionView.GazeHoldErrorSumDeg += ErrorDeg;
+		}
+	}
+	const bool bAtLimit = FMath::Abs(GoalYawDeg) > Look.GazeMaxYawDeg || FMath::Abs(GoalPitchDeg) > Look.GazeMaxPitchDeg;
+	PerceptionView.GazeAtLimitFrames += bAtLimit ? 1 : 0;
+	GoalYawDeg = FMath::Clamp(GoalYawDeg, -Look.GazeMaxYawDeg, Look.GazeMaxYawDeg);
+	GoalPitchDeg = FMath::Clamp(GoalPitchDeg, -Look.GazeMaxPitchDeg, Look.GazeMaxPitchDeg);
+	StepGaze(DeltaTime, GoalYawDeg, GoalPitchDeg);
+}
+
+void USandboxBodyController::UpdateAnticipation(double DeltaTime)
+{
+	const FSandboxPerceptionTuning& Look = Tuning.Perception;
+	// Due: unless the blow has landed already (too late), or the body is no longer upright, it braces and draws its head in.
+	if (AnticipateDueS >= 0.0 && ElapsedS >= AnticipateDueS - KINDA_SMALL_NUMBER)
+	{
+		const double ThreatS = AnticipateDueS - Look.ReactS;
+		AnticipateDueS = -1.0;
+		if (LastHitS < ThreatS - KINDA_SMALL_NUMBER && IsUpright() && State != ESandboxBodyState::GetUp && bAnticipationJudged)
+		{
+			AnticipateFromS = ElapsedS;
+			AnticipateUntilS = ElapsedS + Look.AnticipateHoldS;
+			AnticipatePoseUntilS = AnticipateUntilS;
+			bAnticipationJudged = false;
+			++PerceptionView.Anticipations;
+			if (GuardWantedSide >= 0 && GuardSide < 0)
+			{
+				GuardSide = GuardWantedSide;
+				GuardOn = GuardWantedOn;
+				GuardUntilS = ElapsedS + Look.GuardHoldS;
+				GuardPointCm = FVector::ZeroVector;
+				bGuardPlaced = false;
+				++PerceptionView.Guards;
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: raises its %s arm against %s at %.3f s"), GuardSide == 0 ? TEXT("left") : TEXT("right"), *GuardOn.ToString(), ElapsedS);
+			}
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: braces for what it sees coming at %.3f s"), ElapsedS);
+		}
+		// The arm a threat to the head asked for is raised now or not at all.
+		GuardWantedSide = -1;
+	}
+	// What followed: a contact (and how long after the brace), or none within a second (a false alarm).
+	if (!bAnticipationJudged && AnticipateFromS >= 0.0)
+	{
+		if (LastHitS >= AnticipateFromS - KINDA_SMALL_NUMBER)
+		{
+			PerceptionView.AnticipationLeadSumS += LastHitS - AnticipateFromS;
+			++PerceptionView.AnticipationLeads;
+			bAnticipationJudged = true;
+			// The brace and the pose hold on through the contact; with the hit's flinch the pose is taken as the larger of the two (UpdatePoseTurns).
+		}
+		else if (ElapsedS - AnticipateFromS > 1.0)
+		{
+			++PerceptionView.FalseAlarms;
+			bAnticipationJudged = true;
+		}
+	}
+	if (GuardSide >= 0)
+	{
+		UpdateGuard();
+	}
+	// The pose: in over anticipate_pose_s while it holds, out again after; never in one step.
+	const bool bHolding = AnticipateFromS >= 0.0 && ElapsedS < AnticipatePoseUntilS && IsUpright();
+	const double StepShare = Look.AnticipatePoseS > 0.0 ? DeltaTime / Look.AnticipatePoseS : 1.0;
+	AnticipateWeight = FMath::Clamp(AnticipateWeight + (bHolding ? StepShare : -StepShare), 0.0, 1.0);
+	if (!bHolding && AnticipateWeight <= 0.0 && bAnticipationJudged && ElapsedS >= AnticipateUntilS)
+	{
+		AnticipateFromS = -1.0;
+	}
+}
+
+bool USandboxBodyController::PlaceArm(FName Hand, const FVector& WorldLocation, double Weight, double BlendS, bool bElbowDown)
+{
+	USandboxAnimInstance* Animation = bStarted ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	const int32 End = Skeleton.FindBoneIndex(Hand);
+	const int32 Middle = End != INDEX_NONE ? Skeleton.GetParentIndex(End) : INDEX_NONE;
+	const int32 Root = Middle != INDEX_NONE ? Skeleton.GetParentIndex(Middle) : INDEX_NONE;
+	if (!Animation || Root == INDEX_NONE)
+	{
+		return false;
+	}
+	const bool bLeft = Hand.ToString().EndsWith(TEXT("_l"));
+	// A reach bends the elbow back and out; a guard keeps it down, so that the forearm stands before the face.
+	Animation->SetLimbBend(End, bElbowDown ? FVector(bLeft ? 0.3 : -0.3, 0.2, -1.0).GetSafeNormal() : FVector(bLeft ? 0.4 : -0.4, -1.0, -0.3).GetSafeNormal(), FVector::XAxisVector,
+		/*bEaseTwice*/ bElbowDown);
+	FSandboxJointLimits Shoulder;
+	FSandboxJointLimits Elbow;
+	if (FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Root), Shoulder) && FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Middle), Elbow))
+	{
+		Animation->SetLimbRanges(End, Shoulder, Elbow);
+	}
+	Animation->SetLimbTarget(End, WorldLocation, Weight, BlendS);
+	return true;
+}
+
+void USandboxBodyController::UpdateGuard()
+{
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	const FSandboxPerceptionTuning& Look = Tuning.Perception;
+	const FBodyInstance* Head = Mesh->GetBodyInstance(Tuning.Rig.Head);
+	const FSandboxSeen* Thing = Seen.FindByPredicate([this](const FSandboxSeen& Each) { return Each.Name == GuardOn; });
+	if (ElapsedS >= GuardUntilS || !IsUpright() || State == ESandboxBodyState::GetUp || IsPosedFromOutside() || !Head || (!Thing && !bGuardPlaced))
+	{
+		StopGuard();
+		return;
+	}
+	// Toward the threat as it is now, guard_reach_cm from the face; where it was last if it is no longer told.
+	const FVector Face = Head->GetCOMPosition();
+	const FVector Point = Thing ? Face + (Thing->LocationCm - Face).GetSafeNormal() * Look.GuardReachCm : GuardPointCm;
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const int32 End = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton().FindBoneIndex(Hands[GuardSide]);
+	if (!bGuardPlaced)
+	{
+		PlaceArm(Hands[GuardSide], Point, 1.0, Look.GuardBlendS, /*bElbowDown*/ true);
+		bGuardPlaced = true;
+	}
+	else if (Animation && End != INDEX_NONE)
+	{
+		Animation->MoveLimbTarget(End, Point, nullptr, nullptr, 0.0, 0.0);
+	}
+	GuardPointCm = Point;
+}
+
+void USandboxBodyController::StopGuard()
+{
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	if (GuardSide >= 0 && bGuardPlaced)
+	{
+		if (USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()))
+		{
+			const int32 End = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton().FindBoneIndex(Hands[GuardSide]);
+			if (End != INDEX_NONE)
+			{
+				Animation->SetLimbTarget(End, GuardPointCm, 0.0, Tuning.Perception.GuardBlendS);
+			}
+		}
+	}
+	GuardSide = -1;
+	GuardOn = NAME_None;
+	bGuardPlaced = false;
+}
+
+void USandboxBodyController::StepGaze(double DeltaTime, double GoalYawDeg, double GoalPitchDeg)
+{
+	// No faster than gaze_speed_dps, and up to that speed and down from it over gaze_rise_s: the neck's target never jumps, and
+	// never starts or stops turning in one frame. It slows so as to arrive, not to overshoot.
+	const FSandboxPerceptionTuning& Look = Tuning.Perception;
+	const double MaxDps = Look.GazeSpeedDps;
+	const double Accel = Look.GazeRiseS > 0.0 ? MaxDps / Look.GazeRiseS : TNumericLimits<double>::Max();
+	const auto Axis = [&](double& Now, double& Rate, double Goal)
+	{
+		const double Left = Goal - Now;
+		// The speed that stops on the goal with the acceleration there is.
+		const double Arrive = FMath::Sign(Left) * FMath::Min(MaxDps, FMath::Sqrt(2.0 * Accel * FMath::Abs(Left)));
+		const double Change = Accel * DeltaTime;
+		Rate = FMath::Clamp(Arrive, Rate - Change, Rate + Change);
+		double Step = Rate * DeltaTime;
+		if ((Left >= 0.0 && Step > Left) || (Left <= 0.0 && Step < Left))
+		{
+			Step = Left;
+			Rate = 0.0;
+		}
+		Now += Step;
+	};
+	Axis(GazeYawDeg, GazeYawRateDps, GoalYawDeg);
+	Axis(GazePitchDeg, GazePitchRateDps, GoalPitchDeg);
 }
 
 void USandboxBodyController::StopFallAim()
@@ -4369,8 +4791,22 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	}
 	FollowSupport(DeltaTime);
 	UpdateFingers(DeltaTime);
+	if (bPerceptionAllowed && Tuning.Perception.Enabled > 0.5)
+	{
+		UpdatePerception(DeltaTime);
+	}
+	// A gaze switched off while the head is turned brings it back at the gaze's own pace, not at once and not never.
+	if ((GazeYawDeg != 0.0 || GazePitchDeg != 0.0 || GazeYawRateDps != 0.0 || GazePitchRateDps != 0.0) &&
+		!(bPerceptionAllowed && Tuning.Perception.Enabled > 0.5 && Tuning.Perception.Gaze > 0.5))
+	{
+		StepGaze(DeltaTime, 0.0, 0.0);
+	}
 	// What the body felt since the last tick: a hit may make it flinch, a held push makes it lean.
 	FeelFrame(DeltaTime);
+	if (AnticipateDueS >= 0.0 || AnticipateFromS >= 0.0 || AnticipateWeight > 0.0 || !bAnticipationJudged || GuardSide >= 0)
+	{
+		UpdateAnticipation(DeltaTime);
+	}
 	for (FVector& Impulse : SupportImpulseNs)
 	{
 		Impulse = FVector::ZeroVector;

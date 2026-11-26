@@ -209,6 +209,44 @@ void FScenarioStage::TellBodyOfHolds(const ASandboxEffectorRig* Rig, ASandboxRag
 	}
 }
 
+void FScenarioStage::TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArrayView<TObjectPtr<AActor>> Props, ASandboxRagdollActor* Body)
+{
+	USandboxBodyController* Controller = Body ? Body->GetController() : nullptr;
+	if (!Controller)
+	{
+		return;
+	}
+	TArray<FSandboxSeen, TInlineAllocator<8>> Seen;
+	if (Rig)
+	{
+		for (const USandboxEffectorComponent* Effector : Rig->GetEffectors())
+		{
+			if (Effector)
+			{
+				FSandboxSeen& Thing = Seen.AddDefaulted_GetRef();
+				Thing.Name = Effector->GetId();
+				Thing.Kind = Effector->GetId().ToString().StartsWith(TEXT("foot")) ? ESandboxSeenKind::Foot : ESandboxSeenKind::Hand;
+				Thing.LocationCm = Effector->GetHandTransform().GetLocation();
+				Thing.VelocityCmS = Effector->GetHandVelocity();
+			}
+		}
+	}
+	for (const TObjectPtr<AActor>& Prop : Props)
+	{
+		const UPrimitiveComponent* Box = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;
+		if (Box)
+		{
+			FSandboxSeen& Thing = Seen.AddDefaulted_GetRef();
+			Thing.Name = Prop->GetFName();
+			Thing.Kind = ESandboxSeenKind::Thing;
+			Thing.LocationCm = Box->GetComponentLocation();
+			Thing.VelocityCmS = Box->GetPhysicsLinearVelocity();
+			Thing.RadiusCm = Box->Bounds.SphereRadius;
+		}
+	}
+	Controller->TellSeen(Seen);
+}
+
 TArray<AActor*> FScenarioStage::SpawnProps(UWorld& World, const FScenarioSpec& Spec)
 {
 	TArray<AActor*> Props;

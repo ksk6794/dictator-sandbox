@@ -83,6 +83,32 @@ namespace
 			Visitor(FString(TEXT("tone.daze_s")), Tuning.Tone.DazeS);
 			Visitor(FString(TEXT("tone.fall_s")), Tuning.Tone.FallS);
 		}
+		Visitor(FString(TEXT("perception.enabled")), Tuning.Perception.Enabled);
+		Visitor(FString(TEXT("perception.view_half_angle_deg")), Tuning.Perception.ViewHalfAngleDeg);
+		Visitor(FString(TEXT("perception.notice_s")), Tuning.Perception.NoticeS);
+		Visitor(FString(TEXT("perception.threat_speed_mps")), Tuning.Perception.ThreatSpeedMps);
+		Visitor(FString(TEXT("perception.threat_time_s")), Tuning.Perception.ThreatTimeS);
+		Visitor(FString(TEXT("perception.threat_near_cm")), Tuning.Perception.ThreatNearCm);
+		Visitor(FString(TEXT("perception.head_radius_cm")), Tuning.Perception.HeadRadiusCm);
+		Visitor(FString(TEXT("perception.trunk_radius_cm")), Tuning.Perception.TrunkRadiusCm);
+		Visitor(FString(TEXT("perception.thing_radius_cm")), Tuning.Perception.ThingRadiusCm);
+		Visitor(FString(TEXT("perception.gaze")), Tuning.Perception.Gaze);
+		Visitor(FString(TEXT("perception.gaze_head_share")), Tuning.Perception.GazeHeadShare);
+		Visitor(FString(TEXT("perception.gaze_speed_dps")), Tuning.Perception.GazeSpeedDps);
+		Visitor(FString(TEXT("perception.gaze_max_yaw_deg")), Tuning.Perception.GazeMaxYawDeg);
+		Visitor(FString(TEXT("perception.gaze_max_pitch_deg")), Tuning.Perception.GazeMaxPitchDeg);
+		Visitor(FString(TEXT("perception.gaze_dwell_s")), Tuning.Perception.GazeDwellS);
+		Visitor(FString(TEXT("perception.gaze_move_mps")), Tuning.Perception.GazeMoveMps);
+		Visitor(FString(TEXT("perception.gaze_rise_s")), Tuning.Perception.GazeRiseS);
+		Visitor(FString(TEXT("perception.anticipate")), Tuning.Perception.Anticipate);
+		Visitor(FString(TEXT("perception.react_s")), Tuning.Perception.ReactS);
+		Visitor(FString(TEXT("perception.anticipate_hold_s")), Tuning.Perception.AnticipateHoldS);
+		Visitor(FString(TEXT("perception.anticipate_pose_s")), Tuning.Perception.AnticipatePoseS);
+		Visitor(FString(TEXT("perception.guard")), Tuning.Perception.Guard);
+		Visitor(FString(TEXT("perception.guard_time_s")), Tuning.Perception.GuardTimeS);
+		Visitor(FString(TEXT("perception.guard_reach_cm")), Tuning.Perception.GuardReachCm);
+		Visitor(FString(TEXT("perception.guard_hold_s")), Tuning.Perception.GuardHoldS);
+		Visitor(FString(TEXT("perception.guard_blend_s")), Tuning.Perception.GuardBlendS);
 		Visitor(FString(TEXT("fall.aim")), Tuning.FallAim.Aim);
 		Visitor(FString(TEXT("fall.reach_ahead_cm")), Tuning.FallAim.ReachAheadCm);
 		Visitor(FString(TEXT("fall.hand_height_cm")), Tuning.FallAim.HandHeightCm);
@@ -509,6 +535,38 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Tone.BraceHoldS, 30.0, TEXT("tone"), TEXT("brace_hold_s"), OutError) || !CheckRange(Tone.DazeFromNs, 1000.0, TEXT("tone"), TEXT("daze_from_ns"), OutError) ||
 		!CheckRange(Tone.DazeScale, 1.0, TEXT("tone"), TEXT("daze_scale"), OutError) || !CheckRange(Tone.DazeS, 60.0, TEXT("tone"), TEXT("daze_s"), OutError))
 	{
+		return false;
+	}
+	if (!CheckRange(Perception.Enabled, 1.0, TEXT("perception"), TEXT("enabled"), OutError) || !CheckRange(Perception.ViewHalfAngleDeg, 180.0, TEXT("perception"), TEXT("view_half_angle_deg"), OutError) ||
+		!CheckRange(Perception.NoticeS, 10.0, TEXT("perception"), TEXT("notice_s"), OutError) || !CheckRange(Perception.ThreatSpeedMps, 50.0, TEXT("perception"), TEXT("threat_speed_mps"), OutError) ||
+		!CheckRange(Perception.ThreatTimeS, 10.0, TEXT("perception"), TEXT("threat_time_s"), OutError) || !CheckRange(Perception.ThreatNearCm, 200.0, TEXT("perception"), TEXT("threat_near_cm"), OutError) ||
+		!CheckRange(Perception.HeadRadiusCm, 50.0, TEXT("perception"), TEXT("head_radius_cm"), OutError) || !CheckRange(Perception.TrunkRadiusCm, 100.0, TEXT("perception"), TEXT("trunk_radius_cm"), OutError) ||
+		!CheckRange(Perception.ThingRadiusCm, 100.0, TEXT("perception"), TEXT("thing_radius_cm"), OutError) ||
+		!CheckRange(Perception.Gaze, 1.0, TEXT("perception"), TEXT("gaze"), OutError) || !CheckRange(Perception.GazeHeadShare, 1.0, TEXT("perception"), TEXT("gaze_head_share"), OutError) ||
+		!CheckRange(Perception.GazeSpeedDps, 2000.0, TEXT("perception"), TEXT("gaze_speed_dps"), OutError) || !CheckRange(Perception.GazeMaxYawDeg, 90.0, TEXT("perception"), TEXT("gaze_max_yaw_deg"), OutError) ||
+		!CheckRange(Perception.GazeMaxPitchDeg, 90.0, TEXT("perception"), TEXT("gaze_max_pitch_deg"), OutError) || !CheckRange(Perception.GazeDwellS, 10.0, TEXT("perception"), TEXT("gaze_dwell_s"), OutError) ||
+		!CheckRange(Perception.GazeMoveMps, 20.0, TEXT("perception"), TEXT("gaze_move_mps"), OutError) ||
+		!CheckRange(Perception.GazeRiseS, 2.0, TEXT("perception"), TEXT("gaze_rise_s"), OutError) ||
+		!CheckRange(Perception.Anticipate, 1.0, TEXT("perception"), TEXT("anticipate"), OutError) || !CheckRange(Perception.ReactS, 2.0, TEXT("perception"), TEXT("react_s"), OutError) ||
+		!CheckRange(Perception.AnticipateHoldS, 10.0, TEXT("perception"), TEXT("anticipate_hold_s"), OutError) || !CheckRange(Perception.AnticipatePoseS, 2.0, TEXT("perception"), TEXT("anticipate_pose_s"), OutError))
+	{
+		return false;
+	}
+	if (!CheckRange(Perception.Guard, 1.0, TEXT("perception"), TEXT("guard"), OutError) || !CheckRange(Perception.GuardTimeS, 5.0, TEXT("perception"), TEXT("guard_time_s"), OutError) ||
+		!CheckRange(Perception.GuardReachCm, 80.0, TEXT("perception"), TEXT("guard_reach_cm"), OutError) || !CheckRange(Perception.GuardHoldS, 10.0, TEXT("perception"), TEXT("guard_hold_s"), OutError) ||
+		!CheckRange(Perception.GuardBlendS, 2.0, TEXT("perception"), TEXT("guard_blend_s"), OutError))
+	{
+		return false;
+	}
+	if (Perception.Guard > 0.5 && Perception.GuardBlendS <= 0.0)
+	{
+		OutError = TEXT("perception.guard_blend_s must be above 0 while perception.guard is on");
+		return false;
+	}
+	if (Perception.Anticipate > 0.5 && Perception.AnticipatePoseS <= 0.0)
+	{
+		// At 0 the whole of the flinch's pose would arrive in one frame.
+		OutError = TEXT("perception.anticipate_pose_s must be above 0 while perception.anticipate is on");
 		return false;
 	}
 	if (!CheckRange(FallAim.Aim, 1.0, TEXT("fall"), TEXT("aim"), OutError) || !CheckRange(FallAim.ReachAheadCm, 200.0, TEXT("fall"), TEXT("reach_ahead_cm"), OutError) ||

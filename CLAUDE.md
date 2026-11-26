@@ -401,7 +401,8 @@ touch must not be in that list, and the ones that are get explained in the part'
 - **Do not judge "at rest" by the fastest body.** A hand trembling against the floor (0.5 kg) kept a lying
   character "falling" for good. The controller uses the mass-weighted root mean square over all bodies.
 - **Scenario time and controller time differ by one frame:** the controller's first tick comes one frame
-  after the body is spawned. Result files use the run's own frame count; do not mix the two.
+  after the body is spawned. Result files use the run's own frame count; do not mix the two. A threat's time in `control.perception`
+  is the body's clock; held against a hand's first contact (the run's clock) it was first read 0.011 s off (0.068 for 0.079).
 - **A bash heredoc breaks on an apostrophe in its body when run through the agent's shell tool,** and one
   that survives has its backslashes halved (`\\n` arrives as `\n`, `\t` in a path as a tab). Write the
   script to a file with the file tool and run that.
@@ -981,6 +982,10 @@ touch must not be in that list, and the ones that are get explained in the part'
   at 3000 N*m/rad. An arm's bend goes over from the pose's plane with the weight, its hand turns with the forearm, and its shoulder
   and elbow are held to their ranges (`FSandboxLimbTarget::bArm`). Test a placement with stiff muscles first: that is the geometry;
   what the arm's own strength leaves of it is its weight.
+- **A change to a path that several features share is measured on each of them.** The arm's blend by its joints' turns was made for
+  the guarding arm, which it put right (a target that jumped 9 degrees to 0.5); it reached every arm, and the fall's reach, measured
+  before it, gained 44.7 J by hand instead of 38.3 and the head struck in twice as many falls. It is the guard's alone now
+  (`FSandboxLimbTarget::bJointBlend`). Before calling such a change done, name every caller and run what each was judged by.
 - **Check a limit against today's body before it judges a change.** "No joint faster than 30 rad/s in the knockdowns" was written
   for N6 and today's neck reaches 36 after the blow at 90 degrees; the plan said "the arms, when they meet the floor". Read today's
   figure of a new limit before the runs it is to judge.

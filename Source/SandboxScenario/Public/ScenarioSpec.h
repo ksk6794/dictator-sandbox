@@ -289,6 +289,8 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	 * a fall is about the fall, and its body stays where it came to rest. (In a session the body gets up.)
 	 */
 	bool bGetUp = false;
+	/** Whether the body judges what moves near it (N5, perception.*): only when the scenario says so, so that the suite stays as it was. */
+	bool bPerception = false;
 
 	/** Start-up transient: "settled" metrics and expectations only look at the run after this time. */
 	double SettleS = 2.0;

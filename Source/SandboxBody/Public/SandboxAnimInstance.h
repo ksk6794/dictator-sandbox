@@ -69,6 +69,11 @@ struct FSandboxLimbTarget
 	 * so that nothing turns in the frame a target is given; and the end turns with the middle (the wrist keeps the pose's bend).
 	 */
 	bool bArm = false;
+	/**
+	 * An arm solved for its whole target and blended by its joints' turns (a guard): no hand on its way past the shoulder. The others are
+	 * blended by where the hand is, as the hand target and the fall's reach were measured with.
+	 */
+	bool bJointBlend = false;
 	/** An arm's shoulder and elbow are held to these ranges after the placement (not used for a leg). */
 	FSandboxJointLimits RootLimits;
 	FSandboxJointLimits MiddleLimits;
@@ -157,7 +162,11 @@ public:
 	void SetLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, double Weight, double BlendS);
 
 	/** Which way a limb's middle joint goes and its hinge's fallback (FSandboxLimbTarget), for every target of that end from now on. */
-	void SetLimbBend(int32 EndMeshBoneIndex, const FVector& PoleDirection, const FVector& HingeFallback) { Bends.Add(EndMeshBoneIndex, TPair<FVector, FVector>(PoleDirection, HingeFallback)); }
+	void SetLimbBend(int32 EndMeshBoneIndex, const FVector& PoleDirection, const FVector& HingeFallback, bool bEaseTwice = false)
+	{
+		Bends.Add(EndMeshBoneIndex, TPair<FVector, FVector>(PoleDirection, HingeFallback));
+		if (bEaseTwice) { EasedTwice.Add(EndMeshBoneIndex); } else { EasedTwice.Remove(EndMeshBoneIndex); }
+	}
 
 	/** The ranges an arm's two segments are held to (FSandboxLimbTarget::RootLimits, MiddleLimits). */
 	void SetLimbRanges(int32 EndMeshBoneIndex, const FSandboxJointLimits& Root, const FSandboxJointLimits& Middle) { Ranges.Add(EndMeshBoneIndex, TPair<FSandboxJointLimits, FSandboxJointLimits>(Root, Middle)); }
@@ -210,6 +219,8 @@ private:
 	TArray<FLimbState> LimbStates;
 	TMap<int32, FSandboxJointLimits> EndLimits;
 	TMap<int32, TPair<FVector, FVector>> Bends;
+	/** Arms whose weight is eased a second time (a guard raised quickly); the others keep the limb's own ease. */
+	TSet<int32> EasedTwice;
 	TMap<int32, TPair<FSandboxJointLimits, FSandboxJointLimits>> Ranges;
 	bool bReachWithWeight = false;
 
