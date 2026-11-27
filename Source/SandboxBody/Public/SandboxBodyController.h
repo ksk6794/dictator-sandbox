@@ -8,6 +8,7 @@
 #include "SandboxClipPose.h"
 #include "SandboxFingerRig.h"
 #include "SandboxIdleMotion.h"
+#include "SandboxMotionLibrary.h"
 #include "SandboxPoseRig.h"
 #include "SandboxWeightTorques.h"
 #include "SandboxAnimInstance.h"
@@ -266,9 +267,48 @@ struct FSandboxStepRecord
 	bool bRegroup = false;
 };
 
+/**
+ * How one get-up attempt began (R2, step 8): the clip it took, from which time, and how far the clip as it was laid stood from the
+ * body. Read only; seconds since Start.
+ */
+struct FSandboxGetUpStart
+{
+	double AtS = 0.0;
+	/** The clip's key (FSandboxMotionLibrary::MirrorMark at its end for a mirror image) and the time in it the attempt began from. */
+	FString Clip;
+	bool bMirrored = false;
+	double TimeS = 0.0;
+	/**
+	 * In both modes: the clip's pelvis as it was laid (the carry's target) from the body's; the weighted root mean square of the
+	 * distances of the bones the matcher compares, by its weights (the matcher's own measure, worked out for whatever clip and frame
+	 * the attempt took); the mean angle over the joints between the body's own pose and the clip's. Below 0: not measured. cm, deg.
+	 */
+	double PelvisOffCm = -1.0;
+	double OffCm = -1.0;
+	double PoseDeg = -1.0;
+	/** The matcher's choice (getup.match 1): its cost and the cost's parts, its turn about the vertical, the next best that might have been chosen. */
+	bool bMatched = false;
+	double CostCm = -1.0;
+	double PlacesCm = -1.0;
+	double UpDeg = -1.0;
+	double YawDeg = 0.0;
+	FString Next;
+	double NextCostCm = -1.0;
+	/** The nearest of every get-up of the library, chosen or not, and of the rolls: what they would have given. */
+	FString BestAny;
+	double BestAnyCostCm = -1.0;
+	FString BestRoll;
+	double BestRollCostCm = -1.0;
+	/** How the attempt ended: when (below 0: not yet), and "stood" or the reason it was given up. */
+	double EndedS = -1.0;
+	FString Ended;
+};
+
 /** The body's get-ups so far, for result files. Seconds since Start. */
 struct FSandboxGetUpView
 {
+	/** How every attempt began, in order (R2, step 8). */
+	TArray<FSandboxGetUpStart> Starts;
 	/** How many times the body began to get up, and how many of those ended standing. */
 	int32 Attempts = 0;
 	int32 Successes = 0;
@@ -516,6 +556,8 @@ public:
 	void GetMuscleJoints(TArray<TPair<FName, FName>>& OutJoints) const;
 	/** Every clip read so far, by path: for result files (how each joint of a clip fits the body). */
 	const TMap<FString, FSandboxClipPose>& GetClips() const { return Clips; }
+	/** The motion library (R2, step 8), built at the first get-up with getup.match 1; empty before. For result files. */
+	const FSandboxMotionLibrary& GetMotionLibrary() const { return MotionLibrary; }
 
 	/**
 	 * What the body has taken from contacts with other simulated bodies since it was started: the sum of
@@ -913,6 +955,30 @@ private:
 	/** The mesh's own space when the body was started: the space a clip's root is in for a body that stands as this one stood. */
 	FTransform StartSpace = FTransform::Identity;
 	bool StartGetUp(FString& OutError);
+	/**
+	 * The get-up's clip as chosen before the matcher (getup.match 0): of getup.clip_*, the one whose first pelvis lies most like the
+	 * body's, another than the one just given up if one starts at all alike; laid with its pelvis over the body's, turned about the
+	 * vertical by the pelvis's own turn, on the floor last stood on, from its time 0. Null with a reason.
+	 */
+	const FSandboxClipPose* ChooseByRule(const FTransform& Now, FString& OutPath, FTransform& OutFrame, FString& OutHow, FString& OutError);
+	/**
+	 * R2, step 8: the motion library's list (text only; read in both modes for the start's measure), the library itself (getup.match
+	 * 1, at the first get-up), the matcher's weights, the body as the matcher sees it, and its choice: a clip's key, the time to start
+	 * at and the clip's root in the world. False with a reason.
+	 */
+	FSandboxMotionSpec MotionSpec;
+	bool bMotionSpecTried = false;
+	bool bMotionSpecRead = false;
+	FSandboxMotionLibrary MotionLibrary;
+	bool bMotionLibraryFailed = false;
+	FString MotionLibraryError;
+	bool ReadMotionSpec(FString& OutError);
+	bool BuildMotionLibrary(FString& OutError);
+	FSandboxMatchSettings MatchSettings() const;
+	void MatchBody(FSandboxMatchBody& OutBody) const;
+	bool ChooseByMatch(FString& OutKey, double& OutTimeS, FTransform& OutFrame, FSandboxGetUpStart& InOutStart, FString& OutError);
+	/** How far the clip, laid at Frame from TimeS, stands from the body as it lies (FSandboxGetUpStart's measures). Read only. */
+	void MeasureStart(const FSandboxClipPose& Clip, double TimeS, const FTransform& Frame, FSandboxGetUpStart& InOutStart);
 	void UpdateGetUp(double DeltaTime);
 	/** The plank and the shape at 70 cm, measured while getting up (read only). */
 	void MeasureGetUpShape(const FTransform& PelvisNow, double Ease, double DeltaTime);

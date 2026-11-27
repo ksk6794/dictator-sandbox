@@ -408,7 +408,18 @@ foreach ($trial in $trials) {
         to_stand_s          = $toStandS
         # R2's gate (decisions 16 and 21): the last attempt's clip and its shape at 70 cm of pelvis (C27), the longest pose held
         # while getting up (C19).
-        clip                = $(if ($ups.clip) { ([string]$ups.clip).Split('.')[-1] } else { $null })
+        # The clip's name without the mirror's mark (decision 21 judges the four clips, a mirror image with its clip); whether it was the
+        # mirror image (R2's step 8, getup.match 1).
+        clip                = $(if ($ups.clip) { ([string]$ups.clip).Split('|')[0].Split('.')[-1] } else { $null })
+        clip_mirrored       = $(if ($ups.clip) { ([string]$ups.clip).EndsWith('|mirror') } else { $false })
+        # How every attempt began and ended (R2's step 8): the clip, the time in it, how far the clip as laid stood from the body (pelvis,
+        # the compared bones, the pose), the matcher's cost (getup.match 1), and "stood" or why it was given up.
+        starts              = @(foreach ($start in @($ups.starts)) { if ($start) { [ordered]@{
+            at_s = $start.at_s; clip = ([string]$start.clip).Split('|')[0].Split('.')[-1]; mirrored = [bool]$start.mirrored; time_s = $start.time_s
+            pelvis_off_cm = $start.pelvis_off_cm; off_cm = $start.off_cm; pose_deg = $start.pose_deg
+            cost_cm = $(if ($start.matched) { $start.cost_cm } else { $null }); next_cost_cm = $(if ($start.matched) { $start.next_cost_cm } else { $null })
+            best_any = $(if ($start.matched) { $start.best_any } else { $null }); best_any_cost_cm = $(if ($start.matched) { $start.best_any_cost_cm } else { $null })
+            ended_s = $start.ended_s; ended = $start.ended } } })
         rise_trunk_deg      = $ups.rise_trunk_deg
         rise_feet_cm        = $ups.rise_feet_cm
         held_pose_s         = $(if ($run.metrics.stillness -and $run.metrics.stillness.target_still_longest_by_state_s) { $run.metrics.stillness.target_still_longest_by_state_s.get_up } else { $null })

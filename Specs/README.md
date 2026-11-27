@@ -261,3 +261,22 @@ names a folder (`in_project`: below `Content/Characters`; `from_sample`: below t
 `Tools\fetch-sample-anims.ps1 -PosePrior`), a regular expression on a clip's file name, and the number of clips it
 must give: another number is an error, since figures from two databases are not to be compared. `exclude` leaves out
 montages, additives and the like. The database is not committed.
+
+## motion_library.json: the clips a body gets up by
+
+Not an asset. The list `FSandboxMotionLibrary` reads at a body's first get-up with `getup.match` 1 (R2's step 8,
+`docs/recon/r2_step8_plan.md`; the tuning value `motion.library` names the file, so a tuning directory can name another).
+Each clip is carried to the body as a get-up's clip is (`FSandboxClipPose`) and, with `mirror`, also read as its mirror image
+(made on the clip's own skeleton: each bone takes its counterpart's motion seen in the mirror). Nothing of it is written to disk.
+
+| Field | Holds |
+| --- | --- |
+| `comment` | Free text |
+| `folder` | Where the clips are, an asset path (`/Game/...`) |
+| `features` | The bones the matcher compares, by group: an object whose keys are `pelvis`, `trunk`, `hands`, `elbows`, `feet`, `knees` (each weighed by `getup.match_<group>`), each a list of bone names with a body in the physics asset; the pelvis's group is required, 32 bones at most |
+| `clips` | A list of `{ "name", "kind", "lies", "mirror", "match" }`: the clip's asset name in `folder`; `getup` or `roll`; how the recording begins (`back`, `front`, `left`, `right`; for reports); whether its mirror image is read too (true or false); whether the matcher may choose it (true or false; only a `getup`; the owner's decision 39: the four stand clips, which end standing in place, where `getup.end_s` is measured) |
+
+An unknown field, an unknown group, a number where true or false is asked for, or a roll to be chosen is refused when the list is
+read; a mirrored clip whose skeleton's reference pose is not its own mirror image within 0.5 cm is refused when it is read. A
+clip's key in the controller and in result files is `<folder>/<name>.<name>`, and `|mirror` after it for its mirror image (such
+a key also works in a scenario's `clip_pose` event and in `Tools\clip-film.ps1 -Clip`).

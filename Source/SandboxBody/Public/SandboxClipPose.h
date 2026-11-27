@@ -64,13 +64,42 @@ public:
 	/**
 	 * Reads the clip for the joints given. False with a reason if the clip or the mesh lacks one of their bones.
 	 * PelvisBone is the body nothing turns: the one all the others hang on.
+	 *
+	 * bMirror (R2, step 8): the clip is read as its mirror image, made on the clip's own skeleton before anything is carried to
+	 * the body: each bone takes the motion of its counterpart on the other side (_l and _r swapped, a bone of the middle its
+	 * own), reflected in the skeleton's plane of symmetry (MirrorTurn, MirrorPoint). The plane is the one across which the
+	 * thighs lie in the clip's reference pose; a skeleton whose reference pose is not its own mirror image there within
+	 * MirrorToleranceCm is refused. Everything after the mirror (the carry to the body, the limbs' alignment, the joints held
+	 * to their ranges, the reached chain) is as for the clip itself.
 	 */
-	bool Load(const UAnimSequence* Sequence, const USkeletalMeshComponent* Mesh, FName PelvisBone, TConstArrayView<FSandboxClipJoint> InJoints, FString& OutError);
+	bool Load(const UAnimSequence* Sequence, const USkeletalMeshComponent* Mesh, FName PelvisBone, TConstArrayView<FSandboxClipJoint> InJoints, FString& OutError, bool bMirror = false);
 
 	bool IsLoaded() const { return KeyCount > 0; }
 	/** From the first key to the last, seconds. */
 	double GetLengthS() const { return KeyCount > 1 ? (KeyCount - 1) * KeyS : 0.0; }
 	int32 GetKeyCount() const { return KeyCount; }
+	/** Seconds from one key to the next. */
+	double GetKeyS() const { return KeyS; }
+	bool IsMirrored() const { return bMirrored; }
+	/** A mirrored reading: how far the clip skeleton's reference pose is from its own mirror image, at the bones read (worst, cm). */
+	double GetMirrorAsymmetryCm() const { return MirrorAsymmetryCm; }
+
+	/** How far a skeleton's reference pose may be from its own mirror image for a clip on it to be mirrored, cm. */
+	static constexpr double MirrorToleranceCm = 0.5;
+	/** The mirror's arithmetic (pure). Axis is the normal of the mirror's plane: 0 for x, 1 for y, 2 for z. */
+	static FVector MirrorPoint(const FVector& Point, int32 Axis);
+	/** A rotation R seen in the mirror, S R S: a turn about the plane's normal stays, a turn about an axis in the plane goes the other way. */
+	static FQuat MirrorRotation(const FQuat& Rotation, int32 Axis);
+	/**
+	 * A bone's orientation in the mirror image of a pose: its counterpart's turn from the counterpart's reference orientation,
+	 * reflected, laid on the bone's own reference orientation. At the reference pose it is the bone's own reference, however the
+	 * two sides' bone axes happen to lie.
+	 */
+	static FQuat MirrorTurn(const FQuat& Counterpart, const FQuat& CounterpartReference, const FQuat& OwnReference, int32 Axis);
+	/** The bone of the other side: "_l" and "_r" at the end swapped; any other name is its own counterpart. */
+	static FString MirrorBoneName(const FString& Name);
+	/** The axis a left bone lies from its right counterpart along, most: the normal of the plane of symmetry. */
+	static int32 MirrorAxis(const FVector& LeftMinusRight);
 
 	/** The pose at a time (held at the clip's ends outside them): every joint's bone with its local rotation. */
 	void Evaluate(double TimeS, TArray<FSandboxPoseBone>& OutBones) const;
@@ -129,4 +158,6 @@ private:
 	TArray<TArray<FTransform>> ReachedTracks;
 	int32 KeyCount = 0;
 	double KeyS = 0.0;
+	bool bMirrored = false;
+	double MirrorAsymmetryCm = 0.0;
 };

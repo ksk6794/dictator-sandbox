@@ -7,7 +7,57 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 
-bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshComponent* Mesh, FName PelvisBone, TConstArrayView<FSandboxClipJoint> InJoints, FString& OutError)
+FVector FSandboxClipPose::MirrorPoint(const FVector& Point, int32 Axis)
+{
+	FVector Result = Point;
+	Result[Axis] = -Result[Axis];
+	return Result;
+}
+
+FQuat FSandboxClipPose::MirrorRotation(const FQuat& Rotation, int32 Axis)
+{
+	// S R S with S the reflection along Axis: the rotation's axis is a pseudo-vector, so it turns as -S of itself; the angle stays.
+	FQuat Result = Rotation;
+	if (Axis != 0)
+	{
+		Result.X = -Result.X;
+	}
+	if (Axis != 1)
+	{
+		Result.Y = -Result.Y;
+	}
+	if (Axis != 2)
+	{
+		Result.Z = -Result.Z;
+	}
+	return Result;
+}
+
+FQuat FSandboxClipPose::MirrorTurn(const FQuat& Counterpart, const FQuat& CounterpartReference, const FQuat& OwnReference, int32 Axis)
+{
+	return (MirrorRotation((Counterpart * CounterpartReference.Inverse()).GetNormalized(), Axis) * OwnReference).GetNormalized();
+}
+
+FString FSandboxClipPose::MirrorBoneName(const FString& Name)
+{
+	if (Name.EndsWith(TEXT("_l")))
+	{
+		return Name.LeftChop(1) + TEXT("r");
+	}
+	if (Name.EndsWith(TEXT("_r")))
+	{
+		return Name.LeftChop(1) + TEXT("l");
+	}
+	return Name;
+}
+
+int32 FSandboxClipPose::MirrorAxis(const FVector& LeftMinusRight)
+{
+	const FVector Size = LeftMinusRight.GetAbs();
+	return Size.X >= Size.Y && Size.X >= Size.Z ? 0 : Size.Y >= Size.Z ? 1 : 2;
+}
+
+bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshComponent* Mesh, FName PelvisBone, TConstArrayView<FSandboxClipJoint> InJoints, FString& OutError, bool bMirror)
 {
 	Joints.Reset();
 	Fits.Reset();
@@ -17,6 +67,8 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 	ReachedTracks.Reset();
 	KeyCount = 0;
 	KeyS = 0.0;
+	bMirrored = false;
+	MirrorAsymmetryCm = 0.0;
 
 	const USkeletalMesh* SkeletalMesh = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
 	const USkeleton* ClipSkeleton = Sequence ? Sequence->GetSkeleton() : nullptr;
@@ -56,6 +108,10 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 		/** Where the body's bone is from its parent body's, in that bone's frame, in the mesh's reference pose: its proportions. */
 		FVector OffsetInParent = FVector::ZeroVector;
 		FSandboxJointLimits Limits;
+		/** A mirrored reading: the counterparts on the other side of SourceBone and SourceSelf, and SourceBone's counterpart's reference orientation. */
+		int32 SourceBoneMirror = INDEX_NONE;
+		int32 SourceSelfMirror = INDEX_NONE;
+		FQuat SourceMirrorReference = FQuat::Identity;
 	};
 	TArray<FBody> Bodies;
 	const auto AddBody = [&](FName Bone, FName OrientationBone, FString& Error) -> bool
@@ -151,6 +207,53 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 		Fits[Index].ReferenceDirectionDeg = FMath::RadiansToDegrees(Body.Align.GetAngle());
 	}
 
+	// A mirrored reading: the clip skeleton's plane of symmetry, from its thighs, and every bone a body reads paired with the one of
+	// the other side. The reference pose has to be its own mirror image at those bones, or the mirror would carry the skeleton's
+	// own lopsidedness into the motion.
+	int32 MirrorNormal = 0;
+	if (bMirror)
+	{
+		const int32 LeftThigh = Source.FindBoneIndex(TEXT("thigh_l"));
+		const int32 RightThigh = Source.FindBoneIndex(TEXT("thigh_r"));
+		if (LeftThigh == INDEX_NONE || RightThigh == INDEX_NONE)
+		{
+			OutError = FString::Printf(TEXT("the skeleton of the clip '%s' has no thigh_l and thigh_r to find its plane of symmetry by"), *Sequence->GetPathName());
+			return false;
+		}
+		MirrorNormal = MirrorAxis(SourceReference(LeftThigh).GetLocation() - SourceReference(RightThigh).GetLocation());
+		FString WorstBone;
+		for (FBody& Body : Bodies)
+		{
+			const int32 Own[2] = { Body.SourceBone, Body.SourceSelf };
+			int32* Mirrored[2] = { &Body.SourceBoneMirror, &Body.SourceSelfMirror };
+			for (int32 Which = 0; Which < 2; ++Which)
+			{
+				const FString OwnName = Source.GetBoneName(Own[Which]).ToString();
+				const FString OtherName = MirrorBoneName(OwnName);
+				*Mirrored[Which] = Source.FindBoneIndex(FName(*OtherName));
+				if (*Mirrored[Which] == INDEX_NONE)
+				{
+					OutError = FString::Printf(TEXT("the skeleton of the clip '%s' has '%s' but not '%s': it cannot be mirrored"), *Sequence->GetPathName(), *OwnName, *OtherName);
+					return false;
+				}
+				const double OffCm = FVector::Dist(MirrorPoint(SourceReference(*Mirrored[Which]).GetLocation(), MirrorNormal), SourceReference(Own[Which]).GetLocation());
+				if (OffCm > MirrorAsymmetryCm)
+				{
+					MirrorAsymmetryCm = OffCm;
+					WorstBone = OwnName;
+				}
+			}
+			Body.SourceMirrorReference = SourceReference(Body.SourceBoneMirror).GetRotation();
+		}
+		if (MirrorAsymmetryCm > MirrorToleranceCm)
+		{
+			OutError = FString::Printf(TEXT("the skeleton of the clip '%s' is not its own mirror image across axis %d: '%s' is %.2f cm from where its counterpart's mirror lies (%.2f allowed)"),
+				*Sequence->GetPathName(), MirrorNormal, *WorstBone, MirrorAsymmetryCm, MirrorToleranceCm);
+			return false;
+		}
+		bMirrored = true;
+	}
+
 	// The clip's bones in the space of the whole body, key by key. A bone the clip has no keys for is where the
 	// clip's skeleton has it in its reference pose. The keys as they were made, where the editor has them: the
 	// compressed data is built in the background, and what a run reads must not depend on whether that has finished.
@@ -194,7 +297,27 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 		{
 			InSpace(Body.SourceBone);
 			InSpace(Body.SourceSelf);
+			if (bMirror)
+			{
+				InSpace(Body.SourceBoneMirror);
+				InSpace(Body.SourceSelfMirror);
+			}
 		}
+	};
+	// What a body reads of the clip's skeleton at the key just sampled: its bone's orientation and place, and its own bone's place;
+	// in a mirrored reading the counterparts' seen in the mirror.
+	const auto SourceRotation = [&](const FBody& Body)
+	{
+		return bMirror ? MirrorTurn(Space[Body.SourceBoneMirror].GetRotation(), Body.SourceMirrorReference, Body.SourceReference, MirrorNormal)
+			: Space[Body.SourceBone].GetRotation();
+	};
+	const auto SourcePlace = [&](const FBody& Body)
+	{
+		return bMirror ? MirrorPoint(Space[Body.SourceBoneMirror].GetLocation(), MirrorNormal) : Space[Body.SourceBone].GetLocation();
+	};
+	const auto SelfPlace = [&](const FBody& Body)
+	{
+		return bMirror ? MirrorPoint(Space[Body.SourceSelfMirror].GetLocation(), MirrorNormal) : Space[Body.SourceSelf].GetLocation();
 	};
 
 	Joints.SetNum(InJoints.Num());
@@ -227,12 +350,12 @@ bool FSandboxClipPose::Load(const UAnimSequence* Sequence, const USkeletalMeshCo
 		for (int32 Index = 0; Index < Bodies.Num(); ++Index)
 		{
 			const FBody& Body = Bodies[Index];
-			Orientation[Index] = Carry(Space[Body.SourceBone].GetRotation(), Body.SourceReference, Body.Align, Body.TargetReference);
+			Orientation[Index] = Carry(SourceRotation(Body), Body.SourceReference, Body.Align, Body.TargetReference);
 		}
-		Pelvis.Add(FTransform(Orientation[0], Space[Bodies[0].SourceBone].GetLocation() * Scale));
+		Pelvis.Add(FTransform(Orientation[0], SourcePlace(Bodies[0]) * Scale));
 		for (int32 Index = 0; Index < Bodies.Num(); ++Index)
 		{
-			BodyTracks[Index].Add(FTransform(Orientation[Index], Space[Bodies[Index].SourceSelf].GetLocation() * Scale));
+			BodyTracks[Index].Add(FTransform(Orientation[Index], SelfPlace(Bodies[Index]) * Scale));
 		}
 		for (int32 Index = 0; Index < InJoints.Num(); ++Index)
 		{

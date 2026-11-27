@@ -68,7 +68,7 @@ feasible for a simulated body. No value of clip-following removes this (26 Novem
 
 **Cause 3. There is too little motion in the body.** What makes motion read as human is detail, and detail comes from recorded
 people or from a learned controller. The body has one stance, three fall poses, one flinch offset and four clips, each chosen
-once by a rule. 224 clips of Epic's sample lie on disk (reaches in nine directions, flails, ways of lying, rolls, twenty get-ups,
+once by a rule. 224 clips of Epic's sample lie on disk (reaches in nine directions, flails, ways of lying, rolls, sixteen get-ups,
 people shoved, tackled and taken down) and are used only as a yardstick (`pose_prior`).
 
 **Cause 4. Decisions are instant and discrete.** The flinch begins 11 ms after a hit and a step is decided in 30 ms, ten times
@@ -308,7 +308,7 @@ The order of the R parts themselves is by what the owner sees first.
 | Part | What it gives | Depends on |
 | --- | --- | --- |
 | R1 | The led get-up: the whole body under authority follows the clip at its pace. **On since 26 November (`getup.carry` 1)** | - |
-| R2 | The get-up from however the body lies: a matcher over all twenty get-up clips and their mirrors, a roll first when nothing fits, the reference fitted to the floor, the blend from the lying pose | R1 |
+| R2 | The get-up from however the body lies: a matcher over the get-up clips (sixteen in the sample; corrected on 27 November, "twenty" before) and their mirrors, a roll first when nothing fits, the reference fitted to the floor, the blend from the lying pose | R1 |
 | R3 | The fall as the references drive it | The hand target (exists) |
 | R4 | The soft upright body: feed-forward weight, a person's springs, tone, reflex delays, the assist as leg torques; a new baseline and new tables | - |
 | R5 | Reactions from recorded people: the shoved, tackled and taken-down clips as targets after a hit, the hand to the struck place | R2's matcher, R4 |
@@ -385,6 +385,19 @@ in the physics step (not measured).
   the four ways between. They found a defect, put right without a switch: the support frame averaged the feet's turns across the
   seam at 180 degrees, so a body that got up facing away from where it started had its frame half round, stepped to "close" its
   stance and fell. 6 of the stand's 150 trials change (one better on the floor, five at the table, where the get-up is lost anyway).
+- **Step 8, the motion library and the matcher** (27 November 2026, behind `getup.match` at 0; `docs/recon/r2_step8_plan.md`;
+  `docs/testing.md`, "R2, step 8"; decision 39): `FSandboxMotionLibrary` reads `Specs/motion_library.json` (the sixteen get-ups and the
+  two rolls, each also as its mirror image, made on the clip's own skeleton), `FSandboxMotionMatcher` lays the first second of each of
+  the eight variants the owner allowed (the four stand clips and their mirrors) on the lying body by its pelvis, trunk, hands, elbows,
+  feet and knees and their lean, and `StartGetUp` takes its clip, time and frame; the four `getup.clip_*` stay while the switch is 0.
+  At 0 every hash is kept. With it on, on three seeds: 142 of 150 at the first attempt (140), 9.1% of attempts given up (10.2%: C19's
+  share within its 10%), 8 poses held over 1.0 s (5, all at the furniture), C27 within both limits in 90 of 150 (67), the median trunk
+  29.7 degrees (58.1) but the side clips still 61 to 77; C21's seed medians 2.60 to 2.97 s (3.20: the clip begins 0.4 s in, nearer the
+  lying pose); authority 1.18 (1.16); one hand 39 of 150 pull free, two hands 0, pressed with 300 N 49 stand under it (56). With the back
+  and front clips alone: 143, 8.0%, 2 poses, C27 in 150 of 150, but C21 2.53 to 2.57 s and authority 1.27. Found: the sample's rolls are
+  not a lying body's (they begin 40 cm up, 2 m away, out of a dive's roll), so step 9 cannot be built on them as planned; the two side
+  get-ups are two recordings (one is not the other's mirror); C27's 70 cm lies on a step of the side clips' pelvis. For the owner's look:
+  the videos `Saved\Films\r2s8_*`.
 - **Found in the night of 26 to 27 November, for the matcher and the fit to the floor** (`docs/testing.md`, "R2's gate today"): the
   side clips themselves rise with the trunk 57 to 63 degrees from upright at 70 cm of pelvis (the body follows them to a few degrees),
   so C27's 45 degrees cannot be met on the sides by following them better: decided with the matcher (decision 38: roll to the back
@@ -419,9 +432,10 @@ in the physics step (not measured).
   desktop, on the screen); `getup.rise` with the carry on leaves a rising body with no
   force (it goes in step 0).
 - **The fingers** (N8 B, decision 8): `flat` under a hand that carries weight, shown to the owner on this part's videos.
-- **`FSandboxMotionLibrary`.** Reads the clips a text list names (`Specs/motion_library.json`: the twenty get-ups, the two rolls,
-  the ground poses), carries each to this body, mirrors each, and marks contacts (a foot or a hand within a few centimetres of the
-  clip's floor and slow). Built at first use; nothing of Epic's is committed.
+- **`FSandboxMotionLibrary`.** Reads the clips a text list names (`Specs/motion_library.json`: the sixteen get-ups and the two
+  rolls; "twenty" before 27 November was wrong; the ground poses go with R6), carries each to this body, mirrors each, and marks
+  contacts (a foot or a hand within a few centimetres of the clip's floor and slow). Built at first use; nothing of Epic's is
+  committed. **Built in step 8** (below).
 - **`FSandboxMotionMatcher`.** The lying body against the first second of every get-up: the pelvis's up direction, the trunk's
   direction over the floor, where hands and feet are in the pelvis's heading frame. Returns a clip, a time in it and a frame of
   the world (turned about the vertical). The four `getup.clip_*` rules go. Epic's `PSS_Ragdoll` samples the same bones.
@@ -602,6 +616,7 @@ One at a time, the recommended answer first.
 | 36 | Decision 22 built (R2's step 6, behind `getup.start_blend_s`): the start crosses from the body's own pose to the clip's first pose. On the stand of 150 at 0.3 s it is within the noise of today's (138 first attempts against 139, 11.6% of attempts given up against 10.7%); at 0.6 s 141 and 14.1%; the pose held still at the start (C19) goes; the muscles' target no longer jumps to the clip's first pose | **Taken for the owner, reversible; to confirm: 0 in the files until the owner has seen `Saved\Films\r2s6_start_pair`**; if the blend reads better, 0.3 s (no figure of the stand moves beyond its noise). Not chosen: 0.6 s now (more attempts lost); the blend left unbuilt until the matcher (decision 22 says the matcher's clip, whose first pose is nearer the lying one). Measured again at the night's end: at 0.3 s the largest jump of the muscles' target in the suite's get-ups goes from 105 to 75 degrees, 84 to 34 in `getup_pressed` (`docs/testing.md`, "The whole night read once more"). **Confirmed by the owner on 27 November after the videos: 0.3 s** (the suite 149 of 149, baseline `start`; the stand 150, 140 at the first attempt, 10.2% of attempts given up with the hold and the hit) |
 | 37 | R3's blend of the fall's pose by its way (R3's step 2, the night of 26 to 27 November, behind `fall.blend`): over the whole body the sample's reaching poses held a leg in the air after the body lay (they are poses of a body in the air), and the plan's other halves (the flails by the time to impact, the arms' strength on it) were not built in the night | **Taken for the owner, reversible; to confirm: the blend lies over the arms only, by direction only, and goes as the body lies; 0 in the files until the owner has seen `Saved\Films\knockdown_spine_04_000_200_pair`, `_180_200_pair`, `_315_200_pair`, and by hand `Saved\Films\shove_135_pair`, `shove_225_pair`.** With it on: a hand meets the floor first in all eight knockdowns (five today), the head's speed at the floor is lower in three and higher in three; by hand the head strikes in 45% of the falls (55%) at 3.88 m/s (4.16), by blows touching it in 88% (75%) at 3.69 m/s (3.00); every fall by blows rests within 2.12 s, one by hand only after 3.36 s; the falls' own energy at most 19.4 J (14.2 today; the 40 J limit untouched); the stand of 150 stands 150 of 150 but 130 at the first attempt instead of 140 and gives up 20.6% of attempts instead of 14.3% (the bodies lie with their arms elsewhere). Not chosen: the whole body (the legs held up); a share of the written pose (left at 1 to be seen whole; at 0.5 the head is slower than at either end by blows in four of six falls, one fall rests after 3.03 s, the stand 135 at the first attempt: `docs/testing.md`, "R3, step 2"). **Confirmed by the owner on 27 November after the videos: stays 0, to be worked on**: the figures pull both ways (better by hand, worse by blows, the stand and one rest worse); next comes the plan's other half, the arms' strength on the time to impact and their giving way at the touch, then new videos |
 | 38 | The side clips and C27 (found in the night of 26 to 27 November): the sample's side get-ups rise with the trunk 57 to 63 degrees from upright at 70 cm of pelvis, so C27's 45 degrees cannot be met by following them (67 of 150 meet it); without them a body on its side is rolled to its back or front by the world and gets up by B or F (139 of 150), at 15.6% of attempts given up instead of 10.7% and 1.26 of the weight instead of 1.16 (video `Saved\Films\r2_side_clips_pair`) | **The owner's decision, 27 November: decided with R2's matcher**, nothing changed now: the matcher chooses a roll to the back or the front first (the sample's roll clips) or other clips, and C27 is judged there. Not chosen: the side clips taken out now (more attempts given up, more pull from the world); a limit of its own for a get-up from the side |
+| 39 | Which get-ups R2's matcher may choose in its step 8 (the sample has sixteen get-ups, not twenty: stand, crouch, walk and run, each from the back, the front and both sides; only the stand clips end standing in place, the crouch ones in a crouch, the walk and run ones 5 to 8.7 m away) | **The owner's decision, 27 November 2026, before the code: (a), the four stand clips and their mirror images**; the other twelve get-ups and the two rolls read, mirrored and scored for the report only. Not chosen: (b) all sixteen with their mirrors, each ended where its recording first stands; (c) the back and front stand clips with their mirrors only, a body on its side rolled to them by the world until step 9 (measured in step 8 as a variant) |
 
 The owner's statement of the goal with these answers (26 November): the ragdoll is to look and move naturally, as a living
 person, and it must be possible to interact with it at every moment. Both halves bind every part: a behaviour that looks right

@@ -573,6 +573,28 @@ pace of the clip under `getup.hold_by_body` (`pace_min`, 1 without it) and when 
 a second of a hit while led (`hit_off_cm`, in every mode). Since 27 November: the reference's own shape as its pelvis first
 passes 70 cm (`rise_clip_trunk_deg`, `rise_clip_feet_cm`; beside `rise_trunk_deg` and `rise_feet_cm`, the body's), which says
 whether a lean is the clip's or the body's; -1 for an attempt that was not led or whose reference never got that high.
+Since R2's step 8 (`docs/recon/r2_step8_plan.md`): `starts`, how every attempt began, in order: when (`at_s`), the clip's
+key (`clip`; `|mirror` at its end for a mirror image, `mirrored`) and the time in it the attempt began from (`time_s`); read
+only, in both modes, how far the clip as laid stood from the body as it lay: the clip's pelvis from the body's
+(`pelvis_off_cm`), the weighted root mean square of the distances of the bones the motion library compares, by
+`getup.match_*`'s weights (`off_cm`; the matcher's own measure, worked out for whatever clip and frame the attempt took), and
+the mean angle over the joints between the body's pose and the clip's (`pose_deg`); how it ended (`ended_s`, `ended`:
+`stood` or why it was given up; -1 and empty while it goes on); and with `getup.match` 1 the matcher's choice (`matched`
+true): its cost and the cost's parts (`cost_cm`, `places_cm`, `up_deg`), its turn about the vertical (`yaw_deg`), the next
+best variant that might have been chosen (`next`, `next_cost_cm`), and the nearest of every get-up of the library and of the
+rolls, chosen or not (`best_any`, `best_any_cost_cm`, `best_roll`, `best_roll_cost_cm`).
+
+**The motion library** (`control.motion_library`, once it is built: `getup.match` 1, at the first get-up): `variant_count`,
+`match_count` (those the matcher may choose), the worst mirror error (`mirror_error_max_cm`: a mirror image's compared bones
+against its clip's counterparts seen in this mesh's mirror, over every key), how far the clips' skeleton is from its own mirror
+(`source_asymmetry_max_cm`), how many get-ups begin with the pelvis or the trunk on the floor (`getups_lying_at_start`), and
+`variants`: each motion's key, name, kind, how it begins (`lies`), `mirrored`, `match`, `length_s`, `keys`, when it first stands
+(`stands_s`: the pelvis within 5 cm of its last height, both feet on the floor; -1 never), how far its pelvis moves within the
+matcher's window (`window_travel_cm`), its mirror error (`mirror_error_cm`, -1 for a clip itself), which other get-up begins
+nearest it and at what cost (`nearest`, `nearest_cost_cm`), its pelvis at its first and last key in its root's space
+(`pelvis_start_cm`, `pelvis_end_cm`), the compared bones on the floor at its first key (`touching_at_start`) and every stretch
+in which a compared bone touches its floor (`contacts`: `bone`, `from_s`, `to_s`, and the lowest point's height meanwhile,
+`lowest_min_cm`, `lowest_max_cm`; below 0 under the clip's floor).
 
 **Authority** (`control.authority`, R2's step 2, decision 15; every run with active control): what the world gives the
 body, the old balance assist and the led get-up's carry, from the same spring law as the assist's load, after the settle

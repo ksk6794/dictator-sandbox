@@ -301,14 +301,27 @@ namespace
 		Visitor(FString(TEXT("getup.hit_back_s")), Tuning.GetUp.HitBackS);
 		Visitor(FString(TEXT("getup.hit_overflow")), Tuning.GetUp.HitOverflow);
 		Visitor(FString(TEXT("getup.start_blend_s")), Tuning.GetUp.StartBlendS);
+		Visitor(FString(TEXT("getup.match")), Tuning.GetUp.Match);
+		Visitor(FString(TEXT("getup.match_window_s")), Tuning.GetUp.MatchWindowS);
+		Visitor(FString(TEXT("getup.match_pelvis")), Tuning.GetUp.MatchPelvis);
+		Visitor(FString(TEXT("getup.match_trunk")), Tuning.GetUp.MatchTrunk);
+		Visitor(FString(TEXT("getup.match_hands")), Tuning.GetUp.MatchHands);
+		Visitor(FString(TEXT("getup.match_elbows")), Tuning.GetUp.MatchElbows);
+		Visitor(FString(TEXT("getup.match_feet")), Tuning.GetUp.MatchFeet);
+		Visitor(FString(TEXT("getup.match_knees")), Tuning.GetUp.MatchKnees);
+		Visitor(FString(TEXT("getup.match_up_cm_per_deg")), Tuning.GetUp.MatchUpCmPerDeg);
+		Visitor(FString(TEXT("getup.match_given_up_cm")), Tuning.GetUp.MatchGivenUpCm);
+		Visitor(FString(TEXT("motion.contact_cm")), Tuning.Motion.ContactCm);
+		Visitor(FString(TEXT("motion.contact_mps")), Tuning.Motion.ContactMps);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
 
-	/** Calls Visitor(name, text) for every clip of the get-up and of the fall's blend. */
+	/** Calls Visitor(name, text) for every clip of the get-up and of the fall's blend, and the motion library's list. */
 	template <typename TuningType, typename VisitorType>
 	void VisitClips(TuningType& Tuning, VisitorType&& Visitor)
 	{
+		Visitor(TEXT("motion.library"), Tuning.Motion.Library);
 		Visitor(TEXT("getup.clip_back"), Tuning.GetUp.ClipBack);
 		Visitor(TEXT("getup.clip_front"), Tuning.GetUp.ClipFront);
 		Visitor(TEXT("getup.clip_left"), Tuning.GetUp.ClipLeft);
@@ -666,8 +679,25 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.HitByImpulse, 1.0, TEXT("getup"), TEXT("hit_by_impulse"), OutError) ||
 		!CheckRange(GetUp.HitBackS, 10.0, TEXT("getup"), TEXT("hit_back_s"), OutError) ||
 		!CheckRange(GetUp.HitOverflow, 1.0, TEXT("getup"), TEXT("hit_overflow"), OutError) ||
-		!CheckRange(GetUp.StartBlendS, 10.0, TEXT("getup"), TEXT("start_blend_s"), OutError))
+		!CheckRange(GetUp.StartBlendS, 10.0, TEXT("getup"), TEXT("start_blend_s"), OutError) ||
+		!CheckRange(GetUp.Match, 1.0, TEXT("getup"), TEXT("match"), OutError) ||
+		!CheckRange(GetUp.MatchWindowS, 10.0, TEXT("getup"), TEXT("match_window_s"), OutError) ||
+		!CheckRange(GetUp.MatchPelvis, 100.0, TEXT("getup"), TEXT("match_pelvis"), OutError) ||
+		!CheckRange(GetUp.MatchTrunk, 100.0, TEXT("getup"), TEXT("match_trunk"), OutError) ||
+		!CheckRange(GetUp.MatchHands, 100.0, TEXT("getup"), TEXT("match_hands"), OutError) ||
+		!CheckRange(GetUp.MatchElbows, 100.0, TEXT("getup"), TEXT("match_elbows"), OutError) ||
+		!CheckRange(GetUp.MatchFeet, 100.0, TEXT("getup"), TEXT("match_feet"), OutError) ||
+		!CheckRange(GetUp.MatchKnees, 100.0, TEXT("getup"), TEXT("match_knees"), OutError) ||
+		!CheckRange(GetUp.MatchUpCmPerDeg, 100.0, TEXT("getup"), TEXT("match_up_cm_per_deg"), OutError) ||
+		!CheckRange(GetUp.MatchGivenUpCm, 1000.0, TEXT("getup"), TEXT("match_given_up_cm"), OutError) ||
+		!CheckRange(Motion.ContactCm, 100.0, TEXT("motion"), TEXT("contact_cm"), OutError) ||
+		!CheckRange(Motion.ContactMps, 100.0, TEXT("motion"), TEXT("contact_mps"), OutError))
 	{
+		return false;
+	}
+	if (GetUp.Match > 0.5 && GetUp.MatchPelvis + GetUp.MatchTrunk + GetUp.MatchHands + GetUp.MatchElbows + GetUp.MatchFeet + GetUp.MatchKnees <= 0.0)
+	{
+		OutError = TEXT("getup.match needs at least one of the places it compares weighed above 0 (getup.match_pelvis to match_knees)");
 		return false;
 	}
 	if (GetUp.HoldByBody > 0.5 && (GetUp.HoldChainFullN <= 0.0 || (GetUp.HoldForceN > 0.0 && GetUp.HoldSlowFromN >= GetUp.HoldForceN)))

@@ -1046,14 +1046,21 @@ const FSandboxClipPose* USandboxBodyController::FindOrReadClip(const FString& Cl
 		OutError = TEXT("The body is not started, or its mesh has no sandbox animation instance");
 		return nullptr;
 	}
-	// "/Game/Folder/Clip" is the object "/Game/Folder/Clip.Clip".
+	// "/Game/Folder/Clip" is the object "/Game/Folder/Clip.Clip". A path that ends in the mirror's mark ("|mirror", R2's step 8) is the
+	// clip read as its mirror image, kept by the path with the mark.
 	FString Path = ClipPath;
+	const bool bMirror = Path.EndsWith(FSandboxMotionLibrary::MirrorMark);
+	if (bMirror)
+	{
+		Path.LeftChopInline(FCString::Strlen(FSandboxMotionLibrary::MirrorMark));
+	}
 	int32 Slash = INDEX_NONE;
 	if (!Path.Contains(TEXT(".")) && Path.FindLastChar(TEXT('/'), Slash))
 	{
 		Path += TEXT(".") + Path.Mid(Slash + 1);
 	}
-	if (!Clips.Contains(Path))
+	const FString Key = bMirror ? Path + FSandboxMotionLibrary::MirrorMark : Path;
+	if (!Clips.Contains(Key))
 	{
 		const UAnimSequence* Sequence = LoadObject<UAnimSequence>(nullptr, *Path);
 		if (!Sequence)
@@ -1091,15 +1098,15 @@ const FSandboxClipPose* USandboxBodyController::FindOrReadClip(const FString& Cl
 			}
 		}
 		FSandboxClipPose Clip;
-		if (!Clip.Load(Sequence, Mesh, Tuning.Rig.Pelvis, Joints, OutError))
+		if (!Clip.Load(Sequence, Mesh, Tuning.Rig.Pelvis, Joints, OutError, bMirror))
 		{
 			return nullptr;
 		}
-		UE_LOG(LogSandbox, Display, TEXT("Body controller: clip '%s' read, %d keys over %.2f s"), *Path, Clip.GetKeyCount(), Clip.GetLengthS());
-		Clips.Add(Path, MoveTemp(Clip));
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: clip '%s' read, %d keys over %.2f s"), *Key, Clip.GetKeyCount(), Clip.GetLengthS());
+		Clips.Add(Key, MoveTemp(Clip));
 	}
-	OutPath = Path;
-	return Clips.Find(Path);
+	OutPath = Key;
+	return Clips.Find(Key);
 }
 
 const FSandboxClipPose* USandboxBodyController::ReadClip(const FString& ClipPath, FString& OutError)
@@ -1575,22 +1582,13 @@ bool USandboxBodyController::IsAtRest() const
 		FMath::Sqrt(AngularSquared / MassKg) <= Tuning.Thresholds.RestAngularSpeedRadS;
 }
 
-bool USandboxBodyController::StartGetUp(FString& OutError)
+const FSandboxClipPose* USandboxBodyController::ChooseByRule(const FTransform& Now, FString& OutPath, FTransform& OutFrame, FString& OutHow, FString& OutError)
 {
-	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
-	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
-	if (!Body || !Body->IsValidBodyInstance())
-	{
-		OutError = TEXT("the pelvis has no body");
-		return false;
-	}
-	const FTransform Now = Body->GetUnrealWorldTransform();
 	// How the pelvis lies is where the world's up points in the pelvis's own space; each clip starts with a pelvis
 	// that lies some way, and the clip that starts most like the body lies is the one to get up by.
 	const FVector UpInPelvis = Now.GetRotation().UnrotateVector(FVector::UpVector);
 	const FString* const Paths[] = { &Tuning.GetUp.ClipBack, &Tuning.GetUp.ClipFront, &Tuning.GetUp.ClipLeft, &Tuning.GetUp.ClipRight };
 	const FSandboxClipPose* Best = nullptr;
-	FString BestPath;
 	double BestLikeness = -2.0;
 	// After an attempt that was given up the body goes another way, if another clip starts at all like it lies:
 	// the same clip from the same place fails the same way (six times in a row, on the stand).
@@ -1607,7 +1605,7 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 			const FSandboxClipPose* Clip = FindOrReadClip(*Path, Kept, OutError);
 			if (!Clip)
 			{
-				return false;
+				return nullptr;
 			}
 			const FQuat Unturned = StartSpace.GetRotation() * Clip->PelvisAt(0.0).GetRotation();
 			const double Likeness = FVector::DotProduct(Unturned.UnrotateVector(FVector::UpVector), UpInPelvis);
@@ -1619,29 +1617,87 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 			{
 				BestLikeness = Likeness;
 				Best = Clip;
-				BestPath = Kept;
+				OutPath = Kept;
 			}
 		}
 	}
 	if (!Best)
 	{
 		OutError = TEXT("no clip to get up by (getup.clip_*)");
-		return false;
+		return nullptr;
 	}
+	// A clip read after Best may have moved it in the map: found again by its path.
+	Best = Clips.Find(OutPath);
 
 	// The clip's root in the world: turned about the vertical to how the body lies, with the clip's pelvis over
 	// the body's, on the floor the body last stood on.
 	const FTransform First = Best->PelvisAt(0.0);
 	FQuat Tilt, Yaw;
 	(Now.GetRotation() * (StartSpace.GetRotation() * First.GetRotation()).Inverse()).ToSwingTwist(FVector::UpVector, Tilt, Yaw);
-	FTransform Frame((Yaw * StartSpace.GetRotation()).GetNormalized(), FVector::ZeroVector);
-	const FVector Offset = Frame.GetRotation().RotateVector(First.GetLocation());
-	Frame.SetLocation(FVector(Now.GetLocation().X - Offset.X, Now.GetLocation().Y - Offset.Y, LastSupportHeightCm));
+	OutFrame = FTransform((Yaw * StartSpace.GetRotation()).GetNormalized(), FVector::ZeroVector);
+	const FVector Offset = OutFrame.GetRotation().RotateVector(First.GetLocation());
+	OutFrame.SetLocation(FVector(Now.GetLocation().X - Offset.X, Now.GetLocation().Y - Offset.Y, LastSupportHeightCm));
+	OutHow = FString::Printf(TEXT("by '%s' (likeness %.2f)"), *FPaths::GetBaseFilename(OutPath), BestLikeness);
+	return Best;
+}
 
-	if (!HoldClip(BestPath, 0.0, 0.0, OutError))
+bool USandboxBodyController::StartGetUp(FString& OutError)
+{
+	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
+	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
+	if (!Body || !Body->IsValidBodyInstance())
+	{
+		OutError = TEXT("the pelvis has no body");
+		return false;
+	}
+	const FTransform Now = Body->GetUnrealWorldTransform();
+	const FSandboxClipPose* Best = nullptr;
+	FString BestPath;
+	// The time in the clip the attempt begins from, and the clip's root in the world.
+	double StartTimeS = 0.0;
+	FTransform Frame;
+	FSandboxGetUpStart Start;
+	FString How;
+	if (Tuning.GetUp.Match > 0.5)
+	{
+		// R2, step 8: the motion library's matcher chooses the clip (a get-up or its mirror image), the time and where it is laid.
+		if (!ChooseByMatch(BestPath, StartTimeS, Frame, Start, OutError))
+		{
+			return false;
+		}
+		Best = Clips.Find(BestPath);
+		if (!Best)
+		{
+			OutError = FString::Printf(TEXT("the matcher chose '%s', which is not read"), *BestPath);
+			return false;
+		}
+		// The variant's name says whether it is a mirror image (a key's mark would be taken for an extension by GetBaseFilename).
+		const int32 Chosen = MotionLibrary.FindVariant(BestPath);
+		How = FString::Printf(TEXT("by '%s' from %.2f s (cost %.1f cm: places %.1f cm, lean %.1f deg; next '%s' %.1f cm)"),
+			Chosen != INDEX_NONE ? *MotionLibrary.GetVariants()[Chosen].Name : *BestPath, StartTimeS, Start.CostCm, Start.PlacesCm, Start.UpDeg,
+			*Start.Next, Start.NextCostCm);
+	}
+	else
+	{
+		Best = ChooseByRule(Now, BestPath, Frame, How, OutError);
+		if (!Best)
+		{
+			return false;
+		}
+	}
+	const FTransform First = Best->PelvisAt(StartTimeS);
+	// How far the clip as laid stands from the body (read only, in both modes), before anything of the attempt moves.
+	Start.AtS = ElapsedS;
+	Start.Clip = BestPath;
+	Start.bMirrored = BestPath.EndsWith(FSandboxMotionLibrary::MirrorMark);
+	Start.TimeS = StartTimeS;
+	MeasureStart(*Best, StartTimeS, Frame, Start);
+
+	if (!HoldClip(BestPath, StartTimeS, 0.0, OutError))
 	{
 		return false;
 	}
+	GetUpView.Starts.Add(Start);
 	// At once and whole: it is the strength of the muscles that comes up from nothing, not the pose that comes in.
 	ClipHold.Share = 1.0;
 	ClipHold.CrossShare = 1.0;
@@ -1729,8 +1785,223 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	GetUpView.RiseClipTrunkDeg = -1.0;
 	GetUpView.RiseClipFeetCm = -1.0;
 	GetUpView.LayS = State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
-	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; by '%s' (likeness %.2f)"), GetUpRestS(), *FPaths::GetBaseFilename(BestPath), BestLikeness));
+	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; %s"), GetUpRestS(), *How));
 	return true;
+}
+
+bool USandboxBodyController::ReadMotionSpec(FString& OutError)
+{
+	if (!bMotionSpecTried)
+	{
+		bMotionSpecTried = true;
+		const FString File = FPaths::IsRelative(Tuning.Motion.Library) ? FPaths::Combine(FPaths::ProjectDir(), Tuning.Motion.Library) : Tuning.Motion.Library;
+		bMotionSpecRead = FSandboxMotionSpec::Read(File, MotionSpec, MotionLibraryError);
+		if (!bMotionSpecRead)
+		{
+			UE_LOG(LogSandbox, Warning, TEXT("Body controller: %s"), *MotionLibraryError);
+		}
+	}
+	if (!bMotionSpecRead)
+	{
+		OutError = MotionLibraryError;
+	}
+	return bMotionSpecRead;
+}
+
+FSandboxMatchSettings USandboxBodyController::MatchSettings() const
+{
+	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	const double ByGroup[FSandboxMotionSpec::GroupCount] = { Limits.MatchPelvis, Limits.MatchTrunk, Limits.MatchHands, Limits.MatchElbows, Limits.MatchFeet, Limits.MatchKnees };
+	FSandboxMatchSettings Settings;
+	for (const int32 Group : MotionSpec.FeatureGroups)
+	{
+		Settings.Weights.Add(ByGroup[Group]);
+	}
+	Settings.UpCmPerDeg = Limits.MatchUpCmPerDeg;
+	return Settings;
+}
+
+bool USandboxBodyController::BuildMotionLibrary(FString& OutError)
+{
+	if (MotionLibrary.IsBuilt())
+	{
+		return true;
+	}
+	if (bMotionLibraryFailed)
+	{
+		OutError = MotionLibraryError;
+		return false;
+	}
+	if (!ReadMotionSpec(OutError))
+	{
+		bMotionLibraryFailed = true;
+		return false;
+	}
+	FSandboxMotionLibrary::FBuildSettings Settings;
+	Settings.Pelvis = Tuning.Rig.Pelvis;
+	Settings.Chest = Tuning.Rig.Chest;
+	Settings.ContactCm = Tuning.Motion.ContactCm;
+	Settings.ContactMps = Tuning.Motion.ContactMps;
+	Settings.WindowS = Tuning.GetUp.MatchWindowS;
+	Settings.Match = MatchSettings();
+	if (!MotionLibrary.Build(MotionSpec, Mesh, Settings, [this](const FString& Key, FString& OutKey, FString& OutReadError) { return FindOrReadClip(Key, OutKey, OutReadError); }, MotionLibraryError))
+	{
+		bMotionLibraryFailed = true;
+		MotionLibraryError = FString::Printf(TEXT("the motion library cannot be built: %s"), *MotionLibraryError);
+		OutError = MotionLibraryError;
+		return false;
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: the motion library holds %d motions from %d clips, %d of them for the matcher; mirror images within %.2f cm"),
+		MotionLibrary.GetVariants().Num(), MotionSpec.Clips.Num(),
+		MotionLibrary.GetVariants().FilterByPredicate([](const FSandboxMotionVariant& Variant) { return Variant.bMatch; }).Num(), MotionLibrary.MirrorErrorMaxCm());
+	return true;
+}
+
+void USandboxBodyController::MatchBody(FSandboxMatchBody& OutBody) const
+{
+	OutBody = FSandboxMatchBody();
+	for (const FName Bone : MotionSpec.FeatureBones)
+	{
+		const FBodyInstance* Instance = Mesh->GetBodyInstance(Bone);
+		OutBody.Places.Add(Instance && Instance->IsValidBodyInstance() ? Instance->GetUnrealWorldTransform().GetLocation() : FVector::ZeroVector);
+	}
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	if (Pelvis && Pelvis->IsValidBodyInstance())
+	{
+		OutBody.PelvisUp = Pelvis->GetUnrealWorldTransform().GetRotation().UnrotateVector(FVector::UpVector);
+	}
+	if (Chest && Chest->IsValidBodyInstance())
+	{
+		OutBody.ChestUp = Chest->GetUnrealWorldTransform().GetRotation().UnrotateVector(FVector::UpVector);
+	}
+	OutBody.SupportZ = LastSupportHeightCm;
+}
+
+bool USandboxBodyController::ChooseByMatch(FString& OutKey, double& OutTimeS, FTransform& OutFrame, FSandboxGetUpStart& InOutStart, FString& OutError)
+{
+	if (!BuildMotionLibrary(OutError))
+	{
+		return false;
+	}
+	const TArray<FSandboxMotionVariant>& Variants = MotionLibrary.GetVariants();
+	FSandboxMatchBody Body;
+	MatchBody(Body);
+	FSandboxMatchSettings Settings = MatchSettings();
+	// The same clip from the same place fails the same way: the variant just given up costs more, and so does its mirror image (on the
+	// stand a body by the table went from the clip from the front to its mirror and back four times, losing the pelvis each time).
+	const int32 GivenUp = GivenUpClip.IsEmpty() ? INDEX_NONE : MotionLibrary.FindVariant(GivenUpClip);
+	if (GivenUp != INDEX_NONE)
+	{
+		Settings.PenalizedVariants.Add(GivenUp);
+		if (MotionLibrary.CounterpartOf(GivenUp) != INDEX_NONE)
+		{
+			Settings.PenalizedVariants.Add(MotionLibrary.CounterpartOf(GivenUp));
+		}
+	}
+	Settings.PenaltyCm = Tuning.GetUp.MatchGivenUpCm;
+	TArray<FSandboxMatchSample> Samples;
+	MotionLibrary.Samples(StartSpace.GetRotation(), Tuning.GetUp.MatchWindowS, Samples);
+	TArray<FSandboxMatch> Best;
+	FSandboxMotionMatcher::BestByVariant(Body, Samples, Variants.Num(), Settings, Best);
+	TArray<bool> Allowed;
+	TArray<bool> GetUps;
+	TArray<bool> Rolls;
+	for (const FSandboxMotionVariant& Variant : Variants)
+	{
+		Allowed.Add(Variant.bMatch);
+		GetUps.Add(Variant.Kind == TEXT("getup"));
+		Rolls.Add(Variant.Kind == TEXT("roll"));
+	}
+	FSandboxMatch Chosen;
+	FSandboxMatch Next;
+	FSandboxMotionMatcher::Choose(Best, Allowed, Chosen, Next);
+	if (!Chosen.bValid)
+	{
+		OutError = TEXT("the motion library has no get-up the matcher may choose ('match' in motion.library)");
+		return false;
+	}
+	OutKey = Variants[Chosen.Variant].Key;
+	OutTimeS = Chosen.TimeS;
+	OutFrame = FSandboxMotionMatcher::Frame(Chosen, StartSpace.GetRotation(), Body.SupportZ);
+	InOutStart.bMatched = true;
+	InOutStart.CostCm = Chosen.CostCm;
+	InOutStart.PlacesCm = Chosen.PlacesCm;
+	InOutStart.UpDeg = Chosen.UpDeg;
+	InOutStart.YawDeg = FMath::RadiansToDegrees(Chosen.YawRad);
+	if (Next.bValid)
+	{
+		InOutStart.Next = Variants[Next.Variant].Name;
+		InOutStart.NextCostCm = Next.CostCm;
+	}
+	FSandboxMatch Any;
+	FSandboxMatch Unused;
+	FSandboxMotionMatcher::Choose(Best, GetUps, Any, Unused);
+	if (Any.bValid)
+	{
+		InOutStart.BestAny = Variants[Any.Variant].Name;
+		InOutStart.BestAnyCostCm = Any.CostCm;
+	}
+	FSandboxMatch Roll;
+	FSandboxMotionMatcher::Choose(Best, Rolls, Roll, Unused);
+	if (Roll.bValid)
+	{
+		InOutStart.BestRoll = Variants[Roll.Variant].Name;
+		InOutStart.BestRollCostCm = Roll.CostCm;
+	}
+	return true;
+}
+
+void USandboxBodyController::MeasureStart(const FSandboxClipPose& Clip, double TimeS, const FTransform& Frame, FSandboxGetUpStart& InOutStart)
+{
+	// Read only: the bodies' transforms, the mesh's pose, the clip.
+	const FBodyInstance* PelvisBody = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	FTransform InClip;
+	if (PelvisBody && PelvisBody->IsValidBodyInstance() && Clip.ReachedBodyAt(Tuning.Rig.Pelvis, TimeS, InClip))
+	{
+		InOutStart.PelvisOffCm = FVector::Dist((InClip * Frame).GetLocation(), PelvisBody->GetUnrealWorldTransform().GetLocation());
+	}
+	FString Ignored;
+	if (ReadMotionSpec(Ignored))
+	{
+		FSandboxMatchBody Body;
+		MatchBody(Body);
+		const FSandboxMatchSettings Settings = MatchSettings();
+		double Total = 0.0;
+		double Squared = 0.0;
+		bool bAll = true;
+		for (int32 Index = 0; Index < MotionSpec.FeatureBones.Num(); ++Index)
+		{
+			if (!Clip.ReachedBodyAt(MotionSpec.FeatureBones[Index], TimeS, InClip))
+			{
+				bAll = false;
+				break;
+			}
+			Total += Settings.Weights[Index];
+			Squared += Settings.Weights[Index] * FVector::DistSquared((InClip * Frame).GetLocation(), Body.Places[Index]);
+		}
+		InOutStart.OffCm = bAll && Total > 0.0 ? FMath::Sqrt(Squared / Total) : -1.0;
+	}
+	// The pose: each joint's bone as the body has it now against the clip's, both relative to the bone's parent.
+	TArray<FSandboxPoseBone> Bones;
+	Clip.Evaluate(TimeS, Bones);
+	const TArray<FTransform>& Space = Mesh->GetComponentSpaceTransforms();
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	double SumDeg = 0.0;
+	int32 Counted = 0;
+	for (const FSandboxPoseBone& Bone : Bones)
+	{
+		if (!Space.IsValidIndex(Bone.MeshBoneIndex))
+		{
+			continue;
+		}
+		const int32 Parent = Skeleton.GetParentIndex(Bone.MeshBoneIndex);
+		const FQuat ParentRotation = Space.IsValidIndex(Parent) ? Space[Parent].GetRotation() : FQuat::Identity;
+		const FQuat Own = (ParentRotation.Inverse() * Space[Bone.MeshBoneIndex].GetRotation()).GetNormalized();
+		SumDeg += FMath::RadiansToDegrees(Own.AngularDistance(Bone.Rotation));
+		++Counted;
+	}
+	InOutStart.PoseDeg = Counted > 0 ? SumDeg / Counted : -1.0;
 }
 
 void USandboxBodyController::MeasureGetUpShape(const FTransform& PelvisNow, double Ease, double DeltaTime)
@@ -1777,6 +2048,11 @@ void USandboxBodyController::GiveUpGetUp(const FString& Reason)
 		return;
 	}
 	GetUpView.GivenUp = Reason;
+	if (GetUpView.Starts.Num() > 0)
+	{
+		GetUpView.Starts.Last().EndedS = ElapsedS;
+		GetUpView.Starts.Last().Ended = Reason;
+	}
 	GivenUpClip = GetUpRun.Path;
 	ReleaseClipPose();
 	EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("the get-up is given up: %s"), *Reason));
@@ -2022,6 +2298,11 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		{
 			++GetUpView.Successes;
 			GetUpView.DurationS = ElapsedS - GetUpView.StartedS;
+			if (GetUpView.Starts.Num() > 0)
+			{
+				GetUpView.Starts.Last().EndedS = ElapsedS;
+				GetUpView.Starts.Last().Ended = TEXT("stood");
+			}
 			GivenUpClip.Reset();
 			ReleaseClipPose();
 			EnterState(ESandboxBodyState::Standing, FString::Printf(TEXT("got up in %.2f s"), GetUpView.DurationS));

@@ -461,6 +461,17 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A body spawned turned takes that turn for standing.** The controller's references are the pose it starts in: spawned lying
   (`body.rotation_deg`), the assist held it lying and called it a stagger, or the get-up's clip was laid 40 cm from it. A body to lie
   is laid after its control starts (`body.laid_deg`).
+- **A clip's name is not what it begins with.** R2's plan had the body roll from its side to its back or front "by the sample's
+  `M_ragdoll_getup_roll_L` and `_R`"; read by the motion library (27 November, `control.motion_library`), both begin with the pelvis
+  38 to 47 cm up, 2 m from where they end, and only a foot (or nothing) on the floor: they get a body up out of a dive's roll, not a
+  lying body over onto its back. Read a clip's first frames (where its pelvis is, what touches its floor) before a plan rests on it.
+- **C27's 70 cm lies on a step of the side clips' pelvis.** On `stand_L` the pelvis stays at about 70 cm for a quarter second while
+  the trunk comes up from lying flat, so "the trunk as the pelvis first passes 70 cm" reads 57 degrees on the clip and 63 or 80 on a
+  body that follows it to 1 or 2 cm, by which side of 70.0 its pelvis is on (R2's step 8: the matcher laid the pelvis a few cm higher
+  and half the L get-ups read 80). A figure taken at a threshold is as steady as the motion is where it crosses it.
+- **A pointer into the controller's map of clips does not live past the next clip read.** `Clips` is a `TMap`; reading another clip
+  may move every one in it. The old choice of a get-up kept the pointer of its best clip while it read the others (it never showed:
+  every hash is the same with it found again by its path, R2's step 8). Keep a clip's key, and find it again after any read.
 
 ## Hands, the grab and blows
 

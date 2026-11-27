@@ -1,0 +1,32 @@
+{
+  "comment": "The motion library (R2, step 8; FSandboxMotionLibrary, docs/recon/r2_step8_plan.md): the recorded clips a body may get up by, read at its first get-up with getup.match 1, carried to this body and, with 'mirror', also read as their mirror images. Epic's clips of the Game Animation Sample, fetched by Tools\\fetch-sample-anims.ps1 and never committed; nothing made of them is written to disk. 'match': the matcher may choose the clip (the owner's decision 39 of 27 November 2026: the four stand clips, which end standing in place); every other clip is scored and reported only. 'features': the bones whose places the matcher compares, by group; each group's weight is getup.match_<group>. 'kind' is getup or roll; 'lies' says how the recording begins, for reports.",
+  "folder": "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll",
+  "features": {
+    "pelvis": [ "pelvis" ],
+    "trunk": [ "spine_04", "head" ],
+    "hands": [ "hand_l", "hand_r" ],
+    "elbows": [ "lowerarm_l", "lowerarm_r" ],
+    "feet": [ "foot_l", "foot_r" ],
+    "knees": [ "calf_l", "calf_r" ]
+  },
+  "clips": [
+    { "name": "M_ragdoll_getup_stand_B", "kind": "getup", "lies": "back", "mirror": true, "match": true },
+    { "name": "M_ragdoll_getup_stand_F", "kind": "getup", "lies": "front", "mirror": true, "match": true },
+    { "name": "M_ragdoll_getup_stand_L", "kind": "getup", "lies": "left", "mirror": true, "match": true },
+    { "name": "M_ragdoll_getup_stand_R", "kind": "getup", "lies": "right", "mirror": true, "match": true },
+    { "name": "M_ragdoll_getup_crouch_B", "kind": "getup", "lies": "back", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_crouch_F", "kind": "getup", "lies": "front", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_crouch_L", "kind": "getup", "lies": "left", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_crouch_R", "kind": "getup", "lies": "right", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_walk_B", "kind": "getup", "lies": "back", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_walk_F", "kind": "getup", "lies": "front", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_walk_L", "kind": "getup", "lies": "left", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_walk_R", "kind": "getup", "lies": "right", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_run_B", "kind": "getup", "lies": "back", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_run_F", "kind": "getup", "lies": "front", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_run_L", "kind": "getup", "lies": "left", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_run_R", "kind": "getup", "lies": "right", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_roll_L", "kind": "roll", "lies": "left", "mirror": true, "match": false },
+    { "name": "M_ragdoll_getup_roll_R", "kind": "roll", "lies": "right", "mirror": true, "match": false }
+  ]
+}

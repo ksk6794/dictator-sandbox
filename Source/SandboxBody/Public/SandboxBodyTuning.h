@@ -919,6 +919,26 @@ struct FSandboxGetUpTuning
 	/** 1: what a hit takes beyond the whole share is owed, so the share stays at 0 until HitBackS has given that much back; 0: it stops at 0. */
 	double HitOverflow = 0.0;
 	/**
+	 * R2, step 8 (docs/recon/r2_step8_plan.md): Match 1, a get-up's clip, the time it starts at and where it is laid come from the
+	 * motion library and its matcher (FSandboxMotionMatcher): the lying body against the first MatchWindowS of every get-up the
+	 * library lets the matcher choose, and their mirror images, by the places of its pelvis, trunk, hands, elbows, feet and knees
+	 * (weights MatchPelvis to MatchKnees), turned about the vertical and moved over the floor to lie on the body's, and by how the
+	 * pelvis and the chest lean (MatchUpCmPerDeg: a degree counted as that many cm); the variant whose attempt was just given up,
+	 * and its mirror image, cost MatchGivenUpCm more. 0: the four ClipBack to ClipRight by the pelvis's lean, at their time 0, bit
+	 * for bit as before.
+	 * The weights also weigh the start's measure in both modes (FSandboxGetUpStart::OffCm). s, weights, cm per degree, cm.
+	 */
+	double Match = 0.0;
+	double MatchWindowS = 0.0;
+	double MatchPelvis = 0.0;
+	double MatchTrunk = 0.0;
+	double MatchHands = 0.0;
+	double MatchElbows = 0.0;
+	double MatchFeet = 0.0;
+	double MatchKnees = 0.0;
+	double MatchUpCmPerDeg = 0.0;
+	double MatchGivenUpCm = 0.0;
+	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
 	 * lies most like the body's is taken, whatever its name.
@@ -927,6 +947,18 @@ struct FSandboxGetUpTuning
 	FString ClipFront;
 	FString ClipLeft;
 	FString ClipRight;
+};
+
+/**
+ * The motion library (R2, step 8; FSandboxMotionLibrary): the list of recorded clips it reads ("motion.library", a path from the
+ * project's folder) and when a body of a clip counts as touching the clip's floor: its lowest point within ContactCm of it, moving
+ * slower than ContactMps.
+ */
+struct FSandboxMotionTuning
+{
+	FString Library;
+	double ContactCm = 0.0;
+	double ContactMps = 0.0;
 };
 
 /** Which bones the balance assist holds ("rig.pelvis" and so on). Each must have a body in the physics asset. */
@@ -983,6 +1015,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxReactionTuning Reactions;
 	FSandboxPoseTuning Poses;
 	FSandboxGetUpTuning GetUp;
+	FSandboxMotionTuning Motion;
 
 	/**
 	 * Tells a parameter store which names the body understands and which states may carry values of their

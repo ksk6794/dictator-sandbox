@@ -6097,6 +6097,133 @@ the suite 149 of 149, its stand 50 of 50 with 49 at the first attempt (48).
 
 
 
+### R2, step 8: the motion library and the matcher (27 November, behind `getup.match`, 0)
+
+`docs/recon/r2_step8_plan.md`; the owner's decision 39 (the matcher chooses among the four stand clips and their mirror images; the
+other twelve get-ups and the two rolls are read, mirrored and scored for the report only). Built: `FSandboxClipPose` reads a clip as its
+mirror image (on the clip's own skeleton, before the carry: each bone takes its counterpart's turn from its reference, seen in the
+mirror, laid on its own reference); `FSandboxMotionLibrary` (`Specs/motion_library.json`, 18 clips, 36 motions); `FSandboxMotionMatcher`
+(the lying body's 11 compared bones and the pelvis's and the chest's lean against every key of the first second of the eight variants:
+a weighted 2D fit of the turn about the vertical and the shift, the clip's floor on the support); `StartGetUp` takes the matcher's
+clip, time and frame with the switch at 1 (the old rule moved, unchanged, to `ChooseByRule`); every attempt's start is measured in both
+modes (`control.get_up.starts`: the clip's pelvis from the body's, the compared bones' RMS distance, the pose's mean angle, how the
+attempt ended). 59 unit tests (five new: the mirror, broken on purpose without the swap of sides inside the test; the fit across 180
+degrees; the matcher's choice and penalty; the contact marks and a body's lowest point; the list's format).
+
+**At 0** the suite keeps every hash of `start` (149 of 149, and the five new scenarios pass: 154 of 154), so the start's measures read
+nothing that changes a run.
+
+**The library** (`getup_match_library`'s result, `control.motion_library`): the sample's skeleton is its own mirror image to 0.000 cm
+and so is this body (a mirror image's 11 bones lie on its clip's counterparts seen in the mesh's mirror within 0.00004 cm over every
+key): the mirror is exact, and it does change sides (the mirror of `stand_B` touches the floor with the left foot where the clip has
+the right). What the clips are, read from them:
+
+| Clip | Stands (both feet down, the pelvis within 5 cm of its last height) | Pelvis moves in its first second | Nearest other get-up at its first key |
+| --- | --- | --- | --- |
+| `stand_B` | 1.97 s | 21 cm | `crouch_B` mirrored, 11.7 cm |
+| `stand_F` | 2.37 s | 23 cm | its own mirror, 3.7 cm (nearly symmetric) |
+| `stand_L` | 2.13 s | 12 cm | `stand_R` mirrored, 19.2 cm: **the two sides are two recordings** |
+| `stand_R` | 1.83 s | 36 cm | `stand_L` mirrored, 19.2 cm |
+| `crouch_*`, `walk_*`, `run_*` | never (they walk or run 5 to 8.5 m away at 69 to 90 cm of pelvis) | 34 to 97 cm | near the stand clips at 7 to 24 cm |
+| **`roll_L`, `roll_R`** | 1.5 and 1.7 s | 180 cm | they begin with the pelvis 38 to 47 cm up, 1.9 to 2.3 m from where they end, a foot or nothing on the floor |
+
+**The sample's rolls are not rolls of a lying body**: they get a body up out of a dive's roll. R2's step 9 ("a roll first, the sample's
+`roll_L` and `_R`") cannot be built on them (new pitfall, "A clip's name is not what it begins with"). All 32 get-up motions begin
+lying (the pelvis or the trunk on the floor).
+
+**The laid scenarios** (each once with the switch on; at 0 the start measures of the same scenarios beside):
+
+| Scenario | Switch 0: clip, pelvis off, bones off, pose | Switch 1: clip from, pelvis off, bones off, pose; to stand |
+| --- | --- | --- |
+| `getup_laid_back` | B, 2.5 cm, 19.3 cm, 25.3 deg | B mirrored from 0.00, 7.9, 17.2, 25.3; 3.20 s |
+| `getup_laid_front` | F, 3.6, 43.7, 43.8 | F from 0.53, 6.3, 28.8, 36.7; 2.67 s |
+| `getup_laid_back_right` | B, 2.8, 19.7, 27.7 | B mirrored from 0.00, 10.6, 17.8, 27.9; 3.20 s |
+| `getup_laid_left` | L, 3.2, 18.1, 27.9 | R mirrored from 0.17, 9.5, 12.6, 22.1; 3.03 s |
+| `getup_laid_beside_table_front` | F, 4.4, 38.4, 38.2 | F from 0.60, 9.1, 17.6, 32.9; 2.60 s |
+
+The rule lays the clip's pelvis on the body's and leaves the rest where it falls; the fit trades up to about 10 cm of the pelvis for the
+whole body. The new scenarios ask 15 cm at most of the pelvis (40 cm gives an attempt up; the plan's 10 cm was a guess and
+`getup_laid_back_right` gives 10.6). The front lies nearer the front clip's 0.5 s than its start: its places 41.8 cm and pose 43.8 deg
+from the clip at 0, 40.2 and 43.0 at 0.23 s, 30.6 and 38.2 at 0.5 s, 28.8 and 36.7 at 0.53 s (`getup_match_laid_front` with the window
+at 0, 0.25, 0.5, 1): the recording begins in a pose a fallen body is not in.
+
+**The suite with the switch on** (`-Tune "getup.match=1" -Label match_on`): 122 hashes as at 0, the 32 with a get-up other (every
+get-up). Every scenario meets its expectations but the five new ones' `tuning_changes` (the override makes their own switch a no-op;
+their hashes are those of their single runs) and `getup_held`, whose two scripted hands go to points of the world at 7.5 s and press
+the empty floor (0.9 N*s against the 100 asked): the body, laid on its back almost symmetrically, takes `stand_B`'s mirror image (25.3
+against 25.3 cm: a near tie) and lies otherwise under them. The scenario is written for where the rule puts the body (pitfall "A
+scenario that starts with a fall is written for where that fall puts the body"); its hands go to the body (`at_bone`) when the switch
+goes to 1. The get-ups from the front and the sides take 2.33 to 2.67 s instead of 3.20 (the clip begins later).
+
+**The stand on three seeds** (the same falls; `Saved\Matrix\getup_seeds\r2s8b_*`, against `r2s8_plain_off` at 0, run with the same
+scripts, and the night's `final_all_*` for the held ones):
+
+| | Switch 0 | Switch 1 (four clips and mirrors) | Switch 1, back and front only (decision 38's measure) |
+| --- | --- | --- | --- |
+| Standing; at the first attempt | 150; 140 | 150; 142 | 150; 143 |
+| Attempts given up (C19, at most 10%) | 17 of 167, 10.2% | 15 of 165, **9.1%** | 13 of 163, **8.0%** |
+| Poses held over 1.0 s (C19) | 5 | 8 | 2 |
+| Attempts that lost the pelvis; within 0.25 s | 11; 7 | 6; 6 | 7; 7 |
+| C27 both limits; trunk, farther foot (median) | 67 of 150; 58.1 deg, 25.0 cm | 90 of 150; 29.7 deg, 24.8 cm | **150 of 150**; 23.1 deg, 24.8 cm |
+| C27 by clip (B, F, L, R) | 30, 22, 63, 61 deg | 30, 22, 77, 61 deg | 30, 22, -, - |
+| C21, median of each seed (2.6 to 4.2 s) | 3.20, 3.20, 3.20 s | 2.60, 2.97, 2.93 s | **2.53, 2.57, 2.53 s** |
+| Authority, mean (decision 15: 1.16) | 1.16 | 1.18 | **1.27** |
+| The start: pelvis off, bones off, pose (median) | 5.3 cm, 29.8 cm, 34.4 deg | 9.6 cm, 21.5 cm, 32.6 deg | 8.6 cm, 23.2 cm, 33.9 deg |
+| From which time of the clip (median) | 0.00 s | 0.40 s | 0.67 s |
+| First attempts by clip | B 28, F 42, L 43, R 37 | B 23, B' 18, F 29, F' 20, L 18, L' 13, R 15, R' 14 | B 36, B' 37, F 44, F' 33 |
+| One hand: pulled free (20 to 60) | 31 (night) | 39 (10, 17, 12) | |
+| Two hands: pulled free (at most 5) | 0 (night) | 0 | |
+| Pressed with 300 N: stood under it | 56 (night: 15, 21, 20) | **49** (14, 20, 15) | |
+
+Every pose held over 1.0 s, at 0 and at 1, is at a wall, the table or the chair (a side clip at its end waiting for a body against
+the furniture, the clip laid on the floor under a body on the table): none on the bare floor. Variants measured on three seeds before
+the penalty below was put right (`r2s8_*`; the figures of the four clips at 1 were then 142, 9.6%, 8 poses, 90 within C27, 7 pelvises
+lost, 1.18): the window at 0 (time 0 only) 137 at the first attempt, 11.8% given up, C21 3.20 s; at 0.5 s 138, 12.3%; the pelvis
+weighted 30 (nearly laid on the body's) 136, 15.3%; the lean at 0.5 cm a degree 140, 11.2%; at 2, 140, 10.2%; back and front only
+with the window at 0.5 s 140, 13.9%, C21 2.70 s. The values in the file (window 1 s, pelvis 3, lean 1) are the best of them.
+
+**Put right on the way, under the switch only:** after a given-up attempt the variant was penalised alone, and a body by the table
+went from the clip from the front to its mirror image and back four times, losing the pelvis each time (seed 2, trial 40: six attempts).
+The mirror image of a given-up variant now costs as much more (`getup.match_given_up_cm`); that trial then takes five attempts,
+going between the front clip and the right one (the penalty, as the rule's, remembers the last attempt only), its pelvis 55 to 87 cm
+from a clip laid on the floor under a body that lies on the table: step 10's case. Over the stand 15 attempts given up instead of 16.
+
+**Why the pressed stand is lower (49 against 56):** trial by trial, 20 bodies stood under the press only at 0, 13 only at 1; of the floor
+bodies lost, every one stood at 0 by the clip from the front from its time 0 and at 1 began by the front clip (or its mirror) at 0.6 to
+0.9 s, past where the recording brings its arms under the body, or by a side clip, and under 300 N did not come up. With the window at 0
+the pressed stand is lower still (40: the matcher takes fewer of them by the front clip at all). The matcher looks for the nearest pose
+and knows nothing of the press; what a pressed body should get up by is R6's (struggling when held).
+
+**C27's L at 77 degrees is the measure, not the motion.** The body follows the side clip to 1 to 5 cm of pelvis (the log of seed 1's
+trial 20), the clip itself is at 57.1 degrees as its pelvis passes 70 cm in every case, and the body reads 63 or 80: the clip's pelvis
+stays at about 70 cm for a quarter second while its trunk comes up from flat, and which side of 70.0 a body 1 or 2 cm off is on decides
+the moment the lean is read (new pitfall). The side clips' lean is decision 38's in any case.
+
+**C21** on the bare floor's four `getup_*` (the scorecard, `Saved\Natural\r2s8_quick`): 2.4 s in the median (2.3 to 3.2) against 3.2,
+below the 2.6 of the proposed limit; on the stand the seeds' medians 2.60 to 2.97 s. The get-up is shorter by the part of the recording
+the matcher begins after.
+
+**The four by the furniture** (`docs/recon/r2_step7_furniture`, kept for step 10; each at 0 and at 1): across the table's end on the
+back, 10 attempts and none standing either way (the pelvis 74 to 79 cm from a clip laid on the floor); across its end on the front,
+standing at the second attempt at 0 and the third at 1 (the first, from the front clip, 84 to 85 cm off); on the table's top on the
+back, standing at the first attempt either way (on the table); under the table on the back, four attempts either way, the scenario
+failing at 0 and passing at 1. The table is step 10's, as planned.
+
+**Read by an independent reader** (the step's diff, not its account): nothing changes a run at 0, the mirror's and the fit's
+arithmetic and the frame's use are right, no pointer into the clips' map outlives a read. Put right: the log and the state's reason
+named a mirror image as its clip (the mark was read as a file's extension, and the flag set after the line was written); the
+library's report took the first compared bone for the pelvis, whatever the list's order; a start was recorded before its clip was
+held; a clip without a name in the list let the JSON reader log an error of its own; `Tools\clip-film.ps1 -Clip "<name>|mirror"`
+made a folder name with `|` in it (its default tag now ends in `_mirror`). Written down, not changed: the mirror's tolerance (0.5
+cm) and the mean of the pelvis's and the chest's lean are constants of the code, a check and a definition; the library is built once
+a body, at its first get-up, from the values then; a library that cannot be built leaves the body down for the run, as a missing
+clip always has. The suite after the fixes: at 0 every hash of `start`, at 1 as before (the log now says "mirrored"). The
+bootstrap on the final tree: all 15 steps, the suite 154 of 154, 59 unit tests, its stand 50 of 50 with 49 at the first attempt.
+
+**Decision 7, with the switch on:** the push matrix ends every one of its 160 runs as `walk` does; the knockdowns by blows and by hand
+give every figure as at 0 (no get-up in them). The quick scorecard: C2 1.18 of body weight on the four get-ups (1.08), C19 within, C21
+2.4 s (above), C25 439 N*m as the baseline, the largest jump of a target 75.3 degrees (`getup_laid_right`, as at 0).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

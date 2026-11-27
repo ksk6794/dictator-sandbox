@@ -4,7 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes "0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5"
 #   ... -Clip <name>          a clip of Epic's Game Animation Sample by its name (Tools\fetch-sample-anims.ps1), or any
 #                             animation sequence by its path ("/Game/..."); several, separated by commas, are shown
-#                             one after the other, each at every time of -ClipTimes
+#                             one after the other, each at every time of -ClipTimes; "|mirror" after a name (in quotes)
+#                             is that clip's mirror image (R2's step 8; the default tag then ends in _mirror)
 #   ... -Carry                the weld goes where the clip has the pelvis, so that the body is seen lying, kneeling and
 #                             standing as the clip has it, not upright all along; -RaiseCm 100 keeps it clear of the floor
 #   ... -HoldS 1.0            simulated seconds given to each pose before its picture
@@ -34,7 +35,15 @@ $clipPaths = @()
 foreach ($one in @($Clip.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
     if ($one.StartsWith('/')) { $clipPaths += $one } else { $clipPaths += "/Game/Characters/UEFN_Mannequin/Animations/Ragdoll/$one" }
 }
-if (-not $Tag) { $Tag = 'clip_' + $clipPaths[0].Split('/')[-1].Split('.')[0] }
+# A clip's mirror image is its key with "|mirror" after it (R2's step 8): not a character a folder's name may hold.
+if (-not $Tag) {
+    $firstClip = $clipPaths[0].Split('/')[-1]
+    $Tag = 'clip_' + $firstClip.Split('|')[0].Split('.')[0] + $(if ($firstClip.EndsWith('|mirror')) { '_mirror' } else { '' })
+}
+if ($Tag.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+    Write-Output "CLIP FILM ERROR: the tag '$Tag' is not a name a folder can have (-Tag)"
+    exit 1
+}
 $base = Read-JsonFile (Join-Path $RepoRoot 'Scenarios\clip_pose_hold.json')
 if (-not $base) {
     Write-Output 'CLIP FILM ERROR: Scenarios\clip_pose_hold.json does not exist'

@@ -2870,6 +2870,38 @@ void UScenarioRunnerSubsystem::Finish()
 			GetUpJson->SetNumberField(TEXT("hit_off_cm"), GetUps.HitOffCm);
 			GetUpJson->SetNumberField(TEXT("rise_clip_trunk_deg"), GetUps.RiseClipTrunkDeg);
 			GetUpJson->SetNumberField(TEXT("rise_clip_feet_cm"), GetUps.RiseClipFeetCm);
+			// How every attempt began (R2, step 8): the clip and the time it took, how far the clip as laid stood from the body, and with
+			// getup.match 1 the matcher's choice.
+			TArray<TSharedPtr<FJsonValue>> StartsJson;
+			for (const FSandboxGetUpStart& Start : GetUps.Starts)
+			{
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetNumberField(TEXT("at_s"), Start.AtS);
+				Entry->SetStringField(TEXT("clip"), Start.Clip);
+				Entry->SetBoolField(TEXT("mirrored"), Start.bMirrored);
+				Entry->SetNumberField(TEXT("time_s"), Start.TimeS);
+				Entry->SetNumberField(TEXT("pelvis_off_cm"), Start.PelvisOffCm);
+				Entry->SetNumberField(TEXT("off_cm"), Start.OffCm);
+				Entry->SetNumberField(TEXT("pose_deg"), Start.PoseDeg);
+				Entry->SetNumberField(TEXT("ended_s"), Start.EndedS);
+				Entry->SetStringField(TEXT("ended"), Start.Ended);
+				Entry->SetBoolField(TEXT("matched"), Start.bMatched);
+				if (Start.bMatched)
+				{
+					Entry->SetNumberField(TEXT("cost_cm"), Start.CostCm);
+					Entry->SetNumberField(TEXT("places_cm"), Start.PlacesCm);
+					Entry->SetNumberField(TEXT("up_deg"), Start.UpDeg);
+					Entry->SetNumberField(TEXT("yaw_deg"), Start.YawDeg);
+					Entry->SetStringField(TEXT("next"), Start.Next);
+					Entry->SetNumberField(TEXT("next_cost_cm"), Start.NextCostCm);
+					Entry->SetStringField(TEXT("best_any"), Start.BestAny);
+					Entry->SetNumberField(TEXT("best_any_cost_cm"), Start.BestAnyCostCm);
+					Entry->SetStringField(TEXT("best_roll"), Start.BestRoll);
+					Entry->SetNumberField(TEXT("best_roll_cost_cm"), Start.BestRollCostCm);
+				}
+				StartsJson.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+			GetUpJson->SetArrayField(TEXT("starts"), StartsJson);
 			GetUpJson->SetNumberField(TEXT("seconds"), GetUpFrames * FixedDt);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_mean"), GetUpFrames > 0 ? GetUpAssistShareSum / GetUpFrames : 0.0);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_max"), GetUpAssistShareMax);
@@ -2878,6 +2910,72 @@ void UScenarioRunnerSubsystem::Finish()
 		}
 		// What the world gave the body: the old assist and the carry, by state, by body while getting up, by direction (decision 15).
 		ControlJson->SetObjectField(TEXT("authority"), AuthorityTally.ToJson());
+
+		// The motion library, once it is built (getup.match 1, R2's step 8): every motion, what it begins and ends with, its contacts
+		// with its floor, its mirror's error, and which other get-up begins nearest it.
+		if (Controller->GetMotionLibrary().IsBuilt())
+		{
+			const FSandboxMotionLibrary& Library = Controller->GetMotionLibrary();
+			const TSharedRef<FJsonObject> LibraryJson = MakeShared<FJsonObject>();
+			TArray<TSharedPtr<FJsonValue>> VariantsJson;
+			int32 Candidates = 0;
+			double AsymmetryCm = 0.0;
+			for (const FSandboxMotionVariant& Variant : Library.GetVariants())
+			{
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("key"), Variant.Key);
+				Entry->SetStringField(TEXT("name"), Variant.Name);
+				Entry->SetStringField(TEXT("kind"), Variant.Kind);
+				Entry->SetStringField(TEXT("lies"), Variant.Lies);
+				Entry->SetBoolField(TEXT("mirrored"), Variant.bMirrored);
+				Entry->SetBoolField(TEXT("match"), Variant.bMatch);
+				Entry->SetNumberField(TEXT("length_s"), Variant.LengthS);
+				Entry->SetNumberField(TEXT("keys"), Variant.Keys);
+				Entry->SetNumberField(TEXT("stands_s"), Variant.StandsS);
+				Entry->SetNumberField(TEXT("window_travel_cm"), Variant.WindowTravelCm);
+				Entry->SetNumberField(TEXT("mirror_error_cm"), Variant.MirrorErrorCm);
+				Entry->SetNumberField(TEXT("source_asymmetry_cm"), Variant.SourceAsymmetryCm);
+				Entry->SetStringField(TEXT("nearest"), Variant.Nearest);
+				Entry->SetNumberField(TEXT("nearest_cost_cm"), Variant.NearestCostCm);
+				const int32 PelvisFeature = Library.GetPelvisFeature();
+				if (Variant.Places.Num() > 0 && Variant.Places[0].IsValidIndex(PelvisFeature))
+				{
+					Entry->SetArrayField(TEXT("pelvis_start_cm"), SandboxJson::VectorToArray(Variant.Places[0][PelvisFeature]));
+					Entry->SetArrayField(TEXT("pelvis_end_cm"), SandboxJson::VectorToArray(Variant.Places.Last()[PelvisFeature]));
+				}
+				TArray<TSharedPtr<FJsonValue>> TouchingJson;
+				for (int32 Bone = 0; Bone < Library.GetSpec().FeatureBones.Num() && Variant.Touches.Num() > 0; ++Bone)
+				{
+					if (Variant.Touches[0] & (1u << Bone))
+					{
+						TouchingJson.Add(MakeShared<FJsonValueString>(Library.GetSpec().FeatureBones[Bone].ToString()));
+					}
+				}
+				Entry->SetArrayField(TEXT("touching_at_start"), TouchingJson);
+				TArray<TSharedPtr<FJsonValue>> ContactsJson;
+				for (const FSandboxMotionContact& Contact : Variant.Contacts)
+				{
+					const TSharedRef<FJsonObject> Each = MakeShared<FJsonObject>();
+					Each->SetStringField(TEXT("bone"), Contact.Bone.ToString());
+					Each->SetNumberField(TEXT("from_s"), Contact.FromS);
+					Each->SetNumberField(TEXT("to_s"), Contact.ToS);
+					Each->SetNumberField(TEXT("lowest_min_cm"), Contact.LowestMinCm);
+					Each->SetNumberField(TEXT("lowest_max_cm"), Contact.LowestMaxCm);
+					ContactsJson.Add(MakeShared<FJsonValueObject>(Each));
+				}
+				Entry->SetArrayField(TEXT("contacts"), ContactsJson);
+				VariantsJson.Add(MakeShared<FJsonValueObject>(Entry));
+				Candidates += Variant.bMatch ? 1 : 0;
+				AsymmetryCm = FMath::Max(AsymmetryCm, Variant.SourceAsymmetryCm);
+			}
+			LibraryJson->SetNumberField(TEXT("variant_count"), Library.GetVariants().Num());
+			LibraryJson->SetNumberField(TEXT("match_count"), Candidates);
+			LibraryJson->SetNumberField(TEXT("mirror_error_max_cm"), Library.MirrorErrorMaxCm());
+			LibraryJson->SetNumberField(TEXT("source_asymmetry_max_cm"), AsymmetryCm);
+			LibraryJson->SetNumberField(TEXT("getups_lying_at_start"), Library.GetUpsLyingAtStart());
+			LibraryJson->SetArrayField(TEXT("variants"), VariantsJson);
+			ControlJson->SetObjectField(TEXT("motion_library"), LibraryJson);
+		}
 
 		// A clip's pose asked for at the end of the run, and how every clip that was read fits the body: how far
 		// the two skeletons' reference poses are apart at each joint, and the furthest the clip asks a joint

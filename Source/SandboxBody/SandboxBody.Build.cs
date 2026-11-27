@@ -10,6 +10,7 @@ public class SandboxBody : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "PhysicsCore", "SandboxCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "PhysicsControl", "Chaos", "AnimationCore" });
+		// Json: the motion library's list (Specs/motion_library.json, R2's step 8).
+		PrivateDependencyModuleNames.AddRange(new string[] { "PhysicsControl", "Chaos", "AnimationCore", "Json" });
 	}
 }

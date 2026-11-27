@@ -54,6 +54,7 @@ $exit = 0
 $sumStand = 0; $sumFalls = 0; $sumFirst = 0; $sumAttempts = 0; $shares = @()
 $lines = @()
 $allFalls = @()
+$choices = @()
 foreach ($one in $running) {
     $result = Read-JsonFile (Join-Path $one.dir 'getup-stand.json')
     if (-not $result -or -not $result.ok) {
@@ -86,6 +87,11 @@ foreach ($one in $running) {
         $one.seed, $up.Count, $falls.Count, $first, ($attempts / [Math]::Max($falls.Count, 1)), $share, $pressed)
     $sumStand += $up.Count; $sumFalls += $falls.Count; $sumFirst += $first; $sumAttempts += $attempts; $shares += $share
     $allFalls += $falls
+    # Which clip each fall took and how each attempt ended (docs/active-ragdoll.md, section 9; R2's step 8).
+    foreach ($fall in $falls) {
+        $choices += [ordered]@{ seed = $one.seed; trial = $fall.number; kind = $fall.kind; got_up = $fall.got_up; attempts = $fall.attempts
+            rise_trunk_deg = $fall.rise_trunk_deg; rise_feet_cm = $fall.rise_feet_cm; held_pose_s = $fall.held_pose_s; starts = @($fall.starts) }
+    }
     if (-not $result.pass -and $exit -eq 0) { $exit = 1 }
 }
 # R2's gate over every seed (docs/active-ragdoll.md, decisions 16 and 21): C19, attempts given up and the longest pose held while
@@ -122,6 +128,26 @@ if ($allFalls.Count -gt 0) {
         (& $median @($shaped | ForEach-Object { [double]$_.rise_trunk_deg })), (& $median @($shaped | ForEach-Object { [double]$_.rise_feet_cm })),
         $within, $shaped.Count, ($byClip -join ', '))
 }
+# How the attempts began (R2's step 8; read only, in both modes): the clip as laid against the body as it lay, the first attempt of each
+# fall and every attempt; the attempts that lost the pelvis, and those that lost it within a quarter second; the clips the first attempts
+# took (a mirror image marked '); the time in the clip they began from.
+$startLine = $null
+$firstStarts = @($choices | Where-Object { $_.starts.Count -gt 0 } | ForEach-Object { $_.starts[0] })
+$everyStart = @($choices | ForEach-Object { $_.starts } | Where-Object { $_ })
+if ($firstStarts.Count -gt 0) {
+    $measured = { param($values, $field) @($values | Where-Object { $null -ne $_.$field -and [double]$_.$field -ge 0 } | ForEach-Object { [double]$_.$field }) }
+    $worst = { param($values) if ($values.Count -gt 0) { ($values | Measure-Object -Maximum).Maximum } else { [double]::NaN } }
+    $pelvisOff = & $measured $firstStarts 'pelvis_off_cm'
+    $off = & $measured $firstStarts 'off_cm'
+    $pose = & $measured $firstStarts 'pose_deg'
+    $lostPelvis = @($everyStart | Where-Object { [string]$_.ended -like '*the pelvis is*' })
+    $lostAtOnce = @($lostPelvis | Where-Object { [double]$_.ended_s - [double]$_.at_s -le 0.25 })
+    $taken = @($firstStarts | Group-Object { ([string]$_.clip).Split('_')[-1] + $(if ($_.mirrored) { "'" } else { '' }) } | Sort-Object Name | ForEach-Object { '{0} {1}' -f $_.Name, $_.Count })
+    $startLine = ('  The start (first attempts): the pelvis {0:N1} cm from the clip''s in the median ({1:N1} at most), the compared bones {2:N1} cm ({3:N1}), the pose {4:N1} deg; from {5:N2} s of the clip in the median; of {6} attempts {7} lost the pelvis, {8} within 0.25 s; clips {9}' -f `
+        (& $median $pelvisOff), (& $worst $pelvisOff), (& $median $off), (& $worst $off), (& $median $pose),
+        (& $median @($firstStarts | ForEach-Object { [double]$_.time_s })), $everyStart.Count, $lostPelvis.Count, $lostAtOnce.Count, ($taken -join ', '))
+    Write-JsonFile (Join-Path $root 'choices.json') ([ordered]@{ label = $Label; tune = $Tune; tuning_dir = $TuningDir; falls = $choices })
+}
 $verdict = 'OK'
 if ($exit -ne 0) { $verdict = 'FAILED' }
 $meanShare = 0.0
@@ -129,6 +155,7 @@ if ($shares.Count -gt 0) { $meanShare = ($shares | Measure-Object -Average).Aver
 Write-Output ('GETUP SEEDS {0}: {1} of {2} fall(s) end standing, {3} at the first attempt, {4:N2} attempts a fall, assist share {5:N2}; {6} s; {7}' -f `
     $verdict, $sumStand, $sumFalls, $sumFirst, ($sumAttempts / [Math]::Max($sumFalls, 1)), $meanShare, $seconds, $Label)
 if ($gateLine) { Write-Output $gateLine }
+if ($startLine) { Write-Output $startLine }
 $lines | ForEach-Object { Write-Output $_ }
 if ($Tune) { Write-Output "  tune: $Tune" }
 if ($TuningDir) { Write-Output "  tuning directory: $TuningDir" }
