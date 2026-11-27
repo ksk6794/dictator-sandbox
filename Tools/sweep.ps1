@@ -4,23 +4,29 @@
 #       -Vary "muscles.legs.stiffness_nm_per_rad=400,800,1200;muscles.legs.damping_s=0.03,0.06,0.12"
 #   ... -OneAtATime            change one value at a time and leave the others as the files have them (a
 #                              coordinate search: 6 settings above instead of the grid's 9)
+#   ... -Sets "|getup.start_blend_s=0.6|getup.start_blend_s=0,getup.carry=0"
+#                              instead of -Vary: sets of values changed together, separated by '|', each a setting; an
+#                              empty set is the files as they are. Several scenarios times several sets in one call, in
+#                              place of a loop over Tools\scenario.ps1 (each run as that one would give it)
 #   ... -Tune "name=value,..." overrides that every run gets, under the values being varied
 #   ... -Files <dir>           also run every *.json scenario file of this directory (generated scenarios)
 #   ... -Metrics "a.b,c.d"     the columns: paths into metrics.json (default: a general set, see below)
 #   ... -Parallel 8            scenario processes at a time
 #   ... -TuningDir <dir>       tuning files to start from instead of Config\Tuning
 #
-# Every setting of the varied values is run on every scenario with Tools\scenario.ps1 -Tune, so the files
-# in Config\Tuning are never written to. Prints one row per setting and scenario, and writes
+# Every setting of the varied values is run on every scenario with its values as overrides (-Tune), so the files
+# in Config\Tuning are never written to; all the runs are jobs of one queue. Prints SWEEP DONE, then a verdict line a
+# run as Tools\scenario.ps1 prints it (with the hashes), then one row per setting and scenario, and writes
 # Saved\Sweeps\<Name>\sweep.json and sweep.csv; each run keeps its own metrics.json and series.csv under
-# Saved\Sweeps\<Name>\runs. Physics step times of a sweep are taken while the runs share the processor.
+# Saved\Sweeps\<Name>\runs\<setting>\<scenario>. Physics step times of a sweep are taken while the runs share the processor.
 # Exit code: 0 the sweep ran (whatever the scenarios' verdicts), 2 a run produced no result or the arguments
 # cannot be used.
 param(
     [string]$Name = 'sweep',
     [string]$Scenarios,
     [string]$Files,
-    [Parameter(Mandatory = $true)][string]$Vary,
+    [string]$Vary,
+    [string]$Sets,
     [switch]$OneAtATime,
     [string]$Tune,
     [string]$TuningDir,
@@ -49,9 +55,14 @@ if ($Files) {
 }
 if ($targets.Count -eq 0) { Write-Output 'SWEEP ERROR: give -Scenarios "a,b" or -Files <dir>'; exit 2 }
 
+$withSets = $PSBoundParameters.ContainsKey('Sets')
+if ($Vary -and $withSets) { Write-Output 'SWEEP ERROR: give -Vary or -Sets, not both'; exit 2 }
+if (-not $Vary -and -not $withSets) { Write-Output 'SWEEP ERROR: give -Vary "name=v1,v2;..." or -Sets "set|set|..."'; exit 2 }
+if ($withSets -and $OneAtATime) { Write-Output 'SWEEP ERROR: -OneAtATime is for -Vary'; exit 2 }
+
 # The values: "name=v1,v2;name=v1,v2".
 $axes = @()
-foreach ($part in $Vary.Split(';')) {
+foreach ($part in @("$Vary".Split(';'))) {
     $part = $part.Trim()
     if (-not $part) { continue }
     $pair = $part.Split('=')
@@ -60,11 +71,22 @@ foreach ($part in $Vary.Split(';')) {
     if ($pair.Count -ne 2 -or $values.Count -eq 0) { Write-Output "SWEEP ERROR: '$part' is not name=value,value,..."; exit 2 }
     $axes += @{ name = $pair[0].Trim(); values = $values }
 }
-if ($axes.Count -eq 0) { Write-Output 'SWEEP ERROR: -Vary names no value'; exit 2 }
+if (-not $withSets -and $axes.Count -eq 0) { Write-Output 'SWEEP ERROR: -Vary names no value'; exit 2 }
 
-# The settings: every combination, or one value changed at a time.
+# The settings: the sets as they are given, every combination of the axes, or one value changed at a time.
 $settings = @()
-if ($OneAtATime) {
+if ($withSets) {
+    foreach ($text in @("$Sets".Split('|'))) {
+        $setting = @()
+        foreach ($assignment in @($text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+            $pair = $assignment.Split('=')
+            if ($pair.Count -ne 2 -or -not $pair[0].Trim() -or -not $pair[1].Trim()) { Write-Output "SWEEP ERROR: '$assignment' in -Sets is not name=value"; exit 2 }
+            $setting += @{ name = $pair[0].Trim(); value = $pair[1].Trim() }
+        }
+        $settings += , @($setting)
+    }
+}
+elseif ($OneAtATime) {
     foreach ($axis in $axes) {
         foreach ($value in $axis.values) { $settings += , @(@{ name = $axis.name; value = $value }) }
     }
@@ -85,14 +107,17 @@ $index = 0
 foreach ($setting in $settings) {
     $index++
     $assignments = @($setting | ForEach-Object { "$($_.name)=$($_.value)" }) -join ','
-    $tuneArgument = $assignments
-    if ($Tune) { $tuneArgument = "$Tune,$assignments" }
+    # The overrides every run gets, then this setting's; an empty set adds nothing (the files as they are).
+    $tuneArgument = (@($Tune, $assignments) | Where-Object { $_ }) -join ','
+    $valuesText = $assignments
+    if (-not $valuesText) { $valuesText = '(the files)' }
     foreach ($target in $targets) {
         $runOut = Join-Path $out ("runs\{0:000}\{1}" -f $index, $target.name)
-        $job = @{ File = $target.file; Out = $runOut; Tune = $tuneArgument }
+        $job = @{ File = $target.file; Out = $runOut }
+        if ($tuneArgument) { $job.Tune = $tuneArgument }
         if ($TuningDir) { $job.TuningDir = $TuningDir }
         $jobs += $job
-        $rows += [ordered]@{ setting = $index; values = $assignments; scenario = $target.name; out = $runOut }
+        $rows += [ordered]@{ setting = $index; values = $valuesText; scenario = $target.name; out = $runOut }
     }
 }
 
@@ -129,7 +154,7 @@ foreach ($row in $rows) {
 }
 
 Write-JsonFile (Join-Path $out 'sweep.json') ([ordered]@{
-    name = $Name; seconds = $seconds; runs = $table.Count; vary = $Vary; one_at_a_time = [bool]$OneAtATime; tune = $Tune
+    name = $Name; seconds = $seconds; runs = $table.Count; vary = $Vary; sets = $(if ($withSets) { $Sets } else { $null }); one_at_a_time = [bool]$OneAtATime; tune = $Tune
     scenarios = @($targets | ForEach-Object { $_.name }); metrics = $metricPaths; rows = $table
 })
 
@@ -144,6 +169,10 @@ foreach ($entry in $table) {
 [System.IO.File]::WriteAllLines((Join-Path $out 'sweep.csv'), $lines, (New-Object System.Text.UTF8Encoding $false))
 
 Write-Output ("SWEEP DONE: {0}, {1} run(s) ({2} setting(s) on {3} scenario(s)) in {4} s" -f $Name, $table.Count, $settings.Count, $targets.Count, $seconds)
+# A verdict line a run, as Tools\scenario.ps1 prints it, its setting after the scenario's name.
+foreach ($row in $rows) {
+    Write-Output (Format-ScenarioVerdict ('{0} [setting {1}]' -f $row.scenario, $row.setting) (Read-JsonFile (Join-Path $row.out 'metrics.json')) $row.out)
+}
 $shortNames = @($metricPaths | ForEach-Object { $_.Split('.')[-1] })
 Write-Output ('  {0,-4} {1,-22} {2,-5} {3}   {4}' -f 'set', 'scenario', 'pass', (($shortNames | ForEach-Object { '{0,14}' -f ($_.Substring(0, [Math]::Min(14, $_.Length))) }) -join ' '), 'values')
 foreach ($entry in $table) {

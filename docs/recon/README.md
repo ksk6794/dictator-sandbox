@@ -22,5 +22,6 @@ suites) stay on the reference machine.
 | `getup_kneel_attempt.patch` | A get-up from the knees by stages (`getup.rise` of 25 November), not kept |
 | `trial_corrections.patch` | Diagnostic switches by environment variable (`RECON_FIX`, marked `RECON-TEMP`), used to find the causes of C25's jumps; never to be applied as it is |
 | `getup_pauses.py` | Reads a session's `run.log` and lists each get-up's lying time, attempts and pauses (path as its first argument) |
+| `fast-checks/` | The scripts behind the figures of `docs/fast-checks.md` (27 November): the count of the ten sessions' transcripts (`ten_sessions.ps1`, which runs `time_split.ps1`, `runs.ps1` and `runs_check.ps1`; `model_split.ps1` and `tool_times.ps1` of the first count), the suite's tails (`suite_tails.ps1`), and the audit's experiments with extra engine arguments (`one_run.ps1`, `test_run.ps1`, `suite_run.ps1`: they write under `Saved\Check` only) |
 
 A patch applies to the tree of the day it was made; check with `git apply --check` before using one.

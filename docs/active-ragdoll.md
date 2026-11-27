@@ -265,7 +265,11 @@ a snap, the player's body is a capsule with a capped force (from `docs/recon/m4_
 brought forward from M4's part 5. **Built on 26 November 2026** (decisions 25 to 28; `docs/testing.md`, "The player's movement in
 the headset"): the suite's 127 scenarios keep their hashes, five scenarios of the body are new, and a session without a person
 walks a made-up headset through it (`Tools\play.ps1 -Demo -Walk`, a step of the bootstrap); the owner's look in the headset is
-to come, when the owner says the headset is on. Then:
+to come, when the owner says the headset is on.
+
+**Stage 1 of the faster checks** (`docs/fast-checks.md`, SP-0 to SP-3; its decision 9) was built and accepted on 27 November 2026
+(its decision 10; every run's hashes kept, the bootstrap 334 to 139 s). By the owner's decision 11 R2 goes on with its step 9 now;
+stage 2 of the faster checks waits until after R2. Then:
 
 1. **R2**, the get-up from however the body lies. Step 0 is a clean-up of dead switches (decision 9; done on 26 November); then
    the hold by one hand, then the matcher and the fit to the floor.

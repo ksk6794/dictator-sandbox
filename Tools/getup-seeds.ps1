@@ -6,7 +6,11 @@
 #   ... -Label friction05       names the output: Saved\Matrix\getup_seeds\<Label>\seed_<n> (and seed_<n>.txt, what
 #                               the stand printed)
 #   ... -Parallel 3             engine processes of each stand; the stands run at the same time (three seeds at 3
-#                               are nine processes: an engine process takes 1.75 GB, and fifteen ran out of 32 GB)
+#                               are nine processes: an engine process takes 1.75 GB, and fifteen ran out of 32 GB). Inside
+#                               a check set (Tools\checks.ps1, Tools\natural.ps1) the stands' runs go to the set's queue
+#                               instead. Alone, three queues of their own are faster than one of nine processes (78 s
+#                               against 87 s): in one queue a stand's trials drawn again wait for a process the other
+#                               stands keep busy (docs/testing.md, "Faster checks, stage 1")
 #   ... -PressN 300, -HoldHands 1, -Only "table,chair", -StopStandingS 0     passed on to every stand
 #
 # Prints, for each seed: the falls that end standing, those at the first attempt, attempts a fall, and the
@@ -31,8 +35,9 @@ New-Item -ItemType Directory -Force $root | Out-Null
 $stand = Join-Path $PSScriptRoot 'getup-stand.ps1'
 $started = Get-Date
 
+$seedList = @($Seeds -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $running = @()
-foreach ($seedText in ($Seeds -split ',')) {
+foreach ($seedText in $seedList) {
     $seedNumber = [int]$seedText.Trim()
     $outDir = Join-Path $root "seed_$seedNumber"
     $arguments = "-ExecutionPolicy Bypass -File `"$stand`" -Seed $seedNumber -Parallel $Parallel -Out `"$outDir`""
@@ -47,7 +52,8 @@ foreach ($seedText in ($Seeds -split ',')) {
     $process = Start-Process powershell -ArgumentList $arguments -RedirectStandardOutput $printed -WindowStyle Hidden -PassThru
     $running += [pscustomobject]@{ seed = $seedNumber; process = $process; dir = $outDir; printed = $printed }
 }
-foreach ($one in $running) { $one.process.WaitForExit() }
+# Inside a check set the stands inherit its queue (Invoke-ScenarioBatch); alone each makes its own.
+Wait-CheckChildren -Children @($running | ForEach-Object { $_.process })
 $seconds = [Math]::Round(((Get-Date) - $started).TotalSeconds, 0)
 
 $exit = 0
@@ -152,6 +158,9 @@ $verdict = 'OK'
 if ($exit -ne 0) { $verdict = 'FAILED' }
 $meanShare = 0.0
 if ($shares.Count -gt 0) { $meanShare = ($shares | Measure-Object -Average).Average }
+# The verdict as a file (Tools\checks.ps1 decides by it): every stand gave its result (ok) and met its criterion (pass).
+Write-JsonFile (Join-Path $root 'getup-seeds.json') ([ordered]@{ ok = ($exit -ne 2); pass = ($exit -eq 0); label = $Label; seeds = @($seedList); stand = $sumStand; falls = $sumFalls
+    first_attempt = $sumFirst; attempts = $sumAttempts; assist_share_mean = $meanShare; seconds = $seconds; tune = $Tune; tuning_dir = $TuningDir })
 Write-Output ('GETUP SEEDS {0}: {1} of {2} fall(s) end standing, {3} at the first attempt, {4:N2} attempts a fall, assist share {5:N2}; {6} s; {7}' -f `
     $verdict, $sumStand, $sumFalls, $sumFirst, ($sumAttempts / [Math]::Max($sumFalls, 1)), $meanShare, $seconds, $Label)
 if ($gateLine) { Write-Output $gateLine }

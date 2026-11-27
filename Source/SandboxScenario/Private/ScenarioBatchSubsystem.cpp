@@ -5,10 +5,12 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFileManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/App.h"
 #include "Misc/FileHelper.h"
 #include "Misc/OutputDeviceHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
+#include "ProfilingDebugging/TraceAuxiliary.h"
 #include "SandboxCore.h"
 #include "SandboxJson.h"
 #include "SandboxParamStore.h"
@@ -115,6 +117,7 @@ const UScenarioBatchSubsystem::FJob* UScenarioBatchSubsystem::BeginWorld(UWorld&
 
 void UScenarioBatchSubsystem::JobDone(UWorld& World, uint8 Code)
 {
+	const bool bWarmup = bWarmupRunning;
 	if (bWarmupRunning)
 	{
 		bWarmupRunning = false;
@@ -130,6 +133,16 @@ void UScenarioBatchSubsystem::JobDone(UWorld& World, uint8 Code)
 		UE_LOG(LogSandbox, Display, TEXT("Scenario batch: job %d done (%d)"), Done, Code);
 	}
 	CloseLog();
+	// Every file of the job is written and its run.log closed: its done marker says so to a tool that waits for it from another
+	// process (a check set, Tools\common.ps1, Submit-CheckJobs) and may then read the job's files or remove its folder.
+	if (!bWarmup && !Current.File.IsEmpty())
+	{
+		const FString Marker = FPaths::Combine(QueueDir, TEXT("taken"), Current.File + TEXT(".done"));
+		if (!FFileHelper::SaveStringToFile(FString::FromInt(Code), *Marker))
+		{
+			UE_LOG(LogSandbox, Error, TEXT("Scenario batch: cannot write '%s'"), *Marker);
+		}
+	}
 	OpenNext(World);
 }
 
@@ -179,6 +192,7 @@ bool UScenarioBatchSubsystem::TakeJob(FJob& OutJob)
 			continue;
 		}
 		OutJob = FJob();
+		OutJob.File = Name;
 		Json->TryGetStringField(TEXT("scenario"), OutJob.Scenario);
 		Json->TryGetStringField(TEXT("out"), OutJob.Out);
 		Json->TryGetStringField(TEXT("tune"), OutJob.Tune);
@@ -200,8 +214,15 @@ void UScenarioBatchSubsystem::OpenNext(UWorld& World)
 {
 	if (!TakeJob(Current))
 	{
-		UE_LOG(LogSandbox, Display, TEXT("Scenario batch: queue empty after %d job(s), %d not passed"), Done, Failed);
-		FPlatformMisc::RequestExitWithStatus(/*Force*/ false, Failed > 0 ? 1 : 0);
+		// A process without a renderer and without a trace ends at once (docs/fast-checks.md, SP-2): the engine tells its
+		// will-terminate delegate, flushes the log and ends the process, without the orderly shutdown that took 0.4 to 1.3 s
+		// (WindowsPlatformMisc.cpp, RequestExitWithStatus). Every result is written by then: a job's files before JobDone,
+		// its run.log closed with it. Not a rendered process, whose pictures the engine writes in the background, nor one
+		// with a trace, which only an orderly exit finishes writing.
+		const bool bTraced = FTraceAuxiliary::IsConnected() || FCString::Stristr(FCommandLine::Get(), TEXT("-trace")) != nullptr;
+		const bool bForce = !FApp::CanEverRender() && !bTraced;
+		UE_LOG(LogSandbox, Display, TEXT("Scenario batch: queue empty after %d job(s), %d not passed%s"), Done, Failed, bForce ? TEXT("; exiting at once") : TEXT(""));
+		FPlatformMisc::RequestExitWithStatus(bForce, Failed > 0 ? 1 : 0);
 		return;
 	}
 	OpenJob(World);

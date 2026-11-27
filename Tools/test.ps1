@@ -13,8 +13,11 @@ $logFile = Join-Path $ToolsOut 'test.log'
 $resultFile = Join-Path $ToolsOut 'test.json'
 if (Test-Path $reportDir) { Remove-Item $reportDir -Recurse -Force }
 
-$arguments = "-ExecCmds=`"Automation RunTests $Filter;Quit`" -testexit=`"Automation Test Queue Empty`" -ReportExportPath=`"$reportDir`" -nullrhi"
-$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
+# "Now" is a command of its own between the semicolons: it takes away the automation's fixed pause of 5 s before the tests
+# (AutomationCommandline.cpp). "RunTests Now <filter>" would queue no test at all and exit with 0 (docs/fast-checks.md, SP-2).
+# The editor starts without the Zen server and the platform check (-FastStart).
+$arguments = "-ExecCmds=`"Automation Now;RunTests $Filter;Quit`" -testexit=`"Automation Test Queue Empty`" -ReportExportPath=`"$reportDir`" -nullrhi"
+$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -FastStart
 
 $report = Read-JsonFile (Join-Path $reportDir 'index.json')
 if ($run.TimedOut -or -not $report) {

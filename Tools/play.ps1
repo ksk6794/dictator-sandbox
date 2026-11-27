@@ -91,9 +91,18 @@ $Out = [System.IO.Path]::GetFullPath($Out)
 New-Item -ItemType Directory -Force $Out | Out-Null
 $resultFile = Join-Path $Out 'play.json'
 $logFile = Join-Path $Out 'run.log'
-foreach ($stale in @('play.json', 'final.png')) {
+# The script's own verdict as a file (Tools\bootstrap.ps1 decides by it): the session's play.json does not hold what the log
+# adds to it (errors of LogSandbox, warnings of Physics Control).
+$verdictFile = Join-Path $Out 'play-result.json'
+foreach ($stale in @('play.json', 'final.png', 'play-result.json')) {
     $path = Join-Path $Out $stale
     if (Test-Path $path) { Remove-Item $path -Force }
+}
+function Stop-Play([int]$Code, [string]$Line, [string[]]$More = @()) {
+    Write-JsonFile $verdictFile ([ordered]@{ ok = ($Code -eq 0); exit_code = $Code; verdict = $Line })
+    Write-Output $Line
+    $More | ForEach-Object { Write-Output $_ }
+    exit $Code
 }
 
 # -Grab is the grab switched on (effectors.hand.grab), whatever else is tuned (it is on in the tuning files since
@@ -116,21 +125,18 @@ if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 if ($VR) {
     $blocker = Get-HeadsetBlocker
     if ($blocker) {
-        Write-Output "PLAY ERROR: the session in the headset was not started. $blocker."
-        exit 2
+        Stop-Play 2 "PLAY ERROR: the session in the headset was not started. $blocker."
     }
     $state = Get-HeadsetState
     if ($state -and $state -ne 'Ready') { Write-Output "PLAY NOTE: SteamVR reports '$state': the headset is not being worn." }
 }
 if ($VR -and ($Demo -or $Smoke)) {
-    Write-Output 'PLAY ERROR: -VR is a session with a person in the headset; -Smoke and -Demo run without one'
-    exit 2
+    Stop-Play 2 'PLAY ERROR: -VR is a session with a person in the headset; -Smoke and -Demo run without one'
 }
 if ($Demo -and -not $Grab -and -not $Record) { $Record = 'demo_hands'; if ($Takes) { $Record = 'demo_takes' } elseif ($Walk) { $Record = 'demo_walk' } }
 if ($Record) {
     if ($Record -notmatch '^[A-Za-z0-9_\-]+$') {
-        Write-Output "PLAY ERROR: -Record takes a name of letters, digits, '_' and '-', not '$Record'"
-        exit 2
+        Stop-Play 2 "PLAY ERROR: -Record takes a name of letters, digits, '_' and '-', not '$Record'"
     }
     $arguments += " -Record=$Record"
 }
@@ -138,27 +144,22 @@ if ($Record) {
 if ($Demo) {
     if ($Grab) { $arguments += ' -PlayDemoGrab -nullrhi' } elseif ($Takes) { $arguments += ' -PlayDemoTakes -nullrhi' } elseif ($Walk) { $arguments += ' -PlayDemoWalk -nullrhi' } else { $arguments += ' -PlayDemo -nullrhi' }
     if ($TimeoutSec -le 0) { $TimeoutSec = 300 }
-    $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
+    $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -FastStart
     $result = Read-JsonFile $resultFile
     if ($run.TimedOut -or -not $result -or -not $result.ok) {
         $why = "it wrote no play.json (process exit code $($run.ExitCode))"
         if ($run.TimedOut) { $why = "it timed out after $TimeoutSec s" }
         if ($result -and -not $result.ok) { $why = "the session could not start: $($result.error)" }
-        Write-Output "PLAY ERROR: the hands' session did not run: $why. Log: $logFile"
-        Get-LogErrors $logFile | ForEach-Object { Write-Output "  $_" }
-        exit 2
+        Stop-Play 2 "PLAY ERROR: the hands' session did not run: $why. Log: $logFile" @(Get-LogErrors $logFile | ForEach-Object { "  $_" })
     }
     $errors = @(Get-LogErrors $logFile | Where-Object { $_ -match 'LogSandbox' })
     if ($Grab) {
         $held = $result.grab
         $told = "took hold $($held.held), lost what it held when the character was put back $($held.lost_on_reset), took hold of the new one $($held.held_again), let go $($held.let_go); $($held.grabs) grab(s), $($held.grabs_lost) lost, $($held.grab_slips) slipped, the joint carried $([Math]::Round([double]$held.max_grab_force_n)) N at most, the hand went $([Math]::Round([double]$held.max_speed_mps, 1)) m/s at most; the kick landed $($held.kick_landed) ($([Math]::Round([double]$held.kick_impulse_ns)) N*s from the foot after the key, and a hit told by the character); the character ends $($held.character_state_at_end)"
         if (-not $result.pass -or $errors.Count -gt 0) {
-            Write-Output "PLAY GRAB FAILED on '$Name': $told"
-            $errors | ForEach-Object { Write-Output "  log: $_" }
-            exit 1
+            Stop-Play 1 "PLAY GRAB FAILED on '$Name': $told" @($errors | ForEach-Object { "  log: $_" })
         }
-        Write-Output "PLAY GRAB OK on '$Name': $told"
-        exit 0
+        Stop-Play 0 "PLAY GRAB OK on '$Name': $told"
     }
     if ($Walk) {
         $moved = $result.walk
@@ -166,27 +167,24 @@ if ($Demo) {
         $failed = @($checks | Where-Object { -not $_.pass })
         $verdict = 'OK'
         if (-not $result.pass -or $errors.Count -gt 0 -or $checks.Count -eq 0) { $verdict = 'FAILED' }
-        Write-Output ("PLAY WALK {0} on '{1}': {2} of {3} checks passed; walked {4:N2} m at {5:N2} m/s at most, {6} snap turn(s) to the left and {7} to the right; the character ends {8}" -f
+        $line = ("PLAY WALK {0} on '{1}': {2} of {3} checks passed; walked {4:N2} m at {5:N2} m/s at most, {6} snap turn(s) to the left and {7} to the right; the character ends {8}" -f
             $verdict, $Name, ($checks.Count - $failed.Count), $checks.Count, [double]$moved.walked_m, [double]$moved.max_speed_mps, $moved.snaps_left, $moved.snaps_right, $moved.character_state_at_end)
+        $more = @()
         foreach ($check in $checks) {
             $mark = 'ok  '
             if (-not $check.pass) { $mark = 'FAIL' }
-            Write-Output ("  [{0}] {1}: {2}" -f $mark, $check.name, $check.detail)
+            $more += ("  [{0}] {1}: {2}" -f $mark, $check.name, $check.detail)
         }
-        if ($result.error) { Write-Output "  error: $($result.error)" }
-        $errors | ForEach-Object { Write-Output "  log: $_" }
-        Write-Output "  replay: $($result.replay_scenario)"
-        if ($verdict -eq 'OK') { exit 0 }
-        exit 1
+        if ($result.error) { $more += "  error: $($result.error)" }
+        $more += @($errors | ForEach-Object { "  log: $_" })
+        $more += "  replay: $($result.replay_scenario)"
+        if ($verdict -eq 'OK') { Stop-Play 0 $line $more }
+        Stop-Play 1 $line $more
     }
     if (-not $result.pass -or $errors.Count -gt 0) {
-        Write-Output "PLAY DEMO FAILED: no recording of the hands on '$Name': $($result.error)"
-        $errors | ForEach-Object { Write-Output "  log: $_" }
-        exit 1
+        Stop-Play 1 "PLAY DEMO FAILED: no recording of the hands on '$Name': $($result.error)" @($errors | ForEach-Object { "  log: $_" })
     }
-    Write-Output "PLAY DEMO OK: the hands' session on '$Name' recorded ($($result.frames) frames of session)"
-    Write-Output "  replay: $($result.replay_scenario)"
-    exit 0
+    Stop-Play 0 "PLAY DEMO OK: the hands' session on '$Name' recorded ($($result.frames) frames of session)" @("  replay: $($result.replay_scenario)")
 }
 
 if ($Smoke) {
@@ -197,20 +195,16 @@ if ($Smoke) {
         $arguments += ' -nullrhi'
     }
     if ($TimeoutSec -le 0) { $TimeoutSec = 300 }
-    $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec
+    $run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -FastStart
     $result = Read-JsonFile $resultFile
     if ($run.TimedOut) {
-        Write-Output "PLAY ERROR: the self-test timed out after $TimeoutSec s. Log: $logFile"
-        exit 2
+        Stop-Play 2 "PLAY ERROR: the self-test timed out after $TimeoutSec s. Log: $logFile"
     }
     if (-not $result) {
-        Write-Output "PLAY ERROR: the self-test wrote no play.json (process exit code $($run.ExitCode)). Log: $logFile"
-        Get-LogErrors $logFile | ForEach-Object { Write-Output "  $_" }
-        exit 2
+        Stop-Play 2 "PLAY ERROR: the self-test wrote no play.json (process exit code $($run.ExitCode)). Log: $logFile" @(Get-LogErrors $logFile | ForEach-Object { "  $_" })
     }
     if (-not $result.ok) {
-        Write-Output "PLAY ERROR: the session could not start: $($result.error)"
-        exit 2
+        Stop-Play 2 "PLAY ERROR: the session could not start: $($result.error)"
     }
     $failed = @($result.checks | Where-Object { -not $_.pass })
     # A run can pass its own checks and still have logged errors (a hand that was not created, say), or
@@ -224,16 +218,17 @@ if ($Smoke) {
     }
     $verdict = 'OK'
     if ($failed.Count -gt 0 -or $errors.Count -gt 0) { $verdict = 'FAILED' }
-    Write-Output ("PLAY SMOKE {0}: {1} of {2} checks passed on '{3}' ({4} frames)" -f $verdict, ($result.checks.Count - $failed.Count), $result.checks.Count, $Name, $result.frames)
+    $line = ("PLAY SMOKE {0}: {1} of {2} checks passed on '{3}' ({4} frames)" -f $verdict, ($result.checks.Count - $failed.Count), $result.checks.Count, $Name, $result.frames)
+    $more = @()
     foreach ($check in $result.checks) {
         $mark = 'ok  '
         if (-not $check.pass) { $mark = 'FAIL' }
-        Write-Output ("  [{0}] {1}: {2}" -f $mark, $check.name, $check.detail)
+        $more += ("  [{0}] {1}: {2}" -f $mark, $check.name, $check.detail)
     }
-    $errors | ForEach-Object { Write-Output "  log: $_" }
-    Write-Output "  result: $resultFile"
-    if ($verdict -eq 'OK') { exit 0 }
-    exit 1
+    $more += @($errors | ForEach-Object { "  log: $_" })
+    $more += "  result: $resultFile"
+    if ($verdict -eq 'OK') { Stop-Play 0 $line $more }
+    Stop-Play 1 $line $more
 }
 
 # A person's session: a window, the frame rate held to the simulation's (in the headset: by the headset), until
@@ -242,7 +237,8 @@ $arguments += " -windowed -ResX=$ResX -ResY=$ResY"
 if ($VR) { $arguments += ' -vr' }
 if ($Seconds -gt 0) { $arguments += (' -PlaySeconds={0}' -f $Seconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)) }
 if ($TimeoutSec -le 0) { $TimeoutSec = 6 * 3600 }
-$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -VR:$VR
+# Without the Zen server and the platform check (SP-2), but in the headset.
+$run = Invoke-Editor -ArgumentString $arguments -LogFile $logFile -TimeoutSec $TimeoutSec -VR:$VR -FastStart:(-not $VR)
 $errors = @(Get-LogErrors $logFile | Where-Object { $_ -match 'LogSandbox' })
 if ($errors.Count -gt 0) {
     Write-Output "PLAY ERROR: the session on '$Name' logged errors. Log: $logFile"

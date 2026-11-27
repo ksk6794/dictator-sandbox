@@ -234,8 +234,9 @@ Write-JsonFile $resultFile $summary
 Write-Output "  result: $resultFile"
 
 if ($Film) {
-    # One sheet per fall, from the side the fall is best seen from.
-    $filmScript = Join-Path $PSScriptRoot 'film.ps1'
+    # One sheet per fall, from the side the fall is best seen from; every film in one call of Tools\film.ps1, rendered through
+    # one queue (docs/fast-checks.md, SP-1).
+    $filmList = @()
     foreach ($trial in $trials) {
         $camera = 'side'
         if (($trial.angle -lt 45.0) -or ($trial.angle -gt 135.0 -and $trial.angle -lt 225.0) -or ($trial.angle -gt 315.0)) { $camera = 'front' }
@@ -243,11 +244,14 @@ if ($Film) {
         $eventsFile = Join-Path $scenarioDir "$($trial.name).events.json"
         $blow = (Read-JsonFile $trial.file).events
         [System.IO.File]::WriteAllText($eventsFile, (ConvertTo-Json @($blow) -Depth 6))
-        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $filmScript, '-Name', 'stand_npc', '-Tag', $trial.name,
-            '-Events', $eventsFile, '-Times', '3.0,3.1,3.2,3.3,3.4,3.5,3.7,3.9,4.2,4.6,5.2,6.0', '-Camera', $camera)
-        if ($Tune) { $arguments += @('-Tune', $Tune) }
-        & powershell @arguments | Select-Object -Last 1
+        $filmList += [ordered]@{ name = 'stand_npc'; tag = $trial.name; events = $eventsFile; camera = $camera }
     }
+    $listFile = Join-Path $Out 'films.json'
+    [System.IO.File]::WriteAllText($listFile, (ConvertTo-Json @($filmList) -Depth 4))
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-Films', $listFile,
+        '-Times', '3.0,3.1,3.2,3.3,3.4,3.5,3.7,3.9,4.2,4.6,5.2,6.0')
+    if ($Tune) { $arguments += @('-Tune', $Tune) }
+    & powershell @arguments | Where-Object { $_ -match '^FILM' }
 }
 
 if ($notPassed.Count -gt 0) { exit 1 }

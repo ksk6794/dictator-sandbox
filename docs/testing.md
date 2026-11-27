@@ -6224,6 +6224,103 @@ bootstrap on the final tree: all 15 steps, the suite 154 of 154, 59 unit tests, 
 give every figure as at 0 (no get-up in them). The quick scorecard: C2 1.18 of body weight on the four get-ups (1.08), C19 within, C21
 2.4 s (above), C25 439 N*m as the baseline, the largest jump of a target 75.3 degrees (`getup_laid_right`, as at 0).
 
+### Faster checks, stage 1 (SP-0 to SP-3 of `docs/fast-checks.md`), 27 November
+
+Built in one session, each part held against the runs before it by both hashes of every run. Nothing of the body or its controller
+changed; one C++ file did (the queue's exit).
+
+**SP-0, the measurements.** `Tools\bench.ps1 -Label before -Builds -Full` timed the table of section 3 three times on an idle machine
+(medians; each the wall time of the tool's call as the agent makes it, PowerShell's start included, which is why one scenario reads
+11.7 s where the audit's 10.7 s timed the engine's call alone):
+
+| Measurement | `before` | `after_stage1` | Stage 1's target |
+| --- | --- | --- | --- |
+| One scenario, `scenario.ps1 -Name getup_left` | 11.7 s | 7.2 s | 7 s or less |
+| 4 scenarios times 3 sets (`sweep.ps1`) | 21.6 s | 15.5 s | 18 s or less |
+| `test.ps1` | 16.7 s | 8.0 s | 8 s or less |
+| `suite.ps1`, 154 scenarios | 59.4 s | 53.5 s | 55 s or less |
+| The controller's `.cpp` stamped, build, tests and suite | 91.3 s (15.1, 16.2, 59.5) | 72.7 s (10.3, 8.5, 53.8) | 74 s or less |
+| `getup-seeds.ps1`, three seeds | 88.8 s | 77.9 s | 82 s or less |
+| `natural.ps1 -Quick` | 59.3 s | 36.3 s | 45 s or less |
+| `bootstrap.ps1` | 333.5 s | 138.9 s | 200 s or less |
+
+The one target missed, one scenario by 0.2 s: the engine's call alone takes 5.8 to 6.1 s now (`docs/recon/fast-checks/one_run.ps1`,
+the audit's way, which read 10.7 s before), the rest is PowerShell's start (0.1 s), the script and the engine's process before its
+log opens. Asking for free memory through CIM took 0.13 s of every start and was replaced by GlobalMemoryStatusEx (0.05 s): the
+tests went from 8.1 to 8.0 s with it. An exact copy of `scenario.ps1` under another name ran 0.4 to 0.5 s faster than the file
+itself, the engine's part the same to the millisecond; not looked into further (a scan of the script by its path is a guess).
+
+The builds (`-Builds`; a file given a new time stamp, its content as it was): the controller's `.cpp` 10.3 s, its compile 8.1 s; its
+header `SandboxBodyController.h` 24.2 to 25.4 s, 13 compiles, the longest the runner's 10.7 s, the controller's 8.5,
+`NaturalMeasures.cpp` 7.6 and `ScenarioStage.cpp` 6.5 s, the other nine 1.7 to 2.4 s; a full build (`build.ps1 -Rebuild`) 102.5 s,
+81 compiles. Each compile's own time is what UnrealBuildTool prints with `bShowPerActionCompilationTimes` (set in the project's own
+`Saved\UnrealBuildTool\BuildConfiguration.xml`, not committed; printing only, nothing built otherwise), which `build.ps1` keeps in
+`build.json`. Its `-Timestamps` gives each action's end from UnrealBuildTool's log, but a build that runs the header tool loses them:
+the tool sets the log's timestamps off. Decision 8's estimate, the header's build less four fifths of the two longest compiles,
+gives 24.2 - 0.8 x (10.7 + 8.5) = 8.9 s, 63% shorter; but the compiles run side by side on 8 slots, and split into fifths the
+longest left would be `NaturalMeasures.cpp`'s 7.6 s, so the build would be about 3 s shorter, some 13%. SP-10 is stage 3's; the two
+readings are for the owner then.
+
+`bench.ps1 -Hashes -Label before` ran every tool that runs scenarios once with its defaults, 24 of them and 961 runs (the suite, the
+matrix, the knockdowns, the stand and the seeds, the scorecard, compliance, the grab's pulls, a sweep, the hand's lag, a recording's
+report, `scenario.ps1` headless and with `-Shot`, a film, a film pair, the three records and replays, the self-test and the grab's
+session, the friction, repeatability, a row of the matrix with `SANDBOX_SEPARATE_PROCESSES=1`, the pose database's check), and kept
+every run's two hashes, every tool's exit code and verdict line and the recordings' file hashes in `Saved\Bench\before\hashes.json`.
+After each part the same battery ran again and was held against it run by run (`-Against before`). `baseline.ps1 -SaveRuns` and
+`-CompareRuns` do the same for any one folder of runs.
+
+**SP-2, the start and the exit.** The processes of runs, tests and sessions without the headset start with the DDC graph without
+Zen and without UnrealBuildTool's platform check; the queue's processes without a renderer end at once when it is empty. One scenario
+6.2 s (11.7), the tests 7.8 s (16.7; 59 of 59), the suite 52.8 s (59.4), 154 of 154 hashes as `fc_before`. A thousand jobs of
+`drop_passive` on 8 processes (`docs/recon/fast-checks/queue_1000.ps1`): 95 s, no job without a result, "queue empty" in each of the 8
+process logs and each exited at once, no line of Zen, the same two hashes a thousand times. The battery after SP-2: every run of the 24
+tools with its hashes, every verdict the same. Its first pass named the film and the film pair as failing: the new `film.ps1` of SP-1
+had been put in place before SP-1's part of `common.ps1`; with the old two files back they matched (165 runs).
+
+**SP-1, several runs in one call.** `sweep.ps1 -Sets` (sets of values changed together, an empty set the files as they are) and a
+verdict line a run. The table's 4 times 3 through one call: 15.5 s (21.6 as `-Vary`, 128 as a loop), and all 12 runs with the hashes
+of the same run alone by `scenario.ps1` (`docs/recon/fast-checks/sweep_vs_single.ps1`). A rendered process takes 2.46 GB of working set
+at its peak and the machine 2.5 GB, against 1.66 GB without a renderer (`rendered_memory.ps1`), so `film.ps1` runs up to four rendered
+processes, fewer as the free memory says. Two films in one call 11.2 s against one 9.4 s (1.19 times; the limit is 1.3), the same hashes
+as alone, and two films one after another in one rendered process gave the same hashes and the same pictures. `film-pair.ps1` makes both
+sides in one call: 15.6 s (37.9). The knockdowns' and the stand's `-Film` make all their films in one call. The battery after SP-1: 966
+runs and files with the same hashes, 24 of 24 verdicts the same.
+
+**SP-3, check sets.** `checks.ps1` puts the tools asked for into one queue of 8 processes owned by itself; inside it a tool's
+`Invoke-ScenarioBatch` hands its jobs to that queue, the longest first and, of jobs as long, one of each batch in turn, and its rounds
+are further calls. The suite's second run of a scenario over the step limit waits until every process of the set has ended. The four
+tools of the acceptance (`-What suite,matrix,knockdowns,seeds`): 147.4 s, against 185.4 s one after another on the same build (52.7,
+42.8, 12.0 and 77.9 s): 21% less, not the 35% asked for. The queue never emptied and no process was started a second time (8 starts):
+the set is bound by its work, about 1100 process-seconds on 8 processes, not by starts or tails, so what is left is the work of a run
+(SP-6's worlds, SP-8's measurements). All seven tools of runs in one set: 217.6 s against 284 s alone (23% less), 671 runs each with
+the hashes of the same tool alone. The three seeds in one queue of 9 took 87 to 91 s against 78 s in three queues of their own: in one
+queue a stand's trials drawn again (two more rounds on seed 3) wait for a process the other stands keep busy, where alone each stand
+starts one of its own. So `getup-seeds.ps1` alone keeps its three queues, and inside a set (`natural.ps1`, `checks.ps1`) its stands use
+the set's. `natural.ps1` runs its own set, compliance and the seeds side by side in one queue: `-Quick` 36.1 s (59.3), in full 95.4 s
+(150). The bootstrap runs the first six steps one after another, then the suite, the matrix, the knockdowns and the stand as one set
+with the five sessions beside it one at a time as the ninth process, and decides every step by its result file (written now by the
+fetches, the bake when it is up to date, the self-test and the demos, `play-result.json`, and the records and replays,
+`Saved\Tools\record-replay*.json`): 141 s, all 15 steps. The battery after SP-3: 1637 runs and files with the same hashes, the set's
+included, 25 of 25 verdicts.
+
+**The room of the machine.** Every launcher (`Invoke-Editor`, `Invoke-ScenarioQueue`, a set's queue) asks `Test-EngineRoom`: nine
+engine processes at most and 1.5 GB left free after the start (1.8 GB a process, 2.6 GB rendered); the first process of a queue
+waits for room and says so, a further one is left out.
+
+**Read by an independent reader** (the diff and the new files, not their account), twelve findings, all real, all put right: a job
+of a set counted as done once its `metrics.json` was there, while its process still wrote `series.csv` and `hands.csv` and held its
+`run.log` open, so the stand could read a log not yet written or fail to remove a folder (the queue's process now writes
+`taken\<job>.done` after the log is closed, and a set waits for that); the suite's run alone was not alone beside the bootstrap's
+sessions (the grant waits for every other run of the machine, two minutes at most, and the sessions wait for it); a request to run
+alone whose process had died held the set for good, and a grant could be taken for a later request of the same process (both put
+right); `checks.ps1` judged by exit codes (now by each tool's result file; `getup-seeds.ps1` writes `getup-seeds.json`);
+`natural` and `natural_quick` in one set wrote one folder; the memory count did not see processes it had just started (now
+counted at 1.7 GB each for 20 s); films lost the 900 s limit `scenario.ps1` had (back, through the queue); `bench.ps1` counted no
+changed files (git's warnings under `Stop`); the check set's verdict was held to exit 0 instead of the tools' own; `bench`'s
+`<label>.json`, `bootstrap.json` and `build.json` were not removed before the run that writes them; a bake that timed out but left
+data passed; a note of the queue could become a tool's first line (notes go to the error stream now). After the fixes the whole
+battery again: 1637 runs and files with the same hashes, 25 of 25 verdicts; the stage check above is of the final code.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

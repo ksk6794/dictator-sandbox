@@ -3,6 +3,8 @@
 #   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Compare m3_part2_start [-FailOnChange]
 #   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -CompareMatrix m3_part2_start   (the latest push matrix against the baseline's)
 #   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -List
+#   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -SaveRuns Saved\Matrix\push\runs -Name matrix_before
+#   powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -CompareRuns Saved\Matrix\push\runs -Name matrix_before [-FailOnChange]
 # A baseline is a copy of Saved\Tools\suite.json, of the metrics.json of every scenario in it and, if there
 # is one, of the push matrix's result, under Saved\Baselines\<name>. It is taken before a change and compared
 # after it: a scenario the change should not touch must come out with the same two hashes.
@@ -12,16 +14,26 @@
 # compared within one machine and build chain only; they are not committed (docs/testing.md, policy 3).
 # Writes Saved\Tools\baseline-compare.json. Exit code: 0, or with -FailOnChange 1 if any scenario of the
 # baseline differs or is missing; 2 if there is nothing to compare.
+#
+# -SaveRuns <folder> -Name <name> keeps both hashes of every run under any tool's run folder (every metrics.json below
+# it: the push matrix's Saved\Matrix\push\runs, a stand's runs, the three seeds' Saved\Matrix\getup_seeds\<label>, a
+# sweep's runs) in Saved\RunHashes\<name>.json; -CompareRuns <folder> -Name <name> names every run whose hashes differ
+# from those kept, that is missing, or that is new. The runs are matched by their folder's path below the folder given,
+# so a stand of three seeds is compared trial by trial and seed by seed. Writes Saved\Tools\baseline-runs-compare.json.
 param(
     [string]$Save,
     [string]$Compare,
     [string]$CompareMatrix,
+    [string]$SaveRuns,
+    [string]$CompareRuns,
+    [string]$Name,
     [switch]$List,
     [switch]$FailOnChange
 )
 . "$PSScriptRoot\common.ps1"
 
 $baselineRoot = Join-Path $RepoRoot 'Saved\Baselines'
+$runHashRoot = Join-Path $RepoRoot 'Saved\RunHashes'
 $suiteFile = Join-Path $ToolsOut 'suite.json'
 $matrixFile = Join-Path $RepoRoot 'Saved\Matrix\push\matrix.json'
 
@@ -31,6 +43,41 @@ if ($List) {
             Write-Output ("{0}  ({1:yyyy-MM-dd HH:mm})" -f $_.Name, $_.LastWriteTime)
         }
     }
+    if (Test-Path $runHashRoot) {
+        Get-ChildItem $runHashRoot -Filter '*.json' -File | Sort-Object LastWriteTime | ForEach-Object {
+            Write-Output ("runs: {0}  ({1:yyyy-MM-dd HH:mm})" -f $_.BaseName, $_.LastWriteTime)
+        }
+    }
+    exit 0
+}
+
+if ($SaveRuns -or $CompareRuns) {
+    if (-not $Name -or $Name -notmatch '^[A-Za-z0-9_\-\.]+$') { Write-Output 'BASELINE ERROR: -SaveRuns and -CompareRuns take -Name <name> (letters, digits, _ - .)'; exit 2 }
+    $folder = $SaveRuns
+    if ($CompareRuns) { $folder = $CompareRuns }
+    $folder = [System.IO.Path]::GetFullPath($folder)
+    $now = Get-RunHashes $folder
+    $keptFile = Join-Path $runHashRoot "$Name.json"
+    if ($SaveRuns) {
+        if ($now.Count -eq 0) { Write-Output "BASELINE ERROR: no run (metrics.json) under $folder"; exit 2 }
+        $withoutHashes = @($now.Keys | Where-Object { -not $now[$_].bodies })
+        Write-JsonFile $keptFile ([ordered]@{ name = $Name; folder = $folder; saved = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); runs = $now })
+        Write-Output ("BASELINE RUNS SAVED: {0}, {1} run(s) of {2}, {3} without hashes" -f $Name, $now.Count, $folder, $withoutHashes.Count)
+        foreach ($key in $withoutHashes) { Write-Output "  without hashes: $key" }
+        exit 0
+    }
+    $kept = Read-JsonFile $keptFile
+    if (-not $kept) { Write-Output "BASELINE ERROR: no runs kept as '$Name' ($keptFile); -SaveRuns <folder> -Name $Name first"; exit 2 }
+    if ($now.Count -eq 0) { Write-Output "BASELINE ERROR: no run (metrics.json) under $folder"; exit 2 }
+    $result = Compare-RunHashes (ConvertTo-RunHashSet $kept.runs) $now
+    Write-JsonFile (Join-Path $ToolsOut 'baseline-runs-compare.json') ([ordered]@{ name = $Name; kept_from = $kept.folder; folder = $folder
+        same = $result.same.Count; changed = $result.changed; missing = $result.missing; added = $result.added })
+    Write-Output ("BASELINE RUNS {0}: {1} run(s) with the same hashes, {2} changed, {3} missing, {4} new ({5} against {6})" -f `
+        $Name, $result.same.Count, $result.changed.Count, $result.missing.Count, $result.added.Count, $folder, $kept.folder)
+    foreach ($entry in $result.changed) { Write-Output "  changed: $($entry.run)  (bodies and bones $($entry.before) -> $($entry.after); pass $($entry.pass_before) -> $($entry.pass_after))" }
+    if ($result.missing.Count -gt 0) { Write-Output "  missing: $($result.missing -join ', ')" }
+    if ($result.added.Count -gt 0) { Write-Output "  new: $($result.added -join ', ')" }
+    if ($FailOnChange -and ($result.changed.Count -gt 0 -or $result.missing.Count -gt 0)) { exit 1 }
     exit 0
 }
 
@@ -86,7 +133,7 @@ if ($CompareMatrix) {
 }
 
 if (-not $Compare) {
-    Write-Output 'BASELINE ERROR: give -Save <name>, -Compare <name>, -CompareMatrix <name> or -List'
+    Write-Output 'BASELINE ERROR: give -Save <name>, -Compare <name>, -CompareMatrix <name>, -SaveRuns <folder> -Name <name>, -CompareRuns <folder> -Name <name> or -List'
     exit 2
 }
 

@@ -568,6 +568,8 @@ if ($Film) {
         $toFilm = @($results | Where-Object { $numbers -contains $_.number })
     }
     elseif ($Film -ne 'all') { $toFilm = @($results | Where-Object { $_.fell -and -not $_.got_up }) }
+    # Every film in one call of Tools\film.ps1, rendered through one queue (docs/fast-checks.md, SP-1).
+    $filmList = @()
     foreach ($r in $toFilm) {
         $x = [double]$r.location_cm[0]
         $y = [double]$r.location_cm[1]
@@ -579,11 +581,16 @@ if ($Film) {
             $cameraY = [Math]::Max(-$halfY + 25, [Math]::Min($halfY - 25, $cameraY))
         }
         $camera = ('{0},{1},170;{2},{3},50' -f $cameraX, $cameraY, $x, $y)
-        $filmArguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-File', $r.file, '-Tag', $r.name,
-            '-Times', '3.2,4,5,6,7,8,9,10,11,12,13,14,16,18,20,24', '-Camera', $camera, '-Cols', 8)
+        $filmList += [ordered]@{ file = $r.file; tag = $r.name; camera = $camera }
+    }
+    if ($filmList.Count -gt 0) {
+        $listFile = Join-Path $Out 'films.json'
+        [System.IO.File]::WriteAllText($listFile, (ConvertTo-Json @($filmList) -Depth 4))
+        $filmArguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-Films', $listFile,
+            '-Times', '3.2,4,5,6,7,8,9,10,11,12,13,14,16,18,20,24', '-Cols', 8)
         if ($Tune) { $filmArguments += @('-Tune', $Tune) }
         if ($TuningDir) { $filmArguments += @('-TuningDir', $TuningDir) }
-        & powershell @filmArguments | Select-Object -Last 1
+        & powershell @filmArguments | Where-Object { $_ -match '^FILM' }
     }
 }
 if ($verdict -eq 'OK') { exit 0 }

@@ -49,23 +49,32 @@ $source = Join-Path $outDir "$Name.json"
 [System.IO.File]::WriteAllText($source, ($scenario | ConvertTo-Json -Depth 12))
 
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
-$videos = @()
-foreach ($side in @(@{ Suffix = 'a'; Tune = $TuneA; Dir = $TuningDirA }, @{ Suffix = 'b'; Tune = $TuneB; Dir = $TuningDirB })) {
-    $sideTag = "${Tag}_$($side.Suffix)"
-    $arguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-File', $source, '-Tag', $sideTag,
-        '-Around', $Around.ToString($culture), '-Span', $Span.ToString($culture), '-Every', $Every.ToString($culture), '-Camera', $Camera, '-Video')
-    if ($side.Tune) { $arguments += @('-Tune', $side.Tune) }
-    if ($side.Dir) { $arguments += @('-TuningDir', [System.IO.Path]::GetFullPath($side.Dir)) }
-    if ($Overlay) { $arguments += @('-Overlay', $Overlay) }
-    if ($Duration -gt 0) { $arguments += @('-Duration', $Duration.ToString($culture)) }
+# Both sides in one call of Tools\film.ps1, rendered through one queue (docs/fast-checks.md, SP-1).
+$sides = @(@{ Suffix = 'a'; Tune = $TuneA; Dir = $TuningDirA }, @{ Suffix = 'b'; Tune = $TuneB; Dir = $TuningDirB })
+$filmList = @()
+foreach ($side in $sides) {
+    $side.Tag = "${Tag}_$($side.Suffix)"
     # A film of an earlier run must not pass for this one's: its folder is the same on every run.
-    $video = Join-Path $RepoRoot "Saved\Films\$sideTag\film.mp4"
-    if (Test-Path $video) { Remove-Item $video -Force }
-    $printed = & powershell @arguments
-    $printed | Where-Object { $_ -match '^(FILM|SCENARIO)' } | ForEach-Object { Write-Output "  $($side.Suffix): $_" }
-    if (-not ($printed | Where-Object { $_ -match '^SCENARIO (PASS|FAIL)' })) { Write-Output "FILM PAIR ERROR: side $($side.Suffix) did not run (a tuning name or value the build does not take?)"; exit 1 }
-    if (-not (Test-Path $video)) { Write-Output "FILM PAIR ERROR: side $($side.Suffix) made no video"; exit 1 }
-    $videos += $video
+    $side.Video = Join-Path $RepoRoot "Saved\Films\$($side.Tag)\film.mp4"
+    if (Test-Path $side.Video) { Remove-Item $side.Video -Force }
+    $entry = [ordered]@{ file = $source; tag = $side.Tag; around = $Around; span = $Span; every = $Every; camera = $Camera; video = $true }
+    if ($side.Tune) { $entry.tune = $side.Tune }
+    if ($side.Dir) { $entry.tuning_dir = [System.IO.Path]::GetFullPath($side.Dir) }
+    if ($Duration -gt 0) { $entry.duration = $Duration }
+    $filmList += $entry
+}
+$listFile = Join-Path $outDir 'films.json'
+[System.IO.File]::WriteAllText($listFile, (ConvertTo-Json @($filmList) -Depth 6))
+$arguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-Films', $listFile)
+if ($Overlay) { $arguments += @('-Overlay', $Overlay) }
+$printed = @(& powershell @arguments)
+$videos = @()
+foreach ($side in $sides) {
+    $mine = @($printed | Where-Object { $_ -match "^SCENARIO \w+: $([regex]::Escape($side.Tag)) " -or $_ -match [regex]::Escape("Saved\Films\$($side.Tag)\") })
+    $mine | ForEach-Object { Write-Output "  $($side.Suffix): $_" }
+    if (-not ($mine | Where-Object { $_ -match '^SCENARIO (PASS|FAIL)' })) { Write-Output "FILM PAIR ERROR: side $($side.Suffix) did not run (a tuning name or value the build does not take?)"; exit 1 }
+    if (-not (Test-Path $side.Video)) { Write-Output "FILM PAIR ERROR: side $($side.Suffix) made no video"; exit 1 }
+    $videos += $side.Video
 }
 
 # Each side's label in its top left corner (ffmpeg's drawtext wants a font file and no colon or quote in the text), then side by side.

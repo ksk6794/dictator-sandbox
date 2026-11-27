@@ -17,6 +17,8 @@
 #                                   it, turns and walks away; the hands and the body are replayed and held against it
 # A session and a scenario are not the same run: the session's hands exist from its first frame, and a scenario's
 # hashes are of every frame of its own. So the replay is held to the session by figures, and to itself by hashes.
+# The verdict goes to Saved\Tools\record-replay.json as well (-Takes: record-replay-takes.json, -Walk: record-replay-walk.json,
+# -Perception: record-replay-seeing.json, -Recorded <name>: record-replay-<name>.json); Tools\bootstrap.ps1 decides by it.
 # Exit code: 0 the replay ends as the session did, 1 it does not, 2 something could not run.
 param(
     [string]$Name = 'room_stand_npc',
@@ -31,12 +33,21 @@ param(
 )
 . "$PSScriptRoot\common.ps1"
 
+$resultName = 'record-replay'
+if ($Takes) { $resultName = 'record-replay-takes' } elseif ($Recorded) { $resultName = "record-replay-$Recorded" } elseif ($Walk) { $resultName = 'record-replay-walk' } elseif ($Perception) { $resultName = 'record-replay-seeing' }
+$verdictFile = Join-Path $ToolsOut "$resultName.json"
+if (Test-Path $verdictFile) { Remove-Item $verdictFile -Force }
+function Stop-Replay([int]$Code, [string]$Line, [string[]]$More = @()) {
+    Write-JsonFile $verdictFile ([ordered]@{ ok = ($Code -eq 0); exit_code = $Code; verdict = $Line })
+    Write-Output $Line
+    $More | ForEach-Object { Write-Output $_ }
+    exit $Code
+}
+
 if ($Takes) {
     $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Takes
     if ($LASTEXITCODE -ne 0) {
-        Write-Output "RECORD REPLAY ERROR: the session of takes did not give its recordings"
-        $demo | ForEach-Object { Write-Output "  $_" }
-        exit 2
+        Stop-Replay 2 "RECORD REPLAY ERROR: the session of takes did not give its recordings" @($demo | ForEach-Object { "  $_" })
     }
     $worst = 0
     $report = @()
@@ -54,9 +65,7 @@ if ($Takes) {
     }
     $verdict = 'OK'
     if ($worst -ne 0) { $verdict = 'FAILED' }
-    Write-Output "RECORD REPLAY TAKES ${verdict}: $good of $($takeNames.Count) takes replay to what the session saw of them"
-    $report | ForEach-Object { Write-Output $_ }
-    exit $worst
+    Stop-Replay $worst "RECORD REPLAY TAKES ${verdict}: $good of $($takeNames.Count) takes replay to what the session saw of them" $report
 }
 
 $recordName = $Recorded
@@ -67,17 +76,14 @@ if (-not $recordName) {
     if ($Walk) { $recordName = 'demo_walk'; $seeing += '-Walk' }
     $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Record $recordName @seeing
     if ($LASTEXITCODE -ne 0) {
-        Write-Output "RECORD REPLAY ERROR: the session did not give a recording"
-        $demo | ForEach-Object { Write-Output "  $_" }
-        exit 2
+        Stop-Replay 2 "RECORD REPLAY ERROR: the session did not give a recording" @($demo | ForEach-Object { "  $_" })
     }
 }
 $dir = Join-Path $RepoRoot "Saved\Recordings\$recordName"
 $replayFile = Join-Path $dir "$recordName.json"
 $seen = Read-JsonFile (Join-Path $dir "$recordName.session.json")
 if (-not $seen -or -not (Test-Path $replayFile)) {
-    Write-Output "RECORD REPLAY ERROR: $dir has no recording with its scenario and its session file"
-    exit 2
+    Stop-Replay 2 "RECORD REPLAY ERROR: $dir has no recording with its scenario and its session file"
 }
 
 $script:replayLines = @()
@@ -88,9 +94,7 @@ function Invoke-Replay {
     return $metricsOfRun
 }
 function Stop-NoReplay {
-    Write-Output "RECORD REPLAY ERROR: the replay did not run"
-    $script:replayLines | Select-Object -First 5 | ForEach-Object { Write-Output "  $_" }
-    exit 2
+    Stop-Replay 2 "RECORD REPLAY ERROR: the replay did not run" @($script:replayLines | Select-Object -First 5 | ForEach-Object { "  $_" })
 }
 $replay = Invoke-Replay
 if (-not $replay) { Stop-NoReplay }
@@ -176,9 +180,8 @@ $verdict = 'OK'
 if ($bad -gt 0) { $verdict = 'FAILED' }
 $notJudged = ''
 if ($shown -gt 0) { $notJudged = "; $shown more differ after the shove and are shown, not judged" }
-Write-Output ("RECORD REPLAY {0}: '{1}', {2} frames of the hands from frame {3} of the body's life; {4} of {5} comparisons hold{6}; hashes bodies={7} bones={8}" -f
+$line = ("RECORD REPLAY {0}: '{1}', {2} frames of the hands from frame {3} of the body's life; {4} of {5} comparisons hold{6}; hashes bodies={7} bones={8}" -f
     $verdict, $recordName, $seen.frames, $seen.start_frame, ($rows.Count - $shown - $bad), ($rows.Count - $shown), $notJudged, $replay.hashes.bodies, $replay.hashes.bones)
-$rows | ForEach-Object { Write-Output $_ }
-Write-Output "  replay scenario: $replayFile"
-if ($bad -gt 0) { exit 1 }
-exit 0
+$more = @($rows) + @("  replay scenario: $replayFile")
+if ($bad -gt 0) { Stop-Replay 1 $line $more }
+Stop-Replay 0 $line $more

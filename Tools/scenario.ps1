@@ -68,7 +68,7 @@ if ($Shot) { $job.Shot = Join-Path $Out 'final.png' }
 if ($Shot -and $ShotAt) { $job.ShotAt = $ShotAt }
 $queue = New-ScenarioQueue -Jobs @($job)
 $processLog = Join-Path $Out 'process.log'
-$arguments = Get-QueueArguments -Queue $queue -Fps $fps
+$arguments = Get-QueueArguments -Queue $queue -Fps $fps -Headset:$VR
 if ($VR) {
     $blocker = Get-HeadsetBlocker
     if ($blocker) {
@@ -84,7 +84,8 @@ if ($VR) {
 if ($CVars) { $arguments += " -dpcvars=`"$CVars`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 
-$run = Invoke-Editor -ArgumentString $arguments -LogFile $processLog -TimeoutSec $TimeoutSec -VR:$VR
+# Without the Zen server and the platform check (SP-2), but in the headset.
+$run = Invoke-Editor -ArgumentString $arguments -LogFile $processLog -TimeoutSec $TimeoutSec -VR:$VR -FastStart:(-not $VR)
 $metrics = Read-JsonFile $metricsFile
 if (@(Get-ChildItem $queue -Filter '*.json' -File -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
 

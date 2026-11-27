@@ -11,6 +11,8 @@
 #                              and its result file then go to Saved\Suites\<Label> (-Label, "tuned" by default)
 #                              and leave Saved\Scenarios and Saved\Tools\suite.json, which baselines are made
 #                              of, as they were; -SaveBaseline and -Baseline are refused with it
+#   ... -Label <name>          without -Tune: the files as they are, into Saved\Suites\<name> in the same way (the
+#                              benchmark's suite, Tools\bench.ps1); -SaveBaseline and -Baseline are refused with it
 # Besides each scenario's own expectations it holds the whole set to the limits that are stated for "any
 # scenario": no simulated body's joints stretch by more than -MaxJointStretchCm, and no scenario's physics
 # step takes more than -MaxPhysicsStepMeanMs on average. The worst scenario of each is printed.
@@ -40,9 +42,19 @@ if ($Tune -and ($SaveBaseline -or $Baseline)) {
     Write-Output 'SUITE ERROR: a suite run with -Tune is not what a baseline is made of or compared with'
     exit 1
 }
+# A label of its own, with or without -Tune, keeps the run out of Saved\Scenarios and Saved\Tools\suite.json.
+$ownFolder = [bool]$Tune -or $PSBoundParameters.ContainsKey('Label')
+if ($ownFolder -and ($SaveBaseline -or $Baseline)) {
+    Write-Output 'SUITE ERROR: a suite run with -Label goes to Saved\Suites\<Label>, which a baseline is not made of or compared with'
+    exit 1
+}
+if ($ownFolder -and $Label -notmatch '^[A-Za-z0-9_\-\.]+$') {
+    Write-Output "SUITE ERROR: -Label takes letters, digits, '_', '-' and '.', not '$Label'"
+    exit 1
+}
 $runRoot = Join-Path $RepoRoot 'Saved\Scenarios'
 $resultDir = $ToolsOut
-if ($Tune) {
+if ($ownFolder) {
     $runRoot = Join-Path $RepoRoot "Saved\Suites\$Label"
     if (Test-Path $runRoot) { Remove-Item $runRoot -Recurse -Force }
     New-Item -ItemType Directory -Force $runRoot | Out-Null
@@ -100,7 +112,7 @@ foreach ($job in $jobs) {
     $overSetLimit = ($null -ne $result.physics_step_mean_ms) -and ($result.physics_step_mean_ms -gt $MaxPhysicsStepMeanMs)
     if ($Parallel -gt 1 -and ($overOwnLimit -or $overSetLimit)) {
         $shared = $result.physics_step_mean_ms
-        Invoke-ScenarioBatch -Jobs @($job) -Parallel 1
+        Invoke-ScenarioBatch -Jobs @($job) -Parallel 1 -Alone
         $result = Read-SuiteResult $job
         $result.timed_alone = $true
         $result.verdict += (" [physics step {0:N3} ms alone, {1:N3} ms while sharing the processor]" -f $result.physics_step_mean_ms, $shared)

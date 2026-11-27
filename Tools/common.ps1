@@ -42,14 +42,29 @@ function Read-JsonFile {
     return (Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
 }
 
+# The engine processes of runs, of sessions without the headset and of the tests start without two things they do not need
+# (docs/fast-checks.md, SP-2; the owner's decision 6): the DDC's Zen server, which every start otherwise waits 2.3 to 2.7 s
+# for (it ends with the last process that uses it): the cache graph without it, InstalledNoZenLocalFallback; and
+# UnrealBuildTool's check of the platforms at the start, which engine processes started together wait for one at a time
+# (UE_SKIP_UBT_SDK_SETUP=1; TargetPlatformManagerModule.cpp). Not the generator, the lighting bake, the MetaHuman or a run in
+# the headset; Config\DefaultEngine.ini stays as it is.
+$script:FastStartDdc = '-ddc=InstalledNoZenLocalFallback'
+function Set-FastStartEnvironment {
+    # The platform check left out, for this process to start only.
+    param([System.Diagnostics.ProcessStartInfo]$Info)
+    $Info.EnvironmentVariables['UE_SKIP_UBT_SDK_SETUP'] = '1'
+}
+
 function Invoke-Process {
     # Runs a process to completion with an exact argument string.
     # Returns @{ ExitCode; Output (stdout + stderr lines); TimedOut }.
+    # -FastStart: an engine process of a run, a test or a session without the headset (Set-FastStartEnvironment).
     param(
         [string]$FilePath,
         [string]$ArgumentString,
         [int]$TimeoutSec = 900,
-        [switch]$CaptureOutput
+        [switch]$CaptureOutput,
+        [switch]$FastStart
     )
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = $FilePath
@@ -57,6 +72,7 @@ function Invoke-Process {
     $info.WorkingDirectory = $RepoRoot
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
+    if ($FastStart) { Set-FastStartEnvironment $info }
     $info.RedirectStandardOutput = [bool]$CaptureOutput
     $info.RedirectStandardError = [bool]$CaptureOutput
 
@@ -133,14 +149,23 @@ function Invoke-Editor {
     # Flat by default: the OpenXR plugin is switched off for the run. -nohmd alone is not enough, because the
     # plugin still creates an OpenXR instance at start-up, which takes about 26 s on SteamVR with no headset.
     # Pass -VR to leave the plugin on.
+    # -FastStart: a run, a test or a session without the headset, which starts without the Zen server and the platform check
+    # (Set-FastStartEnvironment; the cache graph is added unless the arguments name one). Never with -VR.
     param(
         [string]$ArgumentString,
         [string]$LogFile,
         [int]$TimeoutSec = 900,
-        [switch]$VR
+        [switch]$VR,
+        [switch]$FastStart
     )
+    if ($VR -and $FastStart) { throw 'A run in the headset starts as it always has: -FastStart is not for -VR.' }
     New-Item -ItemType Directory -Force (Split-Path -Parent $LogFile) | Out-Null
     if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
+    if ($FastStart -and $ArgumentString -notmatch '(^|\s)-ddc=') { $ArgumentString += " $script:FastStartDdc" }
+    # Within the machine's room: nine engine processes at most, 1.5 GB left free (Test-EngineRoom).
+    $need = 2.6
+    if ($ArgumentString -match '(^|\s)-nullrhi(\s|$)') { $need = 1.8 }
+    Wait-EngineRoom -NeedGB $need -What 'an engine process'
     $hmd = '-nohmd -DisablePlugins=OpenXR'
     if ($VR) {
         # The scripts that take -VR have asked already and said why in their own words; this is the last guard.
@@ -154,22 +179,37 @@ function Invoke-Editor {
         $env:DISABLE_XR_APILAYER_MBUCCHIA_toolkit = '1'
     }
     $all = "`"$ProjectFile`" $ArgumentString $hmd -unattended -nopause -nosplash -nosound -abslog=`"$LogFile`""
-    return (Invoke-Process -FilePath (Get-EditorCmd) -ArgumentString $all -TimeoutSec $TimeoutSec)
+    return (Invoke-Process -FilePath (Get-EditorCmd) -ArgumentString $all -TimeoutSec $TimeoutSec -FastStart:$FastStart)
 }
 
 function Invoke-ScenarioBatch {
     # Runs the jobs, $Parallel engine processes at a time, and returns when all have ended.
-    # A job is a hashtable: Name or File, Out, and optionally Tune, TuningDir and CVars. Results are read by
-    # the caller from each job's <Out>\metrics.json (and <Out>\run.log).
+    # A job is a hashtable: Name or File, Out, and optionally Tune, TuningDir and CVars; a rendered one (Tools\film.ps1)
+    # also Rendered, Shot (<Out>\final.png), ShotAt, Overlay and Fps. Results are read by the caller from each job's
+    # <Out>\metrics.json (and <Out>\run.log).
     # Each engine process works through a shared queue of jobs (-ScenarioQueue=, UScenarioBatchSubsystem): engine
     # start-up, about 90% of a single headless run, is paid once per process, and every job still runs in a world
-    # of its own with its own tuning. Jobs with other console variables go to a queue of their own. Set
-    # SANDBOX_SEPARATE_PROCESSES=1 to run every job in a process of its own instead (Tools\scenario.ps1).
+    # of its own with its own tuning. Jobs that differ in what belongs to a process (console variables, rendering,
+    # overlays, the frame rate) go to a queue of their own. Set SANDBOX_SEPARATE_PROCESSES=1 to run every job in a
+    # process of its own instead (Tools\scenario.ps1).
     # Runs side by side change no result, as every run uses a fixed timestep. They do change the wall-clock
     # figures: a physics step measured while other runs compete for the processor reads longer than it is.
-    param([array]$Jobs, [int]$Parallel = 8)
+    # Inside a check set (Tools\checks.ps1, SANDBOX_CHECK_QUEUE; SP-3) the jobs go to the set's queue and $Parallel is the
+    # set's; jobs with console variables or a renderer still run in processes of their own. -Alone: a run that has to be
+    # alone for its timing (the suite's second run of a scenario over the step limit): inside a set it waits until every
+    # process of the set has ended.
+    # -TimeoutSec: the processes of a queue are ended after that long and their jobs reported lost (0: no limit; a film's).
+    param([array]$Jobs, [int]$Parallel = 8, [switch]$Alone, [int]$TimeoutSec = 0)
     if ($env:SANDBOX_SEPARATE_PROCESSES -ne '1') {
-        Invoke-ScenarioQueue -Jobs $Jobs -Parallel $Parallel
+        if ($env:SANDBOX_CHECK_QUEUE -and (Test-Path (Join-Path $env:SANDBOX_CHECK_QUEUE 'owner.pid'))) {
+            if ($Alone) { Invoke-AloneInCheckQueue -Jobs $Jobs; return }
+            $inSet = @($Jobs | Where-Object { -not $_.CVars -and -not $_.Rendered -and -not $_.Shot })
+            $ofTheirOwn = @($Jobs | Where-Object { $_.CVars -or $_.Rendered -or $_.Shot })
+            if ($inSet.Count -gt 0) { Submit-CheckJobs -Jobs $inSet }
+            if ($ofTheirOwn.Count -gt 0) { Invoke-ScenarioQueue -Jobs $ofTheirOwn -Parallel $Parallel -TimeoutSec $TimeoutSec }
+            return
+        }
+        Invoke-ScenarioQueue -Jobs $Jobs -Parallel $Parallel -TimeoutSec $TimeoutSec
         return
     }
     $scenarioScript = Join-Path $PSScriptRoot 'scenario.ps1'
@@ -184,6 +224,9 @@ function Invoke-ScenarioBatch {
             if ($job.Tune) { $arguments += " -Tune `"$($job.Tune)`"" }
             if ($job.TuningDir) { $arguments += " -TuningDir `"$($job.TuningDir)`"" }
             if ($job.CVars) { $arguments += " -CVars `"$($job.CVars)`"" }
+            # A rendered job's pictures: scenario.ps1 -Shot saves <Out>\final.png, which is where a job's Shot is.
+            if ($job.Shot) { $arguments += ' -Shot'; if ($job.ShotAt) { $arguments += " -ShotAt `"$($job.ShotAt)`"" } } elseif ($job.Rendered) { $arguments += ' -Rendered' }
+            if ($job.Overlay) { $arguments += " -Overlay `"$($job.Overlay)`"" }
             $running += Start-Process powershell -ArgumentList $arguments -PassThru -WindowStyle Hidden
         }
         Start-Sleep -Milliseconds 200
@@ -208,36 +251,8 @@ function New-ScenarioQueue {
     } | Sort-Object -Property Seconds -Descending | ForEach-Object { $_.Job })
     $number = 0
     foreach ($job in $ordered) {
-        $out = [System.IO.Path]::GetFullPath($job.Out)
-        New-Item -ItemType Directory -Force $out | Out-Null
-        foreach ($stale in @('metrics.json', 'trace.json', 'series.csv', 'run.log', 'final.png')) {
-            $path = Join-Path $out $stale
-            if (Test-Path $path) { Remove-Item $path -Force }
-        }
-        Get-ChildItem $out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
-        if ($job.File) { $scenario = [System.IO.Path]::GetFullPath($job.File) } else { $scenario = Join-Path $RepoRoot "Scenarios\$($job.Name).json" }
-        # Another body for every run of a tool, without touching a scenario: SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck puts
-        # that asset in the place of PA_SandboxNPC in a copy of each scenario, and where its head is part of another body
-        # (SANDBOX_HEAD_BODY=neck_01, in today's PA_SandboxNPCNeck and PA_SandboxNPCToes) what a
-        # scenario does to the head it does to that.
-        if ($env:SANDBOX_PHYSICS_ASSET) {
-            if ($number -eq 0) { Write-Host "QUEUE NOTE: SANDBOX_PHYSICS_ASSET is set: every scenario of this queue runs on $($env:SANDBOX_PHYSICS_ASSET)" }
-            $copy = Join-Path $queue ('scenario_{0:D5}' -f $number)
-            New-Item -ItemType Directory -Force $copy | Out-Null
-            $copyFile = Join-Path $copy ([System.IO.Path]::GetFileName($scenario))
-            $scenarioText = [System.IO.File]::ReadAllText($scenario)
-            $scenarioText = $scenarioText -creplace 'PA_SandboxNPC\.PA_SandboxNPC"', "$($env:SANDBOX_PHYSICS_ASSET).$($env:SANDBOX_PHYSICS_ASSET)`""
-            if ($env:SANDBOX_HEAD_BODY) {
-                $scenarioText = $scenarioText -creplace '("(?:body|at_bone|bone|equals)"\s*:\s*)"head"', "`$1`"$($env:SANDBOX_HEAD_BODY)`""
-            }
-            [System.IO.File]::WriteAllText($copyFile, $scenarioText, (New-Object System.Text.UTF8Encoding($false)))
-            $scenario = $copyFile
-        }
-        $entry = [ordered]@{ scenario = $scenario; out = $out }
-        if ($job.Tune) { $entry.tune = [string]$job.Tune }
-        if ($job.TuningDir) { $entry.tuning_dir = [System.IO.Path]::GetFullPath($job.TuningDir) }
-        if ($job.Shot) { $entry.shot = [System.IO.Path]::GetFullPath($job.Shot) }
-        if ($job.ShotAt) { $entry.shot_at = [string]$job.ShotAt }
+        if ($env:SANDBOX_PHYSICS_ASSET -and $number -eq 0) { Write-Host "QUEUE NOTE: SANDBOX_PHYSICS_ASSET is set: every scenario of this queue runs on $($env:SANDBOX_PHYSICS_ASSET)" }
+        $entry = New-ScenarioJobEntry -Job $job -Queue $queue -Number ('{0:D5}' -f $number)
         $text = $entry | ConvertTo-Json -Compress
         [System.IO.File]::WriteAllText((Join-Path $queue ('{0:D5}.json' -f $number)), $text, (New-Object System.Text.UTF8Encoding($false)))
         $number++
@@ -245,30 +260,85 @@ function New-ScenarioQueue {
     return $queue
 }
 
+function New-ScenarioJobEntry {
+    # One job as a queue's file holds it (format in UScenarioBatchSubsystem). The job's stale results are removed first, so
+    # that they can never be mistaken for this run's. $Number names the copy of the scenario that SANDBOX_PHYSICS_ASSET makes.
+    param($Job, [string]$Queue, [string]$Number)
+    $out = [System.IO.Path]::GetFullPath($Job.Out)
+    New-Item -ItemType Directory -Force $out | Out-Null
+    foreach ($stale in @('metrics.json', 'trace.json', 'series.csv', 'hands.csv', 'run.log', 'final.png')) {
+        $path = Join-Path $out $stale
+        if (Test-Path $path) { Remove-Item $path -Force }
+    }
+    Get-ChildItem $out -Filter 'shot_*.png' -ErrorAction SilentlyContinue | Remove-Item -Force
+    if ($Job.File) { $scenario = [System.IO.Path]::GetFullPath($Job.File) } else { $scenario = Join-Path $RepoRoot "Scenarios\$($Job.Name).json" }
+    # Another body for every run of a tool, without touching a scenario: SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck puts
+    # that asset in the place of PA_SandboxNPC in a copy of each scenario, and where its head is part of another body
+    # (SANDBOX_HEAD_BODY=neck_01, in today's PA_SandboxNPCNeck and PA_SandboxNPCToes) what a
+    # scenario does to the head it does to that.
+    if ($env:SANDBOX_PHYSICS_ASSET) {
+        $copy = Join-Path $Queue "scenario_$Number"
+        New-Item -ItemType Directory -Force $copy | Out-Null
+        $copyFile = Join-Path $copy ([System.IO.Path]::GetFileName($scenario))
+        $scenarioText = [System.IO.File]::ReadAllText($scenario)
+        $scenarioText = $scenarioText -creplace 'PA_SandboxNPC\.PA_SandboxNPC"', "$($env:SANDBOX_PHYSICS_ASSET).$($env:SANDBOX_PHYSICS_ASSET)`""
+        if ($env:SANDBOX_HEAD_BODY) {
+            $scenarioText = $scenarioText -creplace '("(?:body|at_bone|bone|equals)"\s*:\s*)"head"', "`$1`"$($env:SANDBOX_HEAD_BODY)`""
+        }
+        [System.IO.File]::WriteAllText($copyFile, $scenarioText, (New-Object System.Text.UTF8Encoding($false)))
+        $scenario = $copyFile
+    }
+    $entry = [ordered]@{ scenario = $scenario; out = $out }
+    if ($Job.Tune) { $entry.tune = [string]$Job.Tune }
+    if ($Job.TuningDir) { $entry.tuning_dir = [System.IO.Path]::GetFullPath($Job.TuningDir) }
+    if ($Job.Shot) { $entry.shot = [System.IO.Path]::GetFullPath($Job.Shot) }
+    if ($Job.ShotAt) { $entry.shot_at = [string]$Job.ShotAt }
+    return $entry
+}
+
 function Get-QueueArguments {
     # Engine arguments of a process that works through a queue. The first run of a process differs bit for bit from
     # every later one (UScenarioBatchSubsystem), so every process runs a short warm-up first: every job then starts
     # from the same state, alone or in a batch, in any process and any order.
-    param([string]$Queue, [int]$Fps = 90)
+    # The cache graph without the Zen server (SP-2), but in the headset (-Headset).
+    param([string]$Queue, [int]$Fps = 90, [switch]$Headset)
     $warmup = Join-Path $PSScriptRoot 'batch_warmup.json'
-    return "-game -ScenarioQueue=`"$Queue`" -ScenarioWarmup=`"$warmup`" -UseFixedTimeStep -FPS=$Fps"
+    $arguments = "-game -ScenarioQueue=`"$Queue`" -ScenarioWarmup=`"$warmup`" -UseFixedTimeStep -FPS=$Fps"
+    if (-not $Headset) { $arguments += " $script:FastStartDdc" }
+    return $arguments
+}
+
+function Get-RenderedParallel {
+    # How many rendered engine processes may run side by side (Tools\film.ps1): one takes 2.5 GB of the machine's memory at its
+    # peak, against 1.7 GB without a renderer (docs/testing.md, "Faster checks, stage 1"), every start leaves 1.5 GB free, and
+    # they share one GPU: four at most.
+    $room = [Math]::Floor(((Get-FreeMemoryGB) - 1.5) / 2.6)
+    return [int][Math]::Max(1, [Math]::Min(4, $room))
 }
 
 function Invoke-ScenarioQueue {
-    # The jobs of Invoke-ScenarioBatch through job queues: one queue directory per set of console variables, and
-    # up to $Parallel engine processes on each, which take jobs from it until it is empty.
-    param([array]$Jobs, [int]$Parallel = 8)
+    # The jobs of Invoke-ScenarioBatch through job queues: one queue directory for each set of what belongs to a process
+    # (console variables, rendering, overlays, the frame rate), and up to $Parallel engine processes on each, which take
+    # jobs from it until it is empty. -TimeoutSec: after that long the processes still running are ended (0: no limit).
+    param([array]$Jobs, [int]$Parallel = 8, [int]$TimeoutSec = 0)
     $queueRoot = Join-Path $RepoRoot 'Saved\Queue'
     New-Item -ItemType Directory -Force $queueRoot | Out-Null
-    # Queues of earlier calls that are an hour old are left-overs. Several tools may clean at the same time (the seeds of
-    # the stand do): a folder another one has just taken away ends the removal, and must not end the run.
+    # Queues of earlier calls that are an hour old are left-overs, but a check set's whose owner still runs. Several tools may
+    # clean at the same time (the seeds of the stand do): a folder another one has just taken away ends the removal, and must
+    # not end the run.
     try {
-        Get-ChildItem $queueRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-1) } |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem $queueRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-1) } | Where-Object {
+            $ownerFile = Join-Path $_.FullName 'owner.pid'
+            $owner = 0
+            if (Test-Path $ownerFile) { try { $owner = [int]([System.IO.File]::ReadAllText($ownerFile).Trim()) } catch { } }
+            -not ($owner -gt 0 -and (Get-Process -Id $owner -ErrorAction SilentlyContinue))
+        } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     } catch { }
     $groups = [ordered]@{}
     foreach ($job in $Jobs) {
-        $key = [string]$job.CVars
+        $fps = 90
+        if ($job.Fps) { $fps = [int]$job.Fps }
+        $key = '{0}|{1}|{2}|{3}' -f [string]$job.CVars, [bool]$job.Rendered, [string]$job.Overlay, $fps
         if (-not $groups.Contains($key)) { $groups[$key] = New-Object System.Collections.ArrayList }
         [void]$groups[$key].Add($job)
     }
@@ -277,22 +347,50 @@ function Invoke-ScenarioQueue {
     $groupIndex = 0
     foreach ($key in $groups.Keys) {
         $groupJobs = $groups[$key]
+        $first = $groupJobs[0]
+        $fps = 90
+        if ($first.Fps) { $fps = [int]$first.Fps }
+        # Rendered offscreen as a single run with -Shot is (Tools\scenario.ps1), or without a renderer.
+        $display = '-nullrhi'
+        if ($first.Rendered) { $display = '-RenderOffscreen -windowed -ResX=1280 -ResY=720' }
         $queue = New-ScenarioQueue -Jobs $groupJobs
         $queues += $queue
         $count = [Math]::Min([Math]::Max($Parallel, 1), $groupJobs.Count)
+        # Within the machine's room (Test-EngineRoom): the first process of a queue waits for it, the others are left out
+        # when there is none, and the queue's jobs go to fewer processes.
+        $need = 1.8
+        if ($first.Rendered) { $need = 2.6 }
         for ($i = 0; $i -lt $count; $i++) {
-            $arguments = "`"$ProjectFile`" $(Get-QueueArguments $queue) -nullrhi -nohmd -DisablePlugins=OpenXR -unattended -nopause -nosplash -nosound -abslog=`"$(Join-Path $queue "process_$i.log")`""
-            if ($key) { $arguments += " -dpcvars=`"$key`"" }
+            if ($i -eq 0) { Wait-EngineRoom -NeedGB $need -What 'a queue of runs' }
+            else {
+                # The processes just started have not taken their memory yet: it is counted as taken.
+                $why = Test-EngineRoom -NeedGB $need -PendingGB ($need * $i)
+                if ($why) { [Console]::Error.WriteLine("QUEUE NOTE: $i engine process(es) for $($groupJobs.Count) job(s), no room for more ($why)"); break }
+            }
+            $arguments = "`"$ProjectFile`" $(Get-QueueArguments $queue -Fps $fps) $display -nohmd -DisablePlugins=OpenXR -unattended -nopause -nosplash -nosound -abslog=`"$(Join-Path $queue "process_$i.log")`""
+            if ($first.CVars) { $arguments += " -dpcvars=`"$($first.CVars)`"" }
+            if ($first.Overlay) { $arguments += " -Overlay=`"$($first.Overlay)`"" }
             $info = New-Object System.Diagnostics.ProcessStartInfo
             $info.FileName = Get-EditorCmd
             $info.Arguments = $arguments
             $info.WorkingDirectory = $RepoRoot
             $info.UseShellExecute = $false
             $info.CreateNoWindow = $true
+            Set-FastStartEnvironment $info
             $processes += [System.Diagnostics.Process]::Start($info)
         }
     }
-    foreach ($process in $processes) { $process.WaitForExit() }
+    if ($TimeoutSec -gt 0) {
+        $deadline = (Get-Date).AddSeconds($TimeoutSec)
+        $ended = $false
+        foreach ($process in $processes) {
+            $left = [int][Math]::Max(0, ($deadline - (Get-Date)).TotalMilliseconds)
+            if (-not $process.WaitForExit($left)) { try { $process.Kill() } catch { }; $process.WaitForExit(); $ended = $true }
+        }
+        if ($ended) { Write-Output "QUEUE WARNING: the queue ran longer than $TimeoutSec s; its engine processes still running were ended" }
+    } else {
+        foreach ($process in $processes) { $process.WaitForExit() }
+    }
     # A job without a result was lost: its process took it and ended before writing one. The queue's logs are kept
     # for a look (Saved\Queue\<id>\process_<n>.log), and so are those of a queue that still holds jobs.
     $lost = @($Jobs | Where-Object { -not (Test-Path (Join-Path ([System.IO.Path]::GetFullPath($_.Out)) 'metrics.json')) })
@@ -301,6 +399,242 @@ function Invoke-ScenarioQueue {
     }
     if ($lost.Count -gt 0) {
         Write-Output ("QUEUE WARNING: {0} job(s) of {1} ended without a result; logs kept in {2}" -f $lost.Count, @($Jobs).Count, ($queues -join ', '))
+    }
+}
+
+function Test-EngineRoom {
+    # Why one more engine process may not start now, or nothing if it may: at most 9 on the machine, and every start leaves
+    # 1.5 GB free (a process takes 1.7 GB at its peak, 2.5 GB rendered: docs/testing.md, "Faster checks, stage 1"). Every
+    # launcher of runs, tests and sessions asks it (Invoke-Editor, Invoke-ScenarioQueue, a check set's queue).
+    # -PendingGB: memory that processes the caller has just started will still take. The count is not shared between launchers
+    # that start at the same instant; each counts what it has started itself.
+    param([double]$NeedGB = 1.8, [double]$PendingGB = 0)
+    $engines = @(Get-EngineProcesses).Count
+    if ($engines -ge 9) { return "$engines engine processes run on the machine, 9 at most" }
+    $free = Get-FreeMemoryGB
+    if ($free - $PendingGB - $NeedGB -lt 1.5) { return ('{0:N1} GB of memory free, {1:N1} GB of it still to be taken by processes just started, {2:N1} GB needed' -f $free, $PendingGB, ($NeedGB + 1.5)) }
+    return $null
+}
+
+function Wait-EngineRoom {
+    # Waits until one more engine process may start, and says so once if it has to wait (on the error stream, so that a tool's
+    # first line stays its verdict).
+    param([double]$NeedGB = 1.8, [string]$What = 'an engine process')
+    $said = $null
+    while ($true) {
+        $why = Test-EngineRoom -NeedGB $NeedGB
+        if (-not $why) { return }
+        if ($said -ne $why) { [Console]::Error.WriteLine("QUEUE NOTE: $What waits for room ($why)"); $said = $why }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+# --- One queue for several tools (Tools\checks.ps1; docs/fast-checks.md, SP-3) ---------------------------------------------
+# A tool that runs inside a check set starts no engine processes of its own: Invoke-ScenarioBatch hands its jobs to the set's
+# queue (SANDBOX_CHECK_QUEUE, a folder under Saved\Queue) and waits for their results; the process that made the queue
+# (checks.ps1, or getup-seeds.ps1 and natural.ps1 run alone) keeps up to its number of engine processes on it while its tools
+# run. A tool's plan, run and judgement meet at Invoke-ScenarioBatch: what comes before a call is the plan, the call is the
+# run, what follows is the judgement, and a tool that calls it again with what it read (the stand's draws again, the grab's
+# probes and pulls) asks for another round. A job's file name begins with its simulated length, so that the processes take
+# the longest first, whichever tool planned it and when. Alone, outside a set, each tool runs as it always has.
+
+function Enter-CheckQueue {
+    # Joins the check set this process runs in (its parent's), or makes one that this process keeps, its owner, with up to
+    # $Parallel engine processes (9 at most). Returns the queue's folder.
+    param([int]$Parallel = 8)
+    if ($env:SANDBOX_CHECK_QUEUE -and (Test-Path (Join-Path $env:SANDBOX_CHECK_QUEUE 'owner.pid'))) {
+        return $env:SANDBOX_CHECK_QUEUE
+    }
+    $queue = Join-Path $RepoRoot ('Saved\Queue\check_' + [guid]::NewGuid().ToString('N').Substring(0, 12))
+    New-Item -ItemType Directory -Force (Join-Path $queue 'taken') | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $queue 'owner.pid'), "$PID")
+    $env:SANDBOX_CHECK_QUEUE = $queue
+    $script:CheckQueue = @{ dir = $queue; parallel = [Math]::Max([Math]::Min($Parallel, 9), 1); processes = (New-Object System.Collections.ArrayList); started = 0; most = 0; note = $null }
+    return $queue
+}
+
+function Test-CheckQueueOwner {
+    return [bool]($script:CheckQueue -and $env:SANDBOX_CHECK_QUEUE -and $script:CheckQueue.dir -eq $env:SANDBOX_CHECK_QUEUE)
+}
+
+function Update-CheckQueue {
+    # The owner's duty, done every quarter second by whatever loop it waits in: an engine process for every job waiting, up to
+    # its number and within the room of the machine (Test-EngineRoom). A process ends when it finds the queue empty; a job
+    # that comes later gets a new one. While a tool asks to run a job alone (the suite's second run of a scenario over the step
+    # limit, for its timing), no process is started, and the request is granted once every process of the queue has ended.
+    if (-not (Test-CheckQueueOwner)) { return }
+    $q = $script:CheckQueue
+    $alive = @($q.processes | Where-Object { -not $_.HasExited })
+    # A request whose process has ended (killed before its own clean-up) is taken away, or the set would wait for good.
+    foreach ($stale in @(Get-ChildItem $q.dir -Filter 'alone_*.request' -File -ErrorAction SilentlyContinue)) {
+        $asker = 0
+        try { $asker = [int]([System.IO.File]::ReadAllText($stale.FullName).Trim()) } catch { }
+        if ($asker -gt 0 -and -not (Get-Process -Id $asker -ErrorAction SilentlyContinue)) { Remove-Item $stale.FullName -Force -ErrorAction SilentlyContinue }
+    }
+    $requests = @(Get-ChildItem $q.dir -Filter 'alone_*.request' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+    $grantFile = Join-Path $q.dir 'alone.granted'
+    if ($requests.Count -gt 0) {
+        $granted = $null
+        if (Test-Path $grantFile) { try { $granted = [System.IO.File]::ReadAllText($grantFile).Trim() } catch { } }
+        if ($alive.Count -eq 0 -and @($requests | ForEach-Object { $_.BaseName }) -notcontains $granted) {
+            # Alone on the machine: no other run either (the bootstrap's sessions beside the set wait for it to end), for two
+            # minutes at most, so that another session's long batch cannot hold the set.
+            if (-not $q.aloneSince) { $q.aloneSince = Get-Date }
+            $others = @(Get-Process -Name 'UnrealEditor-Cmd' -ErrorAction SilentlyContinue).Count
+            if ($others -eq 0 -or ((Get-Date) - $q.aloneSince).TotalSeconds -gt 120) {
+                [System.IO.File]::WriteAllText($grantFile, $requests[0].BaseName)
+                $q.aloneSince = $null
+            }
+        }
+        return
+    }
+    $q.aloneSince = $null
+    if (Test-Path $grantFile) { Remove-Item $grantFile -Force -ErrorAction SilentlyContinue }
+    $waiting = @(Get-ChildItem $q.dir -Filter '*.json' -File -ErrorAction SilentlyContinue).Count
+    $more = [Math]::Min($q.parallel - $alive.Count, $waiting)
+    for ($i = 0; $i -lt $more; $i++) {
+        # The processes started in the last 20 s have not taken their memory yet: it is counted as taken.
+        $young = @($q.processes | Where-Object { -not $_.HasExited -and ((Get-Date) - $_.StartTime).TotalSeconds -lt 20 }).Count
+        $why = Test-EngineRoom -PendingGB (1.7 * $young)
+        if ($why) {
+            if ($q.note -ne $why) { $q.note = $why; [Console]::Error.WriteLine("QUEUE NOTE: a job of the check set waits for room ($why)") }
+            break
+        }
+        $number = $q.started
+        $q.started++
+        $arguments = "`"$ProjectFile`" $(Get-QueueArguments $q.dir) -nullrhi -nohmd -DisablePlugins=OpenXR -unattended -nopause -nosplash -nosound -abslog=`"$(Join-Path $q.dir "process_$number.log")`""
+        $info = New-Object System.Diagnostics.ProcessStartInfo
+        $info.FileName = Get-EditorCmd
+        $info.Arguments = $arguments
+        $info.WorkingDirectory = $RepoRoot
+        $info.UseShellExecute = $false
+        $info.CreateNoWindow = $true
+        Set-FastStartEnvironment $info
+        [void]$q.processes.Add([System.Diagnostics.Process]::Start($info))
+        $count = @($q.processes | Where-Object { -not $_.HasExited }).Count
+        if ($count -gt $q.most) { $q.most = $count }
+    }
+}
+
+function Get-CheckQueueFirstJobs {
+    # When each tool's first job was taken, by the tool's name in its jobs' names (SANDBOX_CHECK_TOOL): tool -> time. The owner's.
+    $first = [ordered]@{}
+    if (-not (Test-CheckQueueOwner)) { return $first }
+    foreach ($marker in @(Get-ChildItem (Join-Path $script:CheckQueue.dir 'taken') -Filter '*.taken' -File -ErrorAction SilentlyContinue)) {
+        if ($marker.Name -match '^\d{6}_\d{4}_(.+)-\d+x\d+\.json\.taken$') {
+            $tool = $Matches[1]
+            if (-not $first.Contains($tool) -or $marker.CreationTime -lt $first[$tool]) { $first[$tool] = $marker.CreationTime }
+        }
+    }
+    return $first
+}
+
+function Wait-CheckChildren {
+    # The owner waits for its tools (processes started with Start-Process -PassThru), doing its duty meanwhile.
+    param([array]$Children)
+    while (@($Children | Where-Object { $_ -and -not $_.HasExited }).Count -gt 0) {
+        Update-CheckQueue
+        Start-Sleep -Milliseconds 250
+    }
+}
+
+function Exit-CheckQueue {
+    # The owner, when every tool of the set has ended: waits for the processes, keeps the queue's logs if a job was lost or
+    # one is left, and leaves the set. Returns what the queue did, or nothing for a process that does not own the queue.
+    if (-not (Test-CheckQueueOwner)) { return $null }
+    $q = $script:CheckQueue
+    foreach ($process in $q.processes) { $process.WaitForExit() }
+    $left = @(Get-ChildItem $q.dir -Filter '*.json' -File -ErrorAction SilentlyContinue).Count
+    $lost = @(Get-ChildItem $q.dir -Filter 'lost_*.txt' -File -ErrorAction SilentlyContinue).Count
+    if ($left -eq 0 -and $lost -eq 0) { Remove-Item $q.dir -Recurse -Force -ErrorAction SilentlyContinue }
+    $env:SANDBOX_CHECK_QUEUE = $null
+    $script:CheckQueue = $null
+    return [ordered]@{ processes = $q.started; most = $q.most; left = $left; lost = $lost; dir = $q.dir }
+}
+
+$script:CheckBatch = 0
+function Submit-CheckJobs {
+    # Invoke-ScenarioBatch inside a check set: the jobs into the set's queue, each file written whole before it can be taken and
+    # named by its length (the longest first) and its batch; then waits for every result. A job that its process took and ended
+    # without a result is lost (QUEUE WARNING), and never run again in silence.
+    param([array]$Jobs)
+    $queue = $env:SANDBOX_CHECK_QUEUE
+    $script:CheckBatch++
+    $tool = 'tool'
+    if ($env:SANDBOX_CHECK_TOOL) { $tool = $env:SANDBOX_CHECK_TOOL -replace '[^A-Za-z0-9_\-]', '' }
+    $batch = '{0}-{1}x{2}' -f $tool, $PID, $script:CheckBatch
+    $mine = @()
+    $number = 0
+    foreach ($job in $Jobs) {
+        $entry = New-ScenarioJobEntry -Job $job -Queue $queue -Number ('{0}_{1:D4}' -f $batch, $number)
+        $seconds = 0.0
+        try { $seconds = [double](Get-Content $entry.scenario -Raw | ConvertFrom-Json).duration_s } catch {}
+        # The longest first; of jobs as long, the first of every batch before the second of any, so that the tools' rounds
+        # (the three stands of the seeds) go on side by side and none is left alone at the end.
+        $key = [Math]::Max(0, 999999 - [int][Math]::Round($seconds * 100.0))
+        $name = '{0:D6}_{1:D4}_{2}.json' -f $key, $number, $batch
+        $part = Join-Path $queue ($name + '.part')
+        [System.IO.File]::WriteAllText($part, ($entry | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+        Move-Item $part (Join-Path $queue $name)
+        $mine += @{ name = $name; out = $entry.out; done = $false; lost = $false }
+        $number++
+    }
+    $ownerPid = 0
+    try { $ownerPid = [int]([System.IO.File]::ReadAllText((Join-Path $queue 'owner.pid')).Trim()) } catch {}
+    while (@($mine | Where-Object { -not $_.done -and -not $_.lost }).Count -gt 0) {
+        Update-CheckQueue
+        foreach ($item in @($mine | Where-Object { -not $_.done -and -not $_.lost })) {
+            # Done once its process says that every file of it is written and its run.log closed (the job's .done marker,
+            # UScenarioBatchSubsystem::JobDone): metrics.json comes before series.csv, hands.csv and the log's close.
+            $doneMarker = Join-Path $queue "taken\$($item.name).done"
+            if (Test-Path $doneMarker) { $item.done = $true; continue }
+            $marker = Join-Path $queue "taken\$($item.name).taken"
+            if (-not (Test-Path $marker)) { continue }
+            $holder = 0
+            try { $holder = [int]([System.IO.File]::ReadAllText($marker).Trim()) } catch {}
+            if ($holder -gt 0 -and -not (Get-Process -Id $holder -ErrorAction SilentlyContinue)) {
+                if (Test-Path $doneMarker) { $item.done = $true; continue }
+                $item.lost = $true
+                [System.IO.File]::WriteAllText((Join-Path $queue "lost_$($item.name).txt"), "process $holder ended without a result for $($item.out)")
+            }
+        }
+        if (-not (Test-CheckQueueOwner) -and $ownerPid -gt 0 -and -not (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue)) {
+            foreach ($item in @($mine | Where-Object { -not $_.done -and -not $_.lost })) { $item.lost = $true }
+            Write-Output "QUEUE WARNING: the process that keeps the check set's queue ($ownerPid) has ended"
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    $lost = @($mine | Where-Object { $_.lost })
+    if ($lost.Count -gt 0) {
+        Write-Output ("QUEUE WARNING: {0} job(s) of {1} ended without a result; logs kept in {2}" -f $lost.Count, $mine.Count, $queue)
+    }
+}
+
+$script:AloneCount = 0
+function Invoke-AloneInCheckQueue {
+    # A run that has to be alone for its timing, inside a check set: asks the owner, waits until every engine process of the
+    # set has ended (and every other run of the machine, two minutes at most), runs in a process of its own, and lets the set
+    # go on. Each request has a name of its own, so that the grant of an earlier one is never taken for it.
+    param([array]$Jobs)
+    $queue = $env:SANDBOX_CHECK_QUEUE
+    $script:AloneCount++
+    $request = Join-Path $queue ('alone_{0}_{1}.request' -f $PID, $script:AloneCount)
+    [System.IO.File]::WriteAllText($request, "$PID")
+    try {
+        $grantFile = Join-Path $queue 'alone.granted'
+        while ($true) {
+            Update-CheckQueue
+            $granted = $null
+            if (Test-Path $grantFile) { try { $granted = [System.IO.File]::ReadAllText($grantFile).Trim() } catch { } }
+            if ($granted -eq [System.IO.Path]::GetFileNameWithoutExtension($request)) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        $inSet = $env:SANDBOX_CHECK_QUEUE
+        $env:SANDBOX_CHECK_QUEUE = $null
+        try { Invoke-ScenarioQueue -Jobs $Jobs -Parallel 1 } finally { $env:SANDBOX_CHECK_QUEUE = $inSet }
+    } finally {
+        Remove-Item $request -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -345,6 +679,79 @@ function Get-JsonPath {
         $value = $property.Value
     }
     return $value
+}
+
+function Get-RunHashes {
+    # Both hashes of every run under a folder: every metrics.json found below it, by the path of its folder relative to
+    # the one given ('.' for a metrics.json in the folder itself). A run that could not run has no hashes and keeps its
+    # verdict, so that "no result" is never read as "the same". Returns an ordered table: path -> { bodies, bones, ok, pass }.
+    param([string]$Folder)
+    $root = [System.IO.Path]::GetFullPath($Folder).TrimEnd('\')
+    $set = [ordered]@{}
+    if (-not (Test-Path $root)) { return $set }
+    $files = @(Get-ChildItem $root -Recurse -Filter 'metrics.json' -File -ErrorAction SilentlyContinue | Sort-Object FullName)
+    foreach ($file in $files) {
+        $relative = $file.DirectoryName.Substring($root.Length).TrimStart('\')
+        if (-not $relative) { $relative = '.' }
+        $run = $null
+        try { $run = Read-JsonFile $file.FullName } catch { $run = $null }
+        $entry = [ordered]@{ bodies = $null; bones = $null; ok = $false; pass = $false }
+        if ($run) {
+            $entry.ok = [bool]$run.ok
+            $entry.pass = [bool]$run.pass
+            if ($run.hashes) { $entry.bodies = [string]$run.hashes.bodies; $entry.bones = [string]$run.hashes.bones }
+        }
+        $set[$relative] = $entry
+    }
+    return $set
+}
+
+function Compare-RunHashes {
+    # Two sets of Get-RunHashes, run by run by both hashes: the paths with the same hashes, those that differ (or whose
+    # run gave no hashes in either), those of the first set the second lacks, and those only the second has.
+    param($Before, $After)
+    $same = @()
+    $changed = @()
+    $missing = @()
+    $added = @()
+    foreach ($key in @($Before.Keys)) {
+        $was = $Before[$key]
+        if (-not $After.Contains($key)) { $missing += $key; continue }
+        $is = $After[$key]
+        if ($was.bodies -and $was.bones -and $was.bodies -eq $is.bodies -and $was.bones -eq $is.bones) { $same += $key; continue }
+        $changed += [ordered]@{ run = $key; before = "$($was.bodies) $($was.bones)"; after = "$($is.bodies) $($is.bones)"; pass_before = $was.pass; pass_after = $is.pass }
+    }
+    foreach ($key in @($After.Keys)) { if (-not $Before.Contains($key)) { $added += $key } }
+    return [ordered]@{ same = $same; changed = $changed; missing = $missing; added = $added }
+}
+
+function ConvertTo-RunHashSet {
+    # A set of Get-RunHashes read back from JSON (a PSCustomObject) as the ordered table Compare-RunHashes takes.
+    param($Object)
+    $set = [ordered]@{}
+    if ($null -eq $Object) { return $set }
+    foreach ($property in $Object.PSObject.Properties) {
+        $value = $property.Value
+        $set[$property.Name] = [ordered]@{ bodies = [string]$value.bodies; bones = [string]$value.bones; ok = [bool]$value.ok; pass = [bool]$value.pass }
+    }
+    return $set
+}
+
+function Get-EngineProcesses {
+    # The engine processes running on this machine (the project's runs, tests and sessions, another session's, the owner's
+    # editor): Id, name and start time.
+    return @(Get-Process -Name 'UnrealEditor*' -ErrorAction SilentlyContinue | ForEach-Object {
+        $start = $null
+        try { $start = $_.StartTime } catch { }
+        [pscustomobject]@{ Id = $_.Id; Name = $_.ProcessName; StartTime = $start }
+    })
+}
+
+function Get-FreeMemoryGB {
+    # The machine's available physical memory, GB (GlobalMemoryStatusEx; a tenth of a second faster than asking CIM, which every
+    # start of an engine process pays: Test-EngineRoom).
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    return [Math]::Round([double](New-Object Microsoft.VisualBasic.Devices.ComputerInfo).AvailablePhysicalMemory / 1GB, 2)
 }
 
 function Get-LogErrors {

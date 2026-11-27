@@ -13,6 +13,7 @@ param(
 . "$PSScriptRoot\common.ps1"
 
 $resultFile = Join-Path $ToolsOut 'bake-lighting.json'
+if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
 $logFile = Join-Path $ToolsOut 'bake-lighting.log'
 $relative = $Map -replace '^/Game/', ''
 $mapFile = Join-Path $RepoRoot ("Content\" + ($relative -replace '/', '\') + '.umap')
@@ -29,6 +30,8 @@ $stamp = Read-JsonFile $stampFile
 if ((Test-Path $builtDataFile) -and $stamp -and -not $Force) {
     $mapTicks = (Get-Item $mapFile).LastWriteTimeUtc.Ticks
     if ($stamp.map_write_ticks -eq $mapTicks -and $stamp.quality -eq $Quality) {
+        # Up to date is a result too (Tools\bootstrap.ps1 decides by the result file).
+        Write-JsonFile $resultFile ([ordered]@{ ok = $true; up_to_date = $true; map = $Map; quality = $Quality; built_data = $builtDataFile })
         Write-Output "BAKE OK: $Map is up to date ($Quality quality; use -Force to rebake)"
         exit 0
     }
@@ -51,7 +54,8 @@ if (Test-Path $logFile) {
 }
 
 Write-JsonFile $resultFile ([ordered]@{
-    ok              = $baked
+    # A bake that timed out is no bake, whatever it left behind (Tools\bootstrap.ps1 decides by this file).
+    ok              = ($baked -and -not $run.TimedOut)
     map             = $Map
     quality         = $Quality
     seconds         = $seconds

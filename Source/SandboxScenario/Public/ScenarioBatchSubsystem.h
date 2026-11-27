@@ -13,9 +13,12 @@ class FScenarioJobLog;
  * The queue is a directory of job files, <dir>/<anything>.json, each
  *   { "scenario": "<file>", "out": "<dir>", "tune": "name=value,...", "tuning_dir": "<dir>", "shot": "<file.png>",
  *     "shot_at": "3.05,3.2" }
- * (all but scenario and out optional; shot and shot_at as -Shot= and -ShotAt= of a single run, rendered processes only). Several processes may share one queue: a process takes a job by moving its file
- * into <dir>/taken, which only one of them can do, and takes the next when the job is done. It exits when the queue
- * is empty.
+ * (all but scenario and out optional; shot and shot_at as -Shot= and -ShotAt= of a single run, rendered processes only).
+ * Several processes may share one queue: a process takes a job by writing its marker, <dir>/taken/<file>.taken with its
+ * process id, while it holds a lock file open for writing, which only one of them can do (TakeJob), and takes the next when
+ * the job is done. When every file of a job is written and its run.log closed, <dir>/taken/<file>.done says so (with the
+ * run's exit code) to whoever waits for it from another process. It exits when the queue is empty: at once, without the
+ * engine's orderly shutdown, when it renders nothing and writes no trace (every result is written by then).
  *
  * The first run of a process differs bit for bit from every later run of the same scenario, whatever ran before it
  * (measured: three processes with different jobs before it gave a later run the same hashes). So with
@@ -44,6 +47,8 @@ public:
 		FString ShotAt;
 		/** The world to run it in: the scenario's map, or the map the process started in. */
 		FString Map;
+		/** The job's file name in the queue; empty for the warm-up. */
+		FString File;
 	};
 
 	/** Whether this process runs a queue of scenarios. */

@@ -9,8 +9,9 @@
 #
 # The set: a stand of 62 s; blows of 30 and 80 N*s on the chest from four sides; knockdowns by a blow of 200 N*s from eight
 # sides and by two fists from sixteen; the get-ups from four sides; five strikes; 48 steady pushes (Tools\compliance.ps1); the stand
-# of falls on three seeds (Tools\getup-seeds.ps1). Figures that need all of today's scenarios (C25) are read from the
-# latest run of the suite.
+# of falls on three seeds (Tools\getup-seeds.ps1). Its own runs, the pushes and the seeds run at the same time through one queue
+# of -Parallel engine processes (docs/fast-checks.md, SP-3; the set's queue inside Tools\checks.ps1). Figures that need all of
+# today's scenarios (C25) are read from the latest run of the suite.
 #
 # It reports and judges nothing: the limits are proposals until the owner has set them, and a row says "in" or "out"
 # of the proposal. "-" is what cannot be measured before the part that builds it. Writes Saved\Natural\<Label>\report.json.
@@ -81,6 +82,26 @@ foreach ($existing in @('getup_back', 'getup_front', 'getup_left', 'getup_right'
 }
 
 $started = Get-Date
+# The pushes and the seeds are tools of their own, started first and run beside this set's own runs in one queue: this
+# process keeps it, or joins the check set it runs in.
+$null = Enter-CheckQueue -Parallel $Parallel
+$compliance = Join-Path $out 'compliance'
+$tuneText = ''
+if ($Tune) { $tuneText = " -Tune `"$Tune`"" }
+$children = @()
+$complianceRun = Start-Process powershell -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'compliance.ps1')`" -Out `"$compliance`"$tuneText") `
+    -RedirectStandardOutput (Join-Path $out 'compliance.txt') -WindowStyle Hidden -PassThru
+# The handle is held, or the exit code of a process started this way is lost once it ends.
+$null = $complianceRun.Handle
+$children += $complianceRun
+$seedsRun = $null
+$seedLabel = "natural_$Label"
+if (-not $Quick) {
+    $seedsRun = Start-Process powershell -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'getup-seeds.ps1')`" -Label `"$seedLabel`"$tuneText") `
+        -RedirectStandardOutput (Join-Path $out 'seeds.txt') -WindowStyle Hidden -PassThru
+    $null = $seedsRun.Handle
+    $children += $seedsRun
+}
 $jobs = @()
 foreach ($trial in $trials.Values) {
     $job = @{ File = $trial.file; Out = $trial.dir }
@@ -88,25 +109,19 @@ foreach ($trial in $trials.Values) {
     $jobs += $job
 }
 Invoke-ScenarioBatch -Jobs $jobs -Parallel $Parallel
+Wait-CheckChildren -Children $children
+$null = Exit-CheckQueue
 $runs = @{}
 foreach ($trial in $trials.Values) {
     $run = Read-JsonFile (Join-Path $trial.dir 'metrics.json')
     if (-not $run -or -not $run.ok) { Write-Output "NATURAL ERROR: '$($trial.name)' gave no result (see $($trial.dir))"; exit 2 }
     $runs[$trial.name] = $run
 }
-$compliance = Join-Path $out 'compliance'
-$arguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'compliance.ps1'), '-Out', $compliance)
-if ($Tune) { $arguments += @('-Tune', $Tune) }
-$null = & powershell @arguments
-if ($LASTEXITCODE -ne 0) { Write-Output "NATURAL ERROR: Tools\compliance.ps1 gave no result (see $compliance)"; exit 2 }
+if ($complianceRun.ExitCode -ne 0) { Write-Output "NATURAL ERROR: Tools\compliance.ps1 gave no result (see $compliance)"; exit 2 }
 $pushed = @((Read-JsonFile (Join-Path $compliance 'compliance.json')).results)
 $standRuns = @()
 $stands = @()
 if (-not $Quick) {
-    $seedLabel = "natural_$Label"
-    $arguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'getup-seeds.ps1'), '-Label', $seedLabel)
-    if ($Tune) { $arguments += @('-Tune', $Tune) }
-    $null = & powershell @arguments
     foreach ($seedDir in @(Get-ChildItem (Join-Path $RepoRoot "Saved\Matrix\getup_seeds\$seedLabel") -Directory)) {
         $stand = Read-JsonFile (Join-Path $seedDir.FullName 'getup-stand.json')
         if (-not $stand) { Write-Output "NATURAL ERROR: the stand of $($seedDir.Name) gave no result"; exit 2 }

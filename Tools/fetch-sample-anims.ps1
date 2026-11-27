@@ -7,9 +7,18 @@
 # The sample is looked for in -Source, then in the environment variable GAME_ANIMATION_SAMPLE, then in
 # Documents\Unreal Projects\GameAnimationSample. Only animation sequences are taken (M_ragdoll_*): its montages,
 # blend spaces and chooser tables pull in the rest of the sample. Safe to re-run (skips when up to date).
-# Exit code: 0 the clips are there, 2 the sample was not found or the copy is incomplete.
+# Exit code: 0 the clips are there, 2 the sample was not found or the copy is incomplete. The verdict is written to
+# Saved\Tools\fetch-sample-anims.json as well (Tools\bootstrap.ps1 decides by it).
 param([string]$Source, [switch]$Force, [switch]$PosePrior)
 . "$PSScriptRoot\common.ps1"
+
+$resultFile = Join-Path $ToolsOut 'fetch-sample-anims.json'
+if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
+function Stop-Fetch([int]$Code, [string]$Line, [switch]$Printed) {
+    Write-JsonFile $resultFile ([ordered]@{ ok = ($Code -eq 0); exit_code = $Code; verdict = $Line })
+    if (-not $Printed) { Write-Output $Line }
+    exit $Code
+}
 
 if (-not $Source) { $Source = $env:GAME_ANIMATION_SAMPLE }
 if (-not $Source) { $Source = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Unreal Projects\GameAnimationSample' }
@@ -31,13 +40,11 @@ function Copy-PriorClips {
         if (Test-Path $to) { $have = @(Get-ChildItem $to -Recurse -Filter '*.uasset' -File | Where-Object { $_.BaseName -match $set.pattern -and $_.BaseName -notmatch $spec.exclude }) }
         if ($have.Count -eq $set.clips -and -not $Force) { $there += $have.Count; continue }
         if (-not (Test-Path $from)) {
-            Write-Output "FETCH ERROR: $from was not found (Epic's Game Animation Sample; see the top of this script)"
-            exit 2
+            Stop-Fetch 2 "FETCH ERROR: $from was not found (Epic's Game Animation Sample; see the top of this script)"
         }
         $files = @(Get-ChildItem $from -Recurse -Filter '*.uasset' -File | Where-Object { $_.BaseName -match $set.pattern -and $_.BaseName -notmatch $spec.exclude })
         if ($files.Count -ne $set.clips) {
-            Write-Output "FETCH ERROR: the sample has $($files.Count) clips of '$($set.pattern)' in $($set.folder), $($set.clips) were expected (Specs\pose_prior.json)"
-            exit 2
+            Stop-Fetch 2 "FETCH ERROR: the sample has $($files.Count) clips of '$($set.pattern)' in $($set.folder), $($set.clips) were expected (Specs\pose_prior.json)"
         }
         foreach ($file in $files) {
             $target = Join-Path $to $file.FullName.Substring($from.Length + 1)
@@ -50,13 +57,13 @@ function Copy-PriorClips {
 }
 
 if ((Test-Path $marker) -and (Test-Path (Join-Path $destination $skeleton)) -and -not $Force) {
-    Write-Output "FETCH OK: the sample's ragdoll clips are already present"
+    $present = "FETCH OK: the sample's ragdoll clips are already present"
+    Write-Output $present
     if ($PosePrior) { Copy-PriorClips }
-    exit 0
+    Stop-Fetch 0 $present -Printed
 }
 if (-not (Test-Path (Join-Path $sampleContent $skeleton))) {
-    Write-Output "FETCH ERROR: Epic's Game Animation Sample was not found at $Source (download it from Fab or the Epic Games Launcher, create a project from it, and pass its folder with -Source or in GAME_ANIMATION_SAMPLE)"
-    exit 2
+    Stop-Fetch 2 "FETCH ERROR: Epic's Game Animation Sample was not found at $Source (download it from Fab or the Epic Games Launcher, create a project from it, and pass its folder with -Source or in GAME_ANIMATION_SAMPLE)"
 }
 
 New-Item -ItemType Directory -Force (Join-Path $destination 'Meshes') | Out-Null
@@ -65,9 +72,7 @@ Copy-Item -Path (Join-Path $sampleContent $skeleton) -Destination (Join-Path $de
 $clips = @(Get-ChildItem (Join-Path $sampleContent $clipDir) -Filter 'M_ragdoll_*.uasset' -File)
 foreach ($clip in $clips) { Copy-Item -Path $clip.FullName -Destination (Join-Path $destination "$clipDir\$($clip.Name)") -Force }
 if (-not (Test-Path $marker)) {
-    Write-Output "FETCH ERROR: copy finished but $marker is missing"
-    exit 2
+    Stop-Fetch 2 "FETCH ERROR: copy finished but $marker is missing"
 }
 if ($PosePrior) { Copy-PriorClips }
-Write-Output "FETCH OK: copied $($clips.Count) ragdoll clips and their skeleton from $Source to Content\Characters\UEFN_Mannequin"
-exit 0
+Stop-Fetch 0 "FETCH OK: copied $($clips.Count) ragdoll clips and their skeleton from $Source to Content\Characters\UEFN_Mannequin"
