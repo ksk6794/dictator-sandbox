@@ -5,7 +5,8 @@ decision 37). With two hours of the window left the plan below was begun after a
 poses by the sensed way, on the arms only (over the whole body the sample's legs, poses of a body in the air, held a leg up as the
 body lay), letting go over `poses.fall_blend_s` as the body lies. Not built: the flails by the time to impact, `fall.blend_written`
 as a share of its own (`fall.blend_share` lays the blend over the written pose's arms), the arms' strength on the time to impact, the
-`_up_*` and `_down` poses. The plan as written follows.
+`_up_*` and `_down` poses. **The owner's look (27 November): kept at 0, to be worked on**; the arms' strength on the time to impact
+and their giving way at the touch come next, then new videos. The plan as written follows.
 
 Written 27 November 2026, 04:30, the owner away (the autonomous window of 22:12 to 06:42), after R3's first step built the sense this
 step would use (`FSandboxFallSense`: the way every tick, the time to the trunk's meeting with the floor or a thing, 0.020 s late in the

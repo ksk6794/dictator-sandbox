@@ -44,6 +44,11 @@
     "fell": true,
     "end_state": "standing",
     "min_get_ups": 1,
-    "max_joint_stretch_cm": 2.0
+    "min_get_up_attempts": 2,
+    "max_joint_stretch_cm": 2.0,
+    "measures": {
+      "control.get_up.hit_free_min": { "max": 0.01 },
+      "control.get_up.hit_off_cm": { "min": 30.0 }
+    }
   }
 }

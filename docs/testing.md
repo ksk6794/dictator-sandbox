@@ -6069,6 +6069,32 @@ scenario whose hands follow a written path past a body that moves otherwise; for
 The bootstrap at 05:46 on the final tree:
 all 15 steps in 331 s, the suite 150 of 151, 54 unit tests; the baseline `laid` saved again from it (the copy's new hashes).
 
+### R2's hold, hit and start switched on (27 November, the owner's decisions 32, 35 and 36 after the videos)
+
+`getup.hold_by_body` 1 in `Config/Tuning/body.json`; `grab_getup_held` loses its `known_failure` mark. The suite: 151 of 151 (it was
+150 and a known failure), and against `laid` five scenarios with other hashes, each with a hand or a thing against a body getting up:
+`getup_held`, `getup_phase_sit_hold`, `getup_pressed_one_hand`, `grab_getup_held` (the hands), and `room_movable_fall_gets_up`, where
+the body pushes against a piece of movable furniture with about 164 N as it rises, which the hold's rule counts as a press at 0.15 of
+its force: the clip's pace dips to 0.95 and the get-up takes 3.23 s instead of 3.20. New baseline `hold`. The stand of 150 with nobody
+holding: every trial as with the hold off (150 standing, 140 at the first attempt, 14.3% of attempts given up); held and pressed, the
+figures of the night's last fix (`Saved\Matrix\getup_seeds\fade_*`, the same code and values): one hand 29 of 150 pull free, two hands
+0, pressed with 300 N 53 stand under it.
+
+**Then the hit by impulse** (`getup.hit_by_impulse` 1, the owner's decision 35, the same day): the copies `getup_hit_strong_yields` and
+`getup_push_weak_yields` go, their expectations (at least two attempts, the share down to 0 and the struck body 30 cm off its clip for
+the blow; the share at about half for the push) now `getup_hit_strong`'s and `getup_push_weak`'s, whose hashes are the copies' to the
+bit. The suite: 149 of 149; against `hold` 14 with other hashes, each with a hit, a push or a hand's arrival while led (the three
+pressed, the six `getup_phase_*` of a push or a blow and the hold, `getup_held`, `getup_hit_strong`, `getup_push_weak`,
+`room_movable_fall_gets_up`). New baseline `hit`. The stand of 150 (`Saved\Matrix\getup_seeds\hit_on_*`): with nobody holding every
+figure as before (150, 140, 14.3%; its falls are felled before any get-up), one hand 29 of 150 pull free, two hands 0, pressed 53.
+
+**Then the start at 0.3 s** (`getup.start_blend_s` 0.3, the owner's decision 36, the same day): the suite 149 of 149, and against `hit`
+the 32 scenarios with a get-up have other hashes (every get-up now begins from the body's own pose). New baseline `start`. The stand of
+150 (`Saved\Matrix\getup_seeds\start_on_plain`): every trial as the night's measure of the same three rules (`final_all_plain`): 150
+standing, 140 at the first attempt, 10.2% of attempts given up (14.3% at 0), 5 poses held over 1.0 s (6); held, the night's figures of
+the three (`final_all_*`): one hand 31 of 150 pull free, two hands 0, pressed with 300 N 56 stand under it. The bootstrap: all 15 steps,
+the suite 149 of 149, its stand 50 of 50 with 49 at the first attempt (48).
+
 
 
 ## Known behaviour of the stock mannequin

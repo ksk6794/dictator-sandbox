@@ -34,7 +34,7 @@ The file name must equal the `name` field (a unit test checks this).
 | --- | --- | --- |
 | `name` | yes | Scenario name; equals the file name |
 | `duration_s` | yes | Simulated time |
-| `known_failure` | no | The reason a scenario fails on purpose, and until when (`grab_getup_held`: until R2). Read by `Tools\suite.ps1` only, not by the run: such a scenario is run and printed as `SCENARIO KNOWN FAILURE`, does not fail the suite (so the bootstrap goes on), and is named in `suite.json`'s `known_failures`; one that passes is printed as `KNOWN FAILURE PASSES`, for the mark to be taken away. The owner's decision of 26 November 2026 (`docs/active-ragdoll.md`, decision 23) |
+| `known_failure` | no | The reason a scenario fails on purpose, and until when (`grab_getup_held` had it until R2's hold was switched on, 27 November 2026; none has it now). Read by `Tools\suite.ps1` only, not by the run: such a scenario is run and printed as `SCENARIO KNOWN FAILURE`, does not fail the suite (so the bootstrap goes on), and is named in `suite.json`'s `known_failures`; one that passes is printed as `KNOWN FAILURE PASSES`, for the mark to be taken away. The owner's decision of 26 November 2026 (`docs/active-ragdoll.md`, decision 23) |
 | `map` | no | Map package to run in, e.g. `/Game/Generated/Maps/TestRoom`. Without it the runner builds a bare floor and two lights |
 | `fixed_fps` | no, default 90 | Engine frames per simulated second. Physics substeps come from `Config/DefaultEngine.ini` |
 | `checkpoint_interval_s` | no, default 0.5 | How often body and bone transforms are written to `trace.json` |

@@ -14,9 +14,9 @@ area: read the areas a part touches before its plan (the entries every part need
 **In short (27 November 2026):** M1 to M3 done (the owner's hand checks deferred); M4 in progress, its rest after
 R3. 19 bodies, muscles through Physics Control, capture-point balance with steps, the led get-up on (`getup.carry` 1). The
 player's movement in VR built (the right stick, a snap turn on the left, the player's body as a capsule of 10 kg; decisions 24
-to 28; the owner's look in the headset to come). Baseline `r2night` (`walk`'s 132 hashes and nine new get-up scenarios): the
-suite is 140 of 141, `grab_getup_held` failing on purpose while R2's hold is off (marked `known_failure`, so the suite and the
-bootstrap pass with it counted apart). R2's step 0, the clean-up of dead switches, done (every hash kept). In the night of 26 November, the owner away: step 2
+to 28; the owner's look in the headset to come). Baseline `start` (149 scenarios): the suite is 149 of 149; R2's hold by one hand,
+its hit by impulse and its start from the lying pose are on since 27 November (`getup.hold_by_body` 1, `getup.hit_by_impulse` 1,
+`getup.start_blend_s` 0.3; decisions 32, 35 and 36 confirmed after the videos): `grab_getup_held` passes without its `known_failure` mark, and the hit's two copies went into their scenarios. R2's step 0, the clean-up of dead switches, done (every hash kept). In the night of 26 November, the owner away: step 2
 (decision 17: a get-up that was not led fails a run, `get_up_led`; `control.authority` by state, body and direction) and step 3
 (the hold by one hand, decisions 13 and 14, behind `getup.hold_by_body` at 0, for the owner's look) and step 4 (a hit takes
 authority by its impulse, decision 20, behind `getup.hit_by_impulse` at 0) and step 6 (the start blended from the lying pose,
@@ -24,7 +24,8 @@ decision 22, behind `getup.start_blend_s` at 0), every hash of `walk` kept; 141 
 a blow and a hold in the get-up's phases), 54 unit tests; R3's first item, the fall's way and time, built as a measure only
 (`control.fall.sense`); step 7, get-ups from eight ways of lying (`getup_laid_*`, laid by `body.laid_deg`), with a defect put right:
 the support frame averaged the feet's turns across 180 degrees (baseline `laid`, 151 scenarios with two beside the table, 150 of 151);
-R3's second, the fall's arms blended by its way, behind `fall.blend` at 0. Decisions 30 to 37 taken for the owner, to confirm. DLSS is
+R3's second, the fall's arms blended by its way, behind `fall.blend` at 0 (kept at 0 by the owner, to be worked on: decision 37).
+Decisions 30, 31, 33 and 34 taken for the owner in the night, to confirm; 38: the side clips and C27 go with R2's matcher. DLSS is
 deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
@@ -75,7 +76,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see `docs/pitfalls.md`, assets) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 58 s (151 scenarios; about 99 s with `-Long`), the scorecard 140 s (`-Quick` 56 s), the compliance table 25 s, the pose database 35 s, a record and replay 33 s (three takes 49 s, the walk with a made-up headset 37 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 58 s (149 scenarios; about 99 s with `-Long`), the scorecard 140 s (`-Quick` 56 s), the compliance table 25 s, the pose database 35 s, a record and replay 33 s (three takes 49 s, the walk with a made-up headset 37 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 41 s with
 the led get-up (66 s before it; three seeds side by side, nine processes, 92 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s (its grab demo 10 s), the whole

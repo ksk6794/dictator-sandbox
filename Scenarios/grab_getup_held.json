@@ -1,6 +1,5 @@
 {
   "name": "grab_getup_held",
-  "known_failure": "until R2: since the led get-up of 26 November 2026 one hand no longer slows a get-up and its grip does not last (docs/active-ragdoll.md, R2)",
   "duration_s": 30.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",

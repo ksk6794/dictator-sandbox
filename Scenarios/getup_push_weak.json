@@ -44,6 +44,9 @@
     "end_state": "standing",
     "min_get_ups": 1,
     "max_get_up_attempts": 1,
-    "max_joint_stretch_cm": 2.0
+    "max_joint_stretch_cm": 2.0,
+    "measures": {
+      "control.get_up.hit_free_min": { "min": 0.45, "max": 0.55 }
+    }
   }
 }
