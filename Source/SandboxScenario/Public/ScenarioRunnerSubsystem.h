@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AuthorityTally.h"
 #include "Dom/JsonValue.h"
 #include "NaturalMeasures.h"
 #include "PhysicsEngine/ConstraintInstance.h"
@@ -101,6 +102,8 @@ private:
 	TArray<FPush> Pushes;
 
 	bool SpawnBody(UWorld& World, FString& OutError);
+	/** Lays the spawned body down before the first step, as `body.laid_deg` asks (FScenarioSpec::bLaid). */
+	void LayBody(USkeletalMeshComponent& BodyMesh) const;
 	bool SpawnEffectors(UWorld& World, FString& OutError);
 	void SampleFrame(float DeltaTime);
 	void ApplyDueEvents(double SimTimeS);
@@ -316,6 +319,8 @@ private:
 	double GetUpAssistShareSum = 0.0;
 	double GetUpAssistShareMax = 0.0;
 	double GetUpTorqueShareMax = 0.0;
+	/** What the world gave the body, by state, by body while getting up, by direction (control.authority). */
+	FSandboxAuthorityTally AuthorityTally;
 	double StaggerAssistShareSum = 0.0;
 	double StaggerAssistShareMax = 0.0;
 	/** The same for the assist's torque (over weight times centre-of-mass height): in Stagger it holds the pelvis upright. */
@@ -378,6 +383,20 @@ private:
 	// The fall, as the controller called it and as the runner measures its end: the body is at rest when
 	// its mass-weighted speeds are below the rest thresholds.
 	int32 FallingStartFrame = -1;
+	/**
+	 * R3, step 1: the first fall's sense (USandboxBodyController::GetFallSense) against what happened: when its first tick foresaw the
+	 * trunk's impact, each tick's foreseen moment until the trunk met the floor, the real moment, whether something other than the floor
+	 * was foreseen first, and the way foreseen. Controller time, s.
+	 */
+	TArray<double> FallSenseForeseenS;
+	double FallSenseStartS = -1.0;
+	double FallSenseImpactS = -1.0;
+	bool bFallSenseOther = false;
+	bool bFallSenseDone = false;
+	FVector2D FallSenseWay = FVector2D::ZeroVector;
+	/** The centre of mass as the first fall's sense began and as its trunk touched: the way it really went until then. */
+	FVector FallSenseStartComCm = FVector::ZeroVector;
+	FVector FallSenseImpactComCm = FVector::ZeroVector;
 	int32 LastUnrestFrame = -1;
 	FVector ComAtFallStartCm = FVector::ZeroVector;
 	FVector ComFinalCm = FVector::ZeroVector;

@@ -24,6 +24,8 @@
 #                               floor: the stand among movable furniture (with -Only floor -Floor 50, and
 #                               -Tune "reactions.thing_support=1" for a body that can stand on things)
 #   ... -Tune "name=value,..."  tuning overrides for every run
+#   ... -TuningDir <dir>        the tuning files from this directory instead of Config\Tuning (for values -Tune cannot give,
+#                               such as a clip's path)
 #   ... -Film failed            also a sheet of pictures of every trial that did not end standing ("all": of every
 #                               trial; "35,43": of these trials; Saved\Films\getup_stand_<n>)
 #   ... -Out <dir>              output directory (default Saved\Matrix\getup_stand)
@@ -62,6 +64,7 @@ param(
     [double]$HoldFromS = 5.5,
     [double]$HoldForS = 15.0,
     [string]$Tune,
+    [string]$TuningDir,
     [string]$Film,
     [string]$Out
 )
@@ -299,6 +302,7 @@ for ($round = 0; $round -lt 6 -and $pending.Count -gt 0; $round++) {
         if (Test-Path $trial.dir) { Remove-Item $trial.dir -Recurse -Force }
         $job = @{ File = $trial.file; Out = $trial.dir }
         if ($Tune) { $job.Tune = $Tune }
+        if ($TuningDir) { $job.TuningDir = $TuningDir }
         $jobs += $job
     }
     Invoke-ScenarioBatch -Jobs $jobs -Parallel $Parallel
@@ -325,10 +329,17 @@ foreach ($trial in $trials) {
     $stood = ($run.control.end_state -eq 'standing') -and ($ups.successes -ge 1)
     # When the body stood for good: the last time it went into Standing.
     $stoodAt = $null
+    $toStandS = $null
     $log = Join-Path $trial.dir 'run.log'
     if ($stood -and (Test-Path $log)) {
-        $line = Get-Content $log | Where-Object { $_ -match 'Body controller: standing at ([\d\.]+) s \(got up' } | Select-Object -Last 1
+        $stoodLines = @(Get-Content $log | Where-Object { $_ -match 'Body controller: standing at ([\d\.]+) s \(got up' })
+        $line = $stoodLines | Select-Object -Last 1
         if ($line -and $line -match 'standing at ([\d\.]+) s') { $stoodAt = [double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture) }
+        # How long from the first attempt to the first standing (decision 13: how much longer a held body takes to stand).
+        $firstLine = $stoodLines | Select-Object -First 1
+        if ($firstLine -and $firstLine -match 'standing at ([\d\.]+) s' -and $null -ne $ups.first_started_s -and [double]$ups.first_started_s -ge 0) {
+            $toStandS = [Math]::Round([double]::Parse($Matches[1], [System.Globalization.CultureInfo]::InvariantCulture) - [double]$ups.first_started_s, 3)
+        }
     }
     # A fall at a wall is to be a fall at a wall only: the nearest any of its bodies came to the furniture, over
     # the run's checkpoints (every 0.5 s; a body's point is its bone, so a hand or the head reaches 25 cm further).
@@ -367,6 +378,15 @@ foreach ($trial in $trials) {
             }
         }
     }
+    # What the world gave the body while it got up, by direction and by body (control.authority, decision 15).
+    $authority = $null
+    $authorityBodies = @()
+    if ($run.control.authority -and $run.control.authority.states -and $run.control.authority.states.get_up) {
+        $authority = $run.control.authority.states.get_up
+        foreach ($given in @($run.control.authority.get_up_bodies)) {
+            if ($given) { $authorityBodies += [ordered]@{ body = $given.body; source = $given.source; mean = $given.mean; up = $given.up_mean; horizontal = $given.horizontal_mean } }
+        }
+    }
     $results += [ordered]@{
         number              = $trial.number
         name                = $trial.name
@@ -385,9 +405,23 @@ foreach ($trial in $trials) {
         attempts            = $ups.attempts
         successes           = $ups.successes
         stood_at_s          = $stoodAt
+        to_stand_s          = $toStandS
+        # R2's gate (decisions 16 and 21): the last attempt's clip and its shape at 70 cm of pelvis (C27), the longest pose held
+        # while getting up (C19).
+        clip                = $(if ($ups.clip) { ([string]$ups.clip).Split('.')[-1] } else { $null })
+        rise_trunk_deg      = $ups.rise_trunk_deg
+        rise_feet_cm        = $ups.rise_feet_cm
+        held_pose_s         = $(if ($run.metrics.stillness -and $run.metrics.stillness.target_still_longest_by_state_s) { $run.metrics.stillness.target_still_longest_by_state_s.get_up } else { $null })
         given_up            = $ups.given_up
         assist_share_mean   = $ups.assist_force_share_mean
         assist_share_max    = $ups.assist_force_share_max
+        led_attempts        = $ups.led_attempts
+        not_led_attempts    = $ups.not_led_attempts
+        authority_up        = $(if ($authority) { $authority.up_mean } else { $null })
+        authority_horizontal = $(if ($authority) { $authority.horizontal_mean } else { $null })
+        authority_down      = $(if ($authority) { $authority.down_mean } else { $null })
+        authority_peak      = $(if ($authority) { $authority.peak } else { $null })
+        authority_bodies    = $authorityBodies
         joint_stretch_cm    = $run.metrics.max_joint_stretch_cm
         limit_violation_deg = $run.metrics.max_joint_limit_violation_deg
         limit_joint         = $run.metrics.worst_limit_joint
@@ -453,6 +487,35 @@ if ($HoldHands -gt 0) {
     Write-Output ('  held by {0} hand(s) sent to {1}, grips closed from {2:N1} to {3:N1} s: the hands took hold of {4} of {5} bodies ({6} by {1} itself); a grip came off by itself on {7} of those, {8} pulled free and stood before the time was up, {9} stand in the end' -f `
         $HoldHands, $HoldBone, ($HoldFromS + 1.4), $heldUntil, $held.Count, $results.Count, $onPart, $cameOff, $under, @($held | Where-Object { $_.got_up }).Count)
 }
+# From the first attempt to the first standing, the median (the run's log and control.get_up.first_started_s).
+$spans = @($results | Where-Object { $null -ne $_.to_stand_s } | ForEach-Object { [double]$_.to_stand_s } | Sort-Object)
+if ($spans.Count -gt 0) {
+    Write-Output ('  from the first attempt to the first standing: median {0:N2} s of {1} bodies (10th percentile {2:N2}, 90th {3:N2})' -f `
+        $spans[[int][Math]::Floor(($spans.Count - 1) / 2)], $spans.Count, $spans[[int][Math]::Floor(($spans.Count - 1) / 10)], $spans[[int][Math]::Floor(9 * ($spans.Count - 1) / 10)])
+}
+# What the world gave while the bodies got up (control.authority): the mean of the falls' means by direction, and the bodies given
+# most, each by the mean of its share over the falls that got up at all.
+$withAuthority = @($falls | Where-Object { $null -ne $_.authority_up })
+if ($withAuthority.Count -gt 0) {
+    $meanOf = { param($name) ($withAuthority | ForEach-Object { [double]$_.$name } | Measure-Object -Average).Average }
+    $byBody = @{}
+    foreach ($r in $withAuthority) {
+        foreach ($given in @($r.authority_bodies)) {
+            if (-not $given) { continue }
+            $key = "$($given.body) ($($given.source))"
+            if (-not $byBody.ContainsKey($key)) { $byBody[$key] = 0.0 }
+            $byBody[$key] += [double]$given.mean
+        }
+    }
+    $most = @($byBody.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 5 | ForEach-Object { '{0} {1:N2}' -f $_.Key, ($_.Value / $withAuthority.Count) })
+    Write-Output ('  authority while getting up, of body weight: mean {0:N2}, up {1:N2}, over the floor {2:N2}, down {3:N2}; peak {4:N2} in the median fall; given most: {5}' -f `
+        (& $meanOf 'assist_share_mean'), (& $meanOf 'authority_up'), (& $meanOf 'authority_horizontal'), (& $meanOf 'authority_down'),
+        (@($withAuthority | ForEach-Object { [double]$_.authority_peak } | Sort-Object)[[int][Math]::Floor(($withAuthority.Count - 1) / 2)]), ($most -join ', '))
+}
+$notLed = @($results | Where-Object { [int]$_.not_led_attempts -gt 0 })
+if ($notLed.Count -gt 0) {
+    Write-Output ('  GETUP STAND WARNING: {0} trial(s) asked for the led get-up and were not led (decision 17), first: trial {1}' -f $notLed.Count, $notLed[0].number)
+}
 $atWall = @($results | Where-Object { $null -ne $_.furniture_clearance_cm } | Sort-Object { [double]$_.furniture_clearance_cm })
 if ($atWall.Count -gt 0) {
     Write-Output ('  falls at a wall keep {0:N0} cm and more from the table and the chair (the nearest: trial {1})' -f [double]$atWall[0].furniture_clearance_cm, $atWall[0].number)
@@ -483,6 +546,7 @@ Write-JsonFile (Join-Path $Out 'getup-stand.json') ([ordered]@{
     share    = $share
     needed   = $MinShare
     tune     = $Tune
+    tuning_dir = $TuningDir
     results  = $results
 })
 
@@ -507,6 +571,7 @@ if ($Film) {
         $filmArguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'film.ps1'), '-File', $r.file, '-Tag', $r.name,
             '-Times', '3.2,4,5,6,7,8,9,10,11,12,13,14,16,18,20,24', '-Camera', $camera, '-Cols', 8)
         if ($Tune) { $filmArguments += @('-Tune', $Tune) }
+        if ($TuningDir) { $filmArguments += @('-TuningDir', $TuningDir) }
         & powershell @filmArguments | Select-Object -Last 1
     }
 }

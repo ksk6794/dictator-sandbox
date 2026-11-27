@@ -497,6 +497,29 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 		}
 		OutSpec.SpawnRotation = FRotator(PitchYawRoll.X, PitchYawRoll.Y, PitchYawRoll.Z);
 	}
+	if ((*Body)->HasField(TEXT("laid_deg")))
+	{
+		if (!(*Body)->TryGetNumberField(TEXT("laid_deg"), OutSpec.LaidTurnDeg) || FMath::Abs(OutSpec.LaidTurnDeg) > 180.0)
+		{
+			OutError = TEXT("'body.laid_deg' must be a number of degrees from -180 to 180");
+			return false;
+		}
+		// The body is spawned standing on the floor and laid there: a controller takes the height it starts at for its floor.
+		if (!(*Body)->HasField(TEXT("location_cm")) || !FMath::IsNearlyZero(OutSpec.SpawnLocationCm.Z))
+		{
+			OutError = TEXT("'body.laid_deg' needs 'body.location_cm' with z 0: the body is spawned standing on the floor, then laid down");
+			return false;
+		}
+		OutSpec.bLaid = true;
+	}
+	if ((*Body)->HasField(TEXT("laid_height_cm")))
+	{
+		if (!OutSpec.bLaid || !(*Body)->TryGetNumberField(TEXT("laid_height_cm"), OutSpec.LaidHeightCm) || OutSpec.LaidHeightCm < 0.0)
+		{
+			OutError = TEXT("'body.laid_height_cm' must be a height of 0 cm or more, beside 'body.laid_deg'");
+			return false;
+		}
+	}
 
 	const TArray<TSharedPtr<FJsonValue>>* Attached = nullptr;
 	if ((*Body)->TryGetArrayField(TEXT("attached_meshes"), Attached))
@@ -515,6 +538,11 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 	if ((*Body)->HasField(TEXT("simulate")) && !(*Body)->TryGetBoolField(TEXT("simulate"), OutSpec.bSimulate))
 	{
 		OutError = TEXT("'body.simulate' must be true or false");
+		return false;
+	}
+	if (OutSpec.bLaid && !OutSpec.bSimulate)
+	{
+		OutError = TEXT("'body.laid_deg' needs a simulated body: a kinematic one is put back where its pose has it");
 		return false;
 	}
 
@@ -787,6 +815,16 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 	}
 
 	return true;
+}
+
+FQuat FScenarioSpec::LaidRotation() const
+{
+	// In the body's own spawn frame (facing +y, up +z, its right toward -x): a quarter turn about x puts the head toward -y and the
+	// face up; a turn about the head's direction then rolls it, +90 onto its right side. Taken into the world by the spawn's turn.
+	const FQuat OnBack(FVector::XAxisVector, UE_DOUBLE_HALF_PI);
+	const FQuat AboutLength(-FVector::YAxisVector, FMath::DegreesToRadians(LaidTurnDeg));
+	const FQuat Spawn = SpawnRotation.Quaternion();
+	return Spawn * (AboutLength * OnBack) * Spawn.Inverse();
 }
 
 bool FScenarioSpec::FromString(const FString& Text, FScenarioSpec& OutSpec, FString& OutError)

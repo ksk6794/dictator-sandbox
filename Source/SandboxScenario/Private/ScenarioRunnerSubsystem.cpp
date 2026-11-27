@@ -512,6 +512,40 @@ bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 	return true;
 }
 
+void UScenarioRunnerSubsystem::LayBody(USkeletalMeshComponent& BodyMesh) const
+{
+	// Turned about the spawn point (FScenarioSpec::LaidRotation), then raised.
+	const FQuat Delta = Spec.LaidRotation();
+	const FVector Pivot = Spec.SpawnLocationCm;
+	TArray<FBodyInstance*> Bodies;
+	for (FBodyInstance* Body : BodyMesh.Bodies)
+	{
+		if (Body && Body->IsValidBodyInstance())
+		{
+			Bodies.Add(Body);
+		}
+	}
+	for (FBodyInstance* Body : Bodies)
+	{
+		const FTransform Was = Body->GetUnrealWorldTransform();
+		Body->SetBodyTransform(FTransform(Delta * Was.GetRotation(), Pivot + Delta.RotateVector(Was.GetLocation() - Pivot)), ETeleportType::TeleportPhysics);
+	}
+	double LowestCm = TNumericLimits<double>::Max();
+	for (const FBodyInstance* Body : Bodies)
+	{
+		LowestCm = FMath::Min(LowestCm, Body->GetBodyBounds().Min.Z);
+	}
+	const FVector Raise(0.0, 0.0, Spec.LaidHeightCm - LowestCm);
+	for (FBodyInstance* Body : Bodies)
+	{
+		const FTransform Was = Body->GetUnrealWorldTransform();
+		Body->SetBodyTransform(FTransform(Was.GetRotation(), Was.GetLocation() + Raise), ETeleportType::TeleportPhysics);
+		Body->SetLinearVelocity(FVector::ZeroVector, false);
+		Body->SetAngularVelocityInRadians(FVector::ZeroVector, false);
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Scenario: the body laid down, turned %.0f deg about its length, its lowest point %.1f cm over the floor"), Spec.LaidTurnDeg, Spec.LaidHeightCm);
+}
+
 bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 {
 	// The tuning files are looked at from Tick, on fixed frames, instead of by the store's own poll: an
@@ -527,6 +561,10 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 	if (!Ragdoll)
 	{
 		return false;
+	}
+	if (Spec.bLaid)
+	{
+		LayBody(*Ragdoll->GetBodyMesh());
 	}
 	if (USandboxBodyController* Controller = Ragdoll->GetController())
 	{
@@ -930,6 +968,52 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 			++StaggerFrames;
 		}
 
+		// R3, step 1: the first fall's sense against what happens (read only). The sense was worked out at the start of the step just
+		// made; the trunk's touch is told at the start of the step after it.
+		// The first fall only: it begins with the first valid sense; it ends when the trunk has touched (that touch may already be
+		// there on the fall's first tick, against a wall) or the body is no longer falling. Ticks with no sense in between (held up)
+		// are left out.
+		if (!bFallSenseDone)
+		{
+			const FSandboxFallSense& Sense = Controller->GetFallSense();
+			const double SensedAtS = Controller->GetElapsedS() - FixedDt;
+			const bool bFalling = Controller->GetState() == ESandboxBodyState::Falling;
+			if (FallSenseForeseenS.Num() == 0 && Sense.bValid)
+			{
+				FallSenseStartS = SensedAtS;
+				bFallSenseOther = Sense.bOther;
+				FallSenseWay = Sense.Way;
+				FallSenseStartComCm = Controller->GetBalance().CenterOfMass;
+			}
+			if (FallSenseForeseenS.Num() > 0 || Sense.bValid)
+			{
+				if (Controller->GetTrunkTouchedS() >= 0.0)
+				{
+					FallSenseImpactS = Controller->GetTrunkTouchedS();
+					FallSenseImpactComCm = Controller->GetBalance().CenterOfMass;
+					if (FallSenseForeseenS.Num() == 0)
+					{
+						FallSenseForeseenS.Add(SensedAtS + Sense.TimeToImpactS);
+					}
+					bFallSenseDone = true;
+				}
+				else if (!bFalling)
+				{
+					bFallSenseDone = true;
+				}
+				else if (Sense.bValid)
+				{
+					FallSenseForeseenS.Add(SensedAtS + Sense.TimeToImpactS);
+				}
+			}
+		}
+		// The same forces body by body and by direction, by state (decision 15). Body by body only while getting up, where the
+		// budget is not 0.
+		if (bSettled)
+		{
+			AuthorityTally.AddFrame(FSandboxBodyTuning::StateName(Controller->GetState()), Controller->GetAuthority().Entries,
+				Controller->GetWeightN(), FixedDt, Controller->GetState() == ESandboxBodyState::GetUp);
+		}
 		if (Controller->GetState() == ESandboxBodyState::GetUp)
 		{
 			const double Share = Controller->GetAssistLoad().ForceShare;
@@ -2277,6 +2361,17 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MinGetUpAttempts.GetValue();
 		AddCheck(TEXT("min_get_up_attempts"), Controller && Controller->GetGetUpView().Attempts >= Limit, Controller ? Number(Controller->GetGetUpView().Attempts) : Null(), Number(Limit));
 	}
+	// Decision 17: a get-up that asked for the led get-up (getup.carry 1) and went the old way fails the run, whatever it expects;
+	// the reason is in control.get_up.not_led. A run must not pass on a get-up it did not ask for.
+	if (Controller && Controller->GetGetUpView().LedAttempts + Controller->GetGetUpView().NotLedAttempts > 0)
+	{
+		const int32 NotLed = Controller->GetGetUpView().NotLedAttempts;
+		AddCheck(TEXT("get_up_led"), NotLed == 0, Number(NotLed), Number(0));
+		if (NotLed > 0)
+		{
+			UE_LOG(LogSandbox, Error, TEXT("Scenario '%s': %d get-up attempt(s) asked for the led get-up and were not led: %s"), *Spec.Name, NotLed, *Controller->GetGetUpView().NotLed);
+		}
+	}
 	if (Spec.Expect.EffectorGripsOnBody.IsSet())
 	{
 		const double Wanted = Spec.Expect.EffectorGripsOnBody.GetValue();
@@ -2764,12 +2859,25 @@ void UScenarioRunnerSubsystem::Finish()
 			GetUpJson->SetStringField(TEXT("given_up"), GetUps.GivenUp);
 			GetUpJson->SetNumberField(TEXT("hits"), GetUps.Hits);
 			GetUpJson->SetNumberField(TEXT("pressed_max_n"), GetUps.PressedMaxN);
+			GetUpJson->SetNumberField(TEXT("led_attempts"), GetUps.LedAttempts);
+			GetUpJson->SetNumberField(TEXT("not_led_attempts"), GetUps.NotLedAttempts);
+			GetUpJson->SetStringField(TEXT("not_led"), GetUps.NotLed);
+			GetUpJson->SetNumberField(TEXT("held_s"), GetUps.HeldS);
+			GetUpJson->SetNumberField(TEXT("hold_max_n"), GetUps.HoldMaxN);
+			GetUpJson->SetNumberField(TEXT("pace_min"), GetUps.PaceMin);
+			GetUpJson->SetNumberField(TEXT("first_started_s"), GetUps.FirstStartedS);
+			GetUpJson->SetNumberField(TEXT("hit_free_min"), GetUps.HitFreeMin);
+			GetUpJson->SetNumberField(TEXT("hit_off_cm"), GetUps.HitOffCm);
+			GetUpJson->SetNumberField(TEXT("rise_clip_trunk_deg"), GetUps.RiseClipTrunkDeg);
+			GetUpJson->SetNumberField(TEXT("rise_clip_feet_cm"), GetUps.RiseClipFeetCm);
 			GetUpJson->SetNumberField(TEXT("seconds"), GetUpFrames * FixedDt);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_mean"), GetUpFrames > 0 ? GetUpAssistShareSum / GetUpFrames : 0.0);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_max"), GetUpAssistShareMax);
 			GetUpJson->SetNumberField(TEXT("assist_torque_share_max"), GetUpTorqueShareMax);
 			ControlJson->SetObjectField(TEXT("get_up"), GetUpJson);
 		}
+		// What the world gave the body: the old assist and the carry, by state, by body while getting up, by direction (decision 15).
+		ControlJson->SetObjectField(TEXT("authority"), AuthorityTally.ToJson());
 
 		// A clip's pose asked for at the end of the run, and how every clip that was read fits the body: how far
 		// the two skeletons' reference poses are apart at each joint, and the furthest the clip asks a joint
@@ -2960,6 +3068,31 @@ void UScenarioRunnerSubsystem::Finish()
 		FallJson->SetField(TEXT("rest_after_s"), bRestAfterFall ? Number(RestAfterFallS) : Null());
 		FallJson->SetField(TEXT("distance_cm"), bWentDown ? Number(FallWay.Size2D()) : Null());
 		FallJson->SetField(TEXT("direction_deg"), bWentDown ? Number(FMath::Fmod(FMath::RadiansToDegrees(FMath::Atan2(FallWay.Y, FallWay.X)) + 360.0, 360.0)) : Null());
+		// R3, step 1: what the first fall's sense foresaw (USandboxBodyController::GetFallSense), against what happened.
+		if (FallSenseForeseenS.Num() > 0)
+		{
+			const TSharedRef<FJsonObject> SenseJson = MakeShared<FJsonObject>();
+			const bool bMet = FallSenseImpactS >= 0.0;
+			SenseJson->SetNumberField(TEXT("frames"), FallSenseForeseenS.Num());
+			SenseJson->SetNumberField(TEXT("foreseen_s"), FallSenseForeseenS[0] - FallSenseStartS);
+			SenseJson->SetBoolField(TEXT("other_than_floor"), bFallSenseOther);
+			SenseJson->SetField(TEXT("impact_s"), bMet ? Number(FallSenseImpactS - FallSenseStartS) : Null());
+			SenseJson->SetField(TEXT("first_error_s"), bMet ? Number(FallSenseForeseenS[0] - FallSenseImpactS) : Null());
+			double ErrorSumS = 0.0;
+			for (const double ForeseenS : FallSenseForeseenS)
+			{
+				ErrorSumS += FMath::Abs(ForeseenS - FallSenseImpactS);
+			}
+			SenseJson->SetField(TEXT("mean_abs_error_s"), bMet ? Number(ErrorSumS / FallSenseForeseenS.Num()) : Null());
+			// The way foreseen at the fall's start against the way the centre of mass went until the trunk touched, degrees; none for a
+			// body that went less than 5 cm over the floor (it sank).
+			const FVector2D WentCm(FallSenseImpactComCm.X - FallSenseStartComCm.X, FallSenseImpactComCm.Y - FallSenseStartComCm.Y);
+			const FVector2D Went = WentCm.GetSafeNormal();
+			const bool bWays = bMet && WentCm.Size() >= 5.0 && !FallSenseWay.IsNearlyZero();
+			SenseJson->SetField(TEXT("went_cm"), bMet ? Number(WentCm.Size()) : Null());
+			SenseJson->SetField(TEXT("way_error_deg"), bWays ? Number(FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector2D::DotProduct(FallSenseWay, Went), -1.0, 1.0)))) : Null());
+			FallJson->SetObjectField(TEXT("sense"), SenseJson);
+		}
 		Natural.WriteFall(*FallJson);
 		ControlJson->SetObjectField(TEXT("fall"), FallJson);
 		Natural.WriteControl(*ControlJson);

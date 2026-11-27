@@ -114,6 +114,26 @@ struct SANDBOXBODY_API FSandboxBodyProbe
 	static FVector2D CapturePoint(const FVector& CenterOfMassCm, const FVector& VelocityCmS, double HeightCm, double GravityCmS2);
 
 	/**
+	 * How long until a point HeightCm above a floor, moving up at VzCmS (down below 0) and falling freely under GravityCmS2, comes within
+	 * RadiusCm of the floor; 0 if it is that near already. Seconds. (R3: the time until the trunk meets the floor.)
+	 */
+	static double TimeToFloorS(double HeightCm, double VzCmS, double GravityCmS2, double RadiusCm);
+
+	/**
+	 * An angle from -pi to pi taken on Reference's side of the seam at pi: itself, or 2 pi less or more when the two lie more than half a
+	 * turn apart, so that a mean of the two is between them (two feet at 175 and -175 degrees mean 180, not 0). Radians.
+	 */
+	static double OnSideOf(double AngleRad, double ReferenceRad);
+
+	/**
+	 * Where the head is asked to turn for a target at TargetYawDeg from the chest's front (from -180 to 180), the head turning HeadShare
+	 * of that and now at HeadYawDeg: behind the shoulders the target may also be taken a turn the other way round (190 for -170), and
+	 * is, when the head is nearer to that; so that a target crossing straight behind does not swing the head between its limits, and
+	 * one just behind a shoulder is still turned to. Degrees, before the head's share and limit.
+	 */
+	static double GazeYawDeg(double TargetYawDeg, double HeadYawDeg, double HeadShare);
+
+	/**
 	 * Speed of the body as a whole: the root mean square over its bodies, weighted by mass, of their linear
 	 * speed (m/s) and of their angular speed (rad/s). A trembling hand barely moves these; a moving trunk does.
 	 */

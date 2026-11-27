@@ -10,6 +10,7 @@
 #   ... -Events <file.json>                  a JSON array of events that replaces the scenario's own
 #   ... -Duration 6                          another duration, seconds
 #   ... -Tune "name=value,..."               tuning values for this run
+#   ... -TuningDir <dir>                     the tuning files from this directory instead of Config\Tuning
 #   ... -Overlay all                         debug overlays in the pictures
 #   ... -CropW 0.6 -Cols 6 -TileH 400        share of each picture's width kept, pictures per row, height of one
 #   ... -File <path.json>                    a scenario file from anywhere instead of Scenarios\<Name>.json
@@ -31,6 +32,7 @@ param(
     [string]$Events,
     [double]$Duration = 0,
     [string]$Tune,
+    [string]$TuningDir,
     [string]$Overlay,
     [double]$CropW = 0.6,
     [int]$Cols = 6,
@@ -89,6 +91,7 @@ $filmFile = Join-Path $outDir "$Tag.json"
 
 $runArguments = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'scenario.ps1'), '-File', $filmFile, '-Shot', '-ShotAt', $Times, '-Out', $outDir, '-Quiet')
 if ($Tune) { $runArguments += @('-Tune', $Tune) }
+if ($TuningDir) { $runArguments += @('-TuningDir', [System.IO.Path]::GetFullPath($TuningDir)) }
 if ($Overlay) { $runArguments += @('-Overlay', $Overlay) }
 $runOutput = & powershell @runArguments
 $runOutput | Select-Object -First 1

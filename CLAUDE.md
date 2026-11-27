@@ -11,13 +11,21 @@ where each part of the natural-body track went); criteria C1 to C26 with their h
 built, with its figures, is in its section of `docs/PRD.md`. What has already bitten is in `docs/pitfalls.md`, by
 area: read the areas a part touches before its plan (the entries every part needs are at the end of this file).
 
-**In short (26 November 2026):** M1 to M3 done (the owner's hand checks deferred); M4 in progress, its rest after
+**In short (27 November 2026):** M1 to M3 done (the owner's hand checks deferred); M4 in progress, its rest after
 R3. 19 bodies, muscles through Physics Control, capture-point balance with steps, the led get-up on (`getup.carry` 1). The
 player's movement in VR built (the right stick, a snap turn on the left, the player's body as a capsule of 10 kg; decisions 24
-to 28; the owner's look in the headset to come). Baseline `walk` (`led`'s 127 hashes and five `body_*`): the suite is 131 of
-132, `grab_getup_held` failing on purpose until R2 (marked `known_failure`, so the suite and the bootstrap pass with it counted
-apart). R2's step 0, the clean-up of dead switches, done (every hash kept; 49 unit tests). Next: R2's decision 17 (a get-up
-that was not led is said), then the hold by one hand. DLSS is deferred to M5.
+to 28; the owner's look in the headset to come). Baseline `r2night` (`walk`'s 132 hashes and nine new get-up scenarios): the
+suite is 140 of 141, `grab_getup_held` failing on purpose while R2's hold is off (marked `known_failure`, so the suite and the
+bootstrap pass with it counted apart). R2's step 0, the clean-up of dead switches, done (every hash kept). In the night of 26 November, the owner away: step 2
+(decision 17: a get-up that was not led fails a run, `get_up_led`; `control.authority` by state, body and direction) and step 3
+(the hold by one hand, decisions 13 and 14, behind `getup.hold_by_body` at 0, for the owner's look) and step 4 (a hit takes
+authority by its impulse, decision 20, behind `getup.hit_by_impulse` at 0) and step 6 (the start blended from the lying pose,
+decision 22, behind `getup.start_blend_s` at 0), every hash of `walk` kept; 141 scenarios (two for decision 20, seven of a push,
+a blow and a hold in the get-up's phases), 54 unit tests; R3's first item, the fall's way and time, built as a measure only
+(`control.fall.sense`); step 7, get-ups from eight ways of lying (`getup_laid_*`, laid by `body.laid_deg`), with a defect put right:
+the support frame averaged the feet's turns across 180 degrees (baseline `laid`, 151 scenarios with two beside the table, 150 of 151);
+R3's second, the fall's arms blended by its way, behind `fall.blend` at 0. Decisions 30 to 37 taken for the owner, to confirm. DLSS is
+deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 
@@ -38,12 +46,13 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | One scenario with other body tuning | add `-Tune "muscles.legs.stiffness_nm_per_rad=400,solver.position_iterations=32"`, or `-TuningDir <dir>` for another set of tuning files |
 | All scenarios | `powershell -ExecutionPolicy Bypass -File Tools\suite.ps1` (eight engine processes take the scenarios from one queue; also holds the whole set to 2 cm of joint stretch and a 1.5 ms mean physics step, and prints the worst scenario of each; `-Long` adds the scenarios over 60 s, `stand_npc_10min`; `-Parallel 1` for physics step times nothing disturbed; `-Tune "name=value,..." -Label <name>` runs the whole suite against other values into `Saved\Suites\<name>`, leaving what baselines are made of alone) |
 | A motion as a sheet of pictures over time | `powershell -ExecutionPolicy Bypass -File Tools\film.ps1 -Name hit_chest_200_falls -Times "3.1,3.2,3.3,3.4,3.5,3.7,4.0,5.0"` (`-Camera side\|front\|back\|quarter`, `-Events <file>`, `-Tune`; `Saved\Films\<name>\sheet.png`; `-Around 3.0 -Span 0.6 -Every 0.033` for a dense strip instead of `-Times`, `-Video` for an mp4 as well) |
+| Two videos side by side, the same camera and times, before and after a change | `powershell -ExecutionPolicy Bypass -File Tools\film-pair.ps1 -Name getup_push_weak -Around 8.3 -Span 3 -TuneB "getup.hit_by_impulse=1" -LabelA "switch 0" -LabelB "switch 1"` (`-File`, `-TuneA`, `-Camera`, `-Every`, `-Overlay`; the scenario runs to its end whatever its `end_when_standing_s`; `Saved\Films\<tag>\pair.mp4`, each side's film in `<tag>_a` and `<tag>_b`; `docs/active-ragdoll.md`, section 9) |
 | What a recorded clip asks of the body, as a sheet of pictures | `powershell -ExecutionPolicy Bypass -File Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60` (the body hangs by its welded pelvis and is asked for the clip's pose at each time; `-Carry` moves the pelvis as the clip does; several clips separated by commas; `Saved\Films\clip_<name>\sheet.png`) |
 | Keep the suite's results, or see what changed since | `powershell -ExecutionPolicy Bypass -File Tools\baseline.ps1 -Save <name>` before a change, `-Compare <name>` after it (or `suite.ps1 -SaveBaseline <name>` and `-Baseline <name>`): which scenarios have other hashes, and what moved in them |
 | Scenarios over a set of tuning values | `powershell -ExecutionPolicy Bypass -File Tools\sweep.ps1 -Name legs -Scenarios "stand_npc,hit_head_30_stands" -Vary "muscles.legs.stiffness_nm_per_rad=400,800;muscles.legs.damping_s=0.03,0.06"` (every combination, or `-OneAtATime`; `-Metrics` chooses the columns; table in `Saved\Sweeps\<name>`) |
 | Push matrix (160 pushes, outcome by the owner's M3 table) | `powershell -ExecutionPolicy Bypass -File Tools\push-matrix.ps1` (`-PushSeconds 0.1` for pushes instead of blows, `-Tune` to try values, `-Impulses "30" -Enforce "30"` for one row, `-Rules m2` for the old gate; a step is a foot carried 10 cm or more, `-StepMinCm`, and shorter hops are reported as shuffles); against a baseline: `Tools\baseline.ps1 -CompareMatrix <name>` |
-| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; `-PropsFile Tools\stand_furniture_props.json -Only floor -Floor 50` puts movable furniture around every fall on the bare floor; `-HoldHands 1` or `2` has that many hands take hold of the chest of every fallen body for 15 s, with the grab on, and counts the grips that came off and the bodies that pulled free and stood in that time; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
-| The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-Seeds "1,2,3"`, `-PressN`, `-HoldHands`, `-Only`, `-StopStandingS`; three engine processes a stand, nine in all, `-Parallel`; results in `Saved\Matrix\getup_seeds\<name>`) |
+| The stand of 50 falls and get-ups (the criterion of M3 part 6: 90% end standing) | `powershell -ExecutionPolicy Bypass -File Tools\getup-stand.ps1` (26 falls on the bare floor, 8 each near a wall, the table and the chair; `-Seed 2` for other falls, `-Only "table,chair"`, `-Tune`, `-TuningDir` (for what `-Tune` cannot give, a clip's path), `-Film failed` for a sheet of pictures of every fall that does not end standing, `-Film "36,42"` of those trials; `-PressN 300` presses every fallen body down for 20 s and counts those that stood under it; `-PropsFile Tools\stand_furniture_props.json -Only floor -Floor 50` puts movable furniture around every fall on the bare floor; `-HoldHands 1` or `2` has that many hands take hold of the chest of every fallen body for 15 s, with the grab on, and counts the grips that came off and the bodies that pulled free and stood in that time; a trial ends once its body has stood for 3 s, `-StopStandingS 0` runs each for the whole 40 s; the places are worked out from where the room spec has the table and the chair) |
+| The stand on three seeds side by side, one line a seed | `powershell -ExecutionPolicy Bypass -File Tools\getup-seeds.ps1 -Label <name>` (`-Tune`, `-TuningDir`, `-Seeds "1,2,3"`, `-PressN`, `-HoldHands`, `-Only`, `-StopStandingS`; three engine processes a stand, nine in all, `-Parallel`; results in `Saved\Matrix\getup_seeds\<name>`; a line of R2's gate over all seeds: C19's attempts given up and longest pose held, C27 in the median and by clip; each seed's time from the first attempt to standing and the authority by direction) |
 | Friction between the lying body and the floor, by experiment | `powershell -ExecutionPolicy Bypass -File Tools\surface-friction.ps1` (knocks the body down and drags it by the pelvis with `-ForceN 800` for `-PushS 1.0`; the friction from its acceleration; `-Tune` to try values) |
 | Knockdowns from 8 directions, judged by the fall's criteria | `powershell -ExecutionPolicy Bypass -File Tools\knockdowns.ps1` (a blow of 200 N*s on the chest from each; `-Impulses "200,300" -Bodies "spine_04,head"` for harder ones and the head, `-Tune`, `-CVars`, `-Film` for a sheet of pictures of every fall; `-ByHand` fells it with two fists that go through the chest at 4 m/s instead) |
 | One generated scenario file | `powershell -ExecutionPolicy Bypass -File Tools\scenario.ps1 -File <path.json>` |
@@ -66,7 +75,7 @@ Run from the repo root in PowerShell. Each script prints a one-line verdict firs
 | Create, rig and assemble the MetaHuman | `powershell -ExecutionPolicy Bypass -File Tools\metahuman.ps1` (cloud steps need an Epic sign-in; see `docs/pitfalls.md`, assets) |
 
 Typical times on the reference machine: incremental build 4 to 35 s, full build 80 s, one scenario 8 s
-(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 49 s (132 scenarios; about 90 s with `-Long`), the scorecard 140 s (`-Quick` 56 s), the compliance table 25 s, the pose database 35 s, a record and replay 33 s (three takes 49 s, the walk with a made-up headset 37 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
+(the 10-minute stand scenario 60 s), unit tests 15 s, the whole suite 58 s (151 scenarios; about 99 s with `-Long`), the scorecard 140 s (`-Quick` 56 s), the compliance table 25 s, the pose database 35 s, a record and replay 33 s (three takes 49 s, the walk with a made-up headset 37 s), a report on a 72 s recording 40 s, the hand's lag on four speeds 35 s,
 the push matrix 50 s (one row of 40: 15 s), the knockdowns 18 s, the grab's 93 pulls 60 s, the stand of 50 falls 41 s with
 the led get-up (66 s before it; three seeds side by side, nine processes, 92 s), regenerating the physics asset 10 s, a film
 of 12 pictures 15 s, the session's self-test 10 s (its grab demo 10 s), the whole
@@ -150,7 +159,7 @@ touch must not be in that list, and the ones that are get explained in the part'
 
 ## Things that have already bitten
 
-The rest of the list is `docs/pitfalls.md`: 187 entries on 26 November 2026 (208 with the 21 below), grouped by area (the
+The rest of the list is `docs/pitfalls.md`: 193 entries on 27 November 2026 (214 with the 21 below), grouped by area (the
 solver; measuring, runs and tests; muscles, poses and the standing body; falls and the get-up; hands, the grab and blows; the
 session, recordings and the headset; PowerShell, scripts and building; assets, the MetaHuman, maps and lighting), each with when
 to read it. The entries below are the ones that spoil a result in any part without a sign; they are here only, and every

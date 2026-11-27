@@ -363,6 +363,47 @@ FVector2D FSandboxBodyProbe::CapturePoint(const FVector& CenterOfMassCm, const F
 	return FVector2D(CenterOfMassCm.X + VelocityCmS.X * TimeS, CenterOfMassCm.Y + VelocityCmS.Y * TimeS);
 }
 
+double FSandboxBodyProbe::TimeToFloorS(double HeightCm, double VzCmS, double GravityCmS2, double RadiusCm)
+{
+	// height + vz t - g t^2 / 2 = radius: the later root, the one ahead.
+	const double Above = HeightCm - RadiusCm;
+	if (Above <= 0.0)
+	{
+		return 0.0;
+	}
+	if (GravityCmS2 <= 0.0)
+	{
+		return VzCmS < 0.0 ? Above / -VzCmS : TNumericLimits<double>::Max();
+	}
+	return (VzCmS + FMath::Sqrt(VzCmS * VzCmS + 2.0 * GravityCmS2 * Above)) / GravityCmS2;
+}
+
+double FSandboxBodyProbe::OnSideOf(double AngleRad, double ReferenceRad)
+{
+	if (AngleRad - ReferenceRad > UE_DOUBLE_PI)
+	{
+		return AngleRad - UE_DOUBLE_TWO_PI;
+	}
+	if (AngleRad - ReferenceRad < -UE_DOUBLE_PI)
+	{
+		return AngleRad + UE_DOUBLE_TWO_PI;
+	}
+	return AngleRad;
+}
+
+double FSandboxBodyProbe::GazeYawDeg(double TargetYawDeg, double HeadYawDeg, double HeadShare)
+{
+	if (FMath::Abs(TargetYawDeg) > 90.0)
+	{
+		const double Other = TargetYawDeg + (TargetYawDeg > 0.0 ? -360.0 : 360.0);
+		if (FMath::Abs(Other * HeadShare - HeadYawDeg) < FMath::Abs(TargetYawDeg * HeadShare - HeadYawDeg))
+		{
+			return Other;
+		}
+	}
+	return TargetYawDeg;
+}
+
 void FSandboxBodyProbe::MassWeightedSpeeds(const TArray<FSandboxBodySample>& Samples, double& OutLinearMps, double& OutAngularRadS)
 {
 	double MassKg = 0.0;

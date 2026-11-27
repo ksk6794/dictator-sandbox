@@ -279,6 +279,17 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	FVector SpawnLocationCm = FVector(0.0, 0.0, 150.0);
 	/** Pitch, yaw, roll in degrees. */
 	FRotator SpawnRotation = FRotator::ZeroRotator;
+	/**
+	 * A body laid down before the first step (`body.laid_deg`): spawned standing as above and its control started, then every body
+	 * turned about the spawn location, a quarter turn backward about the body's left-right axis (on its back, the head where its back
+	 * faced) and then this far about its own length (0 on its back, 90 on its right side, 180 on its front, -90 on its left side),
+	 * and raised so that its lowest point is LaidHeightCm over the floor. A rig, as a pin is: the controller then finds its body lying.
+	 */
+	bool bLaid = false;
+	double LaidTurnDeg = 0.0;
+	double LaidHeightCm = 2.0;
+	/** The turn, in the world, that takes the body spawned standing to lying as `body.laid_deg` asks (about the spawn point). */
+	FQuat LaidRotation() const;
 	/** Extra skeletal meshes that follow the body's pose (a MetaHuman face, for example). No collision. */
 	TArray<FString> AttachedMeshPaths;
 	/** False keeps the body kinematic in its reference pose: for portraits and rendering-cost scenes. */

@@ -687,6 +687,22 @@ struct FSandboxFallAimTuning
 	double ReachBack = 0.0;
 	double YieldStiffness = 0.0;
 	double YieldDamping = 0.0;
+	/**
+	 * R3, step 2 (docs/recon/r3_step2_plan.md): 1 lays a blend of the sample's reaching poses over the fall's written pose while the
+	 * body falls, weighted every tick by the sensed way in the body's frame (forward, back, left, right); 0 does not (today's fall, bit
+	 * for bit).
+	 */
+	double Blend = 0.0;
+	/** How much of the blend lies over the written fall pose: 1 all of it. */
+	double BlendShare = 0.0;
+	/** How fast the weights follow the way, and the time in each reaching clip its pose is read at. Seconds. */
+	double BlendFollowS = 0.0;
+	double BlendClipS = 0.0;
+	/** The reaching clips, for a fall forward, back, to the left and to the right of the body. */
+	FString ClipReachForward;
+	FString ClipReachBack;
+	FString ClipReachLeft;
+	FString ClipReachRight;
 };
 
 /** What the body makes of what moves near it (N5, "perception.*"). Step 1 judges and does nothing with it. */
@@ -863,6 +879,45 @@ struct FSandboxGetUpTuning
 	double CarryMaxNmPerKg = 0.0;
 	double CarryReleaseS = 0.0;
 	double CarryYieldNs = 0.0;
+	/**
+	 * R2, decision 14 of docs/active-ragdoll.md: the hold of a led get-up taken body by body, and the clip slowed by the force.
+	 * HoldByBody 1: each hold (a hand's grip, told by TellHolds) takes the carry's springs off its chain: the held body and, by
+	 * HoldChain (0 the held body alone, 1 its chain to the pelvis without the pelvis, 2 with it, 3 with it and everything that hangs
+	 * from the held body), the bodies toward the pelvis, each further one counting HoldChainFalloff less (0: alike). A chain's hold
+	 * is the pull over HoldChainFullN (at most 1); a body keeps 1 - (1 - HoldChainShare) * hold of its springs. Every body, in a
+	 * chain or not, also keeps no more than 1 - (the holds' pulls added) / HoldRestFullN (0: the rest is led whole). A press from
+	 * contacts takes the springs off the whole body as before, up to
+	 * HoldForceN. The clip runs at Rate times a pace that is 1 below HoldSlowFromN of force and 0 at HoldForceN, in proportion
+	 * between; the force is the press, counted at HoldPressPace of itself (1: as a hold), and the holds together, as vectors added
+	 * (HoldSum 0) or by their sizes (1). Shares and the
+	 * pace go down at once and back by CarryReleaseS. 0: the led get-up as R1 made it, bit for bit. N, shares, modes.
+	 */
+	double HoldByBody = 0.0;
+	double HoldChain = 0.0;
+	double HoldChainFalloff = 0.0;
+	double HoldChainFullN = 0.0;
+	double HoldChainShare = 0.0;
+	double HoldRestFullN = 0.0;
+	double HoldSlowFromN = 0.0;
+	double HoldSum = 0.0;
+	double HoldPressPace = 0.0;
+	/**
+	 * R2, decision 20 of docs/active-ragdoll.md: HitByImpulse 1, while led every hit the body feels takes impulse / CarryYieldNs of
+	 * the carry's share away (all of it at CarryYieldNs; hits that follow each other add up) and it comes back over HitBackS (a whole
+	 * share in that time); no attempt is given up for the size of a hit: the blow moves the body and the get-up's own rules decide
+	 * (lost_cm, stall_s). 0: a hit of CarryYieldNs or more lets the body go and gives the attempt up, a smaller one leaves the pull as
+	 * it was, bit for bit. s.
+	 */
+	double HitByImpulse = 0.0;
+	double HitBackS = 0.0;
+	/**
+	 * R2, decision 22: above 0, a get-up starts from where the body is: the muscles' targets cross from the body's own pose to the
+	 * clip's first pose over this time, and the carry's targets from where each body lay to where the clip has it, by the same share.
+	 * 0: the clip's first pose taken whole, as before, bit for bit. s.
+	 */
+	double StartBlendS = 0.0;
+	/** 1: what a hit takes beyond the whole share is owed, so the share stays at 0 until HitBackS has given that much back; 0: it stops at 0. */
+	double HitOverflow = 0.0;
 	/**
 	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
 	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis

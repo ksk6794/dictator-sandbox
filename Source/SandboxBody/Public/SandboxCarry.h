@@ -50,6 +50,20 @@ public:
 
 	int32 Num() const { return Bodies.Num(); }
 	FName BoneAt(int32 Index) const { return Bodies[Index].Bone; }
+	/** The index of a bone's body, INDEX_NONE if it has none. */
+	int32 IndexOf(FName Bone) const { return Bodies.IndexOfByPredicate([Bone](const FBody& Body) { return Body.Bone == Bone; }); }
+	/** For each body the index of the body it hangs from (the nearest ancestor bone with a body), INDEX_NONE for the root (the pelvis). */
+	const TArray<int32>& GetParents() const { return Parents; }
+	/** The share of its springs each body was last given (Apply), 1 unless a hold took some away. */
+	double GetBodyShare(int32 Index) const { return Bodies[Index].BodyShare; }
+
+	/**
+	 * How far a hold on one body reaches (decision 14 of docs/active-ragdoll.md): the held body, and toward the root the bodies of
+	 * its chain, by Mode (0 the held body alone, 1 its chain to the root without the root, 2 with it, 3 with it and every body that
+	 * hangs from the held one), each further body counting Falloff less (0: alike). Hold is the held body's share, 0 to 1; each body
+	 * of the chain takes the larger of what it had and this. Pure arithmetic on the parents.
+	 */
+	static void ChainHolds(TConstArrayView<int32> InParents, int32 Held, int32 Mode, double Falloff, double Hold, TArrayView<double> InOutHolds);
 
 	/**
 	 * Where a body's bone should be at the start of the coming step, in the world. The reference's velocity is the difference
@@ -60,14 +74,22 @@ public:
 	/** The next targets are first ones: no velocity is made from the ones before. Bodies keep their targets. */
 	void ForgetTargets();
 
-	/** Hands the springs to the solver at a share of their strength (0 to 1). Bodies that never had a target stay free. */
-	void Apply(const FSandboxCarrySettings& Settings, double Share);
+	/**
+	 * Hands the springs to the solver at a share of their strength (0 to 1). Bodies that never had a target stay free. BodyShares,
+	 * when given, has one share for each body (0 to 1) on top of Share: what a hold leaves of that body's springs; empty, every
+	 * body has all of Share.
+	 */
+	void Apply(const FSandboxCarrySettings& Settings, double Share, TConstArrayView<double> BodyShares = TConstArrayView<double>());
 	double GetShare() const { return AppliedShare; }
 
 	/** What the springs ask of the world at the start of this step, from the spring law (an estimate, as the assist's load is): the sum of the forces' sizes, N. */
 	double LoadN(const FSandboxCarrySettings& Settings, double Share, FVector* OutNetN = nullptr) const;
 	/** The force one body's spring asks for, N, in the world. */
 	FVector ForceOn(int32 Index, const FSandboxCarrySettings& Settings, double Share) const;
+	/** The torque one body's angular spring asks for, N*m, in the world (capped by its size; the engine caps axis by axis). */
+	FVector TorqueOn(int32 Index, const FSandboxCarrySettings& Settings, double Share) const;
+	/** Where one body's centre of mass is to be and where it is, cm, world: for whoever looks. False before the body has a target. */
+	bool ComOf(int32 Index, FVector& OutTargetComCm, FVector& OutComCm) const;
 	/** For a log line: the Count bodies pulled hardest, each with its force and how far it is from its target. */
 	FString Describe(const FSandboxCarrySettings& Settings, double Share, int32 Count) const;
 
@@ -82,7 +104,10 @@ private:
 		FVector AngularVelocityRadS = FVector::ZeroVector;
 		bool bHasTarget = false;
 		bool bHasVelocity = false;
+		/** What a hold left of this body's springs in the last Apply. */
+		double BodyShare = 1.0;
 	};
+	TArray<int32> Parents;
 
 	/** How far the body's centre of mass is above where its target has it (0 when below): the target is raised by this. cm. */
 	double RaiseCm(const FBody& Body) const;

@@ -1,0 +1,31 @@
+{
+  "name": "getup_laid_across_table_end_front",
+  "map": "/Game/Generated/Maps/GetUpRoom",
+  "duration_s": 25.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "control": "active",
+    "get_up": true,
+    "rotation_deg": [
+      0,
+      0,
+      0
+    ],
+    "location_cm": [
+      45,
+      95,
+      0
+    ],
+    "laid_deg": 180,
+    "laid_height_cm": 79
+  },
+  "expect": {
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_joint_stretch_cm": 2.0
+  }
+}

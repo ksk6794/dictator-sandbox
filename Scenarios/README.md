@@ -44,6 +44,7 @@ The file name must equal the `name` field (a unit test checks this).
 | `body.physics_asset` | no | Overrides the mesh's own physics asset |
 | `body.location_cm` | no, default `[0, 0, 150]` | Spawn location of the mesh origin (the feet). The floor's top is at z = 0 |
 | `body.rotation_deg` | no | `[pitch, yaw, roll]` |
+| `body.laid_deg` | no | Lays the body down before the first step: spawned standing as above (with `location_cm` z = 0) and its control started, every body is then turned about the spawn point, a quarter turn backward (on its back, the head where its back faced) and this far about its own length (0 on the back, 90 on the right side, 180 on the front, -90 on the left side), and raised so that the lowest corner of its bodies' bounds is `body.laid_height_cm` (default 2) over the floor (the shapes themselves a few cm higher at most). It needs `location_cm` with z = 0 (the controller takes the height it starts at for its floor) and a simulated body. The controller then finds its body falling at 0 s; laid on the back or the front it has no way to fall over the floor and takes the backward fall's pose for the moment before it lies. A rig, as a pin is: a body spawned turned instead (`rotation_deg`) takes that turn for its standing pose. It does not look for what is in the way: a body laid into furniture is thrown out of it. A session (`play.ps1 -Name`) does not lay the body. The eight `getup_laid_<way>` and the two `getup_laid_beside_table_*` (27 November 2026; `rotation_deg` [0, 90, 0] lays it along +x) |
 | `body.attached_meshes` | no | Extra skeletal meshes that follow the body's pose and have no collision (a MetaHuman face) |
 | `body.simulate` | no, default `true` | `false` keeps the body kinematic in its reference pose, for portraits and rendering-cost scenes |
 | `body.get_up` | no, default `false` | Whether a body that lies gets up by itself (`getup.*`). Off unless asked for: a scenario about a fall is about the fall, and its body stays where it came to rest, so that rest time and energy are those of the fall. In a session the body gets up |
@@ -498,7 +499,13 @@ body lifted by 1 cm is 7.8 J.
 was at rest for good (`rest_after_s`), and how far and which way the centre of mass went over the floor
 (`distance_cm`, `direction_deg`: 0 is +x, 90 is +y). At rest means that the body as a whole moves no faster
 than 0.05 m/s and turns no faster than 0.2 rad/s (root mean square over its bodies, weighted by mass).
-These are the runner's own figures and do not follow the tuning's rest thresholds.
+These are the runner's own figures and do not follow the tuning's rest thresholds. Since R3's first step (27 November
+2026), `control.fall.sense`: what the first fall's sense foresaw (`USandboxBodyController::GetFallSense`: the first of the
+pelvis, the chest and the head under free fall to the floor, or what the chest's ball meets swept along its way) against what
+happened: the ticks sensed (`frames`), the time foreseen at the first (`foreseen_s`), the trunk's first touch after the fall
+began (`impact_s`), the first foresight's error and the mean of every tick's (`first_error_s`, `mean_abs_error_s`; positive:
+foreseen late), whether something other than the floor was foreseen first (`other_than_floor`), how far the centre of mass went
+until the touch and the angle between that way and the one foreseen (`went_cm`, `way_error_deg`; none under 5 cm). Read only.
 
 **Penetration** (`penetration`): how deep a shape of the body is inside the world (`max_world_cm`, with the
 bone, what it is inside and when), and how deep two bodies of the character are inside each other
@@ -556,7 +563,26 @@ was pressed with (`pressed_max_n`: the force felt in every frame of `reactions.h
 `getup.hold_force_n` is compared with); and what the assist did over all the time spent getting up (`seconds`): its
 commanded force over body weight, mean and largest (`assist_force_share_mean` 0.25 to 0.28 since M3 part 7, 0.44 to
 0.49 before: the clip-following get-up, before R1; under the led get-up the world's pull of `getup.carry` counts in
-the share, 1.16 of body weight in R1), and its largest torque share. The
+the share, 1.16 of body weight in R1), and its largest torque share. Since R2's step 2 (decision 17): of the attempts
+that asked for the led get-up, those that were led and those that were not (`led_attempts`, `not_led_attempts`), and why
+the last of those was not (`not_led`); such a run fails, whatever it expects, on a check of its own, `get_up_led`. Since
+R2's step 3: how long a hand held the body while it got up and its largest pull (`held_s`, `hold_max_n`), the slowest
+pace of the clip under `getup.hold_by_body` (`pace_min`, 1 without it) and when the first attempt began
+(`first_started_s`). Since R2's step 4: the least of the carry's share the hits left (`hit_free_min`, under
+`getup.hit_by_impulse`; 1 without it) and the farthest a struck body's centre of mass got from where the carry has it within
+a second of a hit while led (`hit_off_cm`, in every mode). Since 27 November: the reference's own shape as its pelvis first
+passes 70 cm (`rise_clip_trunk_deg`, `rise_clip_feet_cm`; beside `rise_trunk_deg` and `rise_feet_cm`, the body's), which says
+whether a lean is the clip's or the body's; -1 for an attempt that was not led or whose reference never got that high.
+
+**Authority** (`control.authority`, R2's step 2, decision 15; every run with active control): what the world gives the
+body, the old balance assist and the led get-up's carry, from the same spring law as the assist's load, after the settle
+time. `states.<state>`: for each state the body was in, `seconds`, and as shares of the body's weight (`weight_n`) the mean
+and the peak over its frames of the sum of the forces' sizes (`mean`, `peak`), of their upward parts (`up_mean`,
+`up_peak`), of their parts over the floor (`horizontal_mean`, `horizontal_peak`) and of their downward parts (`down_mean`,
+`down_peak`; the carry's damping brakes a body that rises faster than its reference), and the torques (`torque_mean_nm`,
+`torque_peak_nm`). `get_up_bodies`: while getting up, each body and source (`carry` or `assist`) given something, by its
+mean over the state's frames, largest first (`mean`, `peak`, `up_mean`, `horizontal_mean`, `down_mean`). The get-up's
+`mean` is `control.get_up.assist_force_share_mean`. The
 run's log has a line four times a second while the body gets up: the clip's time, how far the pelvis and the feet
 are from where the clip has them, and what the floor carries of each foot.
 

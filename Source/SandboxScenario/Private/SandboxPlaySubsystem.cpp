@@ -296,9 +296,36 @@ void USandboxPlaySubsystem::TellPerception()
 	FScenarioStage::TellBodyWhatMoves(bHandsSeen && Pawn.IsValid() ? Pawn->GetRig() : nullptr, Things, Character);
 }
 
+void USandboxPlaySubsystem::TellNotLed()
+{
+	const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
+	if (!Controller)
+	{
+		return;
+	}
+	if (NotLedOf.Get() != Controller)
+	{
+		// A character put back is counted from its own start.
+		NotLedOf = Controller;
+		NotLedTold = 0;
+	}
+	const FSandboxGetUpView& GetUps = Controller->GetGetUpView();
+	if (GetUps.NotLedAttempts > NotLedTold)
+	{
+		NotLedTold = GetUps.NotLedAttempts;
+		UE_LOG(LogSandbox, Error, TEXT("Play session: the character's get-up asked for the led get-up (getup.carry 1) and was not led (%d time(s)): %s; it went the clip-following way"),
+			NotLedTold, *GetUps.NotLed);
+	}
+}
+
 void USandboxPlaySubsystem::AddHudLines(TArray<FString>& OutLines) const
 {
 	const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
+	if (Controller && Controller->GetGetUpView().NotLedAttempts > 0)
+	{
+		OutLines.Add(FString::Printf(TEXT("GET-UP NOT LED (getup.carry 1), %d time(s): %s; it went the clip-following way"),
+			Controller->GetGetUpView().NotLedAttempts, *Controller->GetGetUpView().NotLed));
+	}
 	if (Controller && Controller->GetStateLog().Num() > 0)
 	{
 		const FSandboxStateChange& Last = Controller->GetStateLog().Last();
@@ -1047,6 +1074,7 @@ void USandboxPlaySubsystem::Tick(float DeltaTime)
 	// The character is told what the hands hold of it; neither knows the other.
 	FScenarioStage::TellBodyOfHolds(Pawn.IsValid() ? Pawn->GetRig() : nullptr, Character);
 	TellPerception();
+	TellNotLed();
 
 	// A recording from the first frame begins once the pawn has its hands, which it makes when it begins to
 	// play: later than the session adopts it. (Asked for at the adoption, as it first was, the recording never

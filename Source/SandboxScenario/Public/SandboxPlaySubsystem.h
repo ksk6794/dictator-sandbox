@@ -9,6 +9,7 @@
 class ASandboxPawn;
 class ASandboxRagdollActor;
 class FSandboxStandInHeadset;
+class USandboxBodyController;
 struct FSandboxTargetRecording;
 
 /**
@@ -76,6 +77,13 @@ private:
 	void RequestReset();
 	void ResetCharacter();
 	void AddHudLines(TArray<FString>& OutLines) const;
+	/**
+	 * Decision 17: a get-up of the character that asked for the led get-up (getup.carry 1) and was not led is said in the log, once
+	 * an attempt, and on the desktop's HUD while that character lives (the headset's HUD draws nothing).
+	 */
+	void TellNotLed();
+	TWeakObjectPtr<const USandboxBodyController> NotLedOf;
+	int32 NotLedTold = 0;
 	void HoldFrameRate(bool bWait);
 	void Fail(const FString& Message);
 

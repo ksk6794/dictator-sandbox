@@ -337,6 +337,10 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   made a stiff shape of the body: knocked over by the head, it stood on its head with its legs in the air for
   a second, and on its back it kept its forearms up. The muscles let go `thresholds.impact_let_go_s` after the
   trunk or the head first meets the floor.
+- **A recorded pose for a body in the air is not one for a body that lies.** R3's blend of Epic's reaching poses over the
+  whole body, kept on as the body lay, held a leg up in the air at rest (the sample's legs trail a body thrown through the air);
+  over the arms only, and let go as the body lies, it did not (27 November). Use a recorded pose for the part it was recorded
+  for, and film the rest after the fall, not only the fall.
 - **A falling body needs a pose of its own and legs that are let go in time.** Holding the stance, it fell
   straight; with a fall pose but its placed feet released over `poses.blend_s` (0.4 s), a body that fell after a
   step met the floor with straight legs. Placements are released over `poses.fall_blend_s`.
@@ -437,9 +441,26 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   unless the floor holds it. When a share of force is far larger than the job needs, log it body by body with its direction.
 - **Capping what the world may lift did not make the legs lift.** With the led get-up's upward cap at half a weight per body the
   stand went from 139 first attempts to 70: the body falls behind its clip and the attempt is lost. A cap is not a controller.
+- **"Never pushes down" made for a spring's place still pushes down through its damping.** The carry gives a body above its reference
+  the reference at its own height, so its spring never pulls it down; its damping brakes a body that rises faster than its reference,
+  and on the stand of 150 that was 0.12 of the body's weight downward on average, up to 1.27 weights in a frame. Found only when the
+  world's force was measured by direction (`control.authority`, R2's step 2). A rule about a force's direction is checked on the force
+  measured by direction.
+- **Half of a stiff spring still takes a push back.** Decision 20's hit takes the carry's share in proportion to the impulse; a push of
+  30 N*s left half of a spring of 400 N/m per kg damped near critically, and the push was taken back within a tenth of a second as
+  before (the chest 2.4 cm off against 2.1). What a share does is measured by what the body does, not by the share.
 - **A pull from the world that gets the body up gets it up against a hand too.** Led, two pressing hands did not slow a get-up and
   one holding hand was torn off, until a press took the pull away in proportion; one hand still does not hold. Every new source of
   force is run against the hold and the press (`getup-stand.ps1 -HoldHands`, `-PressN`) before it is called interactive.
+- **An angle averaged across its seam points the other way.** The support frame was the mean of the two feet's turns since the start,
+  each from -180 to 180 degrees; a body that got up facing about half round from where it started had its feet at 175 and -175, a frame
+  at 0, its stance 65 cm "off", a regroup step that turned it round and a fall (27 November, `getup_laid_front`). It showed only on a
+  body laid down facing away, and in 6 of the stand's 150 trials. Average turns by taking each on the first one's side of the seam.
+  The gaze had the same seam (a target straight behind swung the head between its limits); search for every angle from `Atan2` or a
+  twist that is averaged, clamped or compared.
+- **A body spawned turned takes that turn for standing.** The controller's references are the pose it starts in: spawned lying
+  (`body.rotation_deg`), the assist held it lying and called it a stagger, or the get-up's clip was laid 40 cm from it. A body to lie
+  is laid after its control starts (`body.laid_deg`).
 
 ## Hands, the grab and blows
 
@@ -668,6 +689,9 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   does not parse fails at once: run a new helper once in the foreground before a long batch in the background.
 - **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated
   code); `UScenarioBatchSubsystem` owns its log device through a plain pointer.
+- **A tool that checks only that its output file exists passes an old file as new.** `Tools\film-pair.ps1` looked for `film.mp4` in a
+  folder that is the same on every run; a side whose run failed would have shown the last run's film under the new label, and said OK.
+  Delete what a step is to make before it runs, and judge the step by its own verdict (found by the review of 27 November).
 - **`@(, @(1, 2), @(3, 4))` is not a list of two pairs in PowerShell.** The comma binds to the first item only and wraps it
   once more; the first pair of every such row was never judged. And `Measure-Object` over the `$null` that an empty
   list becomes reads 0, which is within most limits: say what a figure that is missing means.

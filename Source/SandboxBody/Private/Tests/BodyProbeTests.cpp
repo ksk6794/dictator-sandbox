@@ -130,4 +130,47 @@ bool FBodyProbeEnergyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/** R3: the time until the trunk meets the floor, against free fall worked by hand (g 980 cm/s^2). */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBodyProbeTimeToFloorTest, "DictatorSandbox.Body.Probe.TimeToFloor", ProbeTestFlags)
+bool FBodyProbeTimeToFloorTest::RunTest(const FString& Parameters)
+{
+	constexpr double G = 980.0;
+	// From rest, 122.5 cm above the radius: t = sqrt(2 h / g) = 0.5 s.
+	TestEqual(TEXT("from rest"), FSandboxBodyProbe::TimeToFloorS(134.5, 0.0, G, 12.0), 0.5, 1.0e-9);
+	// Thrown up at 490 cm/s from the radius's height: back at t = 2 v / g = 1.0 s.
+	TestEqual(TEXT("thrown up from the floor's height"), FSandboxBodyProbe::TimeToFloorS(12.0 + 1.0e-9, 490.0, G, 12.0), 1.0, 1.0e-6);
+	// Moving down at 245 cm/s from 91.875 cm above: 245 t + 490 t^2 = 91.875 at t = 0.25 s.
+	TestEqual(TEXT("moving down"), FSandboxBodyProbe::TimeToFloorS(103.875, -245.0, G, 12.0), 0.25, 1.0e-9);
+	// Already within the radius: now.
+	TestEqual(TEXT("there already"), FSandboxBodyProbe::TimeToFloorS(10.0, -100.0, G, 12.0), 0.0, 1.0e-12);
+	// No gravity: by its speed alone.
+	TestEqual(TEXT("no gravity"), FSandboxBodyProbe::TimeToFloorS(112.0, -200.0, 0.0, 12.0), 0.5, 1.0e-12);
+	return true;
+}
+
+/** The seam at 180 degrees: the feet's mean turn and the gaze's side (found on 27 November 2026, R2's step 7 and its review). */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBodyProbeSeamTest, "DictatorSandbox.Body.Probe.AnglesAcrossTheSeam", ProbeTestFlags)
+bool FBodyProbeSeamTest::RunTest(const FString& Parameters)
+{
+	const double D = UE_DOUBLE_PI / 180.0;
+	// Two feet at 175 and -175 degrees: the second taken as 185, the mean 180 (half round), not 0.
+	TestEqual(TEXT("feet across the seam"), (175.0 * D + FSandboxBodyProbe::OnSideOf(-175.0 * D, 175.0 * D)) / 2.0, 180.0 * D, 1.0e-12);
+	TestEqual(TEXT("and the other way round"), (-175.0 * D + FSandboxBodyProbe::OnSideOf(175.0 * D, -175.0 * D)) / 2.0, -180.0 * D, 1.0e-12);
+	// Feet that do not straddle it are left exactly as they are.
+	TestTrue(TEXT("feet on one side, unchanged to the bit"), FSandboxBodyProbe::OnSideOf(-30.0 * D, 20.0 * D) == -30.0 * D);
+	TestTrue(TEXT("a quarter turn apart, unchanged"), FSandboxBodyProbe::OnSideOf(100.0 * D, 10.0 * D) == 100.0 * D);
+	TestTrue(TEXT("the first foot, itself"), FSandboxBodyProbe::OnSideOf(2.0, 2.0) == 2.0);
+	// The gaze, the head turning 0.7 of the way: a target behind on the right (-170) while the head turns left (+35) is nearer at
+	// +190 (133 against -119), so it stays on the left as it crosses the seam.
+	TestEqual(TEXT("behind, kept on the head's side"), FSandboxBodyProbe::GazeYawDeg(-170.0, 35.0, 0.7), 190.0, 1.0e-12);
+	TestEqual(TEXT("behind on the left, head right"), FSandboxBodyProbe::GazeYawDeg(170.0, -35.0, 0.7), -190.0, 1.0e-12);
+	// Just behind the right shoulder (-95) with the head nearly straight (+2): turned to, not away (the review's case).
+	TestTrue(TEXT("just behind a shoulder"), FSandboxBodyProbe::GazeYawDeg(-95.0, 2.0, 0.7) == -95.0);
+	// In front of the shoulders, or the head not turned, or on the same side: the angle itself.
+	TestTrue(TEXT("in front of the shoulders"), FSandboxBodyProbe::GazeYawDeg(-80.0, 35.0, 0.7) == -80.0);
+	TestTrue(TEXT("head not turned"), FSandboxBodyProbe::GazeYawDeg(-170.0, 0.0, 0.7) == -170.0);
+	TestTrue(TEXT("same side"), FSandboxBodyProbe::GazeYawDeg(170.0, 35.0, 0.7) == 170.0);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

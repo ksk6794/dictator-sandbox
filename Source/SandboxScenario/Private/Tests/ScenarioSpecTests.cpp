@@ -418,4 +418,48 @@ bool FScenarioRepoFilesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/** `body.laid_deg`: which way the body lies for each turn, and the files the rig refuses (R2, step 7). */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FScenarioLaidTest, "DictatorSandbox.Scenario.Spec.LaysTheBodyDown", SandboxTestFlags)
+bool FScenarioLaidTest::RunTest(const FString& Parameters)
+{
+	const auto Laid = [](const FString& Body, FScenarioSpec& OutSpec, FString& OutError)
+	{
+		return FScenarioSpec::FromString(FString::Printf(TEXT(R"({ "name": "laid", "duration_s": 1.0, "body": { "mesh": "/Game/Some.Mesh", %s } })"), *Body), OutSpec, OutError);
+	};
+	const auto Near = [this](const TCHAR* What, const FVector& Got, const FVector& Want)
+	{
+		TestTrue(FString::Printf(TEXT("%s: (%.3f, %.3f, %.3f), want (%.0f, %.0f, %.0f)"), What, Got.X, Got.Y, Got.Z, Want.X, Want.Y, Want.Z), Got.Equals(Want, 1e-6));
+	};
+	// Unturned, the body faces +y with its head up +z and its right toward -x.
+	const FVector Head = FVector::ZAxisVector;
+	const FVector Face = FVector::YAxisVector;
+	const FVector Right = -FVector::XAxisVector;
+	FScenarioSpec Spec;
+	FString Error;
+
+	TestTrue(TEXT("on its back parses"), Laid(TEXT(R"("location_cm": [0, 90, 0], "laid_deg": 0)"), Spec, Error));
+	TestTrue(TEXT("laid"), Spec.bLaid);
+	Near(TEXT("on its back, the head where its back faced"), Spec.LaidRotation().RotateVector(Head), -FVector::YAxisVector);
+	Near(TEXT("on its back, the face up"), Spec.LaidRotation().RotateVector(Face), FVector::ZAxisVector);
+
+	TestTrue(TEXT("on its right side parses"), Laid(TEXT(R"("location_cm": [0, 0, 0], "laid_deg": 90)"), Spec, Error));
+	Near(TEXT("on its right side, the right down"), Spec.LaidRotation().RotateVector(Right), -FVector::ZAxisVector);
+	TestTrue(TEXT("on its left side parses"), Laid(TEXT(R"("location_cm": [0, 0, 0], "laid_deg": -90)"), Spec, Error));
+	Near(TEXT("on its left side, the left down"), Spec.LaidRotation().RotateVector(-Right), -FVector::ZAxisVector);
+	TestTrue(TEXT("on its front parses"), Laid(TEXT(R"("location_cm": [0, 0, 0], "laid_deg": 180)"), Spec, Error));
+	Near(TEXT("on its front, the face down"), Spec.LaidRotation().RotateVector(Face), -FVector::ZAxisVector);
+
+	// Spawned turned 90 degrees about up (facing -x), on its back: the head toward +x, where its back faced.
+	TestTrue(TEXT("turned and on its back parses"), Laid(TEXT(R"("location_cm": [0, 0, 0], "rotation_deg": [0, 90, 0], "laid_deg": 0)"), Spec, Error));
+	Near(TEXT("turned, the head where its back faced"), Spec.LaidRotation().RotateVector(Spec.SpawnRotation.RotateVector(Head)), FVector::XAxisVector);
+
+	// Refused: no place, a place off the floor, a body that does not simulate, a height without a turn, a turn out of range.
+	TestFalse(TEXT("no location refused"), Laid(TEXT(R"("laid_deg": 0)"), Spec, Error));
+	TestFalse(TEXT("off the floor refused"), Laid(TEXT(R"("location_cm": [0, 0, 20], "laid_deg": 0)"), Spec, Error));
+	TestFalse(TEXT("kinematic refused"), Laid(TEXT(R"("location_cm": [0, 0, 0], "laid_deg": 0, "simulate": false)"), Spec, Error));
+	TestFalse(TEXT("height alone refused"), Laid(TEXT(R"("location_cm": [0, 0, 0], "laid_height_cm": 5)"), Spec, Error));
+	TestFalse(TEXT("turn out of range refused"), Laid(TEXT(R"("location_cm": [0, 0, 0], "laid_deg": 200)"), Spec, Error));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

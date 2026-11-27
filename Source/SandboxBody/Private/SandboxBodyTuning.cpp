@@ -116,6 +116,10 @@ namespace
 		Visitor(FString(TEXT("fall.reach_back")), Tuning.FallAim.ReachBack);
 		Visitor(FString(TEXT("fall.arm_yield_stiffness")), Tuning.FallAim.YieldStiffness);
 		Visitor(FString(TEXT("fall.arm_yield_damping")), Tuning.FallAim.YieldDamping);
+		Visitor(FString(TEXT("fall.blend")), Tuning.FallAim.Blend);
+		Visitor(FString(TEXT("fall.blend_share")), Tuning.FallAim.BlendShare);
+		Visitor(FString(TEXT("fall.blend_follow_s")), Tuning.FallAim.BlendFollowS);
+		Visitor(FString(TEXT("fall.blend_clip_s")), Tuning.FallAim.BlendClipS);
 		Visitor(FString(TEXT("assist.internal_share")), Tuning.Weight.InternalShare);
 		Assist(TEXT("pelvis"), Tuning.Pelvis);
 		Assist(TEXT("chest"), Tuning.Chest);
@@ -284,18 +288,35 @@ namespace
 		Visitor(FString(TEXT("getup.carry_max_nm_per_kg")), Tuning.GetUp.CarryMaxNmPerKg);
 		Visitor(FString(TEXT("getup.carry_release_s")), Tuning.GetUp.CarryReleaseS);
 		Visitor(FString(TEXT("getup.carry_yield_ns")), Tuning.GetUp.CarryYieldNs);
+		Visitor(FString(TEXT("getup.hold_by_body")), Tuning.GetUp.HoldByBody);
+		Visitor(FString(TEXT("getup.hold_chain")), Tuning.GetUp.HoldChain);
+		Visitor(FString(TEXT("getup.hold_chain_falloff")), Tuning.GetUp.HoldChainFalloff);
+		Visitor(FString(TEXT("getup.hold_chain_full_n")), Tuning.GetUp.HoldChainFullN);
+		Visitor(FString(TEXT("getup.hold_chain_share")), Tuning.GetUp.HoldChainShare);
+		Visitor(FString(TEXT("getup.hold_rest_full_n")), Tuning.GetUp.HoldRestFullN);
+		Visitor(FString(TEXT("getup.hold_slow_from_n")), Tuning.GetUp.HoldSlowFromN);
+		Visitor(FString(TEXT("getup.hold_sum")), Tuning.GetUp.HoldSum);
+		Visitor(FString(TEXT("getup.hold_press_pace")), Tuning.GetUp.HoldPressPace);
+		Visitor(FString(TEXT("getup.hit_by_impulse")), Tuning.GetUp.HitByImpulse);
+		Visitor(FString(TEXT("getup.hit_back_s")), Tuning.GetUp.HitBackS);
+		Visitor(FString(TEXT("getup.hit_overflow")), Tuning.GetUp.HitOverflow);
+		Visitor(FString(TEXT("getup.start_blend_s")), Tuning.GetUp.StartBlendS);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
 
-	/** Calls Visitor(name, text) for every clip of the get-up. */
+	/** Calls Visitor(name, text) for every clip of the get-up and of the fall's blend. */
 	template <typename TuningType, typename VisitorType>
-	void VisitClips(TuningType& GetUp, VisitorType&& Visitor)
+	void VisitClips(TuningType& Tuning, VisitorType&& Visitor)
 	{
-		Visitor(TEXT("getup.clip_back"), GetUp.ClipBack);
-		Visitor(TEXT("getup.clip_front"), GetUp.ClipFront);
-		Visitor(TEXT("getup.clip_left"), GetUp.ClipLeft);
-		Visitor(TEXT("getup.clip_right"), GetUp.ClipRight);
+		Visitor(TEXT("getup.clip_back"), Tuning.GetUp.ClipBack);
+		Visitor(TEXT("getup.clip_front"), Tuning.GetUp.ClipFront);
+		Visitor(TEXT("getup.clip_left"), Tuning.GetUp.ClipLeft);
+		Visitor(TEXT("getup.clip_right"), Tuning.GetUp.ClipRight);
+		Visitor(TEXT("fall.clip_reach_forward"), Tuning.FallAim.ClipReachForward);
+		Visitor(TEXT("fall.clip_reach_back"), Tuning.FallAim.ClipReachBack);
+		Visitor(TEXT("fall.clip_reach_left"), Tuning.FallAim.ClipReachLeft);
+		Visitor(TEXT("fall.clip_reach_right"), Tuning.FallAim.ClipReachRight);
 	}
 }
 
@@ -401,7 +422,7 @@ void FSandboxBodyTuning::DeclareParams(FSandboxParamStore& Params)
 	VisitValues(Names, [&Params](const FString& Key, double&) { Params.DeclareNumber(Key); });
 	VisitRig(Names.Rig, [&Params](const TCHAR* Key, FName&) { Params.DeclareString(Key); });
 	Params.DeclareString(IdleAnimationKey);
-	VisitClips(Names.GetUp, [&Params](const TCHAR* Key, FString&) { Params.DeclareString(Key); });
+	VisitClips(Names, [&Params](const TCHAR* Key, FString&) { Params.DeclareString(Key); });
 	for (const TCHAR* State : StateNames)
 	{
 		Params.DeclareState(State);
@@ -456,7 +477,7 @@ bool FSandboxBodyTuning::FromParams(const FSandboxParamStore& Params, const FStr
 	{
 		Missing = IdleAnimationKey;
 	}
-	VisitClips(OutTuning.GetUp, [&](const TCHAR* Key, FString& Path)
+	VisitClips(OutTuning, [&](const TCHAR* Key, FString& Path)
 	{
 		if (!Params.FindString(Key, Path) && Missing.IsEmpty())
 		{
@@ -577,7 +598,9 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(FallAim.WayFollowS, 2.0, TEXT("fall"), TEXT("way_follow_s"), OutError) || !CheckRange(FallAim.ReachStiffness, 20.0, TEXT("fall"), TEXT("arm_reach_stiffness"), OutError) ||
 		!CheckRange(FallAim.ReachDamping, 20.0, TEXT("fall"), TEXT("arm_reach_damping"), OutError) || !CheckRange(FallAim.YieldStiffness, 20.0, TEXT("fall"), TEXT("arm_yield_stiffness"), OutError) ||
 		!CheckRange(FallAim.YieldDamping, 20.0, TEXT("fall"), TEXT("arm_yield_damping"), OutError) ||
-		!CheckRange(FallAim.ReachBack, 1.0, TEXT("fall"), TEXT("reach_back"), OutError))
+		!CheckRange(FallAim.ReachBack, 1.0, TEXT("fall"), TEXT("reach_back"), OutError) ||
+		!CheckRange(FallAim.Blend, 1.0, TEXT("fall"), TEXT("blend"), OutError) || !CheckRange(FallAim.BlendShare, 1.0, TEXT("fall"), TEXT("blend_share"), OutError) ||
+		!CheckRange(FallAim.BlendFollowS, 2.0, TEXT("fall"), TEXT("blend_follow_s"), OutError) || !CheckRange(FallAim.BlendClipS, 10.0, TEXT("fall"), TEXT("blend_clip_s"), OutError))
 	{
 		return false;
 	}
@@ -630,8 +653,31 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.CarryMaxUpWeights, 100.0, TEXT("getup"), TEXT("carry_max_up_weights"), OutError) ||
 		!CheckRange(GetUp.CarryMaxNmPerKg, 1000.0, TEXT("getup"), TEXT("carry_max_nm_per_kg"), OutError) ||
 		!CheckRange(GetUp.CarryReleaseS, 5.0, TEXT("getup"), TEXT("carry_release_s"), OutError) ||
-		!CheckRange(GetUp.CarryYieldNs, 10000.0, TEXT("getup"), TEXT("carry_yield_ns"), OutError))
+		!CheckRange(GetUp.CarryYieldNs, 10000.0, TEXT("getup"), TEXT("carry_yield_ns"), OutError) ||
+		!CheckRange(GetUp.HoldByBody, 1.0, TEXT("getup"), TEXT("hold_by_body"), OutError) ||
+		!CheckRange(GetUp.HoldChain, 3.0, TEXT("getup"), TEXT("hold_chain"), OutError) ||
+		!CheckRange(GetUp.HoldRestFullN, 100000.0, TEXT("getup"), TEXT("hold_rest_full_n"), OutError) ||
+		!CheckRange(GetUp.HoldChainFalloff, 1.0, TEXT("getup"), TEXT("hold_chain_falloff"), OutError) ||
+		!CheckRange(GetUp.HoldChainFullN, 10000.0, TEXT("getup"), TEXT("hold_chain_full_n"), OutError) ||
+		!CheckRange(GetUp.HoldChainShare, 1.0, TEXT("getup"), TEXT("hold_chain_share"), OutError) ||
+		!CheckRange(GetUp.HoldSlowFromN, 100000.0, TEXT("getup"), TEXT("hold_slow_from_n"), OutError) ||
+		!CheckRange(GetUp.HoldSum, 1.0, TEXT("getup"), TEXT("hold_sum"), OutError) ||
+		!CheckRange(GetUp.HoldPressPace, 1.0, TEXT("getup"), TEXT("hold_press_pace"), OutError) ||
+		!CheckRange(GetUp.HitByImpulse, 1.0, TEXT("getup"), TEXT("hit_by_impulse"), OutError) ||
+		!CheckRange(GetUp.HitBackS, 10.0, TEXT("getup"), TEXT("hit_back_s"), OutError) ||
+		!CheckRange(GetUp.HitOverflow, 1.0, TEXT("getup"), TEXT("hit_overflow"), OutError) ||
+		!CheckRange(GetUp.StartBlendS, 10.0, TEXT("getup"), TEXT("start_blend_s"), OutError))
 	{
+		return false;
+	}
+	if (GetUp.HoldByBody > 0.5 && (GetUp.HoldChainFullN <= 0.0 || (GetUp.HoldForceN > 0.0 && GetUp.HoldSlowFromN >= GetUp.HoldForceN)))
+	{
+		OutError = TEXT("getup.hold_by_body needs hold_chain_full_n above 0 and hold_slow_from_n below hold_force_n");
+		return false;
+	}
+	if (GetUp.HitByImpulse > 0.5 && GetUp.CarryYieldNs <= 0.0)
+	{
+		OutError = TEXT("getup.hit_by_impulse needs carry_yield_ns above 0: it is the impulse that takes all of the authority");
 		return false;
 	}
 

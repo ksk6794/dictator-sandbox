@@ -312,6 +312,80 @@ struct FSandboxGetUpView
 	int32 Hits = 0;
 	/** The most the body was pressed with while getting up: the force felt in every frame of the last moments from other simulated bodies. N. */
 	double PressedMaxN = 0.0;
+	/**
+	 * Decision 17 (docs/active-ragdoll.md): of the attempts that asked for the led get-up (getup.carry 1), those that were led and
+	 * those that were not (the carry's springs could not be made: the attempt went the clip-following way), and why the last of
+	 * those was not. A run must not pass on a get-up it did not ask for.
+	 */
+	int32 LedAttempts = 0;
+	int32 NotLedAttempts = 0;
+	FString NotLed;
+	/**
+	 * The hold (decision 14): how long a hand held the body while it got up, the largest pull of a hold then (N), the slowest pace
+	 * of the clip (getup.hold_by_body; 1 without it), and when the first attempt began (s since Start; below 0 before it).
+	 */
+	double HeldS = 0.0;
+	double HoldMaxN = 0.0;
+	double PaceMin = 1.0;
+	double FirstStartedS = -1.0;
+	/**
+	 * A hit while led (decision 20): the least of the carry's share the hits left (getup.hit_by_impulse; 1 without it), and the
+	 * farthest a struck body's centre of mass got from where the carry has it within a second of a hit, cm (read only, in every mode).
+	 */
+	double HitFreeMin = 1.0;
+	double HitOffCm = 0.0;
+	/**
+	 * C27 of the reference itself (led only, read only): when the clip's pelvis, as the carry aims it, first comes 70 cm above the
+	 * floor, the trunk (pelvis to chest) from vertical and the farther foot from the pelvis over the floor, as the clip has them. Below
+	 * 0 until then. Beside RiseTrunkDeg and RiseFeetCm (the body's own), it says whether a lean is the clip's or the body's.
+	 */
+	double RiseClipTrunkDeg = -1.0;
+	double RiseClipFeetCm = -1.0;
+};
+
+/**
+ * R3, step 1: what a falling body would know of its fall, worked out every tick while Falling (read only: the bodies and one scene
+ * sweep). The way it goes over the floor, and how long until its trunk meets the floor or something in its way.
+ */
+struct FSandboxFallSense
+{
+	bool bValid = false;
+	/** The way over the floor, a unit vector (world): the centre of mass's velocity and the pelvis's lean, as the fall's pose is chosen. */
+	FVector2D Way = FVector2D::ZeroVector;
+	/** How long until the trunk (the chest's centre of mass, less the trunk's radius) meets the floor, or what is swept in its way. s. */
+	double TimeToImpactS = -1.0;
+	/** Whether that is something other than the floor (a wall, a piece of furniture). */
+	bool bOther = false;
+};
+
+/** What the world gives one body in the coming step, from the spring law (an estimate, as the assist's load is). */
+struct FSandboxAuthorityEntry
+{
+	enum class ESource : uint8 { Assist, Carry };
+	FName Bone;
+	ESource Source = ESource::Assist;
+	/** World, N and N*m. */
+	FVector ForceN = FVector::ZeroVector;
+	FVector TorqueNm = FVector::ZeroVector;
+};
+
+/**
+ * The authority over the body at one instant (docs/active-ragdoll.md, section 5): every force and torque the world puts on its
+ * bodies, the old balance assist and the led get-up's carry, one entry a body and a source. Only entries that give something.
+ * Read only; nothing in the simulation reads it.
+ */
+struct FSandboxAuthority
+{
+	TArray<FSandboxAuthorityEntry> Entries;
+};
+
+/** One body of the led get-up as an overlay shows it: where the carry pulls its centre of mass to, and with what. */
+struct FSandboxCarryView
+{
+	FName Bone;
+	FVector TargetComCm = FVector::ZeroVector;
+	FVector ComCm = FVector::ZeroVector;
+	FVector ForceN = FVector::ZeroVector;
 };
 
 /** What the controller is asking of the body at this instant. Read by debug overlays, used by nothing else. */
@@ -319,6 +393,8 @@ struct FSandboxBodyControlView
 {
 	TArray<FSandboxMuscleView> Muscles;
 	TArray<FSandboxAssistView> Assists;
+	/** The led get-up's carry, the bodies it pulls now (empty while it pulls nothing). */
+	TArray<FSandboxCarryView> Carry;
 };
 
 /**
@@ -512,6 +588,13 @@ public:
 
 	/** Assist load at the start of the current frame's physics step. */
 	const FSandboxAssistLoad& GetAssistLoad() const { return AssistLoad; }
+	/** Every force the world gives the body at the start of the current frame's physics step, body by body (decision 15). */
+	const FSandboxAuthority& GetAuthority() const { return Authority; }
+	/** R3: the way and the time of the fall under way (invalid when not Falling), and when the trunk first met the floor in it (below 0: not yet). */
+	const FSandboxFallSense& GetFallSense() const { return FallSense; }
+	double GetTrunkTouchedS() const { return TrunkTouchedS; }
+	/** The body's weight as the controller counts it, N. */
+	double GetWeightN() const { return WeightN; }
 
 	/** The body's balance as the controller saw it at the start of the current frame's physics step. */
 	const FSandboxBalanceView& GetBalance() const { return Balance; }
@@ -701,6 +784,9 @@ private:
 	 */
 	FVector SustainedN = FVector::ZeroVector;
 	FVector2D SustainedMomentNCm = FVector2D::ZeroVector;
+	/** The same from contacts alone, the holds left out (getup.hold_by_body: a press, apart from a hold), N, and its frames. */
+	FVector SustainedContactN = FVector::ZeroVector;
+	TArray<FVector> RecentContactN;
 	/** The force and moment of each of the last frames, for SustainedN, oldest overwritten first. */
 	TArray<FVector> RecentForceN;
 	TArray<FVector2D> RecentMomentNCm;
@@ -762,6 +848,8 @@ private:
 		bool bOutside = false;
 		TArray<FSandboxPoseBone> From;
 		double CrossShare = 1.0;
+		/** How long the cross from From takes, s; 0: poses.blend_s (a get-up's start sets getup.start_blend_s). */
+		double CrossS = 0.0;
 		/** What was handed to the animation instance last. */
 		TArray<FSandboxPoseBone> Last;
 		/** The clip's pelvis, as the pose: where it goes over from, and where it is now. */
@@ -797,6 +885,12 @@ private:
 		/** How long the clip has now waited for a foot in the air (getup.foot_wait_s). */
 		double FootWaitS = 0.0;
 		bool bEased = false;
+		/** Whether the attempt asked for the led get-up (getup.carry 1 as it began), and whether that has been counted (FSandboxGetUpView). */
+		bool bCarryAsked = false;
+		bool bLedCounted = false;
+		/** Decision 22 (getup.start_blend_s): whether the start is blended, and where each body was as the attempt began (world). */
+		bool bStartBlend = false;
+		TMap<FName, FTransform> StartBodies;
 	};
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;
@@ -834,6 +928,19 @@ private:
 	/** How much of the carry a press or a hold from outside leaves, 0 to 1: down at once, back by the release's clock. */
 	double CarryFree = 1.0;
 	bool bCarryBroken = false;
+	/** Why the carry could not be made, when it could not. */
+	FString CarryBrokenReason;
+	/** getup.hold_by_body: what the holds leave of each body's springs, 0 to 1, by the carry's body index; down at once, back by carry_release_s. */
+	TArray<double> CarryBodyFree;
+	/** getup.hold_by_body: the clip's pace under a press and the holds, 0 to 1; down at once, back by carry_release_s. */
+	double HoldPace = 1.0;
+	/** getup.hit_by_impulse: what the hits left of the carry's share, 0 to 1; back by getup.hit_back_s. */
+	double HitFree = 1.0;
+	/** The body struck last while led and until when its distance from the carry's target is watched (GetUpView.HitOffCm). */
+	FName HitWatchBone;
+	double HitWatchUntilS = -1.0;
+	/** The force of the press and the holds together that slows the clip (getup.hold_sum), N. */
+	double HoldPaceForceN() const;
 	/** Whether the last tick aimed the carry at a clip: a get-up that begins makes no velocity from the targets of the one before. */
 	bool bCarryAimed = false;
 	/** When the last hit judged for carry_yield_ns was felt: each hit is judged once. */
@@ -1410,6 +1517,26 @@ private:
 	/** Moves the shift toward its goal, with balance.step_shift_s's lag. */
 	void UpdateShift(double DeltaTime);
 	FSandboxAssistLoad AssistLoad;
+	FSandboxAuthority Authority;
+	FSandboxFallSense FallSense;
+	/** R3, step 1: works out FallSense (read only). */
+	void SenseFall();
+	/**
+	 * R3, step 2 (`fall.blend`): the reaching poses (forward, back, left, right), read once; their weights, following the sensed way;
+	 * the layer's share, coming in over the fall pose's blend time; whether the blend holds the layer now.
+	 */
+	TArray<FSandboxPoseBone> FallBlendPoses[4];
+	/** The blend laid last, which a lying body lets go of. */
+	TArray<FSandboxPoseBone> FallBlendLast;
+	bool bFallBlendRead = false;
+	bool bFallBlendFailed = false;
+	double FallBlendWeights[4] = { 0.0, 0.0, 0.0, 0.0 };
+	double FallBlendIn = 0.0;
+	bool bFallBlending = false;
+	/** Lays the blend over the fall's arms while Falling, lets it go while Lying, lets the get-up's clip take the layer over. */
+	void UpdateFallBlend(double DeltaTime);
+	/** The sensed way's weights in the body's frame (forward, back, left, right; summing to 1); false without a sense or a frame. */
+	bool FallBlendTargets(double OutWeights[4]) const;
 	double WeightN = 0.0;
 	double StandingComHeightM = 0.0;
 	bool bStarted = false;

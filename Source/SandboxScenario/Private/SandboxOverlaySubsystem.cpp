@@ -37,6 +37,8 @@ namespace
 	const FLinearColor ColorWeak(1.0f, 0.45f, 0.0f);
 	const FLinearColor ColorSupport(1.0f, 0.9f, 0.0f);
 	const FLinearColor ColorAssist(0.0f, 0.9f, 1.0f);
+	/** The led get-up's pull from the world (FSandboxCarry): violet, apart from the old assist's cyan. */
+	const FLinearColor ColorCarry(0.65f, 0.35f, 1.0f);
 	const FLinearColor ColorStaticContact(0.35f, 0.6f, 1.0f);
 	const FLinearColor ColorHit(1.0f, 0.3f, 0.0f);
 	const FLinearColor ColorHandle(1.0f, 0.2f, 1.0f);
@@ -668,6 +670,16 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 				Line(Body->GetUnrealWorldTransform().GetLocation(), Assist.Target.GetLocation(), ColorAssist, ThickCm);
 			}
 		}
+		// The led get-up: where the world pulls each body's centre of mass to (a small cross), and the force it pulls with, from
+		// the centre of mass (0.05 cm a newton: a body's weight of 80 kg would be 39 cm).
+		for (const FSandboxCarryView& Carried : View.Carry)
+		{
+			Cross(Carried.TargetComCm, 2.0, ColorCarry, ThinCm);
+			if (!Carried.ForceN.IsNearlyZero(1.0))
+			{
+				Line(Carried.ComCm, Carried.ComCm + Carried.ForceN * 0.05, ColorCarry, ThickCm);
+			}
+		}
 	}
 
 	if (Layers & SandboxOverlay::State)
@@ -689,6 +701,26 @@ void USandboxOverlaySubsystem::DrawCharacter(const ASandboxRagdollActor& Charact
 			const FSandboxAssistLoad& Load = Controller->GetAssistLoad();
 			CornerLabel(FString::Printf(TEXT("Assist: force %.1f%% of body weight, torque %.1f%%; felt %.1f N*s from contacts"),
 				Load.ForceShare * 100.0, Load.TorqueShare * 100.0, Controller->GetContactImpulseNs()));
+			// The same body by body and by direction (control.authority), and what the led get-up is: the old assist or the carry.
+			{
+				double UpN = 0.0;
+				double OverN = 0.0;
+				double DownN = 0.0;
+				int32 Carried = 0;
+				for (const FSandboxAuthorityEntry& Entry : Controller->GetAuthority().Entries)
+				{
+					UpN += FMath::Max(Entry.ForceN.Z, 0.0);
+					OverN += Entry.ForceN.Size2D();
+					DownN += FMath::Max(-Entry.ForceN.Z, 0.0);
+					Carried += Entry.Source == FSandboxAuthorityEntry::ESource::Carry ? 1 : 0;
+				}
+				const double WeightN = FMath::Max(Controller->GetWeightN(), 1.0);
+				const FSandboxGetUpView& GetUps = Controller->GetGetUpView();
+				CornerLabel(FString::Printf(TEXT("Authority: up %.2f, over the floor %.2f, down %.2f of body weight; %d bodies carried%s"),
+					UpN / WeightN, OverN / WeightN, DownN / WeightN, Carried,
+					GetUps.NotLedAttempts > 0 ? *FString::Printf(TEXT("; GET-UP NOT LED: %s"), *GetUps.NotLed) : TEXT("")),
+					GetUps.NotLedAttempts > 0 ? ColorBad : FLinearColor::White);
+			}
 			// What the controller makes of its balance: the margin it decides on, a step needed, the strategies.
 			const FVector2D Ankle = Controller->GetAnkleLeanDeg();
 			const FVector2D Hip = Controller->GetHipBendDeg();
