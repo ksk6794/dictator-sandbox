@@ -249,6 +249,16 @@ namespace
 				}
 				OutEvent.AtBone = FName(*AtBone);
 			}
+			if (Json->HasField(TEXT("follow_bone_s")))
+			{
+				const TSharedPtr<FJsonValue> Follow = Json->TryGetField(TEXT("follow_bone_s"));
+				if (OutEvent.AtBone.IsNone() || !Follow.IsValid() || Follow->Type != EJson::Number || Follow->AsNumber() < 0.0)
+				{
+					OutError = FString::Printf(TEXT("events[%d].follow_bone_s must be a number of seconds, 0 or more, with at_bone"), Index);
+					return false;
+				}
+				OutEvent.FollowBoneS = Follow->AsNumber();
+			}
 
 			const TArray<TSharedPtr<FJsonValue>>* Path = nullptr;
 			if (!Json->TryGetArrayField(TEXT("path"), Path) || Path->Num() == 0)

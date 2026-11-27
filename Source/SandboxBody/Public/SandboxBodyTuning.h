@@ -609,6 +609,12 @@ struct FSandboxPoseTuning
 	FSandboxPose BalanceForward;
 	FSandboxPose BalanceSide;
 	/**
+	 * R2, step 9 (getup.roll): what a body lying on its left side does to roll onto its back or its front, the upper arm and leg
+	 * thrown the way it rolls and the trunk turned after them; mirrored for a body on its right side. The pose itself, not added on top.
+	 */
+	FSandboxPose RollToBack;
+	FSandboxPose RollToFront;
+	/**
 	 * The clip whose motion a standing body carries on top of its stance: breathing, the shoulders, a slow sway
 	 * (FSandboxIdleMotion; "poses.idle.animation", an asset path, empty for none). Read when the body starts; a
 	 * change while it runs is not followed.
@@ -789,52 +795,6 @@ struct FSandboxGetUpTuning
 	double Rate = 0.0;
 	/** The time in a clip by which its body stands; the rest of the clip is standing still. Seconds. */
 	double EndS = 0.0;
-	/** The clip's time waits while the pelvis is further than this below or above where the clip has it... cm. */
-	double LagCm = 0.0;
-	/**
-	 * ...or further than this from it over the floor. cm. Wider than the other: rising is what takes strength and
-	 * has to be waited for, while a get-up in place may as well happen a hand's width to the side, which is where a
-	 * table's leg or a chair leaves it room.
-	 */
-	double SideLagCm = 0.0;
-	/** ...or a foot that is off the floor is further than this from where the clip has it. cm. */
-	double FootLagCm = 0.0;
-	/**
-	 * ...but for a foot no longer than this at a time: a foot that does not come (a leg that lies across the other,
-	 * or against a chair) is left where it is and the clip goes on. Seconds. (Waited for without end, such a foot
-	 * kept the clip at its first key for six attempts.)
-	 */
-	double FootWaitS = 0.0;
-	/**
-	 * The clip is laid over the feet the body stands on: its root follows the feet that carry weight, to where they
-	 * are from where the clip has them, with this lag when they carry all of the body's weight and more slowly in
-	 * proportion when they carry less. 0: the clip stays where it was put. Seconds. (A foot that the body stands on
-	 * cannot go where the clip steps it to, and a pelvis pulled over the clip's feet instead of the body's own left
-	 * the body leaning or waiting for good.)
-	 */
-	double FrameFollowS = 0.0;
-	/**
-	 * Where no foot carries the body (it lies, rolls over, is on its hands and knees), the clip is laid over the body
-	 * itself: its root follows the pelvis over the floor with this lag, less in proportion to the weight the feet
-	 * carry. 0: it does not. Seconds. (A body that turns into the clip's first pose moves 20 to 35 cm over the floor.
-	 * A clip that stayed where it was put waited for the assist to drag the pelvis back, which is what half the
-	 * assist's force was for; with a weaker assist it waited for good. A blow moves the pelvis faster than this
-	 * follows, and still counts as one.)
-	 */
-	double PelvisFollowS = 0.0;
-	/**
-	 * While something presses on the body with less than hold_force_n, how much of that following is left when the
-	 * feet carry all of the body's weight: 0 none (the clip is laid over the feet alone, as when nothing presses),
-	 * 1 all of it (feet and pelvis each pull the clip their way and meet in between). It lets a body that one hand
-	 * presses on get up where the hand leaves it room.
-	 */
-	double PressedFollow = 0.0;
-	/**
-	 * ...and how far below the clip's the pelvis may then be before the clip waits, in place of lag_cm. cm. A body
-	 * that pushes on under a hand sags under it, and the clip has to run further ahead for the muscles to be asked
-	 * for more.
-	 */
-	double PressedLagCm = 0.0;
 	/**
 	 * A body pressed down with this much or more does not push on: its clip waits, and the attempt is given up after
 	 * stall_s. N; 0: it always pushes on. What presses is the force other simulated bodies (hands) put on the body in
@@ -845,9 +805,9 @@ struct FSandboxGetUpTuning
 	/** A get-up whose clip has waited this long without moving on is given up: the body lets go and lies, and tries again. Seconds. */
 	double StallS = 0.0;
 	/**
-	 * ...and so is one whose clip has waited this long in all, counting only the time in which nothing pressed on the
-	 * body. Seconds; 0: no such bound. A clip that moves on by a frame now and then never stands still for stall_s,
-	 * and the body held one pose for up to 13 s (under the table's edge, on the stand of 50 falls).
+	 * ...and so is one whose clip has waited this long in all, counting only the time in which nothing pressed on the body. Seconds;
+	 * 0: no such bound. A clip that moves on by a frame now and then never stands still for stall_s (under holds that slow it to a
+	 * crawl and let go, the clip stands and goes in turns), and the body held one pose for up to 13 s once.
 	 */
 	double WaitS = 0.0;
 	/** A pelvis this far from where the clip has it has been thrown off: the get-up is given up at once. cm. */
@@ -861,16 +821,15 @@ struct FSandboxGetUpTuning
 	double RestPerNsS = 0.0;
 	double RestMaxS = 0.0;
 	/**
-	 * The led get-up (docs/active-ragdoll.md, part R1): 1, every body of the character is pulled by the world toward where the clip
-	 * has it (FSandboxCarry; the clip's pose chained on the body's own proportions), the clip runs at its rate without waiting for
-	 * the pelvis or a foot and is not laid over the feet, and the get-up's assist on pelvis and feet is off. 0: the get-up as it was,
-	 * bit for bit. The springs per kg of each body (CarryNPerMPerKg, CarryNmPerRadPerKg), their damping as a time (CarryDampingS),
-	 * their caps in weights of the body and in N*m per kg (CarryMaxWeights over the floor, CarryMaxUpWeights upward: what the world
-	 * may carry of each body's weight; it never pushes a body down; CarryMaxNmPerKg). They come up with the get-up's ease and go
-	 * over CarryReleaseS, by their own clock, once the get-up has ended. A hit felt of CarryYieldNs or more while getting up lets
-	 * the body go at once and the attempt is given up (0: never).
+	 * The led get-up (docs/active-ragdoll.md, part R1; the only get-up since R2's rest, the clip-following path and its switch
+	 * getup.carry gone): every body of the character is pulled by the world toward where the clip has it (FSandboxCarry; the clip's
+	 * pose chained on the body's own proportions), the clip runs at its rate without waiting for the pelvis or a foot and is not laid
+	 * over the feet, and the old assist on pelvis and feet is off while getting up. The springs per kg of each body (CarryNPerMPerKg,
+	 * CarryNmPerRadPerKg), their damping as a time (CarryDampingS), their caps in weights of the body and in N*m per kg
+	 * (CarryMaxWeights over the floor, CarryMaxUpWeights upward: what the world may carry of each body's weight; it never pushes a body
+	 * down; CarryMaxNmPerKg). They come up with the get-up's ease and go over CarryReleaseS, by their own clock, once the get-up has
+	 * ended. A hit felt of CarryYieldNs or more takes all of the pull (HitByImpulse) or gives the attempt up (without it).
 	 */
-	double Carry = 0.0;
 	double CarryNPerMPerKg = 0.0;
 	double CarryNmPerRadPerKg = 0.0;
 	double CarryDampingS = 0.0;
@@ -919,16 +878,14 @@ struct FSandboxGetUpTuning
 	/** 1: what a hit takes beyond the whole share is owed, so the share stays at 0 until HitBackS has given that much back; 0: it stops at 0. */
 	double HitOverflow = 0.0;
 	/**
-	 * R2, step 8 (docs/recon/r2_step8_plan.md): Match 1, a get-up's clip, the time it starts at and where it is laid come from the
-	 * motion library and its matcher (FSandboxMotionMatcher): the lying body against the first MatchWindowS of every get-up the
-	 * library lets the matcher choose, and their mirror images, by the places of its pelvis, trunk, hands, elbows, feet and knees
-	 * (weights MatchPelvis to MatchKnees), turned about the vertical and moved over the floor to lie on the body's, and by how the
-	 * pelvis and the chest lean (MatchUpCmPerDeg: a degree counted as that many cm); the variant whose attempt was just given up,
-	 * and its mirror image, cost MatchGivenUpCm more. 0: the four ClipBack to ClipRight by the pelvis's lean, at their time 0, bit
-	 * for bit as before.
-	 * The weights also weigh the start's measure in both modes (FSandboxGetUpStart::OffCm). s, weights, cm per degree, cm.
+	 * R2, step 8 (docs/recon/r2_step8_plan.md; the only choice since R2's rest, the rule by the pelvis's lean, getup.clip_* and the
+	 * switch getup.match gone): a get-up's clip, the time it starts at and where it is laid come from the motion library and its
+	 * matcher (FSandboxMotionMatcher): the lying body against the first MatchWindowS of every get-up the library lets the matcher
+	 * choose, and their mirror images, by the places of its pelvis, trunk, hands, elbows, feet and knees (weights MatchPelvis to
+	 * MatchKnees), turned about the vertical and moved over the floor to lie on the body's, and by how the pelvis and the chest lean
+	 * (MatchUpCmPerDeg: a degree counted as that many cm); the variant whose attempt was just given up, and its mirror image, cost
+	 * MatchGivenUpCm more. The weights also weigh the start's measure (FSandboxGetUpStart::OffCm). s, weights, cm per degree, cm.
 	 */
-	double Match = 0.0;
 	double MatchWindowS = 0.0;
 	double MatchPelvis = 0.0;
 	double MatchTrunk = 0.0;
@@ -939,14 +896,66 @@ struct FSandboxGetUpTuning
 	double MatchUpCmPerDeg = 0.0;
 	double MatchGivenUpCm = 0.0;
 	/**
-	 * The clips, by how the body lies at the clip's start: on its back, on its front, on its left side, on its right
-	 * ("getup.clip_back" and so on; animation sequence paths, read when a body first gets up). The one whose pelvis
-	 * lies most like the body's is taken, whatever its name.
+	 * Decision 51: a second of a get-up that a start in the clip leaves out costs this many cm in the matcher's choice, so that a clip
+	 * begun late (and so shorter than C21's 2.6 s) has to lie that much nearer the body. 0: no such price, bit for bit as before. cm/s.
 	 */
-	FString ClipBack;
-	FString ClipFront;
-	FString ClipLeft;
-	FString ClipRight;
+	double MatchLateCmPerS = 0.0;
+	/**
+	 * R2, step 9 (the owner's decision 50; docs/recon/r2_rest_plan.md): Roll 1, a body that begins an attempt lying on its side (its
+	 * hips' line RollSideDeg or more from level) first rolls onto its back or its front by its own muscles, asked for poses.roll_to_back
+	 * or poses.roll_to_front (written for a body on its left side, mirrored for the right), with no pull from the world; the roll is
+	 * done once the hips' line is within RollDoneDeg of level, or after RollS whatever it reached, and the matcher then starts the clip
+	 * from the body as it lies. RollWay: 0 by where the front looks (down: onto the front), 1 always onto the front, 2 always onto the
+	 * back. With Roll 1 the matcher leaves out the get-ups that begin on a side (decision 38: C27 from the back and the front). Needs
+	 * Match 1. 0: no roll, bit for bit as before. Degrees, s.
+	 */
+	double Roll = 0.0;
+	double RollSideDeg = 0.0;
+	double RollDoneDeg = 0.0;
+	double RollS = 0.0;
+	double RollWay = 0.0;
+	/**
+	 * The time over which the roll's pose comes in (eased); from then to RollS it goes on to RollPush times its angles, so that the
+	 * target keeps moving through the roll (C19: no pose held still while getting up) and the roll is pressed home. s, a factor.
+	 */
+	double RollBlendS = 0.0;
+	double RollPush = 0.0;
+	/**
+	 * R2, step 10 (docs/recon/r2_rest_plan.md), each with the matcher (Match 1) and each 0 bit for bit as before:
+	 * FitSurface 1: the clip's floor is what the pelvis lies on as the clip begins (a sweep down, read only), not the floor last stood on;
+	 * FitFloor, 0 to 1: that share of the motion library's fit of each key (FSandboxMotionVariant::FitCm: the bones the recording has on
+	 * its floor laid on it with this body's shapes) raises or lowers the reference, followed over FitEaseS so that it never jumps;
+	 * FitFreeZ 1: a body the recording has on its floor that touched the world in the last step gets no vertical spring or damping from
+	 * the carry (the floor carries it; decision 30's damping downward goes where it pressed). s.
+	 */
+	double FitSurface = 0.0;
+	double FitFloor = 0.0;
+	double FitEaseS = 0.0;
+	double FitFreeZ = 0.0;
+	/**
+	 * R2, step 11 (the owner's decision 18): Drag 1, holds that together pull with DragForceN or more, or that move the pelvis along
+	 * their pull at DragMps or faster, for DragS, give a get-up up at once, the world letting go of every body at once, and keep the
+	 * next from beginning until the body has not been dragged for DragFreeS. 0: none of it, bit for bit as before. N, s, m/s, s.
+	 */
+	double Drag = 0.0;
+	double DragForceN = 0.0;
+	double DragS = 0.0;
+	double DragMps = 0.0;
+	double DragFreeS = 0.0;
+	/**
+	 * R2, step 12 (FR-43; the owner's decisions 19 and 48): what an arm held by a hand does while the body gets up by its clip.
+	 * ArmAnswer: 0 nothing (bit for bit as before); 1 by the body's state (braced: pulls the arm in; otherwise yields); 2 always yields;
+	 * 3 always pulls in. Yielding, the held arm's muscles go to ArmYieldScale of their strength and its hand is placed ArmReachCm beyond
+	 * the holding point along the pull (it reaches after the hand instead of being drawn straight); pulling in, they go to ArmPullScale
+	 * and the hand is placed ArmPullInCm from its shoulder toward the holding point (the elbow bends, the body draws the arm). cm.
+	 */
+	double ArmAnswer = 0.0;
+	double ArmYieldScale = 0.0;
+	double ArmReachCm = 0.0;
+	double ArmPullScale = 0.0;
+	double ArmPullInCm = 0.0;
+	/** The time over which a held arm's placed hand follows its answer's point (no step at the answer's start or change). s. */
+	double ArmFollowS = 0.0;
 };
 
 /**

@@ -243,6 +243,8 @@ namespace
 		Pose(TEXT("balance_back"), Tuning.Poses.BalanceBack);
 		Pose(TEXT("balance_forward"), Tuning.Poses.BalanceForward);
 		Pose(TEXT("balance_side"), Tuning.Poses.BalanceSide);
+		Pose(TEXT("roll_to_back"), Tuning.Poses.RollToBack);
+		Pose(TEXT("roll_to_front"), Tuning.Poses.RollToFront);
 		Visitor(FString(TEXT("poses.fingers.weight")), Tuning.Poses.Fingers.Weight);
 		Visitor(FString(TEXT("poses.fingers.blend_s")), Tuning.Poses.Fingers.BlendS);
 		const auto Fingers = [&Visitor](const TCHAR* Name, auto& Values)
@@ -264,14 +266,6 @@ namespace
 		Visitor(FString(TEXT("getup.ease_s")), Tuning.GetUp.EaseS);
 		Visitor(FString(TEXT("getup.rate")), Tuning.GetUp.Rate);
 		Visitor(FString(TEXT("getup.end_s")), Tuning.GetUp.EndS);
-		Visitor(FString(TEXT("getup.lag_cm")), Tuning.GetUp.LagCm);
-		Visitor(FString(TEXT("getup.side_lag_cm")), Tuning.GetUp.SideLagCm);
-		Visitor(FString(TEXT("getup.foot_lag_cm")), Tuning.GetUp.FootLagCm);
-		Visitor(FString(TEXT("getup.foot_wait_s")), Tuning.GetUp.FootWaitS);
-		Visitor(FString(TEXT("getup.frame_follow_s")), Tuning.GetUp.FrameFollowS);
-		Visitor(FString(TEXT("getup.pelvis_follow_s")), Tuning.GetUp.PelvisFollowS);
-		Visitor(FString(TEXT("getup.pressed_follow")), Tuning.GetUp.PressedFollow);
-		Visitor(FString(TEXT("getup.pressed_lag_cm")), Tuning.GetUp.PressedLagCm);
 		Visitor(FString(TEXT("getup.hold_force_n")), Tuning.GetUp.HoldForceN);
 		Visitor(FString(TEXT("getup.stall_s")), Tuning.GetUp.StallS);
 		Visitor(FString(TEXT("getup.wait_s")), Tuning.GetUp.WaitS);
@@ -279,7 +273,6 @@ namespace
 		Visitor(FString(TEXT("getup.upright_deg")), Tuning.GetUp.UprightDeg);
 		Visitor(FString(TEXT("getup.rest_per_ns_s")), Tuning.GetUp.RestPerNsS);
 		Visitor(FString(TEXT("getup.rest_max_s")), Tuning.GetUp.RestMaxS);
-		Visitor(FString(TEXT("getup.carry")), Tuning.GetUp.Carry);
 		Visitor(FString(TEXT("getup.carry_n_per_m_per_kg")), Tuning.GetUp.CarryNPerMPerKg);
 		Visitor(FString(TEXT("getup.carry_nm_per_rad_per_kg")), Tuning.GetUp.CarryNmPerRadPerKg);
 		Visitor(FString(TEXT("getup.carry_damping_s")), Tuning.GetUp.CarryDampingS);
@@ -301,7 +294,6 @@ namespace
 		Visitor(FString(TEXT("getup.hit_back_s")), Tuning.GetUp.HitBackS);
 		Visitor(FString(TEXT("getup.hit_overflow")), Tuning.GetUp.HitOverflow);
 		Visitor(FString(TEXT("getup.start_blend_s")), Tuning.GetUp.StartBlendS);
-		Visitor(FString(TEXT("getup.match")), Tuning.GetUp.Match);
 		Visitor(FString(TEXT("getup.match_window_s")), Tuning.GetUp.MatchWindowS);
 		Visitor(FString(TEXT("getup.match_pelvis")), Tuning.GetUp.MatchPelvis);
 		Visitor(FString(TEXT("getup.match_trunk")), Tuning.GetUp.MatchTrunk);
@@ -311,21 +303,40 @@ namespace
 		Visitor(FString(TEXT("getup.match_knees")), Tuning.GetUp.MatchKnees);
 		Visitor(FString(TEXT("getup.match_up_cm_per_deg")), Tuning.GetUp.MatchUpCmPerDeg);
 		Visitor(FString(TEXT("getup.match_given_up_cm")), Tuning.GetUp.MatchGivenUpCm);
+		Visitor(FString(TEXT("getup.match_late_cm_per_s")), Tuning.GetUp.MatchLateCmPerS);
+		Visitor(FString(TEXT("getup.roll")), Tuning.GetUp.Roll);
+		Visitor(FString(TEXT("getup.roll_side_deg")), Tuning.GetUp.RollSideDeg);
+		Visitor(FString(TEXT("getup.roll_done_deg")), Tuning.GetUp.RollDoneDeg);
+		Visitor(FString(TEXT("getup.roll_s")), Tuning.GetUp.RollS);
+		Visitor(FString(TEXT("getup.roll_way")), Tuning.GetUp.RollWay);
+		Visitor(FString(TEXT("getup.roll_blend_s")), Tuning.GetUp.RollBlendS);
+		Visitor(FString(TEXT("getup.roll_push")), Tuning.GetUp.RollPush);
+		Visitor(FString(TEXT("getup.fit_surface")), Tuning.GetUp.FitSurface);
+		Visitor(FString(TEXT("getup.fit_floor")), Tuning.GetUp.FitFloor);
+		Visitor(FString(TEXT("getup.fit_ease_s")), Tuning.GetUp.FitEaseS);
+		Visitor(FString(TEXT("getup.fit_free_z")), Tuning.GetUp.FitFreeZ);
+		Visitor(FString(TEXT("getup.drag")), Tuning.GetUp.Drag);
+		Visitor(FString(TEXT("getup.drag_force_n")), Tuning.GetUp.DragForceN);
+		Visitor(FString(TEXT("getup.drag_s")), Tuning.GetUp.DragS);
+		Visitor(FString(TEXT("getup.drag_mps")), Tuning.GetUp.DragMps);
+		Visitor(FString(TEXT("getup.drag_free_s")), Tuning.GetUp.DragFreeS);
+		Visitor(FString(TEXT("getup.arm_answer")), Tuning.GetUp.ArmAnswer);
+		Visitor(FString(TEXT("getup.arm_yield_scale")), Tuning.GetUp.ArmYieldScale);
+		Visitor(FString(TEXT("getup.arm_reach_cm")), Tuning.GetUp.ArmReachCm);
+		Visitor(FString(TEXT("getup.arm_pull_scale")), Tuning.GetUp.ArmPullScale);
+		Visitor(FString(TEXT("getup.arm_pull_in_cm")), Tuning.GetUp.ArmPullInCm);
+		Visitor(FString(TEXT("getup.arm_follow_s")), Tuning.GetUp.ArmFollowS);
 		Visitor(FString(TEXT("motion.contact_cm")), Tuning.Motion.ContactCm);
 		Visitor(FString(TEXT("motion.contact_mps")), Tuning.Motion.ContactMps);
 	}
 
 	const TCHAR* const IdleAnimationKey = TEXT("poses.idle.animation");
 
-	/** Calls Visitor(name, text) for every clip of the get-up and of the fall's blend, and the motion library's list. */
+	/** Calls Visitor(name, text) for every clip of the fall's blend, and the motion library's list (the get-up's clips are its). */
 	template <typename TuningType, typename VisitorType>
 	void VisitClips(TuningType& Tuning, VisitorType&& Visitor)
 	{
 		Visitor(TEXT("motion.library"), Tuning.Motion.Library);
-		Visitor(TEXT("getup.clip_back"), Tuning.GetUp.ClipBack);
-		Visitor(TEXT("getup.clip_front"), Tuning.GetUp.ClipFront);
-		Visitor(TEXT("getup.clip_left"), Tuning.GetUp.ClipLeft);
-		Visitor(TEXT("getup.clip_right"), Tuning.GetUp.ClipRight);
 		Visitor(TEXT("fall.clip_reach_forward"), Tuning.FallAim.ClipReachForward);
 		Visitor(TEXT("fall.clip_reach_back"), Tuning.FallAim.ClipReachBack);
 		Visitor(TEXT("fall.clip_reach_left"), Tuning.FallAim.ClipReachLeft);
@@ -643,14 +654,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.EaseS, 10.0, TEXT("getup"), TEXT("ease_s"), OutError) ||
 		!CheckRange(GetUp.Rate, 4.0, TEXT("getup"), TEXT("rate"), OutError) ||
 		!CheckRange(GetUp.EndS, 60.0, TEXT("getup"), TEXT("end_s"), OutError) ||
-		!CheckRange(GetUp.LagCm, 500.0, TEXT("getup"), TEXT("lag_cm"), OutError) ||
-		!CheckRange(GetUp.SideLagCm, 500.0, TEXT("getup"), TEXT("side_lag_cm"), OutError) ||
-		!CheckRange(GetUp.FootLagCm, 500.0, TEXT("getup"), TEXT("foot_lag_cm"), OutError) ||
-		!CheckRange(GetUp.FootWaitS, 60.0, TEXT("getup"), TEXT("foot_wait_s"), OutError) ||
-		!CheckRange(GetUp.FrameFollowS, 60.0, TEXT("getup"), TEXT("frame_follow_s"), OutError) ||
-		!CheckRange(GetUp.PelvisFollowS, 60.0, TEXT("getup"), TEXT("pelvis_follow_s"), OutError) ||
-		!CheckRange(GetUp.PressedFollow, 1.0, TEXT("getup"), TEXT("pressed_follow"), OutError) ||
-		!CheckRange(GetUp.PressedLagCm, 500.0, TEXT("getup"), TEXT("pressed_lag_cm"), OutError) ||
 		!CheckRange(GetUp.HoldForceN, 100000.0, TEXT("getup"), TEXT("hold_force_n"), OutError) ||
 		!CheckRange(GetUp.StallS, 60.0, TEXT("getup"), TEXT("stall_s"), OutError) ||
 		!CheckRange(GetUp.WaitS, 60.0, TEXT("getup"), TEXT("wait_s"), OutError) ||
@@ -658,7 +661,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.UprightDeg, 180.0, TEXT("getup"), TEXT("upright_deg"), OutError) ||
 		!CheckRange(GetUp.RestPerNsS, 0.1, TEXT("getup"), TEXT("rest_per_ns_s"), OutError) ||
 		!CheckRange(GetUp.RestMaxS, 60.0, TEXT("getup"), TEXT("rest_max_s"), OutError) ||
-		!CheckRange(GetUp.Carry, 1.0, TEXT("getup"), TEXT("carry"), OutError) ||
 		!CheckRange(GetUp.CarryNPerMPerKg, 10000.0, TEXT("getup"), TEXT("carry_n_per_m_per_kg"), OutError) ||
 		!CheckRange(GetUp.CarryNmPerRadPerKg, 1000.0, TEXT("getup"), TEXT("carry_nm_per_rad_per_kg"), OutError) ||
 		!CheckRange(GetUp.CarryDampingS, 5.0, TEXT("getup"), TEXT("carry_damping_s"), OutError) ||
@@ -680,7 +682,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.HitBackS, 10.0, TEXT("getup"), TEXT("hit_back_s"), OutError) ||
 		!CheckRange(GetUp.HitOverflow, 1.0, TEXT("getup"), TEXT("hit_overflow"), OutError) ||
 		!CheckRange(GetUp.StartBlendS, 10.0, TEXT("getup"), TEXT("start_blend_s"), OutError) ||
-		!CheckRange(GetUp.Match, 1.0, TEXT("getup"), TEXT("match"), OutError) ||
 		!CheckRange(GetUp.MatchWindowS, 10.0, TEXT("getup"), TEXT("match_window_s"), OutError) ||
 		!CheckRange(GetUp.MatchPelvis, 100.0, TEXT("getup"), TEXT("match_pelvis"), OutError) ||
 		!CheckRange(GetUp.MatchTrunk, 100.0, TEXT("getup"), TEXT("match_trunk"), OutError) ||
@@ -690,14 +691,47 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.MatchKnees, 100.0, TEXT("getup"), TEXT("match_knees"), OutError) ||
 		!CheckRange(GetUp.MatchUpCmPerDeg, 100.0, TEXT("getup"), TEXT("match_up_cm_per_deg"), OutError) ||
 		!CheckRange(GetUp.MatchGivenUpCm, 1000.0, TEXT("getup"), TEXT("match_given_up_cm"), OutError) ||
+		!CheckRange(GetUp.MatchLateCmPerS, 1000.0, TEXT("getup"), TEXT("match_late_cm_per_s"), OutError) ||
+		!CheckRange(GetUp.Roll, 1.0, TEXT("getup"), TEXT("roll"), OutError) ||
+		!CheckRange(GetUp.RollSideDeg, 90.0, TEXT("getup"), TEXT("roll_side_deg"), OutError) ||
+		!CheckRange(GetUp.RollDoneDeg, 90.0, TEXT("getup"), TEXT("roll_done_deg"), OutError) ||
+		!CheckRange(GetUp.RollS, 10.0, TEXT("getup"), TEXT("roll_s"), OutError) ||
+		!CheckRange(GetUp.RollWay, 2.0, TEXT("getup"), TEXT("roll_way"), OutError) ||
+		!CheckRange(GetUp.RollBlendS, 10.0, TEXT("getup"), TEXT("roll_blend_s"), OutError) ||
+		!CheckRange(GetUp.RollPush, 3.0, TEXT("getup"), TEXT("roll_push"), OutError) ||
+		!CheckRange(GetUp.FitSurface, 1.0, TEXT("getup"), TEXT("fit_surface"), OutError) ||
+		!CheckRange(GetUp.FitFloor, 1.0, TEXT("getup"), TEXT("fit_floor"), OutError) ||
+		!CheckRange(GetUp.FitEaseS, 10.0, TEXT("getup"), TEXT("fit_ease_s"), OutError) ||
+		!CheckRange(GetUp.FitFreeZ, 1.0, TEXT("getup"), TEXT("fit_free_z"), OutError) ||
+		!CheckRange(GetUp.Drag, 1.0, TEXT("getup"), TEXT("drag"), OutError) ||
+		!CheckRange(GetUp.DragForceN, 100000.0, TEXT("getup"), TEXT("drag_force_n"), OutError) ||
+		!CheckRange(GetUp.DragS, 10.0, TEXT("getup"), TEXT("drag_s"), OutError) ||
+		!CheckRange(GetUp.DragMps, 100.0, TEXT("getup"), TEXT("drag_mps"), OutError) ||
+		!CheckRange(GetUp.DragFreeS, 60.0, TEXT("getup"), TEXT("drag_free_s"), OutError) ||
+		!CheckRange(GetUp.ArmAnswer, 3.0, TEXT("getup"), TEXT("arm_answer"), OutError) ||
+		!CheckRange(GetUp.ArmYieldScale, 1.0, TEXT("getup"), TEXT("arm_yield_scale"), OutError) ||
+		!CheckRange(GetUp.ArmReachCm, 100.0, TEXT("getup"), TEXT("arm_reach_cm"), OutError) ||
+		!CheckRange(GetUp.ArmPullScale, 5.0, TEXT("getup"), TEXT("arm_pull_scale"), OutError) ||
+		!CheckRange(GetUp.ArmPullInCm, 100.0, TEXT("getup"), TEXT("arm_pull_in_cm"), OutError) ||
+		!CheckRange(GetUp.ArmFollowS, 10.0, TEXT("getup"), TEXT("arm_follow_s"), OutError) ||
 		!CheckRange(Motion.ContactCm, 100.0, TEXT("motion"), TEXT("contact_cm"), OutError) ||
 		!CheckRange(Motion.ContactMps, 100.0, TEXT("motion"), TEXT("contact_mps"), OutError))
 	{
 		return false;
 	}
-	if (GetUp.Match > 0.5 && GetUp.MatchPelvis + GetUp.MatchTrunk + GetUp.MatchHands + GetUp.MatchElbows + GetUp.MatchFeet + GetUp.MatchKnees <= 0.0)
+	if (GetUp.MatchPelvis + GetUp.MatchTrunk + GetUp.MatchHands + GetUp.MatchElbows + GetUp.MatchFeet + GetUp.MatchKnees <= 0.0)
 	{
-		OutError = TEXT("getup.match needs at least one of the places it compares weighed above 0 (getup.match_pelvis to match_knees)");
+		OutError = TEXT("the get-up's matcher needs at least one of the places it compares weighed above 0 (getup.match_pelvis to match_knees)");
+		return false;
+	}
+	if (GetUp.Drag > 0.5 && GetUp.DragForceN <= 0.0)
+	{
+		OutError = TEXT("getup.drag needs drag_force_n above 0");
+		return false;
+	}
+	if (GetUp.Roll > 0.5 && (GetUp.RollS <= 0.0 || GetUp.RollDoneDeg >= GetUp.RollSideDeg))
+	{
+		OutError = TEXT("getup.roll needs roll_s above 0 and roll_done_deg below roll_side_deg");
 		return false;
 	}
 	if (GetUp.HoldByBody > 0.5 && (GetUp.HoldChainFullN <= 0.0 || (GetUp.HoldForceN > 0.0 && GetUp.HoldSlowFromN >= GetUp.HoldForceN)))
@@ -855,7 +889,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	}
 	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch }, { TEXT("double_over"), &Poses.DoubleOver },
 		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide },
-		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide } };
+		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide },
+		{ TEXT("roll_to_back"), &Poses.RollToBack }, { TEXT("roll_to_front"), &Poses.RollToFront } };
 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
 	{
 		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)

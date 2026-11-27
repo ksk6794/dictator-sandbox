@@ -79,7 +79,8 @@ public:
 	 * when given, has one share for each body (0 to 1) on top of Share: what a hold leaves of that body's springs; empty, every
 	 * body has all of Share.
 	 */
-	void Apply(const FSandboxCarrySettings& Settings, double Share, TConstArrayView<double> BodyShares = TConstArrayView<double>());
+	void Apply(const FSandboxCarrySettings& Settings, double Share, TConstArrayView<double> BodyShares = TConstArrayView<double>(),
+		TConstArrayView<double> VerticalShares = TConstArrayView<double>());
 	double GetShare() const { return AppliedShare; }
 
 	/** What the springs ask of the world at the start of this step, from the spring law (an estimate, as the assist's load is): the sum of the forces' sizes, N. */
@@ -106,6 +107,11 @@ private:
 		bool bHasVelocity = false;
 		/** What a hold left of this body's springs in the last Apply. */
 		double BodyShare = 1.0;
+		/**
+		 * R2, step 10 (getup.fit_free_z): what is left of this body's vertical spring and damping, 0 to 1 (0: a body the reference has
+		 * on its floor and that touches the world now is carried by the floor, not the world). 1 unless Apply is given one for each body.
+		 */
+		double VerticalShare = 1.0;
 	};
 	TArray<int32> Parents;
 

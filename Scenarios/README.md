@@ -263,6 +263,17 @@ of the target to its own first key, which is a place in the world whether or not
 it where the hand will be. A name that is no body of the character is an error in the log and fails the run
 (`all_events_applied`), and the hand then goes to the keys as written.
 
+With `"follow_bone_s": 0.25` as well (it needs `at_bone`; a number of seconds, 0 or more), the keys after the first
+are measured again every frame for that long after the event begins: they move by as far as the body went since the
+frame before, so a hand sent to a body that moves goes after it (an ankle or a wrist of a body that is getting up, R2's
+drag: `getup_drag_ankles_rise`, `getup_drag_wrists_crouch`; the chest in the crouch and the rise, held for 2 s by one
+hand: `getup_phase_crouch_hold`, `getup_phase_rise_hold`). After that time the trajectory stays where it was last put. A later event of the same
+hand plays its own trajectory, as always. 0, or the field left out: measured once, as the event begins. The target's
+velocity is the trajectory's own, worked out from two keys that both move: the hand's spring is not told that the body
+moves, and the hand lags a moving limb by what its spring leaves (`hands.csv`'s `target_speed_mps` reads the
+trajectory's speed alone). Two `effector` events of one hand at the same `t` are not refused, but only the later one's
+trajectory is played, and both events' `at_bone` and `follow_bone_s` move it: give a hand one event at a time.
+
 A grab and its end are events too (`"type": "grab"` and `"release"`, with `bone` and `holder`, the
 hand's name): the body does not feel a hold, it is told of it by the run, which knows both the hands and the
 body. `control.grab_events` counts the grabs, and the expectation `"grab_events": 1` holds the count and that
@@ -556,16 +567,18 @@ muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's wei
 **Get-ups** (`control.get_up`, in a run with `"get_up": true`): how many times the body began to get up and how many
 ended standing (`attempts`, `successes`); the last attempt's clip, when it began and how long it took to stand
 (`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`; under the led
-get-up, `getup.carry` 1, the clip stands still only while the muscles come up, while a press holds the body down and at
-its end until the body is upright on both feet), and why the
+get-up, the only one since R2's rest, the clip stands still only while the muscles come up, while a press holds the body
+down and at its end until the body is upright on both feet; the waits by kind `behind_height_s`, `behind_side_s` and
+`behind_foot_s` went with the clip-following path, `behind_held_s` stays), and why the
 last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`) and the most the body
 was pressed with (`pressed_max_n`: the force felt in every frame of `reactions.held_push_s`, which is what
 `getup.hold_force_n` is compared with); and what the assist did over all the time spent getting up (`seconds`): its
 commanded force over body weight, mean and largest (`assist_force_share_mean` 0.25 to 0.28 since M3 part 7, 0.44 to
-0.49 before: the clip-following get-up, before R1; under the led get-up the world's pull of `getup.carry` counts in
+0.49 before: the clip-following get-up, before R1; under the led get-up the world's pull of `getup.carry_*` counts in
 the share, 1.16 of body weight in R1), and its largest torque share. Since R2's step 2 (decision 17): of the attempts
 that asked for the led get-up, those that were led and those that were not (`led_attempts`, `not_led_attempts`), and why
-the last of those was not (`not_led`); such a run fails, whatever it expects, on a check of its own, `get_up_led`. Since
+the last of those was not (`not_led`); such a run fails, whatever it expects, on a check of its own, `get_up_led` (since
+R2's rest such an attempt is given up, `not_led`, and the body stays down). Since
 R2's step 3: how long a hand held the body while it got up and its largest pull (`held_s`, `hold_max_n`), the slowest
 pace of the clip under `getup.hold_by_body` (`pace_min`, 1 without it) and when the first attempt began
 (`first_started_s`). Since R2's step 4: the least of the carry's share the hits left (`hit_free_min`, under
@@ -575,16 +588,27 @@ passes 70 cm (`rise_clip_trunk_deg`, `rise_clip_feet_cm`; beside `rise_trunk_deg
 whether a lean is the clip's or the body's; -1 for an attempt that was not led or whose reference never got that high.
 Since R2's step 8 (`docs/recon/r2_step8_plan.md`): `starts`, how every attempt began, in order: when (`at_s`), the clip's
 key (`clip`; `|mirror` at its end for a mirror image, `mirrored`) and the time in it the attempt began from (`time_s`); read
-only, in both modes, how far the clip as laid stood from the body as it lay: the clip's pelvis from the body's
+only, how far the clip as laid stood from the body as it lay: the clip's pelvis from the body's
 (`pelvis_off_cm`), the weighted root mean square of the distances of the bones the motion library compares, by
 `getup.match_*`'s weights (`off_cm`; the matcher's own measure, worked out for whatever clip and frame the attempt took), and
 the mean angle over the joints between the body's pose and the clip's (`pose_deg`); how it ended (`ended_s`, `ended`:
-`stood` or why it was given up; -1 and empty while it goes on); and with `getup.match` 1 the matcher's choice (`matched`
-true): its cost and the cost's parts (`cost_cm`, `places_cm`, `up_deg`), its turn about the vertical (`yaw_deg`), the next
+`stood` or why it was given up; -1 and empty while it goes on); and the matcher's choice (`matched` true; every start since
+R2's rest): its cost and the cost's parts (`cost_cm`, `places_cm`, `up_deg`), its turn about the vertical (`yaw_deg`), the next
 best variant that might have been chosen (`next`, `next_cost_cm`), and the nearest of every get-up of the library and of the
 rolls, chosen or not (`best_any`, `best_any_cost_cm`, `best_roll`, `best_roll_cost_cm`).
+Every roll before a clip (`control.get_up.rolls`, R2's step 9, `getup.roll` 1), in order: when it began (`at_s`), which side lay
+down (`on_left`) and which way it rolled (`to_front`), the hips' line from level as it began and ended (`from_deg`, `to_deg`; 90 on a
+side), how long it took (`s`; -1 while it goes on), whether it came within `getup.roll_done_deg` (`done`), how it ended (`rolled`,
+`roll_s` or why the attempt was given up), and whether the front looked down as it began and ended (`facing_down_from`,
+`facing_down_to`); `rolls_done` counts the done ones. An attempt that begins with a roll counts once, with the roll's time.
+Each start also has the clip's floor over the floor last stood on (`floor_over_cm`, 0 unless `getup.fit_surface` laid it on what the
+pelvis lay on) and the fit to the floor it followed, least and most (`fit_min_cm`, `fit_max_cm`, `getup.fit_floor`). Attempts given up,
+by kind (`given_up_by`: `posed_from_outside`, `held_up`, `no_clip`, `hit`, `lost`, `held_down`, `waited`, `dragged`, `not_led`, `other`); with
+`getup.drag` 1, how long the body was dragged (`dragged_s`) and what the carry gave against holds that pulled with `getup.drag_force_n`
+or more (`carry_against_holds_max_n`, the most in a frame, and `carry_against_holds_ns` over time); with `getup.arm_answer`, how long a
+held arm yielded or was pulled in while the body got up (`arm_yield_s`, `arm_pull_s`).
 
-**The motion library** (`control.motion_library`, once it is built: `getup.match` 1, at the first get-up): `variant_count`,
+**The motion library** (`control.motion_library`, once it is built, at the first get-up): `variant_count`,
 `match_count` (those the matcher may choose), the worst mirror error (`mirror_error_max_cm`: a mirror image's compared bones
 against its clip's counterparts seen in this mesh's mirror, over every key), how far the clips' skeleton is from its own mirror
 (`source_asymmetry_max_cm`), how many get-ups begin with the pelvis or the trunk on the floor (`getups_lying_at_start`), and

@@ -264,7 +264,7 @@ montages, additives and the like. The database is not committed.
 
 ## motion_library.json: the clips a body gets up by
 
-Not an asset. The list `FSandboxMotionLibrary` reads at a body's first get-up with `getup.match` 1 (R2's step 8,
+Not an asset. The list `FSandboxMotionLibrary` reads at a body's first get-up (R2's step 8,
 `docs/recon/r2_step8_plan.md`; the tuning value `motion.library` names the file, so a tuning directory can name another).
 Each clip is carried to the body as a get-up's clip is (`FSandboxClipPose`) and, with `mirror`, also read as its mirror image
 (made on the clip's own skeleton: each bone takes its counterpart's motion seen in the mirror). Nothing of it is written to disk.

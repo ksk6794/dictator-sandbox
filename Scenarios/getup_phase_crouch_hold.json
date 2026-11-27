@@ -1,0 +1,122 @@
+{
+  "name": "getup_phase_crouch_hold",
+  "duration_s": 22.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "control": "active",
+    "get_up": true,
+    "location_cm": [
+      0,
+      90,
+      0
+    ],
+    "laid_deg": 0
+  },
+  "events": [
+    {
+      "t": 0.5,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            18,
+            115,
+            95
+          ],
+          "grip": 0
+        }
+      ]
+    },
+    {
+      "t": 3.8,
+      "type": "effector",
+      "effector": "hand_left",
+      "at_bone": "spine_04",
+      "follow_bone_s": 0.25,
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            18,
+            115,
+            95
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.15,
+          "location_cm": [
+            0,
+            0,
+            4
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.2,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.25,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.25,
+          "location_cm": [
+            0,
+            0,
+            9
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.35,
+          "location_cm": [
+            0,
+            0,
+            9
+          ],
+          "grip": 0
+        },
+        {
+          "t": 2.8,
+          "location_cm": [
+            0,
+            0,
+            110
+          ],
+          "grip": 0
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_joint_stretch_cm": 3.0,
+    "effector_grabs": 1,
+    "grab_events": 1,
+    "min_grab_frames": 40,
+    "measures": {
+      "control.get_up.held_s": {
+        "min": 0.3
+      }
+    }
+  }
+}

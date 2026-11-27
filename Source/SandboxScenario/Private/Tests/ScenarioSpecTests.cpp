@@ -267,6 +267,25 @@ bool FScenarioSpecEffectorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("deepest penetration"), Spec.Expect.MaxEffectorPenetrationCm.Get(0.0), 1.0);
 	TestEqual(TEXT("slowest impact"), Spec.Expect.MinEffectorImpactSpeedMps.Get(0.0), 8.0);
 	TestEqual(TEXT("least displacement of what was struck"), Spec.Expect.MinStruckDisplacementCm.Get(0.0), 3.0);
+	TestEqual(TEXT("a path measured once from no body"), Spec.Events[1].FollowBoneS, 0.0);
+
+	// A hand that follows a body for a while (R2's drags: a limb that moves as the body gets up), and the field refused without a body
+	// or as anything but seconds.
+	const auto Follow = [](const TCHAR* Field)
+	{
+		return FString::Printf(TEXT(R"({ "name": "follow", "duration_s": 8.0, "body": { "mesh": "/Game/Some.Mesh", "control": "active" },
+			"events": [ { "t": 3.0, "type": "effector", "effector": "hand_left", %s "path": [
+				{ "t": 0.0, "location_cm": [0, 0, 100] }, { "t": 0.3, "location_cm": [0, 0, 5], "grip": 1 } ] } ] })"), Field);
+	};
+	FScenarioSpec Followed;
+	if (TestTrue(TEXT("a hand that follows a body parses"), FScenarioSpec::FromString(*Follow(TEXT(R"("at_bone": "foot_l", "follow_bone_s": 0.25,)")), Followed, Error)))
+	{
+		TestEqual(TEXT("for how long"), Followed.Events[0].FollowBoneS, 0.25);
+		TestEqual(TEXT("which body"), Followed.Events[0].AtBone, FName(TEXT("foot_l")));
+	}
+	TestFalse(TEXT("following needs a body"), FScenarioSpec::FromString(*Follow(TEXT(R"("follow_bone_s": 0.25,)")), Followed, Error));
+	TestFalse(TEXT("following is seconds"), FScenarioSpec::FromString(*Follow(TEXT(R"("at_bone": "foot_l", "follow_bone_s": "long",)")), Followed, Error));
+	TestFalse(TEXT("following is not negative"), FScenarioSpec::FromString(*Follow(TEXT(R"("at_bone": "foot_l", "follow_bone_s": -1,)")), Followed, Error));
 	return true;
 }
 

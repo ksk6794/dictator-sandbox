@@ -313,7 +313,7 @@ void USandboxPlaySubsystem::TellNotLed()
 	if (GetUps.NotLedAttempts > NotLedTold)
 	{
 		NotLedTold = GetUps.NotLedAttempts;
-		UE_LOG(LogSandbox, Error, TEXT("Play session: the character's get-up asked for the led get-up (getup.carry 1) and was not led (%d time(s)): %s; it went the clip-following way"),
+		UE_LOG(LogSandbox, Error, TEXT("Play session: the character's get-up could not be led (%d time(s)): %s; the body stays down"),
 			NotLedTold, *GetUps.NotLed);
 	}
 }
@@ -323,7 +323,7 @@ void USandboxPlaySubsystem::AddHudLines(TArray<FString>& OutLines) const
 	const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
 	if (Controller && Controller->GetGetUpView().NotLedAttempts > 0)
 	{
-		OutLines.Add(FString::Printf(TEXT("GET-UP NOT LED (getup.carry 1), %d time(s): %s; it went the clip-following way"),
+		OutLines.Add(FString::Printf(TEXT("GET-UP NOT LED, %d time(s): %s; the body stays down"),
 			Controller->GetGetUpView().NotLedAttempts, *Controller->GetGetUpView().NotLed));
 	}
 	if (Controller && Controller->GetStateLog().Num() > 0)

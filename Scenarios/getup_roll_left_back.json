@@ -1,0 +1,46 @@
+{
+  "name": "getup_roll_left_back",
+  "duration_s": 16.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "control": "active",
+    "get_up": true,
+    "location_cm": [
+      0,
+      90,
+      0
+    ],
+    "laid_deg": -80
+  },
+  "events": [],
+  "expect": {
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_get_up_attempts": 1,
+    "max_joint_stretch_cm": 2.0,
+    "measures": {
+      "control.get_up.rolls_done": {
+        "min": 1
+      },
+      "control.get_up.rolls.0.on_left": {
+        "equals": true
+      },
+      "control.get_up.rolls.0.to_front": {
+        "equals": false
+      },
+      "control.get_up.rolls.0.facing_down_to": {
+        "equals": false
+      },
+      "control.get_up.rise_trunk_deg": {
+        "max": 45
+      },
+      "control.get_up.rise_feet_cm": {
+        "max": 30
+      }
+    }
+  }
+}

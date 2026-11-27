@@ -46,6 +46,12 @@ struct FScenarioEvent
 	 * is (its centre of mass) at the moment the event begins, along the world's axes.
 	 */
 	FName AtBone;
+	/**
+	 * "effector" with "at_bone" and "follow_bone_s": for this long after the event begins the keys are measured again every frame from
+	 * where that body is then, so that a hand sent to a limb that moves reaches it; after it the trajectory stays where it was last put.
+	 * 0: measured once, as the event begins.
+	 */
+	double FollowBoneS = 0.0;
 	/** "pin": also hold the body's orientation, not only its position (a weld instead of a ball joint). */
 	bool bLockRotation = false;
 	/**

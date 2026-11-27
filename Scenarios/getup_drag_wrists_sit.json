@@ -1,0 +1,210 @@
+{
+  "name": "getup_drag_wrists_sit",
+  "duration_s": 22.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "control": "active",
+    "get_up": true,
+    "location_cm": [
+      0,
+      90,
+      0
+    ],
+    "laid_deg": 0
+  },
+  "events": [
+    {
+      "t": 0.5,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            44,
+            85,
+            35
+          ],
+          "grip": 0
+        }
+      ]
+    },
+    {
+      "t": 0.5,
+      "type": "effector",
+      "effector": "hand_right",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            22,
+            136,
+            107
+          ],
+          "grip": 0
+        }
+      ]
+    },
+    {
+      "t": 3.35,
+      "type": "effector",
+      "effector": "hand_left",
+      "at_bone": "hand_l",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            44,
+            85,
+            35
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.12,
+          "location_cm": [
+            0,
+            0,
+            3
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.17,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.2,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 1
+        },
+        {
+          "t": 3.0,
+          "location_cm": [
+            0,
+            -220,
+            49
+          ],
+          "grip": 1
+        },
+        {
+          "t": 3.1,
+          "location_cm": [
+            0,
+            -220,
+            49
+          ],
+          "grip": 0
+        },
+        {
+          "t": 3.55,
+          "location_cm": [
+            0,
+            -220,
+            150
+          ],
+          "grip": 0
+        }
+      ]
+    },
+    {
+      "t": 3.35,
+      "type": "effector",
+      "effector": "hand_right",
+      "at_bone": "hand_r",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            22,
+            136,
+            107
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.12,
+          "location_cm": [
+            0,
+            0,
+            3
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.17,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.2,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 1
+        },
+        {
+          "t": 3.0,
+          "location_cm": [
+            0,
+            -220,
+            49
+          ],
+          "grip": 1
+        },
+        {
+          "t": 3.1,
+          "location_cm": [
+            0,
+            -220,
+            49
+          ],
+          "grip": 0
+        },
+        {
+          "t": 3.55,
+          "location_cm": [
+            0,
+            -220,
+            150
+          ],
+          "grip": 0
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_joint_stretch_cm": 3.0,
+    "effector_grabs": 2,
+    "min_grab_frames": 200,
+    "measures": {
+      "control.get_up.given_up_by.dragged": {
+        "min": 1
+      },
+      "control.get_up.carry_against_holds_ns": {
+        "max": 30
+      }
+    }
+  }
+}

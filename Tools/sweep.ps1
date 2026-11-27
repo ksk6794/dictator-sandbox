@@ -4,7 +4,7 @@
 #       -Vary "muscles.legs.stiffness_nm_per_rad=400,800,1200;muscles.legs.damping_s=0.03,0.06,0.12"
 #   ... -OneAtATime            change one value at a time and leave the others as the files have them (a
 #                              coordinate search: 6 settings above instead of the grid's 9)
-#   ... -Sets "|getup.start_blend_s=0.6|getup.start_blend_s=0,getup.carry=0"
+#   ... -Sets "|getup.start_blend_s=0.6|getup.start_blend_s=0,getup.roll=0"
 #                              instead of -Vary: sets of values changed together, separated by '|', each a setting; an
 #                              empty set is the files as they are. Several scenarios times several sets in one call, in
 #                              place of a loop over Tools\scenario.ps1 (each run as that one would give it)

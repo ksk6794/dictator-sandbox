@@ -186,4 +186,58 @@ bool FBodyTuningGroupsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * A pose's mirror image (FSandboxPoseTuning::Mirrored; the side fall and, since R2's step 9, the roll of a body on its right side):
+ * made-up angles whose left and right differ. The limbs change sides with the same numbers, the trunk keeps its bending forward and
+ * back and turns its sideways bend and twist round, and twice mirrored is the pose itself. (Checked to fail with the swap of sides
+ * taken out of Mirrored, 27 November 2026.)
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBodyTuningPoseMirrorTest, "DictatorSandbox.Body.Tuning.PoseMirror", BodyTestFlags)
+bool FBodyTuningPoseMirrorTest::RunTest(const FString& Parameters)
+{
+	FSandboxPose Pose;
+	for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+	{
+		Pose.Joints[Index].Swing1Deg = 1.0 + Index;
+		Pose.Joints[Index].Swing2Deg = 20.0 + 2.0 * Index;
+		Pose.Joints[Index].TwistDeg = -40.0 - 3.0 * Index;
+	}
+	const auto IndexOf = [](const TCHAR* Name) -> int32
+	{
+		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+		{
+			if (FCString::Strcmp(SandboxPoseJoints[Index], Name) == 0)
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	};
+	const FSandboxPose Mirror = FSandboxPoseTuning::Mirrored(Pose);
+	for (const TCHAR* const Limb : { TEXT("upperarm"), TEXT("lowerarm"), TEXT("thigh"), TEXT("calf"), TEXT("clavicle") })
+	{
+		const int32 Left = IndexOf(*FString::Printf(TEXT("%s_l"), Limb));
+		const int32 Right = IndexOf(*FString::Printf(TEXT("%s_r"), Limb));
+		if (!TestTrue(FString::Printf(TEXT("%s has both sides"), Limb), Left != INDEX_NONE && Right != INDEX_NONE))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s: the left takes the right's swing1"), Limb), Mirror.Joints[Left].Swing1Deg, Pose.Joints[Right].Swing1Deg);
+		TestEqual(FString::Printf(TEXT("%s: the right takes the left's swing2"), Limb), Mirror.Joints[Right].Swing2Deg, Pose.Joints[Left].Swing2Deg);
+		TestEqual(FString::Printf(TEXT("%s: and its twist"), Limb), Mirror.Joints[Right].TwistDeg, Pose.Joints[Left].TwistDeg);
+	}
+	const int32 Spine = IndexOf(TEXT("spine_02"));
+	TestEqual(TEXT("the trunk keeps its bend forward"), Mirror.Joints[Spine].Swing1Deg, Pose.Joints[Spine].Swing1Deg);
+	TestEqual(TEXT("the trunk's sideways bend turns round"), Mirror.Joints[Spine].Swing2Deg, -Pose.Joints[Spine].Swing2Deg);
+	TestEqual(TEXT("the trunk's twist turns round"), Mirror.Joints[Spine].TwistDeg, -Pose.Joints[Spine].TwistDeg);
+	const FSandboxPose Twice = FSandboxPoseTuning::Mirrored(Mirror);
+	for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)
+	{
+		TestTrue(FString::Printf(TEXT("twice mirrored, %s is itself"), SandboxPoseJoints[Index]),
+			Twice.Joints[Index].Swing1Deg == Pose.Joints[Index].Swing1Deg && Twice.Joints[Index].Swing2Deg == Pose.Joints[Index].Swing2Deg &&
+			Twice.Joints[Index].TwistDeg == Pose.Joints[Index].TwistDeg);
+	}
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

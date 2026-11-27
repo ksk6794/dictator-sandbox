@@ -1,5 +1,5 @@
 {
-  "name": "getup_match_library",
+  "name": "getup_roll_left_front",
   "duration_s": 16.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
@@ -14,41 +14,32 @@
       90,
       0
     ],
-    "laid_deg": 0
+    "laid_deg": -90
   },
-  "events": [
-    {
-      "t": 0.0,
-      "type": "console",
-      "command": "Sandbox.Tune getup.match=1"
-    }
-  ],
+  "events": [],
   "expect": {
     "end_state": "standing",
     "min_get_ups": 1,
     "max_get_up_attempts": 1,
     "max_joint_stretch_cm": 2.0,
-    "tuning_changes": 1,
     "measures": {
-      "control.motion_library.variant_count": {
-        "min": 36,
-        "max": 36
+      "control.get_up.rolls_done": {
+        "min": 1
       },
-      "control.motion_library.match_count": {
-        "min": 8,
-        "max": 8
-      },
-      "control.motion_library.mirror_error_max_cm": {
-        "max": 1.0
-      },
-      "control.motion_library.getups_lying_at_start": {
-        "min": 32
-      },
-      "control.get_up.starts.0.matched": {
+      "control.get_up.rolls.0.on_left": {
         "equals": true
       },
-      "control.get_up.starts.0.pelvis_off_cm": {
-        "max": 15
+      "control.get_up.rolls.0.to_front": {
+        "equals": true
+      },
+      "control.get_up.rolls.0.facing_down_to": {
+        "equals": true
+      },
+      "control.get_up.rise_trunk_deg": {
+        "max": 45
+      },
+      "control.get_up.rise_feet_cm": {
+        "max": 30
       }
     }
   }

@@ -1,0 +1,135 @@
+{
+  "name": "getup_pull_arm_in_sit",
+  "duration_s": 18.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "control": "active",
+    "get_up": true,
+    "location_cm": [
+      0,
+      90,
+      0
+    ],
+    "laid_deg": 0
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune getup.arm_answer=3"
+    },
+    {
+      "t": 0.5,
+      "type": "effector",
+      "effector": "hand_left",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            44,
+            85,
+            25
+          ],
+          "grip": 0
+        }
+      ]
+    },
+    {
+      "t": 3.38,
+      "type": "effector",
+      "effector": "hand_left",
+      "at_bone": "hand_l",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            44,
+            85,
+            25
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.09,
+          "location_cm": [
+            0,
+            0,
+            3
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.14,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.17,
+          "location_cm": [
+            0,
+            0,
+            -1
+          ],
+          "grip": 1
+        },
+        {
+          "t": 0.77,
+          "location_cm": [
+            60,
+            0,
+            9
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.27,
+          "location_cm": [
+            60,
+            0,
+            9
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.37,
+          "location_cm": [
+            60,
+            0,
+            9
+          ],
+          "grip": 0
+        },
+        {
+          "t": 2.82,
+          "location_cm": [
+            60,
+            0,
+            100
+          ],
+          "grip": 0
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_joint_stretch_cm": 3.0,
+    "effector_grabs": 1,
+    "min_grab_frames": 100,
+    "tuning_changes": 1,
+    "measures": {
+      "control.get_up.arm_pull_s": {
+        "min": 0.5
+      }
+    }
+  }
+}

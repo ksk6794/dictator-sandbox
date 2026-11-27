@@ -1496,8 +1496,33 @@ void UScenarioRunnerSubsystem::MoveProps(double SimTimeS)
 	}
 }
 
+void UScenarioRunnerSubsystem::FollowBones(double SimTimeS)
+{
+	// A trajectory that follows a body is moved by where the body went since the last frame (the source's keys are moved as a
+	// whole, so a move by the difference keeps them measured from the body now). A later event of the same hand plays its own
+	// trajectory; this one is then moved for nothing until its time is up.
+	const USkeletalMeshComponent* BodyMesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
+	for (int32 Index = BoneFollows.Num() - 1; Index >= 0; --Index)
+	{
+		FBoneFollow& Follow = BoneFollows[Index];
+		const FBodyInstance* Part = BodyMesh ? BodyMesh->GetBodyInstance(Follow.Bone) : nullptr;
+		if (SimTimeS > Follow.UntilS + DtToleranceS || !Part || !Part->IsValidBodyInstance() || !EffectorSource.IsValid())
+		{
+			BoneFollows.RemoveAt(Index);
+			continue;
+		}
+		const FVector NowCm = Part->GetCOMPosition();
+		EffectorSource->ShiftPath(Follow.Effector, Follow.StartS, NowCm - Follow.LastCm);
+		Follow.LastCm = NowCm;
+	}
+}
+
 void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 {
+	if (BoneFollows.Num() > 0)
+	{
+		FollowBones(SimTimeS);
+	}
 	USkeletalMeshComponent* Mesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
 	while (NextEventIndex < Spec.Events.Num() && Spec.Events[NextEventIndex].TimeS <= SimTimeS + DtToleranceS)
 	{
@@ -1544,6 +1569,10 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 				{
 					UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: the hand's trajectory could not be put at '%s': %s"), Event.TimeS, *Event.AtBone.ToString(),
 						Part && Part->IsValidBodyInstance() ? TEXT("it has no key after its first") : TEXT("the character has no such body"));
+				}
+				else if (Event.FollowBoneS > 0.0)
+				{
+					BoneFollows.Add(FBoneFollow{ Event.Effector, Event.TimeS, Event.AtBone, Event.TimeS + Event.FollowBoneS, Part->GetCOMPosition() });
 				}
 			}
 			if (!bPlaced)
@@ -2361,7 +2390,7 @@ void UScenarioRunnerSubsystem::Finish()
 		const double Limit = Spec.Expect.MinGetUpAttempts.GetValue();
 		AddCheck(TEXT("min_get_up_attempts"), Controller && Controller->GetGetUpView().Attempts >= Limit, Controller ? Number(Controller->GetGetUpView().Attempts) : Null(), Number(Limit));
 	}
-	// Decision 17: a get-up that asked for the led get-up (getup.carry 1) and went the old way fails the run, whatever it expects;
+	// Decision 17: a get-up that could not be led (its carry's springs could not be made; the body stays down) fails the run, whatever it expects;
 	// the reason is in control.get_up.not_led. A run must not pass on a get-up it did not ask for.
 	if (Controller && Controller->GetGetUpView().LedAttempts + Controller->GetGetUpView().NotLedAttempts > 0)
 	{
@@ -2846,9 +2875,6 @@ void UScenarioRunnerSubsystem::Finish()
 			GetUpJson->SetNumberField(TEXT("paused_ease_s"), GetUps.PausedEaseS);
 			GetUpJson->SetNumberField(TEXT("paused_behind_s"), GetUps.PausedBehindS);
 			GetUpJson->SetNumberField(TEXT("paused_end_s"), GetUps.PausedEndS);
-			GetUpJson->SetNumberField(TEXT("behind_height_s"), GetUps.BehindHeightS);
-			GetUpJson->SetNumberField(TEXT("behind_side_s"), GetUps.BehindSideS);
-			GetUpJson->SetNumberField(TEXT("behind_foot_s"), GetUps.BehindFootS);
 			GetUpJson->SetNumberField(TEXT("behind_held_s"), GetUps.BehindHeldS);
 			GetUpJson->SetNumberField(TEXT("plank_s"), GetUps.PlankS);
 			GetUpJson->SetNumberField(TEXT("plank_max_cm"), GetUps.PlankMaxCm);
@@ -2883,6 +2909,9 @@ void UScenarioRunnerSubsystem::Finish()
 				Entry->SetNumberField(TEXT("pelvis_off_cm"), Start.PelvisOffCm);
 				Entry->SetNumberField(TEXT("off_cm"), Start.OffCm);
 				Entry->SetNumberField(TEXT("pose_deg"), Start.PoseDeg);
+				Entry->SetNumberField(TEXT("floor_over_cm"), Start.FloorOverCm);
+				Entry->SetNumberField(TEXT("fit_min_cm"), Start.FitMinCm);
+				Entry->SetNumberField(TEXT("fit_max_cm"), Start.FitMaxCm);
 				Entry->SetNumberField(TEXT("ended_s"), Start.EndedS);
 				Entry->SetStringField(TEXT("ended"), Start.Ended);
 				Entry->SetBoolField(TEXT("matched"), Start.bMatched);
@@ -2902,6 +2931,39 @@ void UScenarioRunnerSubsystem::Finish()
 				StartsJson.Add(MakeShared<FJsonValueObject>(Entry));
 			}
 			GetUpJson->SetArrayField(TEXT("starts"), StartsJson);
+			// Every roll before a clip (R2, step 9, getup.roll): which side lay down, which way it rolled, how far and how long.
+			TArray<TSharedPtr<FJsonValue>> RollsJson;
+			for (const FSandboxGetUpRoll& Roll : GetUps.Rolls)
+			{
+				const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetNumberField(TEXT("at_s"), Roll.AtS);
+				Entry->SetBoolField(TEXT("on_left"), Roll.bOnLeft);
+				Entry->SetBoolField(TEXT("to_front"), Roll.bToFront);
+				Entry->SetNumberField(TEXT("from_deg"), Roll.FromDeg);
+				Entry->SetNumberField(TEXT("to_deg"), Roll.ToDeg);
+				Entry->SetNumberField(TEXT("s"), Roll.DurationS);
+				Entry->SetBoolField(TEXT("done"), Roll.bDone);
+				Entry->SetStringField(TEXT("ended"), Roll.Ended);
+				Entry->SetBoolField(TEXT("facing_down_from"), Roll.bFacingDownFrom);
+				Entry->SetBoolField(TEXT("facing_down_to"), Roll.bFacingDownTo);
+				RollsJson.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+			GetUpJson->SetArrayField(TEXT("rolls"), RollsJson);
+			// Attempts given up by kind (ESandboxGiveUp), and decision 18's drag (getup.drag).
+			{
+				const TSharedRef<FJsonObject> ByKind = MakeShared<FJsonObject>();
+				for (int32 Kind = 0; Kind < static_cast<int32>(ESandboxGiveUp::Count); ++Kind)
+				{
+					ByKind->SetNumberField(GiveUpName(static_cast<ESandboxGiveUp>(Kind)), GetUps.GivenUpBy[Kind]);
+				}
+				GetUpJson->SetObjectField(TEXT("given_up_by"), ByKind);
+				GetUpJson->SetNumberField(TEXT("dragged_s"), GetUps.DraggedS);
+				GetUpJson->SetNumberField(TEXT("carry_against_holds_max_n"), GetUps.CarryAgainstHoldsMaxN);
+				GetUpJson->SetNumberField(TEXT("carry_against_holds_ns"), GetUps.CarryAgainstHoldsNs);
+				GetUpJson->SetNumberField(TEXT("arm_yield_s"), GetUps.ArmYieldS);
+				GetUpJson->SetNumberField(TEXT("arm_pull_s"), GetUps.ArmPullS);
+			}
+			GetUpJson->SetNumberField(TEXT("rolls_done"), GetUps.Rolls.FilterByPredicate([](const FSandboxGetUpRoll& Roll) { return Roll.bDone; }).Num());
 			GetUpJson->SetNumberField(TEXT("seconds"), GetUpFrames * FixedDt);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_mean"), GetUpFrames > 0 ? GetUpAssistShareSum / GetUpFrames : 0.0);
 			GetUpJson->SetNumberField(TEXT("assist_force_share_max"), GetUpAssistShareMax);

@@ -210,6 +210,11 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **The largest change of a command in a frame is not its largest jump.** A swinging leg's is 65 N*m, and 4 of them are a
   jump: read `command_jump_max_nm`. And a frame can have several causes: of 365 N*m 333, 333 and 140 were left with each of
   three put right alone, 26 with all.
+- **A tuning file edited while runs go is read by them.** Every scenario run looks at `Config/Tuning` every 30 frames and reloads it
+  (hot reload). On 27 November 2026 a value added to `body.json` for code not yet built went in while three stands ran: the running
+  processes refused the changed file and kept their values (an error in each run's log, the physics as before), but every process that
+  started after it could not read the tuning at all, and one stand of 150 ended with no result. Change the tuning files only while no
+  engine process runs (or put the new value in after the build that knows it, before the runs); a stand that spans an edit is run again.
 - **Check a limit against today's body before it judges a change.** "No joint faster than 30 rad/s in the knockdowns" was written
   for N6 and today's neck reaches 36 after the blow at 90 degrees; the plan said "the arms, when they meet the floor". Read today's
   figure of a new limit before the runs it is to judge.
@@ -330,6 +335,12 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   at 3000 N*m/rad. An arm's bend goes over from the pose's plane with the weight, its hand turns with the forearm, and its shoulder
   and elbow are held to their ranges (`FSandboxLimbTarget::bArm`). Test a placement with stiff muscles first: that is the geometry;
   what the arm's own strength leaves of it is its weight.
+- **A hand placed near its own shoulder turns the elbow over.** R2's held arm, pulled in, puts its hand `getup.arm_pull_in_cm` from
+  the shoulder toward the holding point (27 November, step 12). Worked out anew every tick, the way turned round as the holding point
+  passed the shoulder and the arm's target jumped 160 degrees in a frame; held in the chest's space, it still jumped 148 degrees at 25
+  cm once the holding hand followed the arm: the placed hand came near enough to its shoulder for the two-bone placement to turn the
+  elbow over. At 35 cm the largest jump is 29 degrees, the clip's own. The suite's `control.pose.target_jump_max_deg` told both; read it
+  for every new target that a placement makes, and keep a placed hand well away from its shoulder.
 
 ## Falls and the get-up
 
@@ -472,6 +483,18 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A pointer into the controller's map of clips does not live past the next clip read.** `Clips` is a `TMap`; reading another clip
   may move every one in it. The old choice of a get-up kept the pointer of its best clip while it read the others (it never showed:
   every hash is the same with it found again by its path, R2's step 8). Keep a clip's key, and find it again after any read.
+- **A body laid on its side tips onto its back by itself.** R2's roll (27 November, step 9) was first written by intuition, both arms
+  forward and the upper knee up, to roll the body onto its front; it rolled it onto its back. Every one of eight changes made one at a
+  time from a neutral pose, the neutral pose too, did the same in 0.57 to 0.94 s: this body's round back rocks it backward, and an arm
+  thrown forward pushes its shoulder back. A pose to the front had to stop that first (the upper arm across toward the floor in front,
+  the upper thigh drawn across), and a pose that came in over 0.9 s instead of 0.4 s was too late for both front rolls. Measure what a
+  pose does to a body as it lies, one change at a time (`sweep.ps1 -OneAtATime`), before writing a motion around it.
+- **A recording's limbs on its floor lie under this body's floor.** Carried to this body, the sample's get-ups have the hands 9 to 15
+  cm under the floor on all fours and a foot 10 to 19 cm under it as it steps (R2's step 10, `FSandboxMotionVariant::FitCm`): the
+  skeletons' proportions and this body's shapes differ. The carry's springs never pull down, so the reference's lowered limbs gave
+  nothing, the muscles pushed the body up off them, and what the world did push downward (its damping) was 0.14 of the body's weight
+  (0.09 with the fit). A reference
+  carried from another skeleton is checked against the floor where it touches it, not only where it ends.
 
 ## Hands, the grab and blows
 

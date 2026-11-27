@@ -134,6 +134,15 @@ struct SANDBOXBODY_API FSandboxBodyProbe
 	static double GazeYawDeg(double TargetYawDeg, double HeadYawDeg, double HeadShare);
 
 	/**
+	 * How a lying body lies, from its two hip joints and its pelvis and chest (world, cm): how far the line from the right hip to the
+	 * left stands from level (90 on a side, 0 on the back or the front; degrees), whether the left side is the lower one, and whether
+	 * the body's front looks down (its front: the trunk's up crossed with its left, in the engine's axes). False when the hips or the
+	 * trunk give no line. R2's step 9 (getup.roll): which bodies roll and when a roll is done.
+	 */
+	static bool LyingSide(const FVector& HipLeftCm, const FVector& HipRightCm, const FVector& PelvisCm, const FVector& ChestCm,
+		double& OutSideDeg, bool& bOutOnLeft, bool& bOutFacingDown);
+
+	/**
 	 * Speed of the body as a whole: the root mean square over its bodies, weighted by mass, of their linear
 	 * speed (m/s) and of their angular speed (rad/s). A trembling hand barely moves these; a moving trunk does.
 	 */

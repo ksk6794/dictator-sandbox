@@ -6224,6 +6224,296 @@ bootstrap on the final tree: all 15 steps, the suite 154 of 154, 59 unit tests, 
 give every figure as at 0 (no get-up in them). The quick scorecard: C2 1.18 of body weight on the four get-ups (1.08), C19 within, C21
 2.4 s (above), C25 439 N*m as the baseline, the largest jump of a target 75.3 degrees (`getup_laid_right`, as at 0).
 
+### R2's rest: the matcher switched on (27 November, the owner's decision 49)
+
+`docs/recon/r2_rest_plan.md`. Before it the suite was saved as `r2rest0` (154 of 154, every hash of `start`). `getup.match` 1 in
+`Config/Tuning/body.json`. Against `r2rest0`: 117 scenarios with the same hashes, the 32 with a get-up other (the same 32 as step 8's
+`-Tune` run). `getup_held`'s two hands, which pressed the empty floor under the matcher's choice, are sent to the body: `at_bone`
+`spine_04` and `pelvis`, at 7.0 s, 20 cm above where each was, held 4 s; chosen of four placings by one sweep (`Saved\Sweeps\r2m_held3`:
+at 7.5 s the hands reach a body that has already risen past them, 17 to 36 N*s; at 7.0 s with 20 cm, 412 N*s with the rule and 479
+with the matcher, one attempt, standing). The five `getup_match_*` of step 8 switched the matcher on themselves; with it in the files
+each had the hashes of its `getup_laid_*` twin to the bit and failed only on `tuning_changes`: their measures (the matcher chose,
+the pelvis 15 cm at most from the clip's at the start, and the library's four checks on `getup_laid_back`) moved into the twins and the
+five files went. The suite: 149 of 149, baseline `match`. The stand on three seeds (`Saved\Matrix\getup_seeds\match_plain`) gives
+step 8's figures to the digit: 150 standing, 142 at the first attempt, 15 of 165 attempts given up (9.1%), 8 poses held over 1.0 s,
+C27 in 90 of 150 (by clip B 30, F 22, L 77, R 61 degrees), C21's seed medians 2.60, 2.97, 2.93 s, authority 1.18. Every attempt given
+up is at the table (11) or the chair (4); the 78 falls on the bare floor and the 24 at a wall stand at the first attempt.
+
+### R2, step 9: the roll by the body's own muscles (27 November, the owner's decision 50; behind `getup.roll`, 0)
+
+**Built.** A body that begins an attempt with its hips' line `getup.roll_side_deg` (50) or more from level first rolls: the attempt
+(state GetUp, its count and C21's clock) begins with a phase of no clip and no pull from the world, the muscles asked for
+`poses.roll_to_front` or `roll_to_back` (written for the left side down, `FSandboxPoseTuning::Mirrored` for the right), coming up from
+nothing over `getup.ease_s` as in any get-up; done when the hips' line is within `roll_done_deg` (45) of level, or after `roll_s` (1.5 s)
+whatever it reached; then `StartClip` chooses as the matcher does, the side clips left out (decision 38), from the body as it lies,
+with the start blend, and the carry comes up over `ease_s` counted from the clip's start (not from the roll's, which would have handed
+it whole at once). Which way: `roll_way` 0 by where the front looks (`FSandboxBodyProbe::LyingSide`: the trunk's up crossed with the hips'
+left; unit test `DictatorSandbox.Body.Probe.LyingSide`), 1 front, 2 back; after an attempt with a roll that was given up, the other way.
+`StartGetUp` is now the choice between a roll and a clip; the clip's start is `StartClip` (as an attempt of its own, or after a roll);
+the view of an attempt is set back in one place (`BeginAttemptView`), and a start's end is written to its own entry (`StartIndex`, not
+the last one, which during a roll would be the attempt before). `control.get_up.rolls` (side, way, from and to degrees, time, done, how
+it ended, whether the front looked down before and after) and `rolls_done`. `getup.roll` needs `getup.match` 1 (refused otherwise).
+With `roll` 0 the suite keeps all 149 hashes of `match` (and 61 unit tests: the side's arithmetic, and a test of the pose's mirror on
+asymmetric angles, `DictatorSandbox.Body.Tuning.PoseMirror`, seen to fail with the swap of sides taken out of `Mirrored`).
+
+**The poses were found by measurement, not written once** (`Saved\Sweeps\r2s9_*`). A first pose by intuition (both arms forward, the
+upper knee up, the trunk curled) rolled the body on its left side onto its back, slowly (80 to 63 degrees in 1.5 s): an arm thrown
+forward pushes the shoulder back, and a curled body on its side rocks back on its round back. One change at a time from a neutral pose
+(`r2s9_oneat`): every one of eight, the neutral pose included, rolled a body laid exactly on its side onto its back in 0.57 to 0.94 s;
+a body on its side here tips back by itself. Toward the front (`r2s9_front2`, `_front3`): the upper arm across toward the floor in front
+stops the roll back; the upper thigh drawn across (`swing2` -50, flexed 90, the knee 100) and the lower leg straightened back
+(`thigh_l` -15) take it to about 40 degrees face down in 1.1 s, where the arm and the knee on the floor in front hold it; the lower arm
+overhead sends it back again. `roll_to_front`: the trunk twisted 40 and 40, the upper arm -60 and 90, the upper thigh 90 and -50, the
+lower thigh -15; `roll_to_back`: the trunk twisted -30 and -30, the upper arm back (-40), the legs a little bent. With `roll_done_deg`
+45 the roll ends at 44 degrees after 1.1 s and the clip from the front takes the body from there; at 35 it ran out its 1.5 s at 44.
+
+**Scenarios** (each switches the roll on at 1.0 s, `tuning_changes` 1): `getup_roll_left_front` and `_right_front` (laid on a side:
+rolled to the front 80 to 44 degrees in 1.1 s, F, one attempt, trunk 22 degrees at 70 cm), `getup_roll_left_back` (laid at -80: to the
+back in 0.37 s, B), `getup_roll_right_back` (laid on the right side, `roll_way` 2: to the back in 0.52 s), each asking the roll done,
+its side and way, where the front looks at its end, and C27 within both limits; laid at +-100 degrees the body settles below 50
+degrees while it lies and needs no roll (tried, rewritten at +-90). C26 in the roll (`getup_roll_push`, `_hit`, `_hold` on the body laid
+on its left side): 30 N*s and 200 N*s pressed down on the chest 0.5 s into the roll and a hand that takes hold of the chest for 1.6 s
+across it; the roll goes on (1.0, 1.3 and 0.7 s), one attempt each, standing. The suite 156 of 156, the 149 of `match` with their
+hashes; baseline `roll0`.
+
+**The stand on three seeds** (the same falls; `Saved\Matrix\getup_seeds\roll_plain`, `roll_late*`):
+
+| | Matcher, roll 0 (`match_plain`) | Roll 1 | Roll 1, late start 10 cm/s | 20 | 40 |
+| --- | --- | --- | --- | --- | --- |
+| Standing; at the first attempt | 150; 142 | 149; 141 | 149; 140 | 149; 142 | 149; 143 |
+| Attempts given up (C19, 10%) | 9.1% | 12.2% | 13.7% | 16.3% | 10.8% |
+| Poses held over 1.0 s | 8 | 5 | 4 | 4 | 4 |
+| C27 both limits; trunk median | 90 of 150; 29.7 deg | **150 of 150**; 22.3 | 148 of 149 | 146 of 149 | 144 of 150; 22.2 |
+| C21, seed medians (2.6 to 4.2 s) | 2.60, 2.97, 2.93 | 2.53, 2.60, 2.53 | 2.53, 2.61, 2.56 | 2.57, 2.60, 2.60 | **3.20, 3.20, 3.20** |
+| Authority, mean (1.16) | 1.18 | 1.17 | 1.17 | 1.15 | **1.13** |
+| From which time of the clip (median) | 0.40 s | 0.72 s | 0.70 s | 0.65 s | 0.00 s |
+
+69 of the 150 falls roll (65 to 45 degrees or less, 7 out of time; 33 to the back, 32 to the front among those done). On the bare floor
+(78) and at a wall (24) every fall stands at its first attempt with the roll as without it (one floor attempt given up at 40 cm/s); every
+other attempt given up is at the table or the chair, and the one fall that does not stand is the same chair trial (seed 2, 43) in each
+column: step 10's. C21 is lower with the roll than without it because the clip from the front, which most rolled bodies and many others
+take, begins 0.8 s in (its recording begins in a pose a fallen body is not in, step 8) and lasts 2.4 s; the roll's own 0.4 to 1.1 s does
+not make that up. Decision 51's price on a late start brings every seed's median to 3.20 s at 40 cm/s, with the authority under 1.16
+for the first time since R1; at 10 and 20 the attempts given up go up (the furniture's trials move, a few at a time). Left at 0 in the
+files with the roll, each to be switched on after step 10 changes the furniture's trials and with the owner's look. Videos:
+`Saved\Films\r2s9_roll_pair` (laid on its left side: the side clip, against the roll to the front) and `r2s9_roll_back_pair` (on its
+right side, rolled to the back).
+
+### R2, step 10: the reference fitted to the floor and to the surface under the body (27 November; behind three switches, 0)
+
+**Built**, each needing the matcher and each 0 bit for bit as before (the suite at 0: every hash of `roll0`): `getup.fit_surface`, the
+clip laid on what the pelvis lies on as the clip begins (a sweep of a 3 cm ball down from the pelvis against the static world and
+things that move or simulate, the character left out; read only, as `SenseFall`'s), C27's 70 cm counted from there
+(`control.get_up.starts[].floor_over_cm`); `getup.fit_floor` (0 to 1), the motion library's fit of each key raising or lowering the
+reference, followed over `getup.fit_ease_s` (0.3 s) (`FSandboxMotionVariant::FitCm`: minus the mean of the lowest points, on this body's
+shapes, of the compared bones the recording has on its floor; `starts[].fit_min_cm`, `fit_max_cm`); `getup.fit_free_z`, a body the
+recording has on its floor that touched the world in the last step gets no vertical spring or damping from the carry
+(`FSandboxCarry::Apply`'s per-body vertical share, set only when given, so that a run without it sets no per-axis strength).
+
+**What the library says of the fit.** On this body the recording's touching bones lie under its floor, not on it: in `stand_F` the hands
+9 to 15 cm under it on all fours and the left foot 10 to 19 cm under it as it steps up, in `stand_B` the right foot 10 to 15 cm; at the
+clips' end the feet are within 1 cm of it. The muscles' pose then pushes the body up off those limbs and the carry, which never pulls
+down, lifts nothing there; the fit raises the reference by the mean, up to about 10 cm in the hands-and-knees part.
+
+**The four furniture files** (`docs/recon/r2_step7_furniture`) and four floor get-ups, each switch alone (`Saved\Sweeps\r2s10_furn`):
+`fit_surface` gets both bodies across the table's end up at the second attempt (on the back: 10 attempts and none standing without it),
+the body on the table's top at its second attempt (first), and loses the body under the table (5 attempts, none standing; 4 and standing
+without it: the clip is laid on the floor under the table's top either way, and its own height is now the floor's, where the matcher put
+it before a few cm off). `fit_floor` lowers the authority of the floor get-ups (1.15 to 1.11, 1.21 to 1.19) and changes nothing else
+there; `fit_free_z` changes little anywhere.
+
+**The stand on three seeds** (`Saved\Matrix\getup_seeds\r2s10_*`; the matcher on in every column):
+
+| | Matcher alone | `fit_surface` | `fit_floor` | `fit_free_z` | All three | Roll, late 40 | Roll, late 40, `fit_surface` | ..., `fit_floor` | ..., `fit_free_z` | **Roll, late 40, all three** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Standing; first attempt | 150; 142 | 150; 139 | 150; 136 | 150; 140 | 149; 132 | 149; 143 | 149; 141 | 148; 142 | 149; 141 | **150; 142** |
+| Given up (10%) | 9.1% | 11.7% | 11.8% | 10.2% | 16.2% | 10.8% | 10.7% | 18.6% | 17.7% | **7.4%** |
+| Poses held over 1.0 s | 8 | 8 | 6 | 8 | 8 | 4 | 4 | 4 | 6 | **2 (1.09 s at most)** |
+| C27 both limits | 90 | 90 | 99 | 91 | 96 | 144 | 142 | 145 of 148 | 144 of 149 | **148** |
+| C21 seed medians | 2.60-2.97 | 2.60-2.97 | 2.87-2.97 | 2.60-2.97 | 2.90-2.97 | 3.20 | 3.20 | 3.20 | 3.20 | **3.20** |
+| Authority (1.16) | 1.18 | 1.19 | 1.19 | 1.18 | 1.21 | 1.13 | 1.14 | 1.12 | 1.13 | **1.12** |
+| Down, of the weight | 0.14 | 0.14 | 0.09 | 0.13 | 0.09 | 0.14 | 0.14 | 0.10 | 0.13 | **0.09** |
+
+The fit to the floor takes a third of the world's push downward away (0.14 to 0.09: the reference no longer lies under the floor) and
+moves part of the pull from over the floor to upward (0.46 to 0.58 up). Every attempt given up in every column is at the table or the
+chair, where the number of attempts is chaotic (a body that slides off the table at its third attempt or its fourth); the columns with
+one switch move by up to eight attempts there and say little of each switch alone. The combination of the roll, the late price and the
+three fits is the only one that meets C19's 10% and C20, C21 and C27 together, with two poses over 1.0 s left (1.09 s at most). It is
+checked on seeds 4, 5 and 6 below before anything is offered (pitfall: a figure from one seed is luck; here one set of 48 furniture
+trials). The stands `r2s10_fitfloor` and `_fitfree` were run twice: the first time a tuning value was added to `body.json` while they
+ran (new pitfall, "A tuning file edited while runs go is read by them").
+
+### R2, step 11: dragged by the ankles and the wrists (27 November, decision 18; behind `getup.drag`, 0)
+
+**Built.** `UpdateDrag`, every tick before the state, read only of the holds and the pelvis: holds that together pull with
+`getup.drag_force_n` (450 N) or more, or that move the pelvis along their pull at `getup.drag_mps` (0.3 m/s) or faster, for
+`getup.drag_s` (0.1 s), give a get-up up at once and set the carry's share to 0 on every body at once (decision 18: the body goes down on
+its muscles and is dragged); no get-up begins until the body has not been dragged for `getup.drag_free_s` (1 s). For R10: one place
+gives an attempt up, with a kind (`ESandboxGiveUp`: posed from outside, held up, no clip, hit, lost, held down, waited, dragged;
+`control.get_up.given_up_by`), and one place holds a get-up back from beginning (`CanBeginGetUp`, which says why, once, in the log);
+both keep every reason's text. `control.get_up.dragged_s`, and what the carry gave against the holds while they pulled that hard
+(`carry_against_holds_max_n`, `_ns`). At 0 every hash of `roll0`.
+
+**Scenarios** (a body laid on its back, the drag switched on by the scenario; two hands sent to both feet or both hands with `at_bone`,
+waiting 25 cm over where the trace of `getup_laid_back` has each limb at the phase, closing 0.12 to 0.15 s before it; then 2 m away from
+the head for the ankles, 2.2 m toward it and 50 cm up for the wrists, over 2.5 to 2.8 s): `getup_drag_ankles_sit`, `_crouch`, `_rise`,
+`getup_drag_wrists_sit`, `_rise`. Each: the grips hold the whole pull (230 to 257 frames), the attempt is given up by the drag (a second
+attempt then stands), the carry gives 0 to 7.8 N*s against the hands in all (the 0.1 s before the drag is told; at most 421 N in a frame),
+the pelvis is dragged 1.0 to 2.0 m, and the body stands once let go. **Not built: the wrists as it kneels.** In none of nine placings
+(three approach times, two heights, `Saved\Sweeps\r2s11_drag*`) did a scripted hand catch the right wrist, which the clip swings at
+that moment; as with the hold in the later phases (C26's scenarios), a hand sent to a point cannot follow it. A first set sent the hands
+0.4 s ahead and caught both limbs in two phases of six.
+
+### R2, step 12: the held arm while getting up (27 November, FR-43, decisions 19 and 48; behind `getup.arm_answer`, 0)
+
+**Built.** While a clip leads the body (not in a roll), a hand that holds a hand, a forearm or an upper arm makes that arm answer: by
+the body's state (`arm_answer` 1: pulled in when the body braces, an asked tone, a brace or anticipation; otherwise it yields), always
+yields (2) or always pulls in (3). Yielding, the arm's three muscles go to `arm_yield_scale` (0.3) of their strength and its hand is
+placed `arm_reach_cm` (15) beyond the holding point along the pull (the two-bone placement over the clip's layer, taken in over
+`poses.blend_s`, then followed); pulling in, the muscles go to `arm_pull_scale` (1.5, the torque caps as they are) and the hand is placed
+`arm_pull_in_cm` (25) from its shoulder toward the holding point. Let go of, the clip's arm comes back over a pose's blend.
+`control.get_up.arm_yield_s`, `arm_pull_s`. At 0 every hash. Today nothing braces a body getting up outside a session with
+`-Perception`, so "by state" yields in every scenario.
+
+**Scenarios** (a body laid on its back; one hand takes the left wrist as it sits up, 3.5 s, or kneels, 4.0 s, and pulls it 60 cm out to
+the side in 0.6 s, holds 1.5 s; `Saved\Sweeps\r2s12_arm`, each beside the same with the answer at 0):
+
+| | Grip, frames (slips) | The holding hand behind its target, most | Mean force at the grip | Attempts |
+| --- | --- | --- | --- | --- |
+| Sits up: none | 129 (1) | 65.6 cm | 244 N | 1 |
+| Sits up: yields | 138 (1) | 51.7 cm | 230 N | 1 |
+| Sits up: pulled in | 155 (1) | **85.4 cm** | 279 N | 1 |
+| Kneels: none | 50 (1) | 67.6 cm | 296 N | 1 |
+| Kneels: yields | **194 (0)** | 49.2 cm | 272 N | 2 |
+| Kneels: pulled in | 44 (1) | 95.0 cm | 294 N | 1 |
+
+The yielding arm follows the hand (the hand 14 to 18 cm nearer its target, less force) and as it kneels keeps the grip it lost at 0;
+pulled in, the body draws the arm and the player's hand falls 20 to 27 cm further behind its controller, which vibrates by that force in
+the headset. `getup_pull_arm_yield_sit`, `_crouch` and `getup_pull_arm_in_sit`, `_crouch` in the suite (165 of 165, the 156 of `roll0`
+with their hashes; baseline `r2rest`).
+
+**Put right after the checks with everything on** (below): the pulled-in hand's place was worked out anew each tick from the shoulder
+toward the holding point, and as that point passed the shoulder the way turned round and the arm's target jumped 160 degrees in a frame
+(`control.pose.target_jump_max_deg`, `getup_pull_arm_in_sit` at 4.26 s); it is now worked out once as the pull-in begins and held in the
+chest's space (29 degrees at most, the clip's own). And the drag's second test, the pelvis moved along the holds' pull, took a body whose
+yielding arm let it follow one hand for a drag (`getup_pull_arm_yield_sit` given up as dragged): it counts now only for two holds or more
+(decision 18 is two hands; `drag_mps` 0, the force alone, let the two-handed drag by the ankles as it sits up be given up as "lost"
+instead, its pull 420 N where the line is 450). `getup_drag_ankles_rise` went with it: one of its two scripted hands held a foot for 17
+frames only, and it had passed by the one-hand speed test, wrongly. The suite 164 of 164 (baseline `r2rest3`; against `r2rest2` only the
+two pull-in scenarios other).
+
+### R2's gate with everything on (27 November)
+
+**The roll's pose kept moving.** On the stand the attempts that rolled held the roll's pose still for its last 0.7 to 1.1 s (the pose
+came in over 0.4 s and stood while the body turned): C19's "pose held over 1.0 s" read 1.09 s in six of seven such trials. Coming in over
+0.9 s instead (`getup.roll_blend_s`) the target moved throughout, but a body on its side then tipped onto its back before the pose to
+the front was in (both front rolls failed). Kept at 0.4 s, and from then until `roll_s` the pose goes on to `getup.roll_push` (1.3) times
+its angles: the longest still target in the seven roll scenarios 0.01 to 0.03 s (0.68 before), every roll done and a little sooner
+(1.03 s against 1.09); at 1.6 one roll fell short.
+
+**The gate** (`getup.roll` 1, `match_late_cm_per_s` 40, the three fits; `Saved\Matrix\getup_seeds\r2_all123`, and seeds 4 to 6 as a check):
+
+| Criterion | Limit | Seeds 1 to 3 | Seeds 4 to 6 | The files (matcher, seeds 1 to 3) |
+| --- | --- | --- | --- | --- |
+| C19, attempts given up | 10% | **7.4%** (12 of 162) | 5.0% (8 of 160) | 9.1% |
+| C19, a pose held over 1.0 s | none | **none** (0.30 s at most) | 1 (a chair trial of four attempts, 2.98 s) | 8 |
+| C20, standing; first attempt | 95%; 135 | **150; 143** | 150; 142 | 150; 142 |
+| C21, seed medians | 2.6 to 4.2 s | **3.20, 3.20, 3.20** | 2.97, 2.80, 2.80 | 2.60, 2.97, 2.93 |
+| C27, median of 150 | 45 deg, 30 cm | **22.3 deg, 28.4 cm** (148 within both) | 22.3, 28.6 (138) | 29.7, 24.8 (90) |
+| C27, by clip | each | **B 30 deg 19 cm, F 22 deg 29 cm** | B 29/20, F 22/29 | L 77, R 61 deg |
+| Authority, mean | 1.16 | **1.12** (down 0.09) | 1.14 | 1.18 (down 0.14) |
+
+**Held and pressed** (with the drag and the arm by state on as well; `r2_on_hold1`, `_hold2`, `_press`): one hand, 31 of 150 pull free
+(decision 13: 20 to 60; 39 with the matcher alone, 31 in the night); two hands, 0 of 150 (at most 5); pressed with 300 N, **98 of 150
+stand under it** (49 with the matcher alone, 56 in the night): a large change. Lying where the clip has them, the body's limbs now push
+it up against the press where before the reference lay under the floor and the muscles alone pushed; decision 31 says 450 N still holds a
+body down, and 300 N (one hand's cap pressed straight down) is now got up from by two bodies in three. For the owner's eye.
+
+**Decision 7 and the scorecard, everything on** (`checks.ps1 -What suite,matrix,knockdowns,natural_quick -Label r2_on`, 121 s): the push
+matrix's 160 runs end as before, the knockdowns 8 of 8 as before (no get-up in either); C25 439 N*m (the baseline, kept), C2 1.17 on the
+four bare-floor get-ups, C19 and C21 within. The suite with everything on fails only on what it should: the scenarios that switch their
+own switch on (`tuning_changes`: the switch is on already), and before the two fixes above the yielding arm taken for a drag and the
+one-handed `getup_drag_ankles_rise`.
+
+**Videos for the owner** (`Saved\Films\...\pair.mp4`): `r2_on_trial07_pair` and `r2_on_trial17_pair` (two falls of the stand on the
+bare floor that got up by a side clip, the trunk 63 and 79 degrees at 70 cm; with everything on they roll to the front and to the back
+and rise at 22 and 30 degrees), `r2_on_trial40_pair` (a body that lands on the table: 4 attempts in the files; with everything on 2,
+and its first attempt is made on the table's top, its legs thrown up in the air over the table before it slides off: the fit to the
+surface laying the clip where the pelvis lies, what M4b's "get out from under the table" is to replace), `r2s9_roll_pair`,
+`r2s9_roll_back_pair`, `r2s11_drag_pair` (dragged by the ankles as it sits up: 0 against 1), `r2s12_arm_pair` (the held arm yielding
+against pulled in), `r2s13_fingers_pair` (`poses.fingers.weight` 0 against 1, a get-up from the front).
+
+### R2's rest switched on (27 November, the owner's decisions 52 and 53)
+
+`getup.roll` 1, `match_late_cm_per_s` 40, `fit_surface`, `fit_floor`, `fit_free_z` 1, `drag` 1, `arm_answer` 1 in `body.json`,
+`poses.fingers.weight` 1 in `poses.json`. The scenarios that switched the roll or the drag on themselves no longer do (the roll's,
+`getup_roll_right_back` keeping its `roll_way` 2); `getup_pull_arm_yield_crouch` asks 55 frames of grip and 0.5 s of yielding (the fit
+moves the body as it kneels: the grip held 194 frames before and 68 now, 50 with no answer). Against `r2rest3`: 47 scenarios with other
+bodies' hashes, every one with a get-up, and 106 with only the bones' other (the fingers); 11 as they were. Baseline `r2on`.
+
+**Read by an independent reader** (the diff, not its account; no change at 0 found, every switch checked to be exact there). Put right:
+after a roll the clip-following path's assist never came up (its ease was taken over from the roll and pushed no more; it now eases from
+the clip's start); the drag was judged in three dimensions, so hands pulling a rising body up by its wrists would have read as a drag
+(over the floor only now; a lift is held up, FR-47); a change of a held arm's answer moved its target in a step, and so did its start
+(the placed point now follows over `getup.arm_follow_s`, 0.15 s, from where the hand was); `arm_answer` set to 0 while an arm was held
+did not let it go; a roll whose hips could not be read had no end (it ends by `roll_s` now); a roll given up cleared the penalty of the
+clip given up before it. With the follow, the pulled-in hand passed close enough to its shoulder at 25 cm for the arm's placement to
+turn the elbow over (148 degrees in a frame); `arm_pull_in_cm` 35 (29 degrees, the clip's own; the command 159 N*m against 327).
+Written down, not changed: after a roll the clip runs while the carry still comes up over 0.6 s (measured as it is, the gate below);
+`fit_free_z` takes a foot's vertical spring away in a step and gives it back in one (C25 with everything on is the baseline's 439 N*m);
+a held arm's strength goes into the fall's ease as it is. Seven scenarios other against `r2on` (the drag's three and the arm's four);
+baseline `r2on2`, 164 of 164.
+
+**The held arm on the final body:** yields as it sits up, the holding hand 50 cm behind its target at most (66 with no answer), the grip
+136 frames; pulled in, 60 cm, 147 frames; as it kneels, yields 51 cm and 66 frames (50 with no answer), pulled in 77 cm. Pulled in as it
+sits up, the player's hand no longer falls further behind than with no answer: what shows of it is the kneeling body's.
+
+**The gate on the final files** (`Saved\Matrix\getup_seeds\r2_final_plain`, `_hold1`, `r2_on2_hold2`): 150 standing, 143 at the first
+attempt, 7.4% of attempts given up, no pose held over 1.0 s (0.30 s at most), C21 3.20 s on each seed, C27 22.3 degrees and 28.4 cm (148
+of 150; B 30 and 19, F 22 and 29), authority 1.12 (up 0.53, over the floor 0.82, down 0.09); one hand 32 of 150 pull free, two 0. The bootstrap on the final tree: all
+15 steps in 141 s, the suite 164 of 164, 61 unit tests, the push matrix and the knockdowns as before, its stand 50 of 50 with 49 at the
+first attempt.
+
+### R2's rest finished: a hand that follows a body, four scenarios, and the clip-following path taken out (27 November)
+
+**A hand that follows a body.** Step 11 could not catch the wrists as the body kneels, and C26's holds in the later phases could not be
+made, because a scripted hand is sent to a point measured once from a body that then moves on. An `effector` event with `at_bone` may
+now say `follow_bone_s`: for that long its keys after the first move every frame by as far as the body went since the frame before
+(`UScenarioRunnerSubsystem::FollowBones`; `Scenarios/README.md`); the spec's parser test has the field, its need of `at_bone` and its
+range. Four scenarios use it (the suite's results):
+
+| Scenario | What the hands do | Grip, frames | What the body does |
+| --- | --- | --- | --- |
+| `getup_drag_ankles_rise` | both ankles as it rises, 2 m away from the head | 231 and 171 | given up as dragged (512 N), dragged 1.28 s; a second attempt stands |
+| `getup_drag_wrists_crouch` | both wrists as it kneels (step 11's "not built") | 231 and 231 | given up as dragged (473 N, the pelvis at 0.28 m/s), 1.17 s; a second attempt stands |
+| `getup_phase_crouch_hold` | one hand takes the chest in the crouch for 2 s | 131 | held 1.22 s at up to 317 N; the attempt is given up as lost (the pelvis 40 cm off its clip), a second stands |
+| `getup_phase_rise_hold` | one hand takes the chest in the rise for 2 s | 186 | held 1.59 s at up to 307 N; one attempt, standing |
+
+The old one-handed `getup_drag_ankles_rise` (taken out in step 12) is back, now with both hands holding. The suite 168 of 168; against
+`r2on2` the 164 as they were and these four new; baseline `r2final`.
+
+**The clip-following path taken out** (the plan's last item; decision 49 made the matcher the choice, R1 the led get-up). Gone from the
+code and the files: `getup.carry` and `getup.match` (both 1 since 26 and 27 November), the rule by the pelvis's lean with
+`getup.clip_back`, `_front`, `_left`, `_right` (`ChooseByRule`), and that path's values `lag_cm`, `side_lag_cm`, `foot_lag_cm`,
+`foot_wait_s`, `frame_follow_s`, `pelvis_follow_s`, `pressed_follow`, `pressed_lag_cm`; from the results the waits only that path had
+(`control.get_up.behind_height_s`, `behind_side_s`, `behind_foot_s`, 0 in every led run; `behind_held_s` stays). `getup.wait_s` stays: it
+is still a bound on a led clip that crawls. `states.get_up`'s assist is still read and still handed to the solver at 0. A get-up whose
+carry cannot be made no longer falls back to the old path: it is given up (`given_up_by` `not_led`), the body stays down, and decision
+17's check fails the run as before; the session's log line and HUD say so. The checks of the tuning that tied the roll and the fits to
+the matcher went with it. **Every hash kept:** the suite 168 of 168 with every hash of `r2final`; the stand of 150 falls on three seeds
+run by run with both hashes of every run against `r2_final_plain` (`baseline.ps1 -CompareRuns`, 150 of 150 the same); 61 unit tests.
+
+**Read by an independent reader** (the diff, not its account). Put right: a carry that broke during a roll that was then given up
+before its clip (held up, dragged, posed from outside) left the next attempt to be given up as `not_led` before decision 17 counted
+it, so `not_led_attempts` read 0, `get_up_led` did not fail the run and a session said nothing; the count is one function now
+(`CountLed`), called where the carry is aimed and where an attempt is given up as not led. No run reaches that path (a carry that
+cannot be made needs a character without its Physics Control component); the suite after it 168 of 168 with every hash of `r2final`.
+Written down, not changed (`Scenarios/README.md`): a followed trajectory's velocity is its own, not the body's, so the hand lags a
+moving limb by what its spring leaves; two `effector` events of one hand at the same `t` move one trajectory twice (as `at_bone` did
+before). Found fine: the led get-up's branches that went were all off when led, nothing reads a removed name, every new tuning name
+is in the list, the checks and the files, and a follow only reads. The bootstrap on this tree: all 15 steps in 143 s (the suite, the
+push matrix, the knockdowns and its stand of 50, 50 standing and 49 at the first attempt, as before).
+
 ### Faster checks, stage 1 (SP-0 to SP-3 of `docs/fast-checks.md`), 27 November
 
 Built in one session, each part held against the runs before it by both hashes of every run. Nothing of the body or its controller

@@ -404,6 +404,22 @@ double FSandboxBodyProbe::GazeYawDeg(double TargetYawDeg, double HeadYawDeg, dou
 	return TargetYawDeg;
 }
 
+bool FSandboxBodyProbe::LyingSide(const FVector& HipLeftCm, const FVector& HipRightCm, const FVector& PelvisCm, const FVector& ChestCm,
+	double& OutSideDeg, bool& bOutOnLeft, bool& bOutFacingDown)
+{
+	const FVector Left = (HipLeftCm - HipRightCm).GetSafeNormal();
+	const FVector Up = (ChestCm - PelvisCm).GetSafeNormal();
+	if (Left.IsZero() || Up.IsZero())
+	{
+		return false;
+	}
+	OutSideDeg = FMath::RadiansToDegrees(FMath::Asin(FMath::Clamp(FMath::Abs(Left.Z), 0.0, 1.0)));
+	bOutOnLeft = Left.Z < 0.0;
+	// Standing and facing +X, the left is -Y, and Z cross -Y is +X: the front.
+	bOutFacingDown = FVector::CrossProduct(Up, Left).Z < 0.0;
+	return true;
+}
+
 void FSandboxBodyProbe::MassWeightedSpeeds(const TArray<FSandboxBodySample>& Samples, double& OutLinearMps, double& OutAngularRadS)
 {
 	double MassKg = 0.0;

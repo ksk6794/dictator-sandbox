@@ -20,6 +20,14 @@
     "end_state": "standing",
     "min_get_ups": 1,
     "max_get_up_attempts": 1,
-    "max_joint_stretch_cm": 2.0
+    "max_joint_stretch_cm": 2.0,
+    "measures": {
+      "control.get_up.starts.0.matched": {
+        "equals": true
+      },
+      "control.get_up.starts.0.pelvis_off_cm": {
+        "max": 15
+      }
+    }
   }
 }

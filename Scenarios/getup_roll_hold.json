@@ -1,0 +1,108 @@
+{
+  "name": "getup_roll_hold",
+  "duration_s": 22.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "control": "active",
+    "get_up": true,
+    "location_cm": [
+      0,
+      90,
+      0
+    ],
+    "laid_deg": -90
+  },
+  "events": [
+    {
+      "t": 1.7,
+      "type": "effector",
+      "effector": "hand_left",
+      "at_bone": "spine_04",
+      "path": [
+        {
+          "t": 0.0,
+          "location_cm": [
+            100,
+            60,
+            75
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.3,
+          "location_cm": [
+            0,
+            0,
+            25
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.5,
+          "location_cm": [
+            0,
+            0,
+            10
+          ],
+          "grip": 0
+        },
+        {
+          "t": 0.6,
+          "location_cm": [
+            0,
+            0,
+            10
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.1,
+          "location_cm": [
+            0,
+            0,
+            10
+          ],
+          "grip": 1
+        },
+        {
+          "t": 2.2,
+          "location_cm": [
+            0,
+            0,
+            10
+          ],
+          "grip": 0
+        },
+        {
+          "t": 2.7,
+          "location_cm": [
+            0,
+            0,
+            100
+          ],
+          "grip": 0
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "end_state": "standing",
+    "min_get_ups": 1,
+    "max_joint_stretch_cm": 3.0,
+    "effector_grabs": 1,
+    "grab_events": 1,
+    "min_grab_frames": 40,
+    "measures": {
+      "control.get_up.held_s": {
+        "min": 0.3
+      },
+      "control.get_up.rolls.0.at_s": {
+        "max": 2.6
+      }
+    }
+  }
+}

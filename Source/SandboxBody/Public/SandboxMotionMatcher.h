@@ -35,6 +35,8 @@ struct FSandboxMatchSettings
 	/** The variants that cost more (the one whose attempt was just given up and its mirror image: the same motion from the same place), and by how much. */
 	TArray<int32> PenalizedVariants;
 	double PenaltyCm = 0.0;
+	/** A second of the clip that the start would leave out, counted as this many cm (decision 51: C21 against a late start). */
+	double LateCmPerS = 0.0;
 };
 
 /** A sample laid on the body: where (a turn about the vertical and a shift over the floor) and how far from it. */
@@ -50,7 +52,7 @@ struct FSandboxMatch
 	/** The mean of the pelvis's and the chest's lean apart, degrees. */
 	double UpDeg = 0.0;
 	double PenaltyCm = 0.0;
-	/** PlacesCm + UpCmPerDeg * UpDeg + PenaltyCm. */
+	/** PlacesCm + UpCmPerDeg * UpDeg + PenaltyCm, and LateCmPerS * TimeS when that price is set. */
 	double CostCm = 0.0;
 };
 

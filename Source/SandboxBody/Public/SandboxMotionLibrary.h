@@ -68,6 +68,11 @@ struct FSandboxMotionVariant
 	TArray<FQuat> Chest;
 	/** Per key: which compared bones touch the floor (bit i for bone i). */
 	TArray<uint32> Touches;
+	/**
+	 * Per key (R2, step 10): how far the motion is to be raised (below 0: lowered) for the bones it has on its floor to lie on it with this
+	 * body's shapes: minus the mean of their lowest points; 0 at a key where none touches. cm.
+	 */
+	TArray<double> FitCm;
 	TArray<FSandboxMotionContact> Contacts;
 	/** When the pelvis first comes within StandsWithinCm of its last height with both feet on the floor; below 0: never. s. */
 	double StandsS = -1.0;
@@ -85,7 +90,7 @@ struct FSandboxMotionVariant
 /**
  * The motion library (docs/active-ragdoll.md, R2; docs/recon/r2_step8_plan.md): the clips a text list names, carried to this body
  * (FSandboxClipPose) and mirrored, each with what the matcher compares at every key and the contacts it makes with its floor. Built in
- * memory when a body first gets up with getup.match 1; nothing of Epic's is written anywhere. It reads clips through the controller,
+ * memory when a body first gets up; nothing of Epic's is written anywhere. It reads clips through the controller,
  * which keeps them; no pointer to a clip is held (the controller's map may move them).
  */
 class SANDBOXBODY_API FSandboxMotionLibrary

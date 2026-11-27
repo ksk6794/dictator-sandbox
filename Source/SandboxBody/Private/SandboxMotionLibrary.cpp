@@ -326,6 +326,22 @@ bool FSandboxMotionLibrary::Build(const FSandboxMotionSpec& InSpec, const USkele
 					}
 				}
 			}
+			// The fit to the floor of each key (step 10): the touching bones' lowest points, on this body, brought to the floor on average.
+			Variant.FitCm.SetNumZeroed(Variant.Keys);
+			for (int32 Key = 0; Key < Variant.Keys; ++Key)
+			{
+				double Sum = 0.0;
+				int32 Touching = 0;
+				for (int32 Index = 0; Index < Count; ++Index)
+				{
+					if ((Variant.Touches[Key] & (1u << Index)) != 0)
+					{
+						Sum += Lowest[Index][Key];
+						++Touching;
+					}
+				}
+				Variant.FitCm[Key] = Touching > 0 ? -Sum / Touching : 0.0;
+			}
 			// When it stands, and how far it moves at its start.
 			if (Variant.Keys > 0)
 			{

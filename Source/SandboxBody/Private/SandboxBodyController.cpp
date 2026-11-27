@@ -502,6 +502,25 @@ void USandboxBodyController::ApplyPose()
 		case EFallWay::Right: Mirror = FSandboxPoseTuning::Mirrored(Tuning.Poses.FallSide); Pose = &Mirror; break;
 		}
 	}
+	// R2, step 9 (getup.roll): a body that rolls before its clip holds the roll's pose, written for its left side down, mirrored for
+	// the right; it comes in as a pose does, not as a fall's.
+	const bool bRoll = State == ESandboxBodyState::GetUp && GetUpRun.bRolling && !bHeldUp;
+	if (bRoll)
+	{
+		FSandboxPose Roll = GetUpRun.bRollToFront ? Tuning.Poses.RollToFront : Tuning.Poses.RollToBack;
+		// Once it has come in, on toward getup.roll_push times its angles (UpdateRoll).
+		if (GetUpRun.bRollPushed)
+		{
+			for (FSandboxPoseAngles& Angles : Roll.Joints)
+			{
+				Angles.Swing1Deg *= Tuning.GetUp.RollPush;
+				Angles.Swing2Deg *= Tuning.GetUp.RollPush;
+				Angles.TwistDeg *= Tuning.GetUp.RollPush;
+			}
+		}
+		Mirror = GetUpRun.bRollOnLeft ? Roll : FSandboxPoseTuning::Mirrored(Roll);
+		Pose = &Mirror;
+	}
 	TArray<FSandboxPoseBone> Bones;
 	FString Error;
 	if (!PoseRig.Build(*Pose, Bones, Error))
@@ -509,7 +528,8 @@ void USandboxBodyController::ApplyPose()
 		UE_LOG(LogSandbox, Error, TEXT("Body controller keeps its pose: %s"), *Error);
 		return;
 	}
-	Animation->SetTargetPose(Bones, bDown ? Tuning.Poses.FallBlendS : Tuning.Poses.BlendS);
+	const double RollBlendS = GetUpRun.bRollPushed ? FMath::Max(Tuning.GetUp.RollS - Tuning.GetUp.RollBlendS, 0.1) : Tuning.GetUp.RollBlendS;
+	Animation->SetTargetPose(Bones, bRoll ? RollBlendS : bDown ? Tuning.Poses.FallBlendS : Tuning.Poses.BlendS);
 }
 
 void USandboxBodyController::ChooseFallWay()
@@ -1028,7 +1048,7 @@ bool USandboxBodyController::SetClipPose(const FString& ClipPath, double TimeS, 
 {
 	if (State == ESandboxBodyState::GetUp)
 	{
-		GiveUpGetUp(TEXT("a pose was asked for from outside"));
+		GiveUpGetUp(ESandboxGiveUp::PosedFromOutside, TEXT("a pose was asked for from outside"));
 	}
 	if (!HoldClip(ClipPath, TimeS, Rate, OutError))
 	{
@@ -1582,66 +1602,188 @@ bool USandboxBodyController::IsAtRest() const
 		FMath::Sqrt(AngularSquared / MassKg) <= Tuning.Thresholds.RestAngularSpeedRadS;
 }
 
-const FSandboxClipPose* USandboxBodyController::ChooseByRule(const FTransform& Now, FString& OutPath, FTransform& OutFrame, FString& OutHow, FString& OutError)
+bool USandboxBodyController::StartGetUp(FString& OutError)
 {
-	// How the pelvis lies is where the world's up points in the pelvis's own space; each clip starts with a pelvis
-	// that lies some way, and the clip that starts most like the body lies is the one to get up by.
-	const FVector UpInPelvis = Now.GetRotation().UnrotateVector(FVector::UpVector);
-	const FString* const Paths[] = { &Tuning.GetUp.ClipBack, &Tuning.GetUp.ClipFront, &Tuning.GetUp.ClipLeft, &Tuning.GetUp.ClipRight };
-	const FSandboxClipPose* Best = nullptr;
-	double BestLikeness = -2.0;
-	// After an attempt that was given up the body goes another way, if another clip starts at all like it lies:
-	// the same clip from the same place fails the same way (six times in a row, on the stand).
-	constexpr double OtherWayLikeness = 0.0;
-	for (int32 Pass = 0; Pass < 2 && !Best; ++Pass)
+	// R2, step 9 (getup.roll, the owner's decision 50): a body on its side rolls onto its back or its front by its own muscles first,
+	// and the clip begins from there. The matcher then leaves out the get-ups that begin on a side.
+	if (Tuning.GetUp.Roll > 0.5)
 	{
-		for (const FString* Path : Paths)
+		double SideDeg = 0.0;
+		bool bOnLeft = false;
+		bool bFacingDown = false;
+		if (ReadLyingSide(SideDeg, bOnLeft, bFacingDown) && SideDeg >= Tuning.GetUp.RollSideDeg)
 		{
-			if (Path->IsEmpty())
-			{
-				continue;
-			}
-			FString Kept;
-			const FSandboxClipPose* Clip = FindOrReadClip(*Path, Kept, OutError);
-			if (!Clip)
-			{
-				return nullptr;
-			}
-			const FQuat Unturned = StartSpace.GetRotation() * Clip->PelvisAt(0.0).GetRotation();
-			const double Likeness = FVector::DotProduct(Unturned.UnrotateVector(FVector::UpVector), UpInPelvis);
-			if (Pass == 0 && (Kept == GivenUpClip || Likeness < OtherWayLikeness) && !GivenUpClip.IsEmpty())
-			{
-				continue;
-			}
-			if (Likeness > BestLikeness)
-			{
-				BestLikeness = Likeness;
-				Best = Clip;
-				OutPath = Kept;
-			}
+			return StartRoll(SideDeg, bOnLeft, bFacingDown, OutError);
 		}
 	}
-	if (!Best)
-	{
-		OutError = TEXT("no clip to get up by (getup.clip_*)");
-		return nullptr;
-	}
-	// A clip read after Best may have moved it in the map: found again by its path.
-	Best = Clips.Find(OutPath);
-
-	// The clip's root in the world: turned about the vertical to how the body lies, with the clip's pelvis over
-	// the body's, on the floor the body last stood on.
-	const FTransform First = Best->PelvisAt(0.0);
-	FQuat Tilt, Yaw;
-	(Now.GetRotation() * (StartSpace.GetRotation() * First.GetRotation()).Inverse()).ToSwingTwist(FVector::UpVector, Tilt, Yaw);
-	OutFrame = FTransform((Yaw * StartSpace.GetRotation()).GetNormalized(), FVector::ZeroVector);
-	const FVector Offset = OutFrame.GetRotation().RotateVector(First.GetLocation());
-	OutFrame.SetLocation(FVector(Now.GetLocation().X - Offset.X, Now.GetLocation().Y - Offset.Y, LastSupportHeightCm));
-	OutHow = FString::Printf(TEXT("by '%s' (likeness %.2f)"), *FPaths::GetBaseFilename(OutPath), BestLikeness);
-	return Best;
+	return StartClip(true, OutError);
 }
 
-bool USandboxBodyController::StartGetUp(FString& OutError)
+bool USandboxBodyController::ReadLyingSide(double& OutSideDeg, bool& bOutOnLeft, bool& bOutFacingDown) const
+{
+	static const FName Hips[2] = { TEXT("thigh_l"), TEXT("thigh_r") };
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	if (Mesh->GetBoneIndex(Hips[0]) == INDEX_NONE || Mesh->GetBoneIndex(Hips[1]) == INDEX_NONE || !Pelvis || !Pelvis->IsValidBodyInstance() ||
+		!Chest || !Chest->IsValidBodyInstance())
+	{
+		return false;
+	}
+	// The hip joints are the thighs' bone origins, as the mesh has them from the simulated bodies.
+	return FSandboxBodyProbe::LyingSide(Mesh->GetBoneLocation(Hips[0]), Mesh->GetBoneLocation(Hips[1]), Pelvis->GetUnrealWorldTransform().GetLocation(),
+		Chest->GetUnrealWorldTransform().GetLocation(), OutSideDeg, bOutOnLeft, bOutFacingDown);
+}
+
+void USandboxBodyController::BeginAttemptView()
+{
+	if (GetUpView.FirstStartedS < 0.0)
+	{
+		GetUpView.FirstStartedS = ElapsedS;
+	}
+	++GetUpView.Attempts;
+	GetUpView.StartedS = ElapsedS;
+	GetUpView.DurationS = -1.0;
+	GetUpView.StallS = 0.0;
+	GetUpView.PausedS = 0.0;
+	GetUpView.PausedEaseS = 0.0;
+	GetUpView.PausedBehindS = 0.0;
+	GetUpView.PausedEndS = 0.0;
+	GetUpView.BehindHeldS = 0.0;
+	GetUpView.PlankS = 0.0;
+	GetUpView.PlankMaxCm = 0.0;
+	GetUpView.PlankAfterS = 0.0;
+	GetUpView.RiseFeetCm = -1.0;
+	GetUpView.RiseTrunkDeg = -1.0;
+	GetUpView.RiseClipTrunkDeg = -1.0;
+	GetUpView.RiseClipFeetCm = -1.0;
+	GetUpView.LayS = State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
+}
+
+bool USandboxBodyController::StartRoll(double SideDeg, bool bOnLeft, bool bFacingDown, FString& OutError)
+{
+	if (!Mesh->GetBodyInstance(Tuning.Rig.Pelvis))
+	{
+		OutError = TEXT("the pelvis has no body");
+		return false;
+	}
+	// Which way: by where the front looks, or as getup.roll_way says; after an attempt with a roll that was given up, the other way
+	// (the same roll from the same place fails the same way).
+	const int32 Way = FMath::RoundToInt32(Tuning.GetUp.RollWay);
+	bool bToFront = Way == 1 ? true : Way == 2 ? false : bFacingDown;
+	if (GivenUpRollWay != INDEX_NONE)
+	{
+		bToFront = GivenUpRollWay == 0;
+	}
+	GetUpRun = FGetUpRun();
+	GetUpRun.bRolling = true;
+	GetUpRun.bRollOnLeft = bOnLeft;
+	GetUpRun.bRollToFront = bToFront;
+	FSandboxGetUpRoll Roll;
+	Roll.AtS = ElapsedS;
+	Roll.bOnLeft = bOnLeft;
+	Roll.bToFront = bToFront;
+	Roll.FromDeg = SideDeg;
+	Roll.bFacingDownFrom = bFacingDown;
+	GetUpView.Rolls.Add(Roll);
+	HoldPace = 1.0;
+	HitFree = 1.0;
+	for (double& Kept : CarryBodyFree)
+	{
+		Kept = 1.0;
+	}
+	BeginAttemptView();
+	GetUpView.Clip.Reset();
+	// The pose is the roll's (ApplyPose, through the state's tuning), and the muscles come up from nothing as for any get-up.
+	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; rolls onto its %s from its %s side (%.0f deg)"), GetUpRestS(),
+		bToFront ? TEXT("front") : TEXT("back"), bOnLeft ? TEXT("left") : TEXT("right"), SideDeg));
+	return true;
+}
+
+void USandboxBodyController::UpdateRoll(double DeltaTime)
+{
+	if (bHeldUp)
+	{
+		GiveUpGetUp(ESandboxGiveUp::HeldUp, TEXT("the body is held up"));
+		return;
+	}
+	// The muscles come up from nothing, as in a clip's ease (UpdateGetUp).
+	if (!GetUpRun.bEased)
+	{
+		PushTuningToControls();
+		const bool bHitOver = FlinchStartedS < StateEnteredS || ElapsedS - FlinchStartedS >= Tuning.Reactions.FlinchRecoveryS;
+		GetUpRun.bEased = GetUpEase() >= 1.0 && bHitOver;
+	}
+	// Nothing of the world pulls on a body that rolls: a hit while it rolls has no authority to take, and is not judged again by the clip.
+	CarryYieldSeenS = FMath::Max(CarryYieldSeenS, FlinchStartedS);
+	// How long and how hard a hand held the body while it rolled (read only), as while it follows a clip.
+	if (Holds.Num() > 0)
+	{
+		GetUpView.HeldS += DeltaTime;
+		for (const FSandboxBodyHold& Hold : Holds)
+		{
+			GetUpView.HoldMaxN = FMath::Max(GetUpView.HoldMaxN, Hold.ForceN);
+		}
+	}
+	GetUpView.PressedMaxN = FMath::Max(GetUpView.PressedMaxN, SustainedN.Size());
+	double SideDeg = 90.0;
+	bool bOnLeft = false;
+	bool bFacingDown = false;
+	const double TookS = ElapsedS - StateEnteredS;
+	// Hips that give no line (a degenerate pose) are read as still on the side: the roll then ends by roll_s, never not at all.
+	const bool bRead = ReadLyingSide(SideDeg, bOnLeft, bFacingDown);
+	FSandboxGetUpRoll& Roll = GetUpView.Rolls.Last();
+	if (bRead)
+	{
+		Roll.ToDeg = SideDeg;
+		Roll.bFacingDownTo = bFacingDown;
+	}
+	else
+	{
+		SideDeg = 90.0;
+	}
+	// The pose has come in: on toward getup.roll_push times it until roll_s, so that the target never stands still (C19).
+	if (!GetUpRun.bRollPushed && TookS >= Tuning.GetUp.RollBlendS && Tuning.GetUp.RollPush != 1.0)
+	{
+		GetUpRun.bRollPushed = true;
+		ApplyPose();
+	}
+	const bool bDone = SideDeg <= Tuning.GetUp.RollDoneDeg;
+	if (!bDone && TookS < Tuning.GetUp.RollS)
+	{
+		return;
+	}
+	Roll.DurationS = TookS;
+	Roll.bDone = bDone;
+	Roll.Ended = bDone ? TEXT("rolled") : TEXT("roll_s");
+	GetUpRun.bRolling = false;
+	GetUpRun.bRolled = true;
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: the roll is over at %.2f s after %.2f s: the hips %.0f deg from level (%s)"), ElapsedS, TookS, SideDeg,
+		bDone ? TEXT("rolled") : TEXT("its time ran out"));
+	// Under the clip the body keeps the pose it lay in, as without a roll.
+	ApplyPose();
+	FString Error;
+	if (!StartClip(false, Error))
+	{
+		bGetUpBroken = true;
+		UE_LOG(LogSandbox, Error, TEXT("Body controller: the body cannot get up and stays down: %s"), *Error);
+		GiveUpGetUp(ESandboxGiveUp::NoClip, FString::Printf(TEXT("no clip after the roll: %s"), *Error));
+	}
+}
+
+double USandboxBodyController::CarryEase() const
+{
+	if (!GetUpRun.bRolled)
+	{
+		return GetUpEase();
+	}
+	if (State != ESandboxBodyState::GetUp || Tuning.GetUp.EaseS <= 0.0)
+	{
+		return 1.0;
+	}
+	return FMath::SmoothStep(0.0, 1.0, (ElapsedS - GetUpRun.ClipStartedS) / Tuning.GetUp.EaseS);
+}
+
+bool USandboxBodyController::StartClip(bool bNewAttempt, FString& OutError)
 {
 	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
 	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
@@ -1650,7 +1792,6 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 		OutError = TEXT("the pelvis has no body");
 		return false;
 	}
-	const FTransform Now = Body->GetUnrealWorldTransform();
 	const FSandboxClipPose* Best = nullptr;
 	FString BestPath;
 	// The time in the clip the attempt begins from, and the clip's root in the world.
@@ -1658,40 +1799,42 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	FTransform Frame;
 	FSandboxGetUpStart Start;
 	FString How;
-	if (Tuning.GetUp.Match > 0.5)
+	// R2, step 10 (getup.fit_surface): the clip is laid on what the pelvis lies on, not on the floor last stood on.
+	bChoosingFloorSet = false;
+	if (Tuning.GetUp.FitSurface > 0.5)
 	{
-		// R2, step 8: the motion library's matcher chooses the clip (a get-up or its mirror image), the time and where it is laid.
-		if (!ChooseByMatch(BestPath, StartTimeS, Frame, Start, OutError))
-		{
-			return false;
-		}
-		Best = Clips.Find(BestPath);
-		if (!Best)
-		{
-			OutError = FString::Printf(TEXT("the matcher chose '%s', which is not read"), *BestPath);
-			return false;
-		}
-		// The variant's name says whether it is a mirror image (a key's mark would be taken for an extension by GetBaseFilename).
-		const int32 Chosen = MotionLibrary.FindVariant(BestPath);
-		How = FString::Printf(TEXT("by '%s' from %.2f s (cost %.1f cm: places %.1f cm, lean %.1f deg; next '%s' %.1f cm)"),
-			Chosen != INDEX_NONE ? *MotionLibrary.GetVariants()[Chosen].Name : *BestPath, StartTimeS, Start.CostCm, Start.PlacesCm, Start.UpDeg,
-			*Start.Next, Start.NextCostCm);
+		bChoosingFloorSet = SurfaceUnderPelvis(ChoosingFloorZ);
 	}
-	else
+	// R2, step 8: the motion library's matcher chooses the clip (a get-up or its mirror image), the time and where it is laid (since
+	// R2's rest the only choice: the rule by the pelvis's lean and getup.clip_* went).
+	if (!ChooseByMatch(BestPath, StartTimeS, Frame, Start, OutError))
 	{
-		Best = ChooseByRule(Now, BestPath, Frame, How, OutError);
-		if (!Best)
-		{
-			return false;
-		}
+		bChoosingFloorSet = false;
+		return false;
 	}
+	Best = Clips.Find(BestPath);
+	if (!Best)
+	{
+		bChoosingFloorSet = false;
+		OutError = FString::Printf(TEXT("the matcher chose '%s', which is not read"), *BestPath);
+		return false;
+	}
+	// The variant's name says whether it is a mirror image (a key's mark would be taken for an extension by GetBaseFilename).
+	const int32 Chosen = MotionLibrary.FindVariant(BestPath);
+	How = FString::Printf(TEXT("by '%s' from %.2f s (cost %.1f cm: places %.1f cm, lean %.1f deg; next '%s' %.1f cm)"),
+		Chosen != INDEX_NONE ? *MotionLibrary.GetVariants()[Chosen].Name : *BestPath, StartTimeS, Start.CostCm, Start.PlacesCm, Start.UpDeg,
+		*Start.Next, Start.NextCostCm);
 	const FTransform First = Best->PelvisAt(StartTimeS);
-	// How far the clip as laid stands from the body (read only, in both modes), before anything of the attempt moves.
+	// How far the clip as laid stands from the body (read only), before anything of the attempt moves.
 	Start.AtS = ElapsedS;
 	Start.Clip = BestPath;
 	Start.bMirrored = BestPath.EndsWith(FSandboxMotionLibrary::MirrorMark);
 	Start.TimeS = StartTimeS;
 	MeasureStart(*Best, StartTimeS, Frame, Start);
+	const bool bFloorSet = bChoosingFloorSet;
+	const double FloorZ = ChoosingFloorZ;
+	bChoosingFloorSet = false;
+	Start.FloorOverCm = bFloorSet ? FloorZ - LastSupportHeightCm : 0.0;
 
 	if (!HoldClip(BestPath, StartTimeS, 0.0, OutError))
 	{
@@ -1701,10 +1844,25 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	// At once and whole: it is the strength of the muscles that comes up from nothing, not the pose that comes in.
 	ClipHold.Share = 1.0;
 	ClipHold.CrossShare = 1.0;
+	// After a roll the attempt goes on: what is known of its roll stays.
+	const FGetUpRun Before = GetUpRun;
 	GetUpRun = FGetUpRun();
+	if (!bNewAttempt)
+	{
+		// Not bEased: the clip's own ease (the assist's, CarryEase) begins now, and is pushed until it is up.
+		GetUpRun.bRolled = true;
+		GetUpRun.bRollOnLeft = Before.bRollOnLeft;
+		GetUpRun.bRollToFront = Before.bRollToFront;
+	}
+	GetUpRun.ClipStartedS = ElapsedS;
+	GetUpRun.StartIndex = GetUpView.Starts.Num() - 1;
+	GetUpRun.bFloorSet = bFloorSet;
+	GetUpRun.FloorZ = FloorZ;
+	GetUpRun.Variant = MotionLibrary.IsBuilt() ? MotionLibrary.FindVariant(BestPath) : INDEX_NONE;
 	GetUpRun.Path = BestPath;
 	GetUpRun.Frame = Frame;
-	GetUpRun.bCarryAsked = Tuning.GetUp.Carry > 0.5;
+	// Every clip is led (the clip-following path went with R2's rest); decision 17 still counts each attempt as led or not.
+	GetUpRun.bCarryAsked = true;
 	// Decision 22 (getup.start_blend_s): the start goes from where the body is. The clip layer crosses from the body's own pose (each
 	// bone's local rotation as the simulation has it now) to the clip's first pose over that time, and the carry's targets from where
 	// each body lies (UpdateCarry). Read only of the body.
@@ -1757,34 +1915,18 @@ bool USandboxBodyController::StartGetUp(FString& OutError)
 	{
 		Kept = 1.0;
 	}
-	if (GetUpView.FirstStartedS < 0.0)
-	{
-		GetUpView.FirstStartedS = ElapsedS;
-	}
 	Pelvis->Target = First * Frame;
 	Pelvis->Target.SetScale3D(FVector::OneVector);
 	SetAssistTarget(*Pelvis);
-	++GetUpView.Attempts;
+	if (!bNewAttempt)
+	{
+		// The attempt began with its roll: its time, its count and the state are the roll's.
+		GetUpView.Clip = BestPath;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: after the roll, %s"), *How);
+		return true;
+	}
+	BeginAttemptView();
 	GetUpView.Clip = BestPath;
-	GetUpView.StartedS = ElapsedS;
-	GetUpView.DurationS = -1.0;
-	GetUpView.StallS = 0.0;
-	GetUpView.PausedS = 0.0;
-	GetUpView.PausedEaseS = 0.0;
-	GetUpView.PausedBehindS = 0.0;
-	GetUpView.PausedEndS = 0.0;
-	GetUpView.BehindHeightS = 0.0;
-	GetUpView.BehindSideS = 0.0;
-	GetUpView.BehindFootS = 0.0;
-	GetUpView.BehindHeldS = 0.0;
-	GetUpView.PlankS = 0.0;
-	GetUpView.PlankMaxCm = 0.0;
-	GetUpView.PlankAfterS = 0.0;
-	GetUpView.RiseFeetCm = -1.0;
-	GetUpView.RiseTrunkDeg = -1.0;
-	GetUpView.RiseClipTrunkDeg = -1.0;
-	GetUpView.RiseClipFeetCm = -1.0;
-	GetUpView.LayS = State == ESandboxBodyState::Lying ? ElapsedS - StateEnteredS : 0.0;
 	EnterState(ESandboxBodyState::GetUp, FString::Printf(TEXT("lay still for %.2f s; %s"), GetUpRestS(), *How));
 	return true;
 }
@@ -1875,7 +2017,78 @@ void USandboxBodyController::MatchBody(FSandboxMatchBody& OutBody) const
 	{
 		OutBody.ChestUp = Chest->GetUnrealWorldTransform().GetRotation().UnrotateVector(FVector::UpVector);
 	}
-	OutBody.SupportZ = LastSupportHeightCm;
+	OutBody.SupportZ = bChoosingFloorSet ? ChoosingFloorZ : LastSupportHeightCm;
+}
+
+bool USandboxBodyController::SurfaceUnderPelvis(double& OutZ) const
+{
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	if (!Pelvis || !Pelvis->IsValidBodyInstance() || !GetWorld())
+	{
+		return false;
+	}
+	// Read only, as SenseFall's sweeps: the static world and things that move or simulate (a table's top, furniture with mass), the
+	// character itself left out. A ball of a few cm, so that a gap between two boards is not taken for the floor under them.
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(SandboxGetUpSurface), false, GetOwner());
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+	const FVector From = Pelvis->GetCOMPosition();
+	FHitResult Hit;
+	if (!GetWorld()->SweepSingleByObjectType(Hit, From, From - FVector(0.0, 0.0, 250.0), FQuat::Identity, Objects, FCollisionShape::MakeSphere(3.0), Query))
+	{
+		return false;
+	}
+	OutZ = Hit.ImpactPoint.Z;
+	return true;
+}
+
+double USandboxBodyController::FitAtCm(double TimeS) const
+{
+	const TArray<FSandboxMotionVariant>& Variants = MotionLibrary.GetVariants();
+	if (!Variants.IsValidIndex(GetUpRun.Variant))
+	{
+		return 0.0;
+	}
+	const FSandboxMotionVariant& Variant = Variants[GetUpRun.Variant];
+	if (Variant.FitCm.Num() == 0 || Variant.KeyS <= 0.0)
+	{
+		return 0.0;
+	}
+	const double Key = FMath::Clamp(TimeS / Variant.KeyS, 0.0, static_cast<double>(Variant.FitCm.Num() - 1));
+	const int32 Before = FMath::FloorToInt32(Key);
+	const int32 After = FMath::Min(Before + 1, Variant.FitCm.Num() - 1);
+	return FMath::Lerp(Variant.FitCm[Before], Variant.FitCm[After], Key - Before);
+}
+
+void USandboxBodyController::FreeVerticals(TArray<double>& OutShares) const
+{
+	OutShares.Init(1.0, Carry.Num());
+	const TArray<FSandboxMotionVariant>& Variants = MotionLibrary.GetVariants();
+	if (!Variants.IsValidIndex(GetUpRun.Variant))
+	{
+		return;
+	}
+	const FSandboxMotionVariant& Variant = Variants[GetUpRun.Variant];
+	if (Variant.Touches.Num() == 0 || Variant.KeyS <= 0.0)
+	{
+		return;
+	}
+	const int32 Key = FMath::Clamp(FMath::RoundToInt32(ClipHold.TimeS / Variant.KeyS), 0, Variant.Touches.Num() - 1);
+	for (int32 Feature = 0; Feature < MotionSpec.FeatureBones.Num(); ++Feature)
+	{
+		if ((Variant.Touches[Key] & (1u << Feature)) == 0)
+		{
+			continue;
+		}
+		const int32 Index = Carry.IndexOf(MotionSpec.FeatureBones[Feature]);
+		const FBodyInstance* Body = Mesh->GetBodyInstance(MotionSpec.FeatureBones[Feature]);
+		if (Index != INDEX_NONE && Body && TouchedWorld.IsValidIndex(Body->InstanceBodyIndex) && TouchedWorld[Body->InstanceBodyIndex])
+		{
+			OutShares[Index] = 0.0;
+		}
+	}
 }
 
 bool USandboxBodyController::ChooseByMatch(FString& OutKey, double& OutTimeS, FTransform& OutFrame, FSandboxGetUpStart& InOutStart, FString& OutError)
@@ -1900,6 +2113,7 @@ bool USandboxBodyController::ChooseByMatch(FString& OutKey, double& OutTimeS, FT
 		}
 	}
 	Settings.PenaltyCm = Tuning.GetUp.MatchGivenUpCm;
+	Settings.LateCmPerS = Tuning.GetUp.MatchLateCmPerS;
 	TArray<FSandboxMatchSample> Samples;
 	MotionLibrary.Samples(StartSpace.GetRotation(), Tuning.GetUp.MatchWindowS, Samples);
 	TArray<FSandboxMatch> Best;
@@ -1907,9 +2121,11 @@ bool USandboxBodyController::ChooseByMatch(FString& OutKey, double& OutTimeS, FT
 	TArray<bool> Allowed;
 	TArray<bool> GetUps;
 	TArray<bool> Rolls;
+	// With the roll (getup.roll, decision 50) a body gets up by the clips from the back and the front only: one on its side rolls first.
+	const bool bNoSides = Tuning.GetUp.Roll > 0.5;
 	for (const FSandboxMotionVariant& Variant : Variants)
 	{
-		Allowed.Add(Variant.bMatch);
+		Allowed.Add(Variant.bMatch && !(bNoSides && (Variant.Lies == TEXT("left") || Variant.Lies == TEXT("right"))));
 		GetUps.Add(Variant.Kind == TEXT("getup"));
 		Rolls.Add(Variant.Kind == TEXT("roll"));
 	}
@@ -2015,7 +2231,7 @@ void USandboxBodyController::MeasureGetUpShape(const FTransform& PelvisNow, doub
 		GetUpView.PlankS += DeltaTime;
 		GetUpView.PlankMaxCm = FMath::Max(GetUpView.PlankMaxCm, -Balance.CenterOfMassMarginCm);
 	}
-	if (GetUpView.RiseFeetCm < 0.0 && PelvisNow.GetLocation().Z - LastSupportHeightCm >= 70.0)
+	if (GetUpView.RiseFeetCm < 0.0 && PelvisNow.GetLocation().Z - GetUpFloorZ() >= 70.0)
 	{
 		const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
 		const FBodyInstance* Feet[2] = { Mesh->GetBodyInstance(Tuning.Rig.FootLeft), Mesh->GetBodyInstance(Tuning.Rig.FootRight) };
@@ -2041,19 +2257,213 @@ double USandboxBodyController::GetUpRestS() const
 	return Limits.RestMaxS > 0.0 ? FMath::Max(Limits.RestS, FMath::Min(Rest, Limits.RestMaxS)) : Rest;
 }
 
-void USandboxBodyController::GiveUpGetUp(const FString& Reason)
+const TCHAR* GiveUpName(ESandboxGiveUp Kind)
+{
+	switch (Kind)
+	{
+	case ESandboxGiveUp::PosedFromOutside: return TEXT("posed_from_outside");
+	case ESandboxGiveUp::HeldUp: return TEXT("held_up");
+	case ESandboxGiveUp::NoClip: return TEXT("no_clip");
+	case ESandboxGiveUp::Hit: return TEXT("hit");
+	case ESandboxGiveUp::Lost: return TEXT("lost");
+	case ESandboxGiveUp::HeldDown: return TEXT("held_down");
+	case ESandboxGiveUp::Waited: return TEXT("waited");
+	case ESandboxGiveUp::Dragged: return TEXT("dragged");
+	case ESandboxGiveUp::NotLed: return TEXT("not_led");
+	default: return TEXT("other");
+	}
+}
+
+bool USandboxBodyController::CanBeginGetUp(FString& OutWhy) const
+{
+	// Decision 18 (getup.drag): not while dragged, nor until the body has been still of it for getup.drag_free_s.
+	if (Tuning.GetUp.Drag > 0.5 && DraggedLastS >= 0.0 && ElapsedS - DraggedLastS < Tuning.GetUp.DragFreeS)
+	{
+		OutWhy = FString::Printf(TEXT("it is dragged (%.2f s ago)"), ElapsedS - DraggedLastS);
+		return false;
+	}
+	return true;
+}
+
+FVector USandboxBodyController::HoldsPullN() const
+{
+	FVector SumN = FVector::ZeroVector;
+	for (const FSandboxBodyHold& Hold : Holds)
+	{
+		SumN += Hold.PullN;
+	}
+	return SumN;
+}
+
+void USandboxBodyController::UpdateDrag(double DeltaTime)
+{
+	// Read only of the holds and the pelvis. A drag: holds that together pull with drag_force_n, or that move the pelvis along their
+	// pull faster than drag_mps (a lighter pull of a body that slides).
+	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	// Over the floor only (decision 18 is a drag along the floor; an independent reader's find): hands that pull a rising body up by its
+	// wrists see its pelvis rise along their pull, and a lift is a hold of another kind (held up, FR-47).
+	const FVector PullN = HoldsPullN() * FVector(1.0, 1.0, 0.0);
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	const double AlongMps = Pelvis && Pelvis->IsValidBodyInstance() && !PullN.IsNearlyZero() ?
+		FVector::DotProduct(Pelvis->GetUnrealWorldVelocity() * FVector(1.0, 1.0, 0.0), PullN.GetSafeNormal()) * 0.01 : 0.0;
+	// The pelvis's speed counts only for two holds or more (decision 18 is two hands): one hand whose pull a yielding arm lets the body
+	// follow (getup.arm_answer) moves the pelvis along it too, and is a hindrance, not a drag.
+	const bool bDragging = Holds.Num() > 0 && (PullN.Size() >= Limits.DragForceN || (Holds.Num() >= 2 && Limits.DragMps > 0.0 && AlongMps >= Limits.DragMps));
+	DragS = bDragging ? DragS + DeltaTime : 0.0;
+	if (bDragging && DragS >= Limits.DragS)
+	{
+		DraggedLastS = ElapsedS;
+		GetUpView.DraggedS += DeltaTime;
+	}
+	// What the carry gives against the holds while they pull this hard (read only; the measure of decision 18's "no force against the
+	// hands").
+	if (Holds.Num() > 0 && PullN.Size() >= Limits.DragForceN && Carry.IsCreated() && Carry.GetShare() > 0.0)
+	{
+		const FSandboxCarrySettings Settings = CarrySettings();
+		double AgainstN = 0.0;
+		for (int32 Index = 0; Index < Carry.Num(); ++Index)
+		{
+			AgainstN += FMath::Max(-FVector::DotProduct(Carry.ForceOn(Index, Settings, Carry.GetShare()), PullN.GetSafeNormal()), 0.0);
+		}
+		GetUpView.CarryAgainstHoldsMaxN = FMath::Max(GetUpView.CarryAgainstHoldsMaxN, AgainstN);
+		GetUpView.CarryAgainstHoldsNs += AgainstN * DeltaTime;
+	}
+	if (State == ESandboxBodyState::GetUp && bDragging && DragS >= Limits.DragS)
+	{
+		GiveUpGetUp(ESandboxGiveUp::Dragged, FString::Printf(TEXT("dragged with %.0f N, the pelvis at %.2f m/s along the pull"), PullN.Size(), AlongMps));
+		// The world lets go of the body at once (decision 18), not over the release: it goes down on its muscles and is dragged.
+		CarryShare = 0.0;
+		Carry.Apply(CarrySettings(), 0.0);
+	}
+}
+
+bool USandboxBodyController::IsBraced() const
+{
+	return AskedTone == static_cast<int32>(ESandboxTone::Braced) || (BraceFromS >= 0.0 && ElapsedS >= BraceFromS && ElapsedS < BraceUntilS) ||
+		(AnticipateFromS >= 0.0 && ElapsedS < AnticipateUntilS);
+}
+
+void USandboxBodyController::UpdateHeldArms(double DeltaTime)
+{
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	static const FName Chain[2][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
+		{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) } };
+	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	// Only while a clip leads the body (not in a roll, not standing: R5 and R6 take the standing and the lying body).
+	const bool bGettingUp = State == ESandboxBodyState::GetUp && !GetUpRun.bRolling && !GetUpRun.Path.IsEmpty();
+	bool bChanged = false;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const FSandboxBodyHold* Hold = nullptr;
+		if (bGettingUp)
+		{
+			for (const FSandboxBodyHold& Each : Holds)
+			{
+				if (Each.Bone == Chain[Side][0] || Each.Bone == Chain[Side][1] || Each.Bone == Chain[Side][2])
+				{
+					Hold = &Each;
+					break;
+				}
+			}
+		}
+		const int32 Mode = FMath::RoundToInt32(Limits.ArmAnswer);
+		// Mode 0 (switched off while an arm is held): the arm is let go as for a hold that ends.
+		const int32 Answer = !Hold || Mode <= 0 ? 0 : Mode == 2 ? 1 : Mode == 3 ? 2 : IsBraced() ? 2 : 1;
+		const double Scale = Answer == 1 ? Limits.ArmYieldScale : Answer == 2 ? Limits.ArmPullScale : 1.0;
+		if (Answer != HeldArmAnswer[Side] || Scale != HeldArmScale[Side])
+		{
+			bChanged = true;
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the %s arm %s"), ElapsedS, Side == 0 ? TEXT("left") : TEXT("right"),
+				Answer == 1 ? TEXT("yields to the hand that holds it") : Answer == 2 ? TEXT("is pulled in against the hand that holds it") : TEXT("is its own again"));
+		}
+		if (Answer == 0)
+		{
+			if (HeldArmAnswer[Side] != 0)
+			{
+				// Let go over a pose's blend: the clip's arm comes back, never in a step.
+				const FBodyInstance* HandBody = Mesh->GetBodyInstance(Hands[Side]);
+				PlaceArm(Hands[Side], HandBody && HandBody->IsValidBodyInstance() ? HandBody->GetCOMPosition() : FVector::ZeroVector, 0.0, Tuning.Poses.BlendS, false);
+			}
+		}
+		else
+		{
+			FVector Target = Hold->PointCm;
+			if (Answer == 1)
+			{
+				// Yield: after the hand that holds it, along its pull.
+				Target += Hold->PullN.GetSafeNormal() * Limits.ArmReachCm;
+				GetUpView.ArmYieldS += DeltaTime;
+			}
+			else
+			{
+				// Pull in: the hand toward its shoulder, the elbow bent; where, is worked out once as the pull-in begins and then held in
+				// the chest's space (worked out anew each tick, the way from the shoulder to the holding point turned round as that point
+				// passed the shoulder, and the arm's target jumped 160 degrees in a frame).
+				const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+				const FTransform ChestNow = Chest && Chest->IsValidBodyInstance() ? Chest->GetUnrealWorldTransform() : FTransform::Identity;
+				if (Answer != HeldArmAnswer[Side])
+				{
+					const FBodyInstance* Shoulder = Mesh->GetBodyInstance(Chain[Side][2]);
+					const FVector From = Shoulder && Shoulder->IsValidBodyInstance() ? Mesh->GetBoneLocation(Chain[Side][2]) : Hold->PointCm;
+					HeldArmInChest[Side] = ChestNow.InverseTransformPositionNoScale(From + (Hold->PointCm - From).GetSafeNormal() * Limits.ArmPullInCm);
+				}
+				Target = ChestNow.TransformPositionNoScale(HeldArmInChest[Side]);
+				GetUpView.ArmPullS += DeltaTime;
+			}
+			// The placed point follows the answer's point over arm_follow_s from where the hand was when the hold began, so that neither
+			// the answer's start nor a change of answer (by state, as the body braces or not) moves the target in a step.
+			if (HeldArmAnswer[Side] == 0)
+			{
+				const FBodyInstance* HandBody = Mesh->GetBodyInstance(Hands[Side]);
+				HeldArmPlaced[Side] = HandBody && HandBody->IsValidBodyInstance() ? HandBody->GetCOMPosition() : Target;
+			}
+			const double Follow = Limits.ArmFollowS > 0.0 ? FMath::Min(DeltaTime / Limits.ArmFollowS, 1.0) : 1.0;
+			HeldArmPlaced[Side] += (Target - HeldArmPlaced[Side]) * Follow;
+			if (HeldArmAnswer[Side] == 0)
+			{
+				// Taken in over a pose's blend, then moved where it follows (the blend is not begun again each tick).
+				PlaceArm(Hands[Side], HeldArmPlaced[Side], 1.0, Tuning.Poses.BlendS, false);
+			}
+			else if (USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()))
+			{
+				Animation->MoveLimbTarget(Mesh->GetBoneIndex(Hands[Side]), HeldArmPlaced[Side], nullptr, nullptr, 0.0, 0.0);
+			}
+		}
+		HeldArmAnswer[Side] = Answer;
+		HeldArmScale[Side] = Scale;
+	}
+	if (bChanged)
+	{
+		PushTuningToControls();
+	}
+}
+
+void USandboxBodyController::GiveUpGetUp(ESandboxGiveUp Kind, const FString& Reason)
 {
 	if (State != ESandboxBodyState::GetUp)
 	{
 		return;
 	}
+	++GetUpView.GivenUpBy[static_cast<int32>(Kind)];
 	GetUpView.GivenUp = Reason;
-	if (GetUpView.Starts.Num() > 0)
+	if (GetUpView.Starts.IsValidIndex(GetUpRun.StartIndex))
 	{
-		GetUpView.Starts.Last().EndedS = ElapsedS;
-		GetUpView.Starts.Last().Ended = Reason;
+		GetUpView.Starts[GetUpRun.StartIndex].EndedS = ElapsedS;
+		GetUpView.Starts[GetUpRun.StartIndex].Ended = Reason;
 	}
-	GivenUpClip = GetUpRun.Path;
+	// A roll given up is the roll's end too; the next roll goes the other way (StartRoll).
+	if (GetUpRun.bRolling && GetUpView.Rolls.Num() > 0)
+	{
+		GetUpView.Rolls.Last().DurationS = ElapsedS - StateEnteredS;
+		GetUpView.Rolls.Last().Ended = Reason;
+	}
+	GivenUpRollWay = GetUpRun.bRolling || GetUpRun.bRolled ? (GetUpRun.bRollToFront ? 1 : 0) : INDEX_NONE;
+	GetUpRun.bRolling = false;
+	// An attempt given up in its roll had no clip: the clip given up before it keeps its penalty.
+	if (!GetUpRun.Path.IsEmpty())
+	{
+		GivenUpClip = GetUpRun.Path;
+	}
 	ReleaseClipPose();
 	EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("the get-up is given up: %s"), *Reason));
 }
@@ -2064,22 +2474,39 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	{
 		return;
 	}
+	if (GetUpRun.bRolling)
+	{
+		UpdateRoll(DeltaTime);
+		return;
+	}
 	FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
 	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
 	const FSandboxClipPose* Clip = Clips.Find(GetUpRun.Path);
 	if (!Body || !Body->IsValidBodyInstance() || !Clip || ClipHold.Path != GetUpRun.Path)
 	{
-		GiveUpGetUp(TEXT("its clip is gone"));
+		GiveUpGetUp(ESandboxGiveUp::NoClip, TEXT("its clip is gone"));
 		return;
 	}
 	if (bHeldUp)
 	{
-		GiveUpGetUp(TEXT("the body is held up"));
+		GiveUpGetUp(ESandboxGiveUp::HeldUp, TEXT("the body is held up"));
+		return;
+	}
+	// Every get-up is led (the clip-following path went with R2's rest): one whose carry could not be made is given up, and the
+	// body stays down (decision 17 fails the run that asked for it).
+	if (bCarryBroken)
+	{
+		// Counted here too: a carry that broke in a roll given up before its clip leaves the next attempt to be given up before
+		// UpdateCarry sees it in this state.
+		CountLed(false);
+		bGetUpBroken = true;
+		UE_LOG(LogSandbox, Error, TEXT("Body controller: the body cannot get up and stays down: %s"), *CarryBrokenReason);
+		GiveUpGetUp(ESandboxGiveUp::NotLed, CarryBrokenReason);
 		return;
 	}
 	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
-	// Led (getup.carry), the world pulls every body toward the clip, and what it gives it would give against a blow too: a hit
-	// that is felt this hard lets the body go at once, and the attempt is over. Each hit is judged once.
+	// Led, the world pulls every body toward the clip, and what it gives it would give against a blow too: a hit that is felt this hard
+	// takes the pull (getup.hit_by_impulse) or lets the body go at once. Each hit is judged once.
 	const bool bLed = IsLed();
 	if (bLed && Limits.CarryYieldNs > 0.0 && FlinchStartedS >= StateEnteredS && FlinchStartedS > CarryYieldSeenS)
 	{
@@ -2103,7 +2530,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		{
 			CarryShare = 0.0;
 			Carry.Apply(CarrySettings(), 0.0);
-			GiveUpGetUp(FString::Printf(TEXT("hit with %.0f N*s while it was led"), FlinchImpulseNs.Size()));
+			GiveUpGetUp(ESandboxGiveUp::Hit, FString::Printf(TEXT("hit with %.0f N*s while it was led"), FlinchImpulseNs.Size()));
 			return;
 		}
 	}
@@ -2113,7 +2540,10 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	{
 		PushTuningToControls();
 		const bool bHitOver = FlinchStartedS < StateEnteredS || ElapsedS - FlinchStartedS >= Tuning.Reactions.FlinchRecoveryS;
-		GetUpRun.bEased = Ease >= 1.0 && bHitOver;
+		// After a roll the assist's ease runs from the clip's start (CarryEase), after the muscles' (an independent reader's find:
+		// pushed until the muscles were up, the assist of the clip-following path stayed where the roll had left it, at 0).
+		// Without a roll the two are the same number.
+		GetUpRun.bEased = Ease >= 1.0 && CarryEase() >= 1.0 && bHitOver;
 	}
 
 	// The pelvis's assist is aimed at where the clip has the pelvis now, and the feet's at where it has the feet:
@@ -2121,6 +2551,20 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	// they were left the body leaning like a plank from feet half a metre behind it.
 	FTransform Goal = Clip->PelvisAt(ClipHold.TimeS) * GetUpRun.Frame;
 	Goal.SetScale3D(FVector::OneVector);
+	// R2, step 10 (getup.fit_floor): the reference raised or lowered so that what the recording has on its floor lies on it with this
+	// body's shapes, followed over fit_ease_s.
+	if (Limits.FitFloor > 0.0)
+	{
+		const double Wanted = Limits.FitFloor * FitAtCm(ClipHold.TimeS);
+		GetUpRun.FitCm = Limits.FitEaseS > 0.0 ? GetUpRun.FitCm + (Wanted - GetUpRun.FitCm) * FMath::Min(DeltaTime / Limits.FitEaseS, 1.0) : Wanted;
+		Goal.AddToTranslation(FVector(0.0, 0.0, GetUpRun.FitCm));
+		if (GetUpView.Starts.IsValidIndex(GetUpRun.StartIndex))
+		{
+			FSandboxGetUpStart& Start = GetUpView.Starts[GetUpRun.StartIndex];
+			Start.FitMinCm = FMath::Min(Start.FitMinCm, GetUpRun.FitCm);
+			Start.FitMaxCm = FMath::Max(Start.FitMaxCm, GetUpRun.FitCm);
+		}
+	}
 	Pelvis->Target = Goal;
 	SetAssistTarget(*Pelvis);
 	for (FAssist& Assist : Assists)
@@ -2129,6 +2573,10 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		if (Assist.Slot == EAssistSlot::Feet && Clip->BodyAt(Assist.Bone, ClipHold.TimeS, InClip))
 		{
 			Assist.Target = InClip * GetUpRun.Frame;
+			if (Limits.FitFloor > 0.0)
+			{
+				Assist.Target.AddToTranslation(FVector(0.0, 0.0, GetUpRun.FitCm));
+			}
 			Assist.Target.SetScale3D(FVector::OneVector);
 			SetAssistTarget(Assist);
 		}
@@ -2138,54 +2586,23 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	const double LagCm = FVector::Dist(Now.GetLocation(), Goal.GetLocation());
 	if (LagCm > Limits.LostCm)
 	{
-		GiveUpGetUp(FString::Printf(TEXT("the pelvis is %.0f cm from where the clip has it"), LagCm));
+		GiveUpGetUp(ESandboxGiveUp::Lost, FString::Printf(TEXT("the pelvis is %.0f cm from where the clip has it"), LagCm));
 		return;
 	}
-	// The feet against the clip. A foot off the floor has to come to where the clip has it, and the clip waits for
-	// it. A foot the body stands on is where it is: the clip is laid over it instead, its root following the feet in
-	// proportion to the weight they carry (getup.frame_follow_s).
+	// How far each foot is from where the clip has it (for the log and the reasons; a led body is brought to the clip, feet and all,
+	// and the clip is not laid over where the body happens to be).
 	double FootLagCm[2] = { 0.0, 0.0 };
-	double AirLagCm = 0.0;
-	FVector2D CarriedOff = FVector2D::ZeroVector;
-	double CarriedN = 0.0;
 	for (const FAssist& Assist : Assists)
 	{
 		const FBodyInstance* Foot = Assist.Slot == EAssistSlot::Feet && Assist.Side >= 0 ? Mesh->GetBodyInstance(Assist.Bone) : nullptr;
 		if (Foot && Foot->IsValidBodyInstance())
 		{
-			const FVector Off = Foot->GetUnrealWorldTransform().GetLocation() - Assist.Target.GetLocation();
-			FootLagCm[Assist.Side] = Off.Size();
-			const double LoadN = Balance.bValid ? Balance.FootForceN[Assist.Side] : 0.0;
-			if (LoadN > 0.0)
-			{
-				CarriedOff += FVector2D(Off.X, Off.Y) * LoadN;
-				CarriedN += LoadN;
-			}
-			else
-			{
-				AirLagCm = FMath::Max(AirLagCm, FootLagCm[Assist.Side]);
-			}
+			FootLagCm[Assist.Side] = (Foot->GetUnrealWorldTransform().GetLocation() - Assist.Target.GetLocation()).Size();
 		}
 	}
-	// A led body is brought to the clip, feet and all; the clip is not laid over where the body happens to be. (Laid over the
-	// loaded feet as well, the world gave 0.97 of the body's weight instead of 1.05 and the body leant longer after it stood.)
-	if (!bLed && CarriedN > 0.0 && Limits.FrameFollowS > 0.0 && WeightN > 0.0)
-	{
-		const double Share = FMath::Clamp(CarriedN / WeightN, 0.0, 1.0);
-		const FVector2D Shift = (CarriedOff / CarriedN) * FMath::Min(Share * DeltaTime / Limits.FrameFollowS, 1.0);
-		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
-	}
-	// And over the body itself where the feet carry nothing: a body that turns into the clip's first pose, rolls onto
-	// its side or comes onto its hands and knees moves over the floor, and where on the floor it gets up does not
-	// matter. The clip's root follows the pelvis, by the share of the weight that is not on the feet
-	// (getup.pelvis_follow_s). A blow moves the pelvis faster than that and is still told by the distance above.
-	//
-	// What presses on the body is the force felt in every frame of the last moments from other simulated bodies, as
-	// for a held push (FeelFrame). Pressed down harder than it will push against (getup.hold_force_n), the body does
-	// not go on: its clip waits, below, and the attempt is given up when it has waited too long. Pressed with less,
-	// it gets up where the hand lets it: the clip goes on following the pelvis when the feet carry the body too, by
-	// getup.pressed_follow. (A hand on the pelvis of a body in a crouch kept it 25 cm behind where the clip had it
-	// over the feet, and one hand then stopped a get-up as surely as two.)
+	// What presses on the body is the force felt in every frame of the last moments from other simulated bodies, as for a held push
+	// (FeelFrame). Pressed down harder than it will push against (getup.hold_force_n), the body does not go on: its clip waits,
+	// below, and the attempt is given up when it has waited too long.
 	const double PressedN = SustainedN.Size();
 	// Decision 14 (getup.hold_by_body): led, the clip's pace goes down in proportion to the press and the holds together, to a stop at
 	// hold_force_n; down at once, back by the release's clock, so that a hand that pulls is felt in the frame it pulls in.
@@ -2202,7 +2619,6 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	const bool bHeldDown = bPaceByForce
 		? Limits.HoldForceN > 0.0 && (HoldPace <= 0.0 || SustainedContactN.Size() >= Limits.HoldForceN)
 		: Limits.HoldForceN > 0.0 && PressedN >= Limits.HoldForceN;
-	const bool bPushesOn = Limits.HoldForceN > 0.0 && PressedN > 0.0 && !bHeldDown;
 	GetUpView.PressedMaxN = FMath::Max(GetUpView.PressedMaxN, PressedN);
 	// How long and how hard a hand held the body while it got up (read only).
 	if (Holds.Num() > 0)
@@ -2212,14 +2628,6 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		{
 			GetUpView.HoldMaxN = FMath::Max(GetUpView.HoldMaxN, Hold.ForceN);
 		}
-	}
-	if (!bLed && Limits.PelvisFollowS > 0.0)
-	{
-		const double OnFeet = WeightN > 0.0 ? FMath::Clamp(CarriedN / WeightN, 0.0, 1.0) : 0.0;
-		const FVector Off = Now.GetLocation() - Goal.GetLocation();
-		const double Share = 1.0 - OnFeet * (1.0 - (bPushesOn ? Limits.PressedFollow : 0.0));
-		const FVector2D Shift = FVector2D(Off.X, Off.Y) * (Share * FMath::Min(DeltaTime / Limits.PelvisFollowS, 1.0));
-		GetUpRun.Frame.AddToTranslation(FVector(Shift.X, Shift.Y, 0.0));
 	}
 	MeasureGetUpShape(Now, Ease, DeltaTime);
 	// A line of the log four times a second: where the body is against the clip.
@@ -2239,24 +2647,9 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 				ElapsedS, SumN, NetN.X, NetN.Y, NetN.Z, WeightN, *Carry.Describe(CarrySettings(), Carry.GetShare(), 4));
 		}
 	}
-	// The clip's time waits for a body that does not keep up, and stops at the time by which the clip stands.
-	// A foot in the air is waited for, but not without end (getup.foot_wait_s).
-	const FVector PelvisOff = Now.GetLocation() - Goal.GetLocation();
-	// A body that pushes on under a press sags under it: its muscles are springs, and a clip that waited at the usual
-	// lag would never ask them for more (a steady 300 N on the pelvis left it 18 cm low in a crouch, 2 cm past the
-	// lag, for as long as it pressed). The clip may then run further ahead in height (getup.pressed_lag_cm).
-	const double HeightLagCm = bPushesOn ? FMath::Max(Limits.LagCm, Limits.PressedLagCm) : Limits.LagCm;
-	bool bPelvisBehind = FMath::Abs(PelvisOff.Z) > HeightLagCm || PelvisOff.Size2D() > Limits.SideLagCm;
-	GetUpRun.FootWaitS = AirLagCm > Limits.FootLagCm ? GetUpRun.FootWaitS + DeltaTime : 0.0;
-	bool bFootWaited = AirLagCm > Limits.FootLagCm && GetUpRun.FootWaitS <= Limits.FootWaitS;
-	if (bLed)
-	{
-		// Led, the clip runs at its own rate: the body is brought along, and a body that cannot be (something is in the way)
-		// is told by the pelvis's distance above. Only a press that holds it down stops the clip.
-		bPelvisBehind = false;
-		bFootWaited = false;
-	}
-	const bool bBehind = bHeldDown || bPelvisBehind || bFootWaited;
+	// Led, the clip runs at its own rate and stops at the time by which it stands: the body is brought along, and a body that cannot
+	// be (something is in the way) is told by the pelvis's distance above. Only a press that holds it down stops the clip.
+	const bool bBehind = bHeldDown;
 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
 	ClipHold.Rate = Ease < 1.0 || bBehind || bThrough ? 0.0 : bPaceByForce ? Limits.Rate * HoldPace : Limits.Rate;
 	if (FMath::Abs(ClipHold.Rate) < 0.1 * Limits.Rate)
@@ -2270,9 +2663,6 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	const bool bCrawling = bPaceByForce && !bThrough && Ease >= 1.0 && HoldPace < 0.1;
 	if (Ease >= 1.0 && (bBehind || bCrawling) && !bThrough)
 	{
-		GetUpView.BehindHeightS += bPelvisBehind && FMath::Abs(PelvisOff.Z) > HeightLagCm ? DeltaTime : 0.0;
-		GetUpView.BehindSideS += bPelvisBehind && PelvisOff.Size2D() > Limits.SideLagCm ? DeltaTime : 0.0;
-		GetUpView.BehindFootS += bFootWaited ? DeltaTime : 0.0;
 		GetUpView.BehindHeldS += bHeldDown || bCrawling ? DeltaTime : 0.0;
 	}
 	if (Ease >= 1.0 && (bBehind || bThrough || bCrawling))
@@ -2298,12 +2688,13 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		{
 			++GetUpView.Successes;
 			GetUpView.DurationS = ElapsedS - GetUpView.StartedS;
-			if (GetUpView.Starts.Num() > 0)
+			if (GetUpView.Starts.IsValidIndex(GetUpRun.StartIndex))
 			{
-				GetUpView.Starts.Last().EndedS = ElapsedS;
-				GetUpView.Starts.Last().Ended = TEXT("stood");
+				GetUpView.Starts[GetUpRun.StartIndex].EndedS = ElapsedS;
+				GetUpView.Starts[GetUpRun.StartIndex].Ended = TEXT("stood");
 			}
 			GivenUpClip.Reset();
+			GivenUpRollWay = INDEX_NONE;
 			ReleaseClipPose();
 			EnterState(ESandboxBodyState::Standing, FString::Printf(TEXT("got up in %.2f s"), GetUpView.DurationS));
 			return;
@@ -2313,10 +2704,10 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	{
 		if (bHeldDown || bCrawling)
 		{
-			GiveUpGetUp(FString::Printf(TEXT("held down with %.0f N for %.1f s, at %.2f s of the clip"), bPaceByForce ? FMath::Max(PaceForceN, SustainedContactN.Size()) : PressedN, GetUpRun.StallS, ClipHold.TimeS));
+			GiveUpGetUp(ESandboxGiveUp::HeldDown, FString::Printf(TEXT("held down with %.0f N for %.1f s, at %.2f s of the clip"), bPaceByForce ? FMath::Max(PaceForceN, SustainedContactN.Size()) : PressedN, GetUpRun.StallS, ClipHold.TimeS));
 			return;
 		}
-		GiveUpGetUp(FString::Printf(TEXT("the clip stood at %.2f s for %.1f s waiting for the body (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
+		GiveUpGetUp(ESandboxGiveUp::Waited, FString::Printf(TEXT("the clip stood at %.2f s for %.1f s waiting for the body (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
 			ClipHold.TimeS, GetUpRun.StallS, LagCm, FootLagCm[0], FootLagCm[1]));
 		return;
 	}
@@ -2325,7 +2716,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	// bounded too (getup.wait_s); a body that a hand slows is not hurried by this.
 	if (Limits.WaitS > 0.0 && GetUpRun.FreeWaitS > Limits.WaitS)
 	{
-		GiveUpGetUp(FString::Printf(TEXT("the clip waited %.1f s in all for the body and is at %.2f s (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
+		GiveUpGetUp(ESandboxGiveUp::Waited, FString::Printf(TEXT("the clip waited %.1f s in all for the body and is at %.2f s (pelvis %.0f cm, feet %.0f and %.0f cm from it)"),
 			GetUpRun.FreeWaitS, ClipHold.TimeS, LagCm, FootLagCm[0], FootLagCm[1]));
 	}
 }
@@ -2344,6 +2735,25 @@ FSandboxCarrySettings USandboxBodyController::CarrySettings() const
 	return Settings;
 }
 
+void USandboxBodyController::CountLed(bool bLed)
+{
+	// Decision 17: every attempt that asked for the led get-up is counted, once, as led or not, with the reason. Read only.
+	if (!GetUpRun.bCarryAsked || GetUpRun.bLedCounted)
+	{
+		return;
+	}
+	GetUpRun.bLedCounted = true;
+	if (bLed)
+	{
+		++GetUpView.LedAttempts;
+		return;
+	}
+	++GetUpView.NotLedAttempts;
+	GetUpView.NotLed = CarryBrokenReason;
+	UE_LOG(LogSandbox, Warning, TEXT("Body controller: the get-up at %.2f s cannot be led: %s; it is given up and the body stays down"),
+		ElapsedS, *GetUpView.NotLed);
+}
+
 void USandboxBodyController::UpdateCarry(double DeltaTime)
 {
 	bool bLed = IsLed();
@@ -2358,25 +2768,13 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 			bLed = false;
 		}
 	}
-	// Decision 17: every attempt that asked for the led get-up is counted, once, as led or not, with the reason. Read only.
-	if (State == ESandboxBodyState::GetUp && GetUpRun.bCarryAsked && !GetUpRun.bLedCounted)
+	if (State == ESandboxBodyState::GetUp)
 	{
-		GetUpRun.bLedCounted = true;
-		if (bLed)
-		{
-			++GetUpView.LedAttempts;
-		}
-		else
-		{
-			++GetUpView.NotLedAttempts;
-			GetUpView.NotLed = bCarryBroken ? CarryBrokenReason : FString(TEXT("getup.carry was switched off during the attempt"));
-			UE_LOG(LogSandbox, Warning, TEXT("Body controller: the get-up at %.2f s asked for the led get-up (getup.carry 1) and is not led: %s; it goes the clip-following way"),
-				ElapsedS, *GetUpView.NotLed);
-		}
+		CountLed(bLed);
 	}
 	if (!bLed && CarryShare <= 0.0)
 	{
-		// Nothing is carried and nothing fades: a run without getup.carry does nothing here.
+		// Nothing is carried and nothing fades: a run that never got up does nothing here.
 		bCarryAimed = false;
 		return;
 	}
@@ -2399,6 +2797,10 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 			if (Clip->ReachedBodyAt(Carry.BoneAt(Index), ClipHold.TimeS, InClip))
 			{
 				FTransform Goal = InClip * GetUpRun.Frame;
+				if (Tuning.GetUp.FitFloor > 0.0)
+				{
+					Goal.AddToTranslation(FVector(0.0, 0.0, GetUpRun.FitCm));
+				}
 				const FTransform* Lay = StartOver < 1.0 ? GetUpRun.StartBodies.Find(Carry.BoneAt(Index)) : nullptr;
 				if (Lay)
 				{
@@ -2418,7 +2820,8 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 				Clip->ReachedBodyAt(Tuning.Rig.FootLeft, ClipHold.TimeS, Feet[0]) && Clip->ReachedBodyAt(Tuning.Rig.FootRight, ClipHold.TimeS, Feet[1]))
 			{
 				const FVector PelvisCm = (Pelvis * GetUpRun.Frame).GetLocation();
-				if (PelvisCm.Z - LastSupportHeightCm >= 70.0)
+				const double FitCm = Tuning.GetUp.FitFloor > 0.0 ? GetUpRun.FitCm : 0.0;
+				if (PelvisCm.Z + FitCm - GetUpFloorZ() >= 70.0)
 				{
 					const FVector Trunk = (Chest * GetUpRun.Frame).GetLocation() - PelvisCm;
 					GetUpView.RiseClipTrunkDeg = FMath::RadiansToDegrees(FMath::Atan2(Trunk.Size2D(), Trunk.Z));
@@ -2427,8 +2830,9 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 				}
 			}
 		}
-		// Up with the get-up's ease; a share left from a get-up that has just ended is not taken down by a new one.
-		CarryShare = FMath::Max(CarryShare, GetUpEase());
+		// Up with the get-up's ease (after a roll, from when the clip began); a share left from a get-up that has just ended is not
+		// taken down by a new one.
+		CarryShare = FMath::Max(CarryShare, CarryEase());
 	}
 	else
 	{
@@ -2478,9 +2882,24 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 			HitFree = Limits.HitBackS > 0.0 ? FMath::Min(HitFree + DeltaTime / Limits.HitBackS, 1.0) : 1.0;
 		}
 	}
+	// R2, step 10 (getup.fit_free_z): a body the clip has on its floor that touches the world is carried by the floor, not pulled up or
+	// down by the world.
+	TArray<double> Verticals;
+	if (Limits.FitFreeZ > 0.5)
+	{
+		// Without a clip (the fade after an attempt) every body has its vertical spring back.
+		if (Clip)
+		{
+			FreeVerticals(Verticals);
+		}
+		else
+		{
+			Verticals.Init(1.0, Carry.Num());
+		}
+	}
 	if (!bByBody)
 	{
-		Carry.Apply(CarrySettings(), Share);
+		Carry.Apply(CarrySettings(), Share, TConstArrayView<double>(), Verticals);
 		return;
 	}
 	if (CarryBodyFree.Num() != Carry.Num())
@@ -2509,7 +2928,7 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 		double& Kept = CarryBodyFree[Index];
 		Kept = Wanted < Kept || Limits.CarryReleaseS <= 0.0 ? Wanted : bFading ? Kept : FMath::Min(Wanted, Kept + DeltaTime / Limits.CarryReleaseS);
 	}
-	Carry.Apply(CarrySettings(), Share, CarryBodyFree);
+	Carry.Apply(CarrySettings(), Share, CarryBodyFree, Verticals);
 }
 
 double USandboxBodyController::HoldPaceForceN() const
@@ -4501,8 +4920,20 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 	if (State == ESandboxBodyState::Lying)
 	{
 		LyingS = IsAtRest() && !bHeldUp ? LyingS + DeltaTime : 0.0;
-		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER)
+		FString Why;
+		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER &&
+			!CanBeginGetUp(Why))
 		{
+			// Held back (decision 18; R10 adds its reasons in CanBeginGetUp): it begins as soon as it may, its rest already lain.
+			if (HeldBackWhy.IsEmpty())
+			{
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the get-up waits: %s"), ElapsedS, *Why);
+			}
+			HeldBackWhy = Why;
+		}
+		else if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER)
+		{
+			HeldBackWhy.Reset();
 			LyingS = 0.0;
 			FString Error;
 			if (!StartGetUp(Error))
@@ -5551,6 +5982,8 @@ void USandboxBodyController::PushTuningToControls()
 	}
 
 	const double FallShare = FallEaseShare();
+	static const FName HeldArmBones[2][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
+		{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) } };
 	for (FMuscle& Muscle : Muscles)
 	{
 		FSandboxMuscleTuning Group = Tuning.Muscle(Muscle.Group);
@@ -5570,11 +6003,20 @@ void USandboxBodyController::PushTuningToControls()
 		const double JointStiffness = (Joint ? Joint->StiffnessScale : 1.0) * ToneStiffness[GroupIndex];
 		const double JointDamping = (Joint ? Joint->DampingScale : 1.0) * ToneDamping[GroupIndex];
 		Group.MaxTorqueNm *= Joint ? Joint->MaxTorqueScale : 1.0;
-		double Spring = Group.StiffnessNmPerRad * JointStiffness * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+		// R2, step 12 (getup.arm_answer): a held arm that yields is softer, one pulled in stronger (1 for every other muscle: exact).
+		double HeldArm = 1.0;
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (HeldArmScale[Side] != 1.0 && (Muscle.ChildBone == HeldArmBones[Side][0] || Muscle.ChildBone == HeldArmBones[Side][1] || Muscle.ChildBone == HeldArmBones[Side][2]))
+			{
+				HeldArm = HeldArmScale[Side];
+			}
+		}
+		double Spring = Group.StiffnessNmPerRad * JointStiffness * MuscleScale(Muscle.Group) * HeldArm * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
 		// The damping from the spring the muscle would have without the joint's and the tone's factor on stiffness, times theirs on
 		// damping: worked out from the spring itself, a stiffness factor of 0 took the damping with it. (With both factors 1 the two
 		// are the same number.)
-		const double SpringBase = JointStiffness == 1.0 ? Spring : Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
+		const double SpringBase = JointStiffness == 1.0 ? Spring : Group.StiffnessNmPerRad * MuscleScale(Muscle.Group) * HeldArm * SwingScale * TorqueToUnreal / ChaosAngularDriveScale;
 		double ExtraDamping = JointStiffness == 1.0 && JointDamping == 1.0 ? Spring * Group.DampingS * SwingDampingScale
 			: SpringBase * Group.DampingS * SwingDampingScale * JointDamping;
 		double VelocityShare = FMath::Lerp(Group.PoseVelocityShare, Tuning.Balance.SwingPoseVelocityShare, SwingShare);
@@ -5622,8 +6064,9 @@ void USandboxBodyController::PushTuningToControls()
 		}
 		if (State == ESandboxBodyState::GetUp)
 		{
-			// The pull that helps the body up comes up from nothing, as its muscles do. Led, the carry pulls instead (FSandboxCarry).
-			const double Ease = IsLed() ? 0.0 : GetUpEase();
+			// The pull that helps the body up comes up from nothing, as its muscles do. Led, the carry pulls instead (FSandboxCarry); a
+			// body that rolls (getup.roll) is pulled by nothing.
+			const double Ease = IsLed() || GetUpRun.bRolling ? 0.0 : CarryEase();
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;
@@ -5712,6 +6155,15 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		UpdateAnticipation(DeltaTime);
 	}
+	// R2, step 10 (getup.fit_free_z): which bodies touched the world in the last step, kept for the carry before the impulses are cleared.
+	if (Tuning.GetUp.FitFreeZ > 0.5)
+	{
+		TouchedWorld.SetNum(SupportImpulseNs.Num());
+		for (int32 Index = 0; Index < SupportImpulseNs.Num(); ++Index)
+		{
+			TouchedWorld[Index] = !SupportImpulseNs[Index].IsZero();
+		}
+	}
 	for (FVector& Impulse : SupportImpulseNs)
 	{
 		Impulse = FVector::ZeroVector;
@@ -5719,6 +6171,11 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	SupportStepS = DeltaTime;
 
 	Control->UpdateTargetCaches(DeltaTime);
+	// Decision 18 (getup.drag): a drag ends a get-up and keeps the next from beginning (read only of the holds; gives up at most).
+	if (Tuning.GetUp.Drag > 0.5)
+	{
+		UpdateDrag(DeltaTime);
+	}
 	UpdateState(DeltaTime);
 	UpdateHeld(DeltaTime);
 	SenseFall();
@@ -5728,6 +6185,11 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	}
 	UpdateGetUp(DeltaTime);
 	UpdateCarry(DeltaTime);
+	// R2, step 12 (getup.arm_answer): an arm held while getting up yields or is pulled in; and is let go once it is not.
+	if (Tuning.GetUp.ArmAnswer > 0.5 || HeldArmAnswer[0] != 0 || HeldArmAnswer[1] != 0)
+	{
+		UpdateHeldArms(DeltaTime);
+	}
 	// The plank after a get-up, measured (read only): the same rule as while getting up, for 3 s after it ended standing.
 	if (State != ESandboxBodyState::GetUp && GetUpView.DurationS >= 0.0 && ElapsedS - (GetUpView.StartedS + GetUpView.DurationS) <= 3.0 &&
 		Balance.bValid && Balance.IsSupported() && WeightN > 0.0 &&
@@ -6123,15 +6585,15 @@ void USandboxBodyController::GetControlView(FSandboxBodyControlView& OutView) co
 
 	for (const FAssist& Assist : Assists)
 	{
-		// Active as the springs are handed to the solver in this state (PushTuningToControls): led, the get-up's assist is 0
-		// and the carry pulls instead; while getting up the clip-following way it comes up with the ease.
+		// Active as the springs are handed to the solver in this state (PushTuningToControls): getting up, the old assist is 0 and
+		// the carry pulls instead.
 		FSandboxAssistTuning Slot = AssistTuning(Assist.Slot);
 		if (IsSwingFoot(Assist))
 		{
 			Slot.HorizontalNPerM = 0.0;
 			Slot.VerticalNPerM = 0.0;
 		}
-		const double Share = (State == ESandboxBodyState::GetUp ? (IsLed() ? 0.0 : GetUpEase()) : 1.0) * WorldShareOf(Assist.Slot);
+		const double Share = (State == ESandboxBodyState::GetUp ? (IsLed() || GetUpRun.bRolling ? 0.0 : CarryEase()) : 1.0) * WorldShareOf(Assist.Slot);
 		FSandboxAssistView& View = OutView.Assists.AddDefaulted_GetRef();
 		View.Bone = Assist.Bone;
 		View.Target = AssistGoal(Assist);
@@ -6190,7 +6652,7 @@ void USandboxBodyController::UpdateAssistLoad()
 		const FVector VelocityMps = Body->GetUnrealWorldVelocity() * 0.01 - GoalVelocityMps;
 		if (State == ESandboxBodyState::GetUp)
 		{
-			const double Ease = IsLed() ? 0.0 : GetUpEase();
+			const double Ease = IsLed() || GetUpRun.bRolling ? 0.0 : CarryEase();
 			Slot.HorizontalNPerM *= Ease;
 			Slot.VerticalNPerM *= Ease;
 			Slot.AngularNmPerRad *= Ease;

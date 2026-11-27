@@ -1,6 +1,6 @@
 {
-  "name": "getup_match_laid_front",
-  "duration_s": 16.0,
+  "name": "getup_roll_hit",
+  "duration_s": 22.0,
   "body": {
     "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
     "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
@@ -14,27 +14,35 @@
       90,
       0
     ],
-    "laid_deg": 180
+    "laid_deg": -90
   },
   "events": [
     {
-      "t": 0.0,
-      "type": "console",
-      "command": "Sandbox.Tune getup.match=1"
+      "t": 2.6,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 200,
+      "direction": [
+        0,
+        0,
+        -1
+      ]
     }
   ],
   "expect": {
     "end_state": "standing",
     "min_get_ups": 1,
-    "max_get_up_attempts": 1,
     "max_joint_stretch_cm": 2.0,
-    "tuning_changes": 1,
+    "hit_events": 1,
     "measures": {
-      "control.get_up.starts.0.matched": {
-        "equals": true
+      "control.get_up.hits": {
+        "min": 1
       },
-      "control.get_up.starts.0.pelvis_off_cm": {
-        "max": 15
+      "control.get_up.rolls.0.at_s": {
+        "max": 2.6
+      },
+      "control.get_up.rolls.0.s": {
+        "min": 0.6
       }
     }
   }

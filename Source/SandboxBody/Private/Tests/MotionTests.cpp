@@ -180,6 +180,14 @@ bool FMotionMatcherTest::RunTest(const FString& Parameters)
 	Flipped.PelvisUp = -Laid.PelvisUp;
 	Flipped.ChestUp = -Laid.ChestUp;
 	TestEqual(TEXT("a lean the other way costs its degrees"), FSandboxMotionMatcher::Score(Body, Flipped, Settings).CostCm, 180.0, 1.0e-6);
+	// Decision 51: a late start costs its seconds. The moment it lies as (0.1 s) now costs 0.1 * 50 cm, and an earlier moment of the
+	// same motion that lies 3 cm off would win over a later one at no cost.
+	Settings.LateCmPerS = 50.0;
+	TestEqual(TEXT("a late start costs its seconds"), FSandboxMotionMatcher::Score(Body, Laid, Settings).CostCm, 5.0, 1.0e-6);
+	FSandboxMatchSample Early = Laid;
+	Early.TimeS = 0.0;
+	TestTrue(TEXT("the same place at time 0 costs nothing more"), FSandboxMotionMatcher::Score(Body, Early, Settings).CostCm < 1.0e-6);
+	Settings.LateCmPerS = 0.0;
 	// The variant just given up costs more, and the next is taken.
 	Settings.PenalizedVariants = { 1 };
 	Settings.PenaltyCm = 1000.0;

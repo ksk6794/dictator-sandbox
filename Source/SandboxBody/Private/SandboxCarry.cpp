@@ -127,7 +127,7 @@ void FSandboxCarry::ForgetTargets()
 	}
 }
 
-void FSandboxCarry::Apply(const FSandboxCarrySettings& Settings, double Share, TConstArrayView<double> BodyShares)
+void FSandboxCarry::Apply(const FSandboxCarrySettings& Settings, double Share, TConstArrayView<double> BodyShares, TConstArrayView<double> VerticalShares)
 {
 	if (!Control)
 	{
@@ -136,9 +136,12 @@ void FSandboxCarry::Apply(const FSandboxCarrySettings& Settings, double Share, T
 	Share = FMath::Clamp(Share, 0.0, 1.0);
 	// A body's own share (a hold, decision 14): 1 for every body unless one is given for each.
 	const bool bByBody = BodyShares.Num() == Bodies.Num();
+	// And its vertical share (step 10): only when given, so that a run without it sets no per-axis strength at all.
+	const bool bByVertical = VerticalShares.Num() == Bodies.Num();
 	for (int32 Index = 0; Index < Bodies.Num(); ++Index)
 	{
 		Bodies[Index].BodyShare = bByBody ? FMath::Clamp(BodyShares[Index], 0.0, 1.0) : 1.0;
+		Bodies[Index].VerticalShare = bByVertical ? FMath::Clamp(VerticalShares[Index], 0.0, 1.0) : 1.0;
 	}
 	// A cap of 0 would mean no cap to the engine: with next to nothing left of the caps, nothing pulls.
 	const bool bWanted = Share > 0.0 && Settings.CapShare > 0.01;
@@ -178,6 +181,11 @@ void FSandboxCarry::Apply(const FSandboxCarrySettings& Settings, double Share, T
 		// The vertical cap is its own: what the world may carry of the body's weight.
 		FPhysicsControlMultiplier Multiplier;
 		Multiplier.MaxForceMultiplier = FVector(1.0, 1.0, Settings.MaxWeights > 0.0 ? Settings.MaxUpWeights / Settings.MaxWeights : 1.0);
+		if (bByVertical)
+		{
+			Multiplier.LinearStrengthMultiplier = FVector(1.0, 1.0, Body.VerticalShare);
+			Multiplier.LinearExtraDampingMultiplier = FVector(1.0, 1.0, Body.VerticalShare);
+		}
 		Control->SetControlMultiplier(Body.ControlName, Multiplier);
 
 		FPhysicsControlTarget Target;
@@ -265,6 +273,10 @@ FVector FSandboxCarry::ForceOn(int32 Index, const FSandboxCarrySettings& Setting
 	const FVector VelocityMps = Instance->GetUnrealWorldVelocity() * 0.01 - GoalVelocityMps;
 	const double Stiffness = Settings.LinearNPerMPerKg * Body.MassKg * Share * Body.BodyShare;
 	FVector CommandN = Stiffness * (ErrorM - VelocityMps * Settings.DampingS);
+	if (Body.VerticalShare < 1.0)
+	{
+		CommandN.Z *= Body.VerticalShare;
+	}
 	if (Settings.CapShare <= 0.01)
 	{
 		return FVector::ZeroVector;

@@ -174,6 +174,17 @@ private:
 	};
 	TArray<FPropTrack> PropTracks;
 	TSharedPtr<FSandboxScriptedTargetSource> EffectorSource;
+	/** Effector trajectories that follow a body of the character for a while ("follow_bone_s"): where the body was when they were last put there. */
+	struct FBoneFollow
+	{
+		FName Effector;
+		double StartS = 0.0;
+		FName Bone;
+		double UntilS = 0.0;
+		FVector LastCm = FVector::ZeroVector;
+	};
+	TArray<FBoneFollow> BoneFollows;
+	void FollowBones(double SimTimeS);
 	/** Or, with a "recording": the hands of a session, frame for frame, from RecordingStartFrame on. */
 	TSharedPtr<FSandboxRecordedTargetSource> RecordedSource;
 	int32 RecordingStartFrame = 0;

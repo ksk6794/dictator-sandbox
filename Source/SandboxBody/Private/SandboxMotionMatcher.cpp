@@ -76,6 +76,10 @@ FSandboxMatch FSandboxMotionMatcher::Score(const FSandboxMatchBody& Body, const 
 	Match.UpDeg = 0.5 * (Apart(Body.PelvisUp, Sample.PelvisUp) + Apart(Body.ChestUp, Sample.ChestUp));
 	Match.PenaltyCm = Sample.Variant != INDEX_NONE && Settings.PenalizedVariants.Contains(Sample.Variant) ? Settings.PenaltyCm : 0.0;
 	Match.CostCm = Match.PlacesCm + Settings.UpCmPerDeg * Match.UpDeg + Match.PenaltyCm;
+	if (Settings.LateCmPerS > 0.0)
+	{
+		Match.CostCm += Settings.LateCmPerS * Sample.TimeS;
+	}
 	Match.bValid = true;
 	return Match;
 }

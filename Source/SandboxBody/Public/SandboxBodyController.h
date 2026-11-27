@@ -286,7 +286,12 @@ struct FSandboxGetUpStart
 	double PelvisOffCm = -1.0;
 	double OffCm = -1.0;
 	double PoseDeg = -1.0;
-	/** The matcher's choice (getup.match 1): its cost and the cost's parts, its turn about the vertical, the next best that might have been chosen. */
+	/** The clip's floor (R2, step 10) over the floor last stood on: 0 unless getup.fit_surface laid it on what the pelvis lay on. cm. */
+	double FloorOverCm = 0.0;
+	/** The fit to the floor (getup.fit_floor) this attempt followed, least and most. cm. */
+	double FitMinCm = 0.0;
+	double FitMaxCm = 0.0;
+	/** The matcher's choice: its cost and the cost's parts, its turn about the vertical, the next best that might have been chosen. */
 	bool bMatched = false;
 	double CostCm = -1.0;
 	double PlacesCm = -1.0;
@@ -304,11 +309,77 @@ struct FSandboxGetUpStart
 	FString Ended;
 };
 
+/**
+ * A roll before a get-up (R2, step 9, getup.roll): a body that began an attempt on its side rolling onto its back or front by its own
+ * muscles. Read only; seconds since Start.
+ */
+struct FSandboxGetUpRoll
+{
+	double AtS = 0.0;
+	/** Which side lay down (true: the left), and which way it rolled (true: onto its front). */
+	bool bOnLeft = false;
+	bool bToFront = false;
+	/** The hips' line from level as the roll began and as it ended (90: on a side, 0: on the back or the front). Degrees; below 0: not ended. */
+	double FromDeg = 0.0;
+	double ToDeg = -1.0;
+	/** How long it took (below 0: not ended), and whether it came within getup.roll_done_deg (false: roll_s ran out, or the attempt was given up). */
+	double DurationS = -1.0;
+	bool bDone = false;
+	/** How the roll ended: "rolled", "roll_s", or the reason the attempt was given up. */
+	FString Ended;
+	/** Whether the front looked down as the roll began and as it ended (FSandboxBodyProbe::LyingSide): whether it went the way it was asked. */
+	bool bFacingDownFrom = false;
+	bool bFacingDownTo = false;
+};
+
+/**
+ * Why an attempt to get up was given up, by kind (R2's rest: one place gives an attempt up and says why, for R10 to add its own
+ * reasons to). The text of each reason stays in the log and in FSandboxGetUpView::GivenUp.
+ */
+enum class ESandboxGiveUp : uint8
+{
+	Other,
+	/** A pose was asked for from outside (a scenario's clip, a film's rig). */
+	PosedFromOutside,
+	/** Nothing under the body and no way down: something holds it up. */
+	HeldUp,
+	/** No clip could be had (after a roll), or the clip went. */
+	NoClip,
+	/** A hit took the attempt (the old rule of carry_yield_ns, without getup.hit_by_impulse). */
+	Hit,
+	/** The pelvis was thrown off its clip (getup.lost_cm). */
+	Lost,
+	/** Held down by a press or slowed to a crawl by holds for getup.stall_s. */
+	HeldDown,
+	/** The clip stood waiting for the body for getup.stall_s, or waited getup.wait_s in all. */
+	Waited,
+	/** Dragged by the holds (getup.drag, decision 18). */
+	Dragged,
+	/** The carry's springs could not be made: the get-up cannot be led and the body stays down (decision 17). */
+	NotLed,
+	Count
+};
+SANDBOXBODY_API const TCHAR* GiveUpName(ESandboxGiveUp Kind);
+
 /** The body's get-ups so far, for result files. Seconds since Start. */
 struct FSandboxGetUpView
 {
+	/** How many attempts were given up, by kind (ESandboxGiveUp). */
+	int32 GivenUpBy[static_cast<int32>(ESandboxGiveUp::Count)] = {};
+	/**
+	 * Decision 18 (getup.drag): while holds pulled with getup.drag_force_n or more, how much force the carry gave against their pull,
+	 * the most in one frame and over time (N, N*s), and how long it was dragged in all. Read only.
+	 */
+	double CarryAgainstHoldsMaxN = 0.0;
+	double CarryAgainstHoldsNs = 0.0;
+	double DraggedS = 0.0;
+	/** R2, step 12 (getup.arm_answer): how long an arm held while getting up yielded, and how long one pulled in. s. */
+	double ArmYieldS = 0.0;
+	double ArmPullS = 0.0;
 	/** How every attempt began, in order (R2, step 8). */
 	TArray<FSandboxGetUpStart> Starts;
+	/** Every roll before a clip (R2, step 9), in order. */
+	TArray<FSandboxGetUpRoll> Rolls;
 	/** How many times the body began to get up, and how many of those ended standing. */
 	int32 Attempts = 0;
 	int32 Successes = 0;
@@ -327,10 +398,7 @@ struct FSandboxGetUpView
 	double PausedEaseS = 0.0;
 	double PausedBehindS = 0.0;
 	double PausedEndS = 0.0;
-	/** Of the time the clip waited for the body: the pelvis too low or high, too far aside, a foot in the air, a press. */
-	double BehindHeightS = 0.0;
-	double BehindSideS = 0.0;
-	double BehindFootS = 0.0;
+	/** Of the time the clip waited for the body: a press or holds that slow it to a crawl (the waits for the pelvis and a foot went with the clip-following path). */
 	double BehindHeldS = 0.0;
 	/**
 	 * The plank: how long, after easing in, the feet carried 0.8 of the body's weight or more while its centre of mass was more than
@@ -353,8 +421,8 @@ struct FSandboxGetUpView
 	/** The most the body was pressed with while getting up: the force felt in every frame of the last moments from other simulated bodies. N. */
 	double PressedMaxN = 0.0;
 	/**
-	 * Decision 17 (docs/active-ragdoll.md): of the attempts that asked for the led get-up (getup.carry 1), those that were led and
-	 * those that were not (the carry's springs could not be made: the attempt went the clip-following way), and why the last of
+	 * Decision 17 (docs/active-ragdoll.md): of the attempts that asked for the led get-up (every one since R2's rest), those that were led and
+	 * those that were not (the carry's springs could not be made: the attempt is given up and the body stays down), and why the last of
 	 * those was not. A run must not pass on a get-up it did not ask for.
 	 */
 	int32 LedAttempts = 0;
@@ -556,7 +624,7 @@ public:
 	void GetMuscleJoints(TArray<TPair<FName, FName>>& OutJoints) const;
 	/** Every clip read so far, by path: for result files (how each joint of a clip fits the body). */
 	const TMap<FString, FSandboxClipPose>& GetClips() const { return Clips; }
-	/** The motion library (R2, step 8), built at the first get-up with getup.match 1; empty before. For result files. */
+	/** The motion library (R2, step 8), built at the first get-up; empty before. For result files. */
 	const FSandboxMotionLibrary& GetMotionLibrary() const { return MotionLibrary; }
 
 	/**
@@ -924,16 +992,48 @@ private:
 		double WaitedS = 0.0;
 		/** How long it has waited in all while nothing pressed on the body (getup.wait_s). */
 		double FreeWaitS = 0.0;
-		/** How long the clip has now waited for a foot in the air (getup.foot_wait_s). */
-		double FootWaitS = 0.0;
 		bool bEased = false;
-		/** Whether the attempt asked for the led get-up (getup.carry 1 as it began), and whether that has been counted (FSandboxGetUpView). */
+		/** Whether the attempt has a clip to be led by, and whether it has been counted as led or not (FSandboxGetUpView, decision 17). */
 		bool bCarryAsked = false;
 		bool bLedCounted = false;
 		/** Decision 22 (getup.start_blend_s): whether the start is blended, and where each body was as the attempt began (world). */
 		bool bStartBlend = false;
 		TMap<FName, FTransform> StartBodies;
+		/**
+		 * R2, step 9 (getup.roll): the attempt began with a roll and is in it (no clip yet), or has rolled and goes on by a clip; which
+		 * side lay down and which way it rolls; when the clip began (the carry's ease is counted from it after a roll). Which of
+		 * FSandboxGetUpView::Starts is this attempt's clip (INDEX_NONE before it has one).
+		 */
+		bool bRolling = false;
+		bool bRolled = false;
+		/** The roll's pose has come in and goes on toward getup.roll_push times its angles. */
+		bool bRollPushed = false;
+		bool bRollOnLeft = false;
+		bool bRollToFront = false;
+		double ClipStartedS = 0.0;
+		int32 StartIndex = INDEX_NONE;
+		/**
+		 * R2, step 10: the clip's floor as it began (getup.fit_surface: what the pelvis lay on; set only then), the motion library's
+		 * variant of the clip (INDEX_NONE without one), and the fit to the floor as followed now (getup.fit_floor), cm.
+		 */
+		bool bFloorSet = false;
+		double FloorZ = 0.0;
+		int32 Variant = INDEX_NONE;
+		double FitCm = 0.0;
 	};
+	/** The clip's floor for C27's 70 cm and the like: the attempt's own (getup.fit_surface) or the floor last stood on. cm. */
+	double GetUpFloorZ() const { return GetUpRun.bFloorSet ? GetUpRun.FloorZ : LastSupportHeightCm; }
+	/** What the pelvis lies on now: the height of the first thing a sweep down from it meets, the character left out; false if none. Read only. */
+	bool SurfaceUnderPelvis(double& OutZ) const;
+	/** While a clip is being chosen (getup.fit_surface): the floor the matcher lays it on. */
+	bool bChoosingFloorSet = false;
+	double ChoosingFloorZ = 0.0;
+	/** The fit to the floor at the clip's time (getup.fit_floor; the library's FitCm between keys), cm; 0 without a variant. */
+	double FitAtCm(double TimeS) const;
+	/** getup.fit_free_z: for each body of the carry, what is left of its vertical spring (0 for a body the clip has on its floor that touched the world). */
+	void FreeVerticals(TArray<double>& OutShares) const;
+	/** Which of the mesh's bodies touched the world in the last step (getup.fit_free_z only), by body index. */
+	TArray<bool> TouchedWorld;
 	FGetUpRun GetUpRun;
 	FSandboxGetUpView GetUpView;
 	bool bGetUpAllowed = true;
@@ -956,14 +1056,25 @@ private:
 	FTransform StartSpace = FTransform::Identity;
 	bool StartGetUp(FString& OutError);
 	/**
-	 * The get-up's clip as chosen before the matcher (getup.match 0): of getup.clip_*, the one whose first pelvis lies most like the
-	 * body's, another than the one just given up if one starts at all alike; laid with its pelvis over the body's, turned about the
-	 * vertical by the pelvis's own turn, on the floor last stood on, from its time 0. Null with a reason.
+	 * The clip of a get-up chosen and begun (the matcher's or the rule's), as an attempt of its own (bNewAttempt: counted, the state
+	 * entered) or after a roll within the attempt (the state as it is, the muscles as they have come up). False with a reason.
 	 */
-	const FSandboxClipPose* ChooseByRule(const FTransform& Now, FString& OutPath, FTransform& OutFrame, FString& OutHow, FString& OutError);
+	bool StartClip(bool bNewAttempt, FString& OutError);
+	/** The view's figures of one attempt set back as it begins (StartClip, StartRoll). */
+	void BeginAttemptView();
 	/**
-	 * R2, step 8: the motion library's list (text only; read in both modes for the start's measure), the library itself (getup.match
-	 * 1, at the first get-up), the matcher's weights, the body as the matcher sees it, and its choice: a clip's key, the time to start
+	 * R2, step 9 (getup.roll): how the body lies (FSandboxBodyProbe::LyingSide from its hip joints and trunk, read only); a roll begun
+	 * as an attempt; and the roll followed every tick until it is done or its time is out, when the clip begins.
+	 */
+	bool ReadLyingSide(double& OutSideDeg, bool& bOutOnLeft, bool& bOutFacingDown) const;
+	bool StartRoll(double SideDeg, bool bOnLeft, bool bFacingDown, FString& OutError);
+	void UpdateRoll(double DeltaTime);
+	/** Which way the last roll of an attempt that was given up went (0 back, 1 front; INDEX_NONE: none): the next roll goes the other way. */
+	int32 GivenUpRollWay = INDEX_NONE;
+	/** The carry's ease: GetUpEase(), or after a roll the same ease counted from when the clip began. 0 to 1. */
+	double CarryEase() const;
+	/**
+	 * R2, step 8: the motion library's list (text), the library itself (at the first get-up), the matcher's weights, the body as the matcher sees it, and its choice: a clip's key, the time to start
 	 * at and the clip's root in the world. False with a reason.
 	 */
 	FSandboxMotionSpec MotionSpec;
@@ -982,7 +1093,37 @@ private:
 	void UpdateGetUp(double DeltaTime);
 	/** The plank and the shape at 70 cm, measured while getting up (read only). */
 	void MeasureGetUpShape(const FTransform& PelvisNow, double Ease, double DeltaTime);
-	void GiveUpGetUp(const FString& Reason);
+	void GiveUpGetUp(ESandboxGiveUp Kind, const FString& Reason);
+	/**
+	 * Whether a body that has lain long enough may begin to get up now, and why not (decision 18: not while it is dragged). The one
+	 * place a get-up is held back from beginning; R10 adds its reasons here.
+	 */
+	bool CanBeginGetUp(FString& OutWhy) const;
+	/** Why the last get-up was held back from beginning (CanBeginGetUp), said once in the log. */
+	FString HeldBackWhy;
+	/**
+	 * Decision 18 (getup.drag): the drag, followed every tick before the state is (read only of the holds and the pelvis): how long
+	 * holds have pulled the body hard enough or moved its pelvis along their pull, and when that last held. A get-up dragged for
+	 * getup.drag_s is given up and the world lets go at once.
+	 */
+	void UpdateDrag(double DeltaTime);
+	double DragS = 0.0;
+	double DraggedLastS = -1.0;
+	/**
+	 * R2, step 12 (getup.arm_answer, FR-43): each arm's answer to a hand that holds it while the body gets up by its clip (0 none, 1 it
+	 * yields, 2 it pulls in), the factor on that arm's muscles, and whether its hand is placed. Every tick with arm_answer above 0.
+	 */
+	void UpdateHeldArms(double DeltaTime);
+	int32 HeldArmAnswer[2] = { 0, 0 };
+	double HeldArmScale[2] = { 1.0, 1.0 };
+	/** Where a pulled-in hand is held, in the chest's space, as worked out when the pull-in began (fixed: a direction worked out anew each tick flipped as the holding point passed the shoulder). */
+	FVector HeldArmInChest[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/** Where each held arm's hand is placed now: it follows its answer's point over getup.arm_follow_s, from where the hand was, never in a step. */
+	FVector HeldArmPlaced[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/** Whether the body braces now (an asked tone, a brace, anticipation): what decides an arm's answer by state. */
+	bool IsBraced() const;
+	/** The holds' pull together, as vectors (N), and whether they pull or move the pelvis as a drag does now. */
+	FVector HoldsPullN() const;
 	/**
 	 * The led get-up (getup.carry; docs/active-ragdoll.md, part R1): every body pulled by the world toward where the clip has it.
 	 * The springs are made when a led get-up first begins. Their share follows the get-up's ease up, and goes down by its own clock
@@ -1011,10 +1152,12 @@ private:
 	bool bCarryAimed = false;
 	/** When the last hit judged for carry_yield_ns was felt: each hit is judged once. */
 	double CarryYieldSeenS = -1.0;
-	bool IsLed() const { return State == ESandboxBodyState::GetUp && Tuning.GetUp.Carry > 0.5 && !bCarryBroken; }
+	bool IsLed() const { return State == ESandboxBodyState::GetUp && !bCarryBroken; }
 	FSandboxCarrySettings CarrySettings() const;
 	/** Aims the carry at the clip (while getting up, led) and steps its share. After UpdateGetUp, before the controls are updated. */
 	void UpdateCarry(double DeltaTime);
+	/** Decision 17: counts the attempt now going as led or not, once, if it asked for the led get-up. Read only. */
+	void CountLed(bool bLed);
 	/** How far the muscles and the assist have come up since the get-up began, 0 to 1 (1 in any other state). */
 	double GetUpEase() const;
 	/** Whether the body as a whole moves and turns no faster than thresholds.rest_*. */

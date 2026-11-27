@@ -173,4 +173,47 @@ bool FBodyProbeSeamTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/** How a lying body lies (R2's step 9, getup.roll): its side from the hips, its front from the trunk and the hips. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBodyProbeLyingSideTest, "DictatorSandbox.Body.Probe.LyingSide", ProbeTestFlags)
+bool FBodyProbeLyingSideTest::RunTest(const FString& Parameters)
+{
+	double SideDeg = -1.0;
+	bool bOnLeft = false;
+	bool bFacingDown = false;
+	// Standing, facing +X: the left hip at -Y. Level hips, the front not down.
+	TestTrue(TEXT("standing reads"), FSandboxBodyProbe::LyingSide(FVector(0, -10, 90), FVector(0, 10, 90), FVector(0, 0, 90), FVector(0, 0, 140), SideDeg, bOnLeft, bFacingDown));
+	TestEqual(TEXT("standing: hips level"), SideDeg, 0.0, 1.0e-9);
+	TestFalse(TEXT("standing: front not down"), bFacingDown);
+	// On the back, the head toward +X: seen from above (X up the page, Y to the right), the left hand of a body lying face up is on the
+	// right of the page, +Y.
+	TestTrue(TEXT("back reads"), FSandboxBodyProbe::LyingSide(FVector(0, 10, 10), FVector(0, -10, 10), FVector(0, 0, 10), FVector(50, 0, 10), SideDeg, bOnLeft, bFacingDown));
+	TestEqual(TEXT("back: hips level"), SideDeg, 0.0, 1.0e-9);
+	TestFalse(TEXT("back: front up"), bFacingDown);
+	// On the front, the head toward +X: the left at -Y.
+	FSandboxBodyProbe::LyingSide(FVector(0, -10, 10), FVector(0, 10, 10), FVector(0, 0, 10), FVector(50, 0, 10), SideDeg, bOnLeft, bFacingDown);
+	TestTrue(TEXT("front: front down"), bFacingDown);
+	// On the left side, the head toward +X: the left hip under the right.
+	FSandboxBodyProbe::LyingSide(FVector(0, 0, 5), FVector(0, 0, 25), FVector(0, 0, 15), FVector(50, 0, 15), SideDeg, bOnLeft, bFacingDown);
+	TestEqual(TEXT("left side: 90 degrees"), SideDeg, 90.0, 1.0e-9);
+	TestTrue(TEXT("left side: the left is down"), bOnLeft);
+	// From the back, turned 60 degrees onto the left side: the left hip goes down from +Y; the front still looks up.
+	const double C = FMath::Cos(FMath::DegreesToRadians(60.0));
+	const double S = FMath::Sin(FMath::DegreesToRadians(60.0));
+	FSandboxBodyProbe::LyingSide(FVector(0, 10.0 * C, -10.0 * S), FVector(0, -10.0 * C, 10.0 * S), FVector::ZeroVector, FVector(50, 0, 0), SideDeg, bOnLeft, bFacingDown);
+	TestEqual(TEXT("from the back onto the left: 60 degrees"), SideDeg, 60.0, 1.0e-9);
+	TestTrue(TEXT("from the back onto the left: the left down"), bOnLeft);
+	TestFalse(TEXT("from the back onto the left: the front up"), bFacingDown);
+	// From the front, turned 60 degrees onto the left side: the left hip goes down from -Y; the front looks down.
+	FSandboxBodyProbe::LyingSide(FVector(0, -10.0 * C, -10.0 * S), FVector(0, 10.0 * C, 10.0 * S), FVector::ZeroVector, FVector(50, 0, 0), SideDeg, bOnLeft, bFacingDown);
+	TestTrue(TEXT("from the front onto the left: the left down"), bOnLeft);
+	TestTrue(TEXT("from the front onto the left: the front down"), bFacingDown);
+	// From the front onto the right side: the right hip down, the front down.
+	FSandboxBodyProbe::LyingSide(FVector(0, -10.0 * C, 10.0 * S), FVector(0, 10.0 * C, -10.0 * S), FVector::ZeroVector, FVector(50, 0, 0), SideDeg, bOnLeft, bFacingDown);
+	TestFalse(TEXT("from the front onto the right: the right down"), bOnLeft);
+	TestTrue(TEXT("from the front onto the right: the front down"), bFacingDown);
+	// No line: refused.
+	TestFalse(TEXT("hips on one point"), FSandboxBodyProbe::LyingSide(FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector, FVector(0, 0, 1), SideDeg, bOnLeft, bFacingDown));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
