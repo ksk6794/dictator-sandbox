@@ -1,5 +1,20 @@
 # Testing: repeatability policy and measurements
 
+**Contents** (added 28 November 2026). [Policy](#policy), with how this journal is kept and how to read it. [Measurements](#measurements), a section a part or a check, in the order they were written:
+
+- **22 November:** [M0](#m0-2026-11-22); [M1](#m1-2026-11-22); [M2 step 1 (the character stands)](#m2-step-1-the-character-stands-2026-11-22); [M2 step 2 (the parameter file)](#m2-step-2-the-parameter-file-2026-11-22); [M2 step 3 (states and the push matrix)](#m2-step-3-states-and-the-push-matrix-2026-11-22); [M2 step 4 (desktop pawn with effectors and tools)](#m2-step-4-desktop-pawn-with-effectors-and-tools-2026-11-22); [M2 step 5 (overlays, strikes and the M2 gate figures)](#m2-step-5-overlays-strikes-and-the-m2-gate-figures-2026-11-22)
+- **23 November:** [M3 part 1 (senses, metrics and tools; three corrections)](#m3-part-1-senses-metrics-and-tools-three-corrections-2026-11-23); [M3 part 2, step 0 (collarbones, inertia of the hands)](#m3-part-2-step-0-collarbones-inertia-of-the-hands-2026-11-23); [M3 part 2, steps 1 to 3 (animation instance, poses from text, flinch offset)](#m3-part-2-steps-1-to-3-animation-instance-poses-from-text-flinch-offset-2026-11-23); [M3 part 3 (standing balance)](#m3-part-3-standing-balance-2026-11-23)
+- **24 November:** [M3 part 4 (stagger and steps) and the audit of the body's movement](#m3-part-4-stagger-and-steps-and-the-audit-of-the-bodys-movement-2026-11-24); [The regrouping step](#the-regrouping-step-2026-11-24); [A body held up does not fall](#a-body-held-up-does-not-fall-2026-11-24); [The last cell of the push matrix: a body on its toes](#the-last-cell-of-the-push-matrix-a-body-on-its-toes-2026-11-24); [The idle and the arms](#the-idle-and-the-arms-2026-11-24); [Runs that did not repeat, and jobs nobody ran](#runs-that-did-not-repeat-and-jobs-nobody-ran-2026-11-24); [M3 part 5 (the fall)](#m3-part-5-the-fall-2026-11-24); [M3 part 6, step 1 (a recorded clip as the source of the target pose)](#m3-part-6-step-1-a-recorded-clip-as-the-source-of-the-target-pose-2026-11-24); [M3 part 6, step 2 (the GetUp state)](#m3-part-6-step-2-the-getup-state-2026-11-24); [M3 part 6, step 3 (the stand of 50 falls)](#m3-part-6-step-3-the-stand-of-50-falls-2026-11-24); [The stand's furniture in the middle of the room](#the-stands-furniture-in-the-middle-of-the-room-2026-11-24); [M3 part 7, step 1, first half (the get-up's assist; a body pressed down)](#m3-part-7-step-1-first-half-the-get-ups-assist-a-body-pressed-down-2026-11-24); [M3 part 7, step 1, second half (the stance's elbow; a press on 50 falls)](#m3-part-7-step-1-second-half-the-stances-elbow-a-press-on-50-falls-2026-11-24); [M3 part 7, step 2 (friction and restitution of the body's surface)](#m3-part-7-step-2-friction-and-restitution-of-the-bodys-surface-2026-11-24); [M3 part 7, step 3 (the sweeps: solver iterations, muscles, assist)](#m3-part-7-step-3-the-sweeps-solver-iterations-muscles-assist-2026-11-24); [M3 part 7, before step 4 (what counts as a step; a body at rest off its support)](#m3-part-7-before-step-4-what-counts-as-a-step-a-body-at-rest-off-its-support-2026-11-24); [M3 part 7, step 4 (the figures of the gate, the clips)](#m3-part-7-step-4-the-figures-of-the-gate-the-clips-2026-11-24); [M3 gate: the review of the clips, a bound on a get-up's waiting, one hand measured again](#m3-gate-the-review-of-the-clips-a-bound-on-a-get-ups-waiting-one-hand-measured-again-2026-11-24); [M4 part 1, step 1 (the hands recorded and replayed)](#m4-part-1-step-1-the-hands-recorded-and-replayed-2026-11-24); [M4 part 1, step 2 (the hands' source for a headset)](#m4-part-1-step-2-the-hands-source-for-a-headset-2026-11-24); [M4 part 1, after the first look in the headset, and step 3 (the hand against its target)](#m4-part-1-after-the-first-look-in-the-headset-and-step-3-the-hand-against-its-target-2026-11-24)
+- **24 to 25 November:** [M4 part 1, the night](#m4-part-1-the-night-of-24-to-25-november-the-owner-away-decided-by-the-agent-on-the-data-and-the-plan); [M4 part 3, step 1 (the grab)](#m4-part-3-step-1-the-grab-the-night-of-24-to-25-november-behind-a-switch-that-is-off); [M4, what the hands do as they are tuned, and the leg that does not come](#m4-what-the-hands-do-as-they-are-tuned-and-the-leg-that-does-not-come-the-night-of-24-to-25-november); [M4 part 5, a first step: the kicking foot](#m4-part-5-a-first-step-the-kicking-foot-the-night-of-24-to-25-november); [M4 part 4, a first step: a thing with mass in a scenario](#m4-part-4-a-first-step-a-thing-with-mass-in-a-scenario-the-night-of-24-to-25-november)
+- **25 November:** [M4, the blow: a hand that comes fast has the arm behind it](#m4-the-blow-a-hand-that-comes-fast-has-the-arm-behind-it-25-november-the-owners-decision); [M4, doubling over, and the kick's strength](#m4-doubling-over-and-the-kicks-strength-25-november-the-owners-decisions); [M4, the desktop's kick as a thrust, and the knockdown by a hit on the head](#m4-the-desktops-kick-as-a-thrust-and-the-knockdown-by-a-hit-on-the-head-25-november-after-the-owners-second-look); [M4, the second look in the headset, the fist's carried blow and the open hand as a body](#m4-the-second-look-in-the-headset-the-fists-carried-blow-and-the-open-hand-as-a-body-25-november); [The machine's reboot of 24 November](#the-machines-reboot-of-24-november-2026-2203); [N1: the measures and the first scorecard](#the-natural-body-n1-the-measures-and-the-first-scorecard-2026-11-25); [M4 part 1, step 4: the owner's two sessions in the headset](#m4-part-1-step-4-the-owners-two-sessions-in-the-headset-25-november); [The get-up: two attempts that failed, and what they showed](#the-get-up-two-attempts-that-failed-and-what-they-showed-25-november); [N8 D brought forward: a foot with toes, first step](#n8-d-brought-forward-a-foot-with-toes-first-step-25-november); [Why the body leans: the clip against the body, frame by frame](#why-the-body-leans-the-clip-against-the-body-frame-by-frame-25-november); [What keeps the gap open: the feet are loaded when the clip moves them](#what-keeps-the-gap-open-the-feet-are-loaded-when-the-clip-moves-them-25-november); [The get-up, third attempt: the foot held until it is free](#the-get-up-third-attempt-the-foot-held-until-it-is-free-25-november-put-off); [The punch, how far a fist is carried: what each value does](#the-punch-how-far-a-fist-is-carried-what-each-value-does-25-november-for-the-owners-decision); [M4 part 3, what is left of it: the wrist and a lifted body, facts](#m4-part-3-what-is-left-of-it-the-wrist-and-a-lifted-body-facts-25-november); [M4 part 4: what a stick's blow is made of, the sweep again](#m4-part-4-what-a-sticks-blow-is-made-of-the-sweep-again-25-november-nothing-changed); [M4 part 4: the blow of a thing in the hand](#m4-part-4-the-blow-of-a-thing-in-the-hand-25-november-the-owners-option-a); [M4 part 4: furniture with mass in a room](#m4-part-4-furniture-with-mass-in-a-room-25-november); [M4 part 4: support from things](#m4-part-4-support-from-things-the-rule-made-physical-25-november-on-by-the-owners-decision); [M4 part 4: a thing that moves under the body, sticks underfoot, sticks fast](#m4-part-4-a-thing-that-moves-under-the-body-sticks-underfoot-sticks-fast-25-november); [M4 part 3, its two open questions](#m4-part-3-its-two-open-questions-a-hold-that-is-felt-and-the-standing-leg-25-november-on-by-the-owners-decision); [Reconnaissance before N8 and N2](#the-natural-body-reconnaissance-before-n8-and-n2-2026-11-25)
+- **25 to 26 November:** [N8 A: the head as a body, and the wrist](#the-natural-body-n8-a-the-head-as-a-body-and-the-wrist-night-of-25-to-26-november-the-owner-away-for-the-owner-to-confirm); [N8 B: fingers](#the-natural-body-n8-b-fingers-the-same-night-for-the-owner-to-confirm); [N2 first: the jumps of a step](#the-natural-body-n2-first-the-jumps-of-a-step-decision-13-the-same-night-for-the-owner-to-confirm); [N2 step 1 and 2: the weight carried by the joints](#the-natural-body-n2-step-1-and-2-the-weight-carried-by-the-joints-the-same-night-for-the-owner-to-confirm); [N3: muscles joint by joint, and the tone](#the-natural-body-n3-muscles-joint-by-joint-and-the-tone-the-same-night-for-the-owner-to-confirm); [N6 step 4 in part: the head kept off the floor](#the-natural-body-n6-step-4-in-part-the-head-kept-off-the-floor-the-same-night-for-the-owner-to-confirm); [N6 step 1: the hand target](#the-natural-body-n6-step-1-the-hand-target-the-same-night-for-the-owner-to-confirm); [N6 step 5: the arms reach for the floor](#the-natural-body-n6-step-5-the-arms-reach-for-the-floor-the-same-night-not-met-off-for-the-owner-to-confirm); [N4 step 1: mechanics first](#the-natural-body-n4-step-1-mechanics-first-the-same-night-not-met-off-for-the-owner-to-confirm); [N5 step 1: perception that judges and does nothing](#the-natural-body-n5-step-1-perception-that-judges-and-does-nothing-the-same-night-for-the-owner-to-confirm)
+- **26 November:** [N8 A taken: the head is the default body](#the-natural-body-n8-a-taken-the-head-is-the-default-body-26-november-the-owners-decision); [N2: four of the jumps' repairs on](#the-natural-body-n2-four-of-the-jumps-repairs-on-26-november-the-owners-decision); [N6, the reach on today's body](#the-natural-body-n6-the-reach-on-todays-body-26-november-kept-off-by-the-owners-decision); [N4 put off and N5 in the session](#the-natural-body-n4-put-off-and-n5-in-the-session-26-november-the-owners-decisions); [The owner's look in the headset with perception](#the-owners-look-in-the-headset-with-perception-26-november); [N7 first: the get-up's pauses](#the-natural-body-n7-first-the-get-ups-pauses-26-november-the-owners-decision-to-take-it-now-not-met-off); [N7: the plank, measured; unload and then step](#n7-the-plank-measured-unload-and-then-step-26-november-the-owners-choice-not-met-taken-out); [N7: a get-up made for this body, step 1, the rise from a crouch](#n7-a-get-up-made-for-this-body-step-1-the-rise-from-a-crouch-26-november-the-owners-choice-stopped-before-the-stand); [R1: the led get-up](#r1-the-led-get-up-26-november-the-second-architecture-docsactive-ragdollmd-behind-getupcarry-at-0-for-the-owners-look); [Checks after the audit of the documents](#checks-after-the-audit-of-the-documents-26-november); [The review of the audit](#the-review-of-the-audit-26-november); [The player's movement in the headset](#the-players-movement-in-the-headset-fr-42-decision-24-26-november-decisions-25-to-28); [R2, step 0: the clean-up](#r2-step-0-the-clean-up-26-november-decisions-9-and-29); [R2, step 2: a get-up that was not led is said, and authority measured](#r2-step-2-a-get-up-that-was-not-led-is-said-and-authority-measured-26-november-decisions-15-and-17-the-owner-away); [R2, step 3: the hold by one hand](#r2-step-3-the-hold-by-one-hand-26-november-decisions-13-and-14-the-owner-away-behind-getuphold_by_body-0); [R2, step 4: a hit takes authority by its impulse](#r2-step-4-a-hit-takes-authority-by-its-impulse-26-november-decision-20-the-owner-away-behind-getuphit_by_impulse-0)
+- **The night of 26 to 27 November:** [The night's diff read by someone who did not write it](#the-nights-diff-read-by-someone-who-did-not-write-it-27-november); [R3, step 1: the way and the time of a fall, sensed](#r3-step-1-the-way-and-the-time-of-a-fall-sensed-27-november-0240-measure-only); [The hold and the hit switched on together](#the-hold-and-the-hit-switched-on-together-27-november); [R2, step 5: the carry's damping kept from pushing down](#r2-step-5-the-carrys-damping-kept-from-pushing-down-27-november-decision-30s-finding-not-met-taken-out); [R2, step 6: the start blended from the lying pose](#r2-step-6-the-start-blended-from-the-lying-pose-27-november-decision-22-behind-getupstart_blend_s-0); [The bootstrap at the end of the night](#the-bootstrap-at-the-end-of-the-night-27-november-0045); [R2's gate today: C19, C20, C21 and C27 on three seeds](#r2s-gate-today-c19-c20-c21-and-c27-on-three-seeds-26-november-the-night); [A push, a blow and a hold in the get-up's phases](#a-push-a-blow-and-a-hold-in-the-get-ups-phases-27-november-c26-r2s-scenarios); [How long the body lies by how it fell](#how-long-the-body-lies-by-how-it-fell-27-november-r2s-item-values-only-not-taken); [What the led get-up's 19 controls cost in the physics step](#what-the-led-get-ups-19-controls-cost-in-the-physics-step-26-november-the-night-r1s-follow-up); [The scorecard after the night](#the-scorecard-after-the-night-26-to-27-november); [R2, step 7: get-ups from eight ways of lying, and the support frame's seam](#r2-step-7-get-ups-from-eight-ways-of-lying-and-the-support-frames-seam-27-november-0340-the-owner-away); [R3, step 2: the fall's arms blended by its way](#r3-step-2-the-falls-arms-blended-by-its-way-27-november-0440-to-0500-behind-fallblend-0-decision-37); [The whole night read once more, for how its parts meet](#the-whole-night-read-once-more-for-how-its-parts-meet-27-november-0520)
+- **27 November:** [R2's hold, hit and start switched on](#r2s-hold-hit-and-start-switched-on-27-november-the-owners-decisions-32-35-and-36-after-the-videos); [R2, step 8: the motion library and the matcher](#r2-step-8-the-motion-library-and-the-matcher-27-november-behind-getupmatch-0); [R2's rest: the matcher switched on](#r2s-rest-the-matcher-switched-on-27-november-the-owners-decision-49); [R2, step 9: the roll by the body's own muscles](#r2-step-9-the-roll-by-the-bodys-own-muscles-27-november-the-owners-decision-50-behind-getuproll-0); [R2, step 10: the reference fitted to the floor and to the surface under the body](#r2-step-10-the-reference-fitted-to-the-floor-and-to-the-surface-under-the-body-27-november-behind-three-switches-0); [R2, step 11: dragged by the ankles and the wrists](#r2-step-11-dragged-by-the-ankles-and-the-wrists-27-november-decision-18-behind-getupdrag-0); [R2, step 12: the held arm while getting up](#r2-step-12-the-held-arm-while-getting-up-27-november-fr-43-decisions-19-and-48-behind-getuparm_answer-0); [R2's gate with everything on](#r2s-gate-with-everything-on-27-november); [R2's rest switched on](#r2s-rest-switched-on-27-november-the-owners-decisions-52-and-53); [R2's rest finished: a hand that follows a body, four scenarios, and the clip-following path taken out](#r2s-rest-finished-a-hand-that-follows-a-body-four-scenarios-and-the-clip-following-path-taken-out-27-november); [Faster checks, stage 1](#faster-checks-stage-1-sp-0-to-sp-3-of-docsfast-checksmd-27-november)
+- **The night of 27 to 28 November:** [R3: the fall as the references drive it, items a to f](#r3-the-fall-as-the-references-drive-it-items-a-to-f-27-to-28-november-the-night-the-owner-away-decision-54); [Faster checks, SP-6: the assets kept between jobs](#faster-checks-sp-6-the-assets-kept-between-jobs-28-november-0220-to-0300-the-owner-away); [Faster checks, SP-4: the pool, started by hand](#faster-checks-sp-4-the-pool-started-by-hand-28-november-0320-to-0345-the-owner-away)
+- **28 November:** [R10: the player told, fear, staying down, chance, the head covered](#r10-the-player-told-fear-staying-down-chance-the-head-covered-28-november-0515-to-0630-the-owner-away); [R10 switched on](#r10-switched-on-28-november-0955-to-1025-the-owners-decision-67-the-owner-away); [R3's decision 58 on the body with R10](#r3s-decision-58-on-the-body-with-r10-28-november-1024-to-1045-under-the-owners-delegation); [The controllers' face buttons for the commands](#the-controllers-face-buttons-for-the-commands-28-november-1005-to-1025-decision-42); [R10, step 3: the arbiter of limbs](#r10-step-3-the-arbiter-of-limbs-28-november-1045-to-1100); [R10, step 8's rest: the offered hand, `give_hand`](#r10-step-8s-rest-the-offered-hand-give_hand-28-november-1100-to-1130-decision-47-behind-behaviourgive_hand); [R10, step 7: the struggle, built and measured: it does not free the body within C25](#r10-step-7-the-struggle-built-and-measured-it-does-not-free-the-body-within-c25-28-november-1135-to-1155-behind-behaviourstruggle-0); [R10, step 9: FR-18 in the new phases, and R2's held arm placed as the catch](#r10-step-9-fr-18-in-the-new-phases-and-r2s-held-arm-placed-as-the-catch-28-november-1200-to-1215); [R10's gate, its automatic part](#r10s-gate-its-automatic-part-28-november-1215-to-1240-step-10); [A leg taken hold of is not covered](#a-leg-taken-hold-of-is-not-covered-28-november-1230-to-1300-behaviourprotect_held_leg-decision-73); [The struggle switched on](#the-struggle-switched-on-28-november-1255-to-1305-docsreconnight2struggle_onps1-not-taken); [C39's slow four: the cover let go after the reaction](#c39s-slow-four-the-cover-let-go-after-the-reaction-28-november-1315-to-1330-behaviourcommand_cover_react-decision-74); [The independent reading of the window's code](#the-independent-reading-of-the-windows-code-28-november-1220-to-1240); [The second reading](#the-second-reading-28-november-1327-to-1350-the-code-since-the-first-and-the-rest-of-the-diff-again); [The audit](#the-audit-28-november-1441-onward-the-owner-away)
+- [Known behaviour of the stock mannequin](#known-behaviour-of-the-stock-mannequin) (M0's).
+
 ## Policy
 
 1. **Same build, same machine, same scenario: results must be identical.** Every run writes two hashes
@@ -10,7 +25,10 @@
    usual cause).
 3. **Pass criteria are physical thresholds, not hashes.** A scenario passes on its `expect` values and the
    built-in checks. Hashes are not committed as baselines, because a different CPU, compiler or engine hotfix
-   may legitimately change floating-point results.
+   may legitimately change floating-point results. They are kept on the reference machine instead
+   (`Saved\Baselines\<name>`, `Tools\baseline.ps1` or `suite.ps1 -SaveBaseline`), and a change is held to them
+   scenario by scenario, or run by run for the other tools (`baseline.ps1 -SaveRuns`, `-CompareRuns`); the
+   baselines this journal names are those.
 4. **Fallback if exact repeatability is lost.** Should a later feature make identical runs impossible (async
    physics is the likely one), switch the affected scenarios to a tolerance of 0.1 cm and 0.1 degrees at every
    checkpoint over three runs (`Tools\compare-runs.ps1 -PositionToleranceCm 0.1 -RotationToleranceDeg 0.1`),
@@ -19,12 +37,26 @@
 Since M3 part 1 the solver's determinism mode is on (`p.Chaos.Solver.Deterministic=1`), after one run in
 about 25 of a passive body had differed on a busy machine; see that section. Scenario processes may run
 side by side: each has its own fixed timestep, and the suite gives the same hashes eight at a time as one
-at a time.
+at a time (with the solver's rebuild kept in step, `FScenarioStage::KeepSolverInStep`, and a warm-up job first
+in every process; both in `CLAUDE.md`'s pitfalls), with the assets kept between jobs (SP-6) and through the
+pool (SP-4).
 
 Re-measure at each milestone. M0 measured a passive ragdoll on a flat floor; muscles, effectors and props add
 contacts and simulation islands, which is where parallel solving could start to matter.
 
 **How this journal is kept** (the owner's rule, 26 November 2026): it is a record of measurements, and its history is not rewritten. A section that a later section or a decision of the owner supersedes gets a dated note under its heading; a figure later found wrong gets a dated correction beside it, with a reference. Nothing else is changed.
+
+**How to read it** (28 November 2026). Every "now", "today", "in the files", "the next step" and count of scenarios
+in a section is of that section's date. What is on is what `Config/Tuning/*.json` holds (names and units in
+`Config/Tuning/README.md`); the status and what comes next only in [`docs/PRD.md`, "Status"](PRD.md#status); the order of
+work only in [`docs/active-ragdoll.md`, section 8](active-ragdoll.md#8-order-of-work-and-plan-of-parts); the decisions in
+its [section 10](active-ragdoll.md#10-decisions-for-the-owner); the criteria and their limits in
+[`docs/natural-body.md`](natural-body.md#requirements-and-criteria) (C27 in `docs/active-ragdoll.md`). Sections whose
+heading says a switch is at 0 and that were switched on later, or whose code was taken out, carry a note of 28 November
+2026 under the heading. The baseline at the end of the journal is `n2end` (220 scenarios, 28 November 14:21) and
+`audit_before` (the same hashes); the clip-following get-up and its switches (`getup.carry`, `getup.match`,
+`getup.clip_*`) were taken out on 27 November ("R2's rest finished"), so every get-up measured before R1 was switched
+on (26 November) is that path's, and every later one is led.
 
 **Where the files it names are** (the owner's decision of 26 November 2026). `Saved\` is not in git. The plans, patches and the one script that this journal and the plans cite as `Saved\Recon\<name>.md`, `.patch` or `.py` are kept in `docs/recon/<name>` since 26 November 2026; the paths below are left as they were written. Everything else under `Saved\` that the journal names (runs, batches such as `Saved\Recon\bat_*`, films, suites, baselines, backups) is on the reference machine only and is not on a clean clone.
 
@@ -1538,6 +1570,10 @@ push matrix 160 of 160, knockdowns 8 of 8 (as in part 5: 1.94 s, 25.9 J, 1.22 cm
 
 ### M3 part 6, step 2 (the GetUp state), 2026-11-24
 
+**Note of 28 November 2026:** The get-up of this section and of every section up to "R1: the led get-up" is the
+clip-following one (the clip chosen by the pelvis's lean, `getup.clip_*`, the pelvis and feet assisted). It was replaced
+by the led get-up on 26 November and taken out of the code on 27 November ("R2's rest finished").
+
 A body that has lain still for 1.5 s gets up by one of the four clips, under full simulation. Seven scenarios:
 a knockdown of 200 N*s on the chest from each of four directions and the get-up after it (`getup_back`, `_front`,
 `_left`, `_right`), and three with something done to the body while it is on its hands and knees (`getup_push_weak`,
@@ -2614,7 +2650,8 @@ predicted poses makes the hand tremble more (the owner saw no tremble with the r
 **What it means for the plan.** The owner's order for part 1 was "the hand's velocity from the tracking rather
 than from the difference of two poses". On this headset the tracking's velocity trails its own poses, and the
 difference follows them: a hand behind a fast target by 4.7 cm instead of 8.2. The source can take either or a
-mix (`tools.headset.runtime_velocity_share`; 1, the plan's, until the owner decides).
+mix (`tools.headset.runtime_velocity_share`; 1, the plan's, until the owner decides). [28 November 2026: 0, the
+difference of poses, since the night of 24 to 25 November, the owner's choice: "M4 part 1, the night".]
 
 **Starting point for part 2** (the force cap and the mass are tuned there): at a punch's 8 m/s the hand is 10 to
 13 cm behind its target with a good velocity, nearly all of it the one frame. The recordings of step 4 are put
@@ -2865,7 +2902,7 @@ changed no digit).
 
 ### M4 part 3, step 1 (the grab), the night of 24 to 25 November, behind a switch that is off
 
-**Note of 26 November 2026:** Superseded in part: the grab is on by default since 25 November 2026 ("M4, the second look…"); a hold is felt (`reactions.hold_felt` 1, "M4 part 3, its two open questions"); since "R1: the led get-up" (26 November) one hand no longer slows a get-up, the first item of R2.
+**Note of 26 November 2026:** Superseded in part: the grab is on by default since 25 November 2026 ("M4, the second look…"); a hold is felt (`reactions.hold_felt` 1, "M4 part 3, its two open questions"); since "R1: the led get-up" (26 November) one hand no longer slows a get-up, the first item of R2. [28 November 2026: repaired by the hold by one hand, `getup.hold_by_body` 1 from 27 November ("R2's hold, hit and start switched on"), folded into the behaviour by the audit of 28 November (decision 78).]
 
 Built by the agent in the owner's absence, on the plan's own words ("a grip that closes on a body grabs it; one
 that closes in the air is a fist"; "grab creates a constraint between the effector and the touched NPC body; the
@@ -3855,7 +3892,7 @@ bring in the replays: head median 20 N*s at 2 to 3 m/s and 13 at 3 to 4.5, trunk
 
 ### The get-up: two attempts that failed, and what they showed (25 November)
 
-**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet.
+**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet. [28 November 2026: `getup.carry` was taken out on 27 November with the clip-following path; the led get-up is the only one ("R2's rest finished").]
 
 The owner asked for the get-up to be put right at once (a part of its own inside M4). Nothing of what was built is in the code:
 the attempts were taken out again (`Saved\Recon\getup_kneel_attempt.patch`), all 112 scenarios have the hashes of `pre_getup`.
@@ -3925,7 +3962,7 @@ that hangs on the foot's). Today's body: 112 scenarios with the hashes of `pre_g
 
 ### Why the body leans: the clip against the body, frame by frame (25 November)
 
-**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet.
+**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet. [28 November 2026: `getup.carry` was taken out on 27 November with the clip-following path; the led get-up is the only one ("R2's rest finished").]
 
 Measuring only, on the stand (a temporary log of the clip's and the body's poses in one frame; taken out again; the stand with the log had the hashes of the
 stand without it, 150 of 150; the suite afterwards 112 of 112). The first table has 149 get-ups; the second, of turns, the 99 of seeds 2 and 3
@@ -3947,7 +3984,7 @@ stand without it, 150 of 150; the suite afterwards 112 of 112). The first table 
 
 ### What keeps the gap open: the feet are loaded when the clip moves them (25 November)
 
-**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet.
+**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet. [28 November 2026: `getup.carry` was taken out on 27 November with the clip-following path; the led get-up is the only one ("R2's rest finished").]
 
 The same stand, 149 get-ups, hashes as without the log (150 of 150; the log's code is out again, suite 112 of 112). The floor's push on the bodies reads 848 N over a
 get-up against a weight of 784 (8% too much; 749 at its end), so shares of weight below are good to about 10%. Horizontal forces of contacts could not be
@@ -3968,7 +4005,7 @@ checked and are not used.
 
 ### The get-up, third attempt: the foot held until it is free (25 November). Put off
 
-**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet.
+**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet. [28 November 2026: `getup.carry` was taken out on 27 November with the clip-following path; the led get-up is the only one ("R2's rest finished").]
 
 The limit was set before the runs: time off the feet 0.7 s at most, 146 of 150 end standing, 125 at the first attempt. **Not met, taken out again**
 (`Saved\Recon\getup_step_hold.patch`; suite 112 of 112 with the hashes of `pre_getup`, 42 unit tests). The get-up waits with its cause written down.
@@ -4148,7 +4185,7 @@ of three places (10 and 8 N*s, and 68 at 95 cm): the hand at its 300 N does not 
 
 ### M4 part 3, its two open questions: a hold that is felt, and the standing leg (25 November), on by the owner's decision
 
-**Note of 26 November 2026:** Since "R1: the led get-up" (26 November) one hand no longer slows a get-up (42 of 50 pull free, seed 1); `grab_getup_held` fails on purpose until R2 repairs the hold by one hand.
+**Note of 26 November 2026:** Since "R1: the led get-up" (26 November) one hand no longer slows a get-up (42 of 50 pull free, seed 1); `grab_getup_held` fails on purpose until R2 repairs the hold by one hand. [28 November 2026: it passes since 27 November, the hold by one hand on ("R2's hold, hit and start switched on").]
 
 **A cap on the pelvis's assist is not the answer to the leg** (`assist.pelvis.max_force_n` 80, the first time with the whole set): 117 scenarios but one pass (`grab_pull_standing` falls), matrix 160 of 160, knockdowns 8 of 8, stand 149 of 150, 93 pulls; of the 24 pulls on thigh and calf 2 bodies come along (2 that are stepped without it: calf up), and the arm pulls get worse
 (44 stood instead of 51). What was written that "at no cost" held for the push matrix alone.
@@ -4913,7 +4950,7 @@ the first move (C21). This is N7's matter (a get-up that never holds a pose).
 
 ### The natural body, N7 first: the get-up's pauses (26 November, the owner's decision to take it now; not met, off)
 
-**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet.
+**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet. [28 November 2026: `getup.carry` was taken out on 27 November with the clip-following path; the led get-up is the only one ("R2's rest finished").]
 
 Built, all 0 in the files (the suite with the hashes of `n2`): `getup.slow_from` and `getup.rate_follow_s` (the clip slows as the
 body falls behind, to a stop at the lags that stopped it, runs while the body eases in, its speed smoothed), `getup.rest_per_ns_s`
@@ -4984,7 +5021,7 @@ the front in real time: `Saved\Films\n7_front_today\film.mp4` and `n7_front_g1\f
 
 ### N7: the plank, measured; unload and then step (26 November, the owner's choice; not met, taken out)
 
-**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet.
+**Note of 26 November 2026:** The get-up measured here is the clip-following one. Since 26 November 2026 the get-up is led (`getup.carry` 1, "R1: the led get-up"): 3.2 s, paused only in the 0.61 s ease, the plank 0.10 to 0.20 s while rising, the clip no longer laid over the loaded feet. [28 November 2026: `getup.carry` was taken out on 27 November with the clip-following path; the led get-up is the only one ("R2's rest finished").]
 
 **The owner, on the videos:** no visible difference between the get-up with pauses and without; the get-up is as unnatural as
 before, the body rises "like a plank, like a rocket on its launcher". So the pauses are not what the eye sees.
@@ -5114,6 +5151,8 @@ of a body getting up (the grip held 376 frames of the 500 the scenario asks). Vi
 ### R1: the led get-up (26 November, the second architecture, `docs/active-ragdoll.md`; behind `getup.carry` at 0, for the owner's look)
 
 **Note of 26 November 2026:** On since the owner's decision of 26 November 2026 (the last paragraph of this section): `getup.carry` 1, baseline `led`, the suite 126 of 127 with `grab_getup_held` failing until R2 repairs the hold by one hand.
+
+**Note of 28 November 2026:** `grab_getup_held` passes since 27 November (the hold by one hand, "R2's hold, hit and start switched on"); `getup.carry` was taken out on 27 November with the clip-following path, and the led get-up is the only one ("R2's rest finished").
 
 The owner asked for the body to be rebuilt as a hybrid active ragdoll; the audit, the causes and the plan are in
 `docs/active-ragdoll.md`. Its first part is the "recording, carried" above done for the whole body: `FSandboxCarry`, a spring from
@@ -5370,7 +5409,7 @@ moved every scenario with a step. Its name and value went; the code keeps the ru
 pull, only the feet's angular spring holds its turn.
 
 **What stays on purpose:** the clip-following get-up (carry 0, and the fallback when a carry cannot be made) with every value it
-reads, until R2 is accepted; `settle_smooth` (off until it is understood); `rest_per_ns_s` and `rest_max_s` (R2's "how long it
+reads, until R2 is accepted [28 November 2026: taken out on 27 November, "R2's rest finished"]; `settle_smooth` (off until it is understood); `rest_per_ns_s` and `rest_max_s` (R2's "how long it
 lies"); `fall.aim` (until R3); the tone's levels, the joints' scales, `weight_share`, `ankle_as_torque`, `reflex_delay_s` (R4);
 the perception's switches (the session's `-Perception`).
 
@@ -5396,6 +5435,10 @@ with two 144, pressed 145. The authority body by body and by direction (decision
 not exist; proposed to be built with decision 17 in R2's next step, both of them measures that keep every hash.
 
 ### R2, step 2: a get-up that was not led is said, and authority measured (26 November, decisions 15 and 17; the owner away)
+
+**Note of 28 November 2026:** Since 27 November every attempt asks for the led get-up (`getup.carry` was taken out with the
+clip-following path, "R2's rest finished"); decision 17's check `get_up_led` and the counts `led_attempts`, `not_led_attempts`
+stay, and a get-up whose carry cannot be made is given up (`given_up_by` `not_led`).
 
 Measures only: every hash of `walk` kept. The plan: `docs/recon/r2_step2_plan.md`.
 
@@ -5448,6 +5491,9 @@ R7, whether the damping's downward part is to be taken off too (it would change 
 and thighs take 0.72 of the 1.16; the arms and the head little.
 
 ### R2, step 3: the hold by one hand (26 November, decisions 13 and 14; the owner away; behind `getup.hold_by_body`, 0)
+
+**Note of 28 November 2026:** `getup.hold_by_body` was 1 from 27 November and was folded into the behaviour by the audit of 28 November (decision 78; decision 32, "R2's hold, hit and start switched
+on"); `grab_getup_held` lost its `known_failure` then.
 
 The plan, with the screen that changed it: `docs/recon/r2_step3_plan.md`. Behind a switch that is 0 in the files, as R1 was: with
 it at 0 the suite keeps all 132 hashes of `walk` and every stand its trials.
@@ -5544,6 +5590,11 @@ reader's note above); a forearm is pulled free most easily, a person's arm being
 should hold that firmly is for the owner (a falloff along the subtree, `hold_chain_falloff`, would soften it; not tried).
 
 ### R2, step 4: a hit takes authority by its impulse (26 November, decision 20; the owner away; behind `getup.hit_by_impulse`, 0)
+
+**Note of 28 November 2026:** `getup.hit_by_impulse` was 1 from 27 November and was folded into the behaviour by the audit of 28 November (decision 78; decision 35, "R2's hold, hit and start switched
+on"); the copies `getup_hit_strong_yields` and `getup_push_weak_yields` went then, their expectations to the originals. Since
+R10 was switched on (28 November, "R10 switched on") a blow of 40 N*s or more on a body getting up is covered (decision 45), and
+`getup_hit_strong_protect_off` keeps this section's ride-out.
 
 The plan: `docs/recon/r2_step4_plan.md`. Behind a switch that is 0 in the files: with it at 0 every hash of `walk` stays.
 
@@ -5728,6 +5779,9 @@ hashes as before, `getup_back` `bf3da48f`); decision 30 is unchanged.
 
 ### R2, step 6: the start blended from the lying pose (27 November, decision 22; behind `getup.start_blend_s`, 0)
 
+**Note of 28 November 2026:** `getup.start_blend_s` is 0.3 since 27 November (decision 36, "R2's hold, hit and start switched
+on").
+
 Not on the owner's list for the night and not among the steps kept back; decision 22 is the owner's (`docs/recon/r2_step6_plan.md`).
 With `getup.start_blend_s` above 0 a get-up starts from where the body is: the clip layer's "from" pose is each bone's local rotation
 as the simulation has it as the attempt begins, and it crosses to the clip's first pose over that time (the cross the layer already had
@@ -5774,6 +5828,10 @@ the clip's own C27 measure: all 15 steps in 330 s, the suite 140 of 141. And at 
 read and put right: all 15 steps in 329 s, the suite 140 of 141 with every hash of `r2night`.
 
 ### R2's gate today: C19, C20, C21 and C27 on three seeds (26 November, the night)
+
+**Note of 28 November 2026:** "Today" is the night of 26 to 27 November. R2's gate was met on 27 November with R2's rest on
+("R2's gate with everything on", "R2's rest switched on"); a body on its side rolls first and the clip after a roll leaves the
+side clips out (decisions 38 and 50; C27 by clip then B and F only), and `getup.clip_left`, `clip_right` were taken out with the clip-following path ("R2's rest finished").
 
 The base the end of R2 is judged against (decisions 16 and 21), read from the stand of 150 falls on the body in the files
 (`Saved\Matrix\getup_seeds\r2s2_plain`; `timing_1126` gives every figure the same). Nothing changed for it. C19 is read from
@@ -6099,6 +6157,10 @@ the suite 149 of 149, its stand 50 of 50 with 49 at the first attempt (48).
 
 ### R2, step 8: the motion library and the matcher (27 November, behind `getup.match`, 0)
 
+**Note of 28 November 2026:** The matcher was switched on on 27 November (decision 49, "R2's rest: the matcher switched on"),
+and the switch `getup.match` went the same day with the clip-following path and its rule `ChooseByRule` ("R2's rest finished"):
+the matcher is the only choice.
+
 `docs/recon/r2_step8_plan.md`; the owner's decision 39 (the matcher chooses among the four stand clips and their mirror images; the
 other twelve get-ups and the two rolls are read, mirrored and scored for the report only). Built: `FSandboxClipPose` reads a clip as its
 mirror image (on the clip's own skeleton, before the carry: each bone takes its counterpart's turn from its reference, seen in the
@@ -6240,6 +6302,10 @@ C27 in 90 of 150 (by clip B 30, F 22, L 77, R 61 degrees), C21's seed medians 2.
 up is at the table (11) or the chair (4); the 78 falls on the bare floor and the 24 at a wall stand at the first attempt.
 
 ### R2, step 9: the roll by the body's own muscles (27 November, the owner's decision 50; behind `getup.roll`, 0)
+
+**Note of 28 November 2026:** Steps 9 to 12 are on since 27 November (decisions 52 and 53, "R2's rest switched on": `getup.roll`,
+`match_late_cm_per_s` 40, `fit_surface`, `fit_floor`, `fit_free_z`, `drag`, `arm_answer` 1, `poses.fingers.weight` 1). Their need
+of `getup.match` 1 went with that switch ("R2's rest finished").
 
 **Built.** A body that begins an attempt with its hips' line `getup.roll_side_deg` (50) or more from level first rolls: the attempt
 (state GetUp, its count and C21's clock) begins with a phase of no clip and no pull from the world, the muscles asked for
@@ -6613,6 +6679,9 @@ battery again: 1637 runs and files with the same hashes, 25 of 25 verdicts; the 
 
 ### R3: the fall as the references drive it, items a to f (27 to 28 November, the night, the owner away; decision 54)
 
+**Note of 28 November 2026:** Decision 58 was taken under the owner's delegation on 28 November: not yet (C14 by hand and C34
+worse with A on the body with R10; "R3's decision 58 on the body with R10"). Every R3 switch, `fall.blend` and `fall.aim` stay 0.
+
 The plan is `docs/recon/r3_plan.md` (read before it: `docs/pitfalls.md`, falls and the get-up, muscles and poses, measuring, the solver;
 here, "N6 step 4", "N6 step 5", "N6, the reach on today's body", "R3, step 1", "R3, step 2"). Baseline `r3base` (the files of 27 November
 evening: 168 scenarios; run hashes `r3base_seeds`, `r3base_matrix`). Every item is behind a switch of its own, 0 in the files; with all
@@ -6933,6 +7002,10 @@ pool has no time limit.
 
 ### R10: the player told, fear, staying down, chance, the head covered (28 November, 05:15 to 06:30, the owner away)
 
+**Note of 28 November 2026:** `behaviour.fear`, `stay_down`, `protect` and `commands` are 1 since the owner's decision 67 the
+same morning ("R10 switched on"); `give_hand`, `protect_held_leg` and `command_cover_react` were built and switched on later that
+day (decisions 71, 73, 74); `behaviour.struggle` stays 0 (decision 72, the owner's).
+
 The plan is `docs/recon/r10_plan.md`; the owner's order for the window: steps 1, 4, 5, then 2 or 6 if time is left (step 3, the
 arbiter, not in this window). Decision 58 left empty: R3 stays at 0. Baseline `r10base` (= `r3rev2`, 174 of 174), then `r10s1` (176)
 and `r10after` (191: 17 new scenarios). Every step behind its own switch at 0; with all of them at 0 the suite keeps every hash of
@@ -7158,7 +7231,8 @@ degrees in `command_get_up_near`). Now `command_get_up_still` answers in 0.30 s,
 of `r10end` as before (206 scenarios with the new one); the stand with the command again 150 of 150, 0.49 s in the median, 146 of 150
 within 1.0 s.
 Not built: `give_hand` (N6's hand target to the player's open hand, decision 47), the controllers' face buttons (no headset run in
-unattended work), a scenario event of its own (the console event does it).
+unattended work), a scenario event of its own (the console event does it). [28 November 2026: `give_hand` and the face buttons
+were built later that day: "R10, step 8's rest", "The controllers' face buttons for the commands".]
 
 **A switch changed while the body runs** (the plan's `tune_live_*` for each switch, 07:28): `tune_live_stay_down` switches
 `behaviour.stay_down` on at 1.5 s as the afraid body lies (it covers for 9.7 s and gets up at 13.5 s, as `protect_near_lying` does);
@@ -7607,7 +7681,9 @@ cover begins; the due time has the file's tolerance. Left, written here: a `get_
 accepted and then interrupted by the cover as it begins.
 
 **The window's last measurement (14:00 to 14:15; `docs/recon/night2/final_gate.ps1`), on the code and files committed:** the suite 219
-of 219 with every hash of `n2r2` (the third reading's fixes move no scenario), baseline `n2end`; with `protect_held_leg` and
+of 219 with every hash of `n2r2` (the third reading's fixes move no scenario), baseline `n2end` [28 November 2026: saved again at
+14:21 with 220 scenarios, `command_give_hand_away_back` added and every other hash kept, as the section above says;
+`Saved\Baselines\n2end` holds 220]; with `protect_held_leg` and
 `command_cover_react` at 0, against `n2review`, only the four scenarios that switch the struggle on with a free leg move (its reach); the
 push matrix's 160 runs with the hashes of `r10on_matrix`, the knockdowns 1.87 s, 14.2 J, 1.28 cm; the stand on three seeds (150 standing,
 143 at the first attempt) and with a viewer, each 150 runs with the hashes of `r10on_seeds` and `r10on_near`; with `get_up` 150 runs as
@@ -7617,6 +7693,35 @@ went with decision 74). Run hashes kept as `n2end_seeds`, `_near`, `_command`, `
 offered arm's last fix: `record-replay -Perception` with its morning hashes (`194c0969`, `4131b101`), `-Takes` 3 of 3, `-Walk -Twice` 8 of
 8, `play -Smoke` 15 of 15, the bootstrap 15 of 15 in 153 s (the suite 220 of 220).
 
+### The audit (28 November, 14:41 onward, the owner away)
+
+The plan and its journal: `docs/recon/audit_plan.md`; the register of switches: `docs/recon/audit_switches.md`; decisions 75 to 78
+in `docs/active-ragdoll.md`, section 10. The rule was every hash kept.
+
+- **Before:** the suite 220 of 220, baseline `audit_before` (the same hashes as `n2end`); `bench.ps1 -Hashes -Label audit_before`:
+  25 tools, 1764 runs and files, 835 s.
+- **After every step of code** (dead getters and fields; `AssistStateEase`; `balance.ankle_side_gain` and `behaviour.lower_end_cm`
+  taken out, `getup.hold_by_body` and `getup.hit_by_impulse` folded; the readers' fixes): build OK, 67 tests, the suite 220 of 220
+  with every hash of `audit_before` (four times, 15:01, 15:10, 15:16, 15:25).
+- **After part 3:** `build.ps1 -Rebuild` OK (139 s), 67 tests, the suite against `audit_before` the same; `bench.ps1 -Hashes -Label
+  audit_after -Against audit_before`: SAME, 1769 runs and files with the same hashes, 0 changed, the verdicts the same in 25 of 25
+  tools (850 s); `checks.ps1 -What suite,matrix,knockdowns,stand,seeds,natural_quick -Label audit_after` OK (203 s: the matrix 160,
+  the knockdowns 8 of 8, the stand 50 of 50, the seeds 150 of 150 with 143 at the first attempt, the scorecard as before);
+  `record-replay.ps1 -Perception` 12 of 12 (hashes `194c0969`), `-Takes` 3 of 3, `-Walk -Twice` 8 of 8; `play.ps1 -Smoke` 15 of 15;
+  `check-links.ps1` OK; the pool (`pool.ps1 -Start`) with a scenario and the knockdowns through it, the same figures and hashes.
+- **What the four readers found** (the body since `20a9ca1`, the rest and the tools since then, the audit's whole diff, its last fixes):
+  of the body, two breaches of the authority rule, left for the owner because the fix changes the body (not delegated): a hit that
+  makes a rising body cover itself (R10's `behaviour.protect`) gives the attempt up inside `FeelFrame` before the hit's rule takes the
+  world's pull (`HitFree`), so the carry fades over `carry_release_s` (0.4 s) from its full share; and after an attempt given up afraid
+  the pull fades over `lower_release_s` (1.5 s) into Lying, where a hit does not take it. With them: the flags of a give-up
+  (`bAfraidGivenUp`, `bProtectGivenUp`) are cleared only in `UpdateStayDown` and may reach an attempt begun and given up in one tick;
+  the struggle's legs are placed with the arm's hinge (the struggle is at 0); the limb arbiter gates R2's held arm with no switch (no
+  scenario reaches it); a dug-in foot uses the last attempt's floor height (struggle at 0); some numbers of R3 and R10 are in the code
+  (the catch's poles and outward cut, the lowering's window). Put right: two blends without a lower bound (`offer_blend_s`,
+  `lower_turn_s`, now 0.02 s), dead code, stale comments; in the tools, the pool's run without its time limit, a scenario at another
+  frame rate handed to the pool or a set, the pool's memory count, a run that must be alone waiting beside the pool's idle processes,
+  the pool's stop on a failed lock, and six defects of the new `check-links.ps1`.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly
@@ -7625,3 +7730,15 @@ offered arm's last fix: `record-replay -Perception` with its morning hashes (`19
   project's own physics asset in M1 and M2.
 - **A free constraint.** `UserConstraint_0` in the stock physics asset is not a rigid joint; the stretch
   metric skips it.
+
+<!-- removed: getup.hold_by_body getup.hit_by_impulse hit_by_impulse balance.ankle_side_gain behaviour.lower_end_cm -->
+<!-- removed: getup.carry getup.carry_never_down getup.match getup.clip_* clip_right getup.rise getup.fast_rise getup.end_one_foot
+getup.pelvis_follow_s getup.slow_from getup.reached_feet getup.rate_follow_s getup.progress_cm getup.gather_s getup.foot_wait_s
+tone.daze_* balance.reach_smooth balance.lift_frame_s balance.stagger_brake_follow_s balance.swing_foot_n_per_m balance.step_delay_s
+reactions.intent_delay_s reactions.thing_support_max_ns thresholds.fall_pelvis_offset_cm fall.catch_settle fall.catch_forward
+push_thigh_200_falls strike_punch_belly_steps fall_catch_back getup_hit_strong_yields getup_push_weak_yields getup_match_*
+getup_one_hand_slows gaze_rests_on_viewer Scenarios/getup_one_hand_slows.json Specs/physics/npc_body_head.json
+Specs/physics/npc_body_wrist.json -->
+<!-- not-names: push_neck_01_090_030 push_neck_01_225_030 push_neck_01_315_030 push_spine_04_000_080 push_thigh_l_045_200
+vr_check2 vr_check3 vr_check_plates vr_punch_sweep vr_seeing vr_step4_2 vr_step4_4 vr_step4b vr_step4b_2 -->
+

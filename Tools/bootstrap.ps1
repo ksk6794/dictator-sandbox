@@ -1,6 +1,7 @@
 # Takes a clean clone to a verified build: stock content, the clips of Epic's Game Animation Sample, compile, asset generation, lighting bake, unit tests,
 # scenario suite, push matrix, knockdowns, the stand of falls and get-ups, self-test of the interactive session,
-# a session's hands recorded and replayed, the grab's session, and the headset's walk with a made-up headset.
+# a session's hands recorded and replayed, the grab's session, the headset's walk with a made-up headset, and the documents'
+# links and names (Tools\check-links.ps1).
 #   powershell -ExecutionPolicy Bypass -File Tools\bootstrap.ps1
 # Needs: Epic's Game Animation Sample as a project of its own (a manual download; Tools\fetch-sample-anims.ps1 says
 # where it is looked for), Unreal Engine 5.8 (Epic Games Launcher), Visual Studio 2026 with the MSVC 14.50 toolset and
@@ -8,7 +9,7 @@
 # The first six steps run one after another and the bootstrap stops at the first that fails. Then the suite, the push matrix,
 # the knockdowns and the stand run as one check set (Tools\checks.ps1: one queue of eight engine processes, the longest jobs
 # first), and beside it, as a ninth process, the sessions one at a time: the self-test, the three records and replays and the
-# grab's session (docs/fast-checks.md, SP-3). Every step is decided by its result file, not by its exit code: each is removed
+# grab's session (docs/fast-checks.md, SP-3), then the check of the documents. Every step is decided by its result file, not by its exit code: each is removed
 # before its step and read after it. Writes Saved\Tools\bootstrap.json, one entry a step, with its verdict line and its
 # seconds (a step of the set from its first job's start to its verdict, so those steps overlap). Exit code: 0 every step
 # passed, 1 not.
@@ -33,7 +34,9 @@ $steps = @(
     @{ name = 'play-grab';           script = 'play.ps1'; arguments = @('-Demo', '-Grab'); result = 'Saved\Play\room_stand_npc\play-result.json'; passed = $okField },
     # The headset's way without a person or a headset (FR-42): a made-up headset walks the player's body into the
     # character, along it, turns and walks away; checked, recorded and replayed twice.
-    @{ name = 'record-replay-walk';  script = 'record-replay.ps1'; arguments = @('-Walk', '-Twice'); result = 'Saved\Tools\record-replay-walk.json'; passed = $okField }
+    @{ name = 'record-replay-walk';  script = 'record-replay.ps1'; arguments = @('-Walk', '-Twice'); result = 'Saved\Tools\record-replay-walk.json'; passed = $okField },
+    # The documents: every link, anchor, path, scenario, tuning name and script parameter they name (no engine).
+    @{ name = 'check-links';         script = 'check-links.ps1'; result = 'Saved\Tools\links.json'; passed = $okField }
 )
 $started = Get-Date
 $results = [ordered]@{}
@@ -104,7 +107,7 @@ if ($ok) {
         -RedirectStandardOutput $checksPrinted -RedirectStandardError (Join-Path $ToolsOut 'bootstrap-checks.err.txt') -WindowStyle Hidden -PassThru
     $null = $checks.Handle
     Write-Output "=== $(@($checked | ForEach-Object { $_.name }) -join ', ') (one check set, Tools\checks.ps1 -What $what; printed when it ends) ==="
-    foreach ($step in @($steps | Where-Object { $_.script -and @('play-smoke', 'record-replay', 'record-replay-takes', 'play-grab', 'record-replay-walk') -contains $_.name })) {
+    foreach ($step in @($steps | Where-Object { $_.script -and @('play-smoke', 'record-replay', 'record-replay-takes', 'play-grab', 'record-replay-walk', 'check-links') -contains $_.name })) {
         $step.lane = $true
         Invoke-Step $step
     }

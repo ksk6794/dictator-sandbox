@@ -49,6 +49,11 @@ The file name must equal the `name` field (a unit test checks this).
 | `body.simulate` | no, default `true` | `false` keeps the body kinematic in its reference pose, for portraits and rendering-cost scenes |
 | `body.get_up` | no, default `false` | Whether a body that lies gets up by itself (`getup.*`). Off unless asked for: a scenario about a fall is about the fall, and its body stays where it came to rest, so that rest time and energy are those of the fall. In a session the body gets up |
 | `body.control` | no, default `"passive"` | `"passive"` is a plain ragdoll. `"active"` adds muscles and balance assist, tuned by the files in `Config/Tuning`: the character holds the pose it is spawned in. Spawn it with the feet on the floor (`location_cm` z = 0) |
+| `body.laid_height_cm` | no, default 2 | Beside `body.laid_deg`: how high over the floor the lowest corner of the laid body's bounds is put |
+| `body.perception` | no, default `false` | The run tells the body what moves near it (below, the event list) |
+| `seed` | no, default 0 | What the body's choices draw from (below, the event list) |
+| `props` | no | Things with mass (below, "Hands") |
+| `recording`, `recording_start_s` | no | A recording of a session's hands to replay, and when its first frame is used (below, "Recorded hands") |
 | `settle_s` | no, default 2 | Start-up time left out of the "settled" metrics and expectations |
 | `camera` | no | `{ "location_cm": [x, y, z], "look_at_cm": [x, y, z] }` for rendered runs. Without it the runner frames the body |
 | `events` | no | Scripted stimuli, applied at simulated time `t` |
@@ -119,18 +124,17 @@ Event types. Unknown types are a parse error.
   session kept (`"heads"`); one made before R10 has none, and `viewer_from` says so. A scenario has viewer events or a
   recording, not both.
 - `"seed"` (R10, step 2; top level, a whole number, 0 when left out): what the body's choices draw from (`FSandboxChance`,
-  a stream per purpose). 0 draws nothing and every choice takes its fixed answer; nothing draws yet (the struggle of R10's
-  step 7 will). `control.chance` has the seed and every draw (`draw_count`); `chance_seed_told` has `stand_npc`'s hashes.
+  a stream per purpose). 0 draws nothing and every choice takes its fixed answer; the struggle draws (`behaviour.struggle`,
+  0 in the files). `control.chance` has the seed and every draw (`draw_count`); `chance_seed_told` has `stand_npc`'s hashes.
   The stand (`Tools\getup-stand.ps1`) hands its `-Seed` to every trial; a session takes a seed from its own counter
   (`Saved\Play\session_seed.txt`) and writes it into the scenario that replays its recording.
 - A command to the body (R10, step 8 in part) is a `console` event, `Sandbox.Command get_up` or `stop`, answered with
   `behaviour.commands` on (`control.commands`: the answer, when, the first motion; `command_*` scenarios); the same command typed into
   a session's console is kept in its recording at its frame and replayed.
-- R10's behaviours (`behaviour.fear`, `stay_down`, `protect`, `commands` in `Config/Tuning/body.json`) are on in the files
-  since the owner's decision 67 (28 November 2026); a scenario that wants one off switches it off with a `console` event,
-  `Sandbox.Tune behaviour.commands=0` (`command_refused_off`; `getup_hit_strong_protect_off`, R2's ride-out of a strong hit with
-  the cover off, which keeps `getup_hit_strong`'s old hashes; `tune_live_*`, off at 0 s and on while the body runs). Until then each
-  scenario switched its behaviours on itself. Theirs: `fear_*` (fear), `protect_near_*` and `protect_phase_*` (staying down,
+- R10's behaviours (`behaviour.*`, [`Config/Tuning/README.md`](../Config/Tuning/README.md)) that are on in the files are
+  switched off by a scenario that wants one off with a `console` event, `Sandbox.Tune behaviour.commands=0`
+  (`command_refused_off`; `getup_hit_strong_protect_off`, R2's ride-out of a strong hit with the cover off; `tune_live_*`,
+  off at 0 s and on while the body runs). Their scenarios: `fear_*` (fear), `protect_near_*` and `protect_phase_*` (staying down,
   lowering, and a blow, a push and a hold in those phases; the body is made afraid by a tap of 35 N*s into the pelvis, under
   `protect_from_ns`, so that it is no blow into the groin), `protect_hit_*` (the cover of the struck place after a hit while lying
   or rising: the head, the trunk, the groin, a leg), `command_*`; and the offered hand (`behaviour.give_hand`, step 8's rest):
@@ -223,7 +227,7 @@ targets are read from the recording frame for frame, with nothing worked out in 
 - Before that the hands wait on the first frame's targets, and after the last frame they stay on its targets.
 - A recording is made of points of the world. Against a body that does not move as the session's did, the hands
   reach for where that body was.
-- `effectors.recording` in `metrics.json` has the file, its frames and the frame it started on.
+- `metrics.json` has the file, its frames and the frame it started on under `effectors`, in `recording`.
 
 A recording is made in a session: `Tools\play.ps1 -Record <name>` records from the first frame, the K key ends
 a recording and starts the next. Each is written to `Saved\Recordings\<name>\`: `<name>.recording.json`,
@@ -296,7 +300,8 @@ and a foot through it, and neither touches anything.
 An `effector` event may say `"at_bone": "spine_04"`: its keys after the first are then measured from where
 that body of the character is (its centre of mass) at the moment the event begins, along the world's axes, and
 the first key is where the hand waits until then, in the world. For a hand that has to find a body wherever a
-fall has put it (`grab_getup_held`; `Tools\getup-stand.ps1 -HoldHands`). The body's place is read once, as the
+fall has put it: a scenario that starts with a fall, and any measurement on many falls (`grab_getup_held`;
+`Tools\getup-stand.ps1 -HoldHands`); a hand sent to a point of the world slides off a body that moves. The body's place is read once, as the
 event begins: let the body come to rest first. A later event of the same hand begins, as always, with a jump
 of the target to its own first key, which is a place in the world whether or not that event has `at_bone`: write
 it where the hand will be. A name that is no body of the character is an error in the log and fails the run
@@ -369,8 +374,7 @@ The `strike_*` scenarios are a hand's or a foot's target sent in a straight line
 standing character and back: a slap at 6 m/s on the head, the chest and a thigh (`strike_slap_head`, `_torso`,
 `_leg`); a punch at 8 m/s on the head, the chest, a thigh, a shoulder and a forearm, the thinnest body there is
 (`strike_punch_head`, `_torso`, `_leg`, `_shoulder`, `_forearm`, and `_forearm_heights` at four more heights); a
-punch at 6 m/s that stays 0.1 s in the belly (`strike_punch_belly_falls`, called `strike_punch_belly_steps` until
-26 November 2026); and a kick at about 8 m/s into the
+punch at 6 m/s that stays 0.1 s in the belly (`strike_punch_belly_falls`); and a kick at about 8 m/s into the
 belly, the head, a thigh and a calf (`strike_kick_torso`, `strike_kick_torso_through_falls`,
 `strike_kick_head_knockdown`, `strike_kick_thigh`, `strike_kick_calf`). The speed is in the keys (distance over
 time); the hand arrives a little faster than its target, because it has to catch up with it (6.25 and 8.87 m/s).
@@ -489,9 +493,8 @@ anything (`effectors_not_tunnelled`).
 
 ## The whole set
 
-`Tools\suite.ps1` runs every scenario of this directory, eight at a time (`-Parallel`): 127 scenarios in about
-48 s; `stand_npc_10min`, over 60 s, only with `-Long` (about 90 s in all). The
-runs do not depend on each other and each has its own fixed timestep, so their results are the same as
+`Tools\suite.ps1` runs every scenario of this directory, eight at a time (`-Parallel`); `stand_npc_10min`, over 60 s,
+only with `-Long` (times: [`CLAUDE.md`, "Commands"](../CLAUDE.md#commands)). The runs do not depend on each other and each has its own fixed timestep, so their results are the same as
 when run one after another; only the wall-clock figures differ. It holds the whole set to two limits on top
 of each scenario's own expectations, and prints the worst scenario of each: no simulated body's joints
 stretch by more than 2 cm, and no scenario's physics step takes more than 1.5 ms on average.
@@ -499,7 +502,7 @@ stretch by more than 2 cm, and no scenario's physics step takes more than 1.5 ms
 The physics step is timed by the clock, and a run that shares the processor with seven others reads about
 twice as long as it is. A scenario that is over a step limit after the parallel pass is therefore run again
 by itself, and that run counts. Sharing never makes a step read shorter, so nothing over the limit slips
-through; for figures to write down, use `-Parallel 1` (6.5 minutes).
+through; for figures to write down, use `-Parallel 1`.
 
 `Tools\baseline.ps1 -Save <name>` keeps the results of the latest suite run under `Saved\Baselines\<name>`,
 and `-Compare <name>` says which scenarios have other hashes now and what else moved in them (states,
@@ -541,8 +544,7 @@ last input, where an input is a scripted impulse, a pin, a console command, a tu
 touching something. A body under control is watched only while it is `falling` or `lying`: upright, its
 muscles and the assist hold it up and that is no fault. What the figure catches is a body thrown back up by
 the solver or by its own muscles: a passive NPC dropped from 1.5 m lands with a foot 8.3 cm inside the
-floor, and being pushed out again gives it 149 J (`drop_npc`, measured in M3 part 5 on the body of 18; 130 J on the body of
-19, baseline `led`; `Specs/README.md`); an 80 kg
+floor, and being pushed out again gives it over 100 J (`drop_npc`; `Specs/README.md`); an 80 kg
 body lifted by 1 cm is 7.8 J.
 
 **The fall** (`control.fall`): when the controller let the body go (`started_t`), how long after that it
@@ -605,34 +607,28 @@ muscle (`error_worst_deg`, `error_worst_joint`; a collarbone under the arm's wei
 
 **Get-ups** (`control.get_up`, in a run with `"get_up": true`): how many times the body began to get up and how many
 ended standing (`attempts`, `successes`); the last attempt's clip, when it began and how long it took to stand
-(`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`; under the led
-get-up, the only one since R2's rest, the clip stands still only while the muscles come up, while a press holds the body
-down and at its end until the body is upright on both feet; the waits by kind `behind_height_s`, `behind_side_s` and
-`behind_foot_s` went with the clip-following path, `behind_held_s` stays), and why the
+(`started_s`, `duration_s`, -1 if it did not), how long its clip waited for the body in all (`stall_s`: the clip stands
+still only while the muscles come up, while a press holds the body down and at its end until the body is upright on both
+feet; by why: `paused_ease_s`, `paused_behind_s`, `paused_end_s`) and while a press held it down (`behind_held_s`), and why the
 last attempt that was given up was given up (`given_up`); hits felt while getting up (`hits`) and the most the body
 was pressed with (`pressed_max_n`: the force felt in every frame of `reactions.held_push_s`, which is what
 `getup.hold_force_n` is compared with); and what the assist did over all the time spent getting up (`seconds`): its
-commanded force over body weight, mean and largest (`assist_force_share_mean` 0.25 to 0.28 since M3 part 7, 0.44 to
-0.49 before: the clip-following get-up, before R1; under the led get-up the world's pull of `getup.carry_*` counts in
-the share, 1.16 of body weight in R1), and its largest torque share. Since R2's step 2 (decision 17): of the attempts
-that asked for the led get-up, those that were led and those that were not (`led_attempts`, `not_led_attempts`), and why
-the last of those was not (`not_led`); such a run fails, whatever it expects, on a check of its own, `get_up_led` (since
-R2's rest such an attempt is given up, `not_led`, and the body stays down). Since
-R2's step 3: how long a hand held the body while it got up and its largest pull (`held_s`, `hold_max_n`), the slowest
-pace of the clip under `getup.hold_by_body` (`pace_min`, 1 without it) and when the first attempt began
-(`first_started_s`). Since R2's step 4: the least of the carry's share the hits left (`hit_free_min`, under
-`getup.hit_by_impulse`; 1 without it) and the farthest a struck body's centre of mass got from where the carry has it within
-a second of a hit while led (`hit_off_cm`, in every mode). Since 27 November: the reference's own shape as its pelvis first
+commanded force over body weight, mean and largest (`assist_force_share_mean`; the world's pull of `getup.carry_*` counts
+in the share), and its largest torque share. Of the attempts, those that were led and those that were not (`led_attempts`,
+`not_led_attempts`), and why the last of those was not (`not_led`); such an attempt is given up and the body stays down, and
+the run fails, whatever it expects, on a check of its own, `get_up_led` (decision 17). How long a hand held the body while it got up and its largest pull (`held_s`, `hold_max_n`), the slowest
+pace of the clip under the holds and the press (`pace_min`) and when the first attempt began
+(`first_started_s`). The least of the carry's share the hits left (`hit_free_min`) and the farthest a struck body's centre of mass got from where the carry has it within
+a second of a hit while led (`hit_off_cm`, in every mode). The reference's own shape as its pelvis first
 passes 70 cm (`rise_clip_trunk_deg`, `rise_clip_feet_cm`; beside `rise_trunk_deg` and `rise_feet_cm`, the body's), which says
 whether a lean is the clip's or the body's; -1 for an attempt that was not led or whose reference never got that high.
-Since R2's step 8 (`docs/recon/r2_step8_plan.md`): `starts`, how every attempt began, in order: when (`at_s`), the clip's
+`starts`, how every attempt began, in order: when (`at_s`), the clip's
 key (`clip`; `|mirror` at its end for a mirror image, `mirrored`) and the time in it the attempt began from (`time_s`); read
 only, how far the clip as laid stood from the body as it lay: the clip's pelvis from the body's
 (`pelvis_off_cm`), the weighted root mean square of the distances of the bones the motion library compares, by
 `getup.match_*`'s weights (`off_cm`; the matcher's own measure, worked out for whatever clip and frame the attempt took), and
 the mean angle over the joints between the body's pose and the clip's (`pose_deg`); how it ended (`ended_s`, `ended`:
-`stood` or why it was given up; -1 and empty while it goes on); and the matcher's choice (`matched` true; every start since
-R2's rest): its cost and the cost's parts (`cost_cm`, `places_cm`, `up_deg`), its turn about the vertical (`yaw_deg`), the next
+`stood` or why it was given up; -1 and empty while it goes on); and the matcher's choice (`matched`): its cost and the cost's parts (`cost_cm`, `places_cm`, `up_deg`), its turn about the vertical (`yaw_deg`), the next
 best variant that might have been chosen (`next`, `next_cost_cm`), and the nearest of every get-up of the library and of the
 rolls, chosen or not (`best_any`, `best_any_cost_cm`, `best_roll`, `best_roll_cost_cm`).
 Every roll before a clip (`control.get_up.rolls`, R2's step 9, `getup.roll` 1), in order: when it began (`at_s`), which side lay
@@ -848,10 +844,9 @@ it is down and nearly still it lies and lets its muscles go.
 
 The scenarios: `push_chest_80_steps` and `push_pelvis_80_side_steps` (a step forward, steps across),
 `stagger_rest_off_support` (crossed legs after steps across: a third step out of them),
-`effector_push_chest_steps` (a hand pushes the chest 70 cm back: the body backs away and stands; it was once named
-`effector_push_chest_falls`), `effector_push_chest_falls` as it is now (a hand that goes on through the chest, 2.2 m
-at 1 m/s, and holds there for a second: the body is felled and lies), `push_thigh_200_stumbles` (200 N*s on a thigh is run off in four steps; it used to
-be `push_thigh_200_falls`), and three falls after 200 N*s on the chest: `hit_chest_200_falls` (backward),
+`effector_push_chest_steps` (a hand pushes the chest 70 cm back: the body backs away and stands),
+`effector_push_chest_falls` (a hand that goes on through the chest, 2.2 m at 1 m/s, and holds there for a second: the
+body is felled and lies), `push_thigh_200_stumbles` (200 N*s on a thigh is run off in four steps), and three falls after 200 N*s on the chest: `hit_chest_200_falls` (backward),
 `hit_chest_200_forward_falls` and `hit_chest_200_side_falls`.
 
 To look at a motion rather than at its numbers, `Tools\film.ps1 -Name hit_chest_200_falls -Times
@@ -859,7 +854,8 @@ To look at a motion rather than at its numbers, `Tools\film.ps1 -Name hit_chest_
 `Saved\Films\<name>\sheet.png` (`-Camera side|front|back|quarter` or a location and a point to look at,
 `-Events <file>` for other events, `-Tune`, `-Overlay`). A body that passes every check can still move like a
 statue: the arms held out, a fall like a plank and a body frozen in a lunge all passed the suite.
-## Push matrix
+
+## The stand of falls
 
 The stand of falls and get-ups, `Tools\getup-stand.ps1`, generates its scenarios the same way: 50 falls drawn
 from a seed (26 on the bare floor, 8 each near a wall, the table and the chair of `Specs\rooms\getup_room.json`),
@@ -871,18 +867,19 @@ its arms, out as it appears, would touch a piece or a wall, and has the falls at
 quarters, reporting how near to the furniture each came. It prints one row a fall and the share that stand
 (`-Film failed` for a sheet of pictures of each that does not, `-Film "36,42"` of those trials). With `-PressN 300`
 every fallen body is also pressed down on the pelvis with that force from 5 to 25 s, and the stand counts the
-bodies that stood while they were pressed: what a hand does to a get-up, asked of 50 falls and not of one (under
-300 N 15 of 50 stand with the led get-up; on the clip-following get-up before it one of four, 39 of 150, on the head
-body, and under 600 N none: `getup.hold_force_n`).
+bodies that stood while they were pressed: what a hand does to a get-up, asked of 50 falls and not of one
+(`getup.hold_force_n`). The other options are in [`CLAUDE.md`, "Commands"](../CLAUDE.md#commands).
 
 To look at what a recorded clip asks of the body, `Tools\clip-film.ps1 -Clip M_ragdoll_getup_stand_B -ClipTimes
 "0,0.4,0.8,1.2,1.6,2.0,2.5" -Carry -RaiseCm 60`: the body hangs by its welded pelvis, is asked for the clip's pose
 at each time in turn, and a picture is taken of each (`-Carry` turns and moves the pelvis as the clip does;
 without it the pelvis stays upright).
 
+## Push matrix
+
 `Tools\push-matrix.ps1` pushes the standing NPC with every combination of impulse (10, 30, 80, 200 N*s),
 body (head, chest, pelvis, both thighs) and direction (8), 160 runs, eight engine processes that take the
-runs from one queue, in about 50 seconds.
+runs from one queue.
 It generates one scenario per push under `Saved\Matrix\push\scenarios`, runs them with
 `Tools\scenario.ps1 -File`, names the outcome of each push and writes `Saved\Matrix\push\matrix.json`.
 

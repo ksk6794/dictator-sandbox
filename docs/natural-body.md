@@ -1,6 +1,6 @@
 # The natural body: requirements and plan
 
-Proposed on 25 November 2026. **Since 26 November 2026 this track's order of work is replaced by the second architecture of the active ragdoll** (`docs/active-ragdoll.md`): its section 8 is the one order of work of the project and says where each part below went (the owner's decision of 26 November), and the project's status is in `docs/PRD.md`, "Status". The criteria C1 to C26 and the human figures stay here as measures; C1 and C2 became budgets of authority. **What was done:** N1 and the reconnaissance before N8 and N2 (25 November); N8 A, the head as a body of its own, the default body since 26 November; four of N2's jump repairs, on since 26 November; N2's weight torques, N3's joints and tone, N4's delay, N5's perception, gaze, anticipation and guard, N6's hand target and reach, N8 B's fingers and about 25 variants of N7's get-up, built behind switches that are off (N5's in the session with `Tools\play.ps1 -Perception`). Each part's section says how it ended and where its open steps went; the measurements are in `docs/testing.md`. The same text is the tab "Natural body" of the plan in Claude Docs, and the two are kept in step by hand, as `docs/PRD.md` and its document are. Every figure in a criterion is a proposal for the owner to set (set so far: C19 to C21 and C27 for R2, `docs/active-ragdoll.md`, decision 16; C25's baseline, decision 15 below). **On 27 November 2026** the owner's new requirements (`docs/PRD.md`, FR-44 to FR-55: an arm yanked and pulled, a kick at a leg, a lift and a throw, protection on the floor, commands, a seated body, the groin, the solar plexus and the face) brought the criteria C28 to C40 and their human figures (C27 is in `docs/active-ragdoll.md`); where they are built is `docs/active-ragdoll.md`, section 8, with a new part R10 after R3 (the owner's decision 40 there, 27 November).
+Proposed on 25 November 2026. **Since 26 November 2026 this track's order of work is replaced by the second architecture of the active ragdoll** (decision 8 of [`docs/active-ragdoll.md`](active-ragdoll.md#10-decisions-for-the-owner)): [its section 8](active-ragdoll.md#8-order-of-work-and-plan-of-parts) is the one order of work of the project and says where each part below went; the project's status is [`docs/PRD.md`, "Status"](PRD.md#status); the measurements are in [`docs/testing.md`](testing.md). What stays here: the criteria C1 to C26 and C28 to C40 with their human figures (C27 is in [`docs/active-ragdoll.md`, section 6](active-ragdoll.md#6-requirements)), as measures; C1 and C2 became budgets of authority. Every figure in a criterion is a proposal for the owner to set unless a decision names it. The parts N1 to N9 below are the designs as written on 25 November, each with a line on where it went; their scenarios and steps are plans, and what was built is in `Scenarios/` and `docs/testing.md`. The same text is the tab "Natural body" of the plan in Claude Docs, kept in step by hand.
 
 The NPC's body is physically honest and stable, but nothing yet measures whether it moves and reacts like a living person. This plan defines what natural means in figures and lays out nine parts, N1 to N9, that take the body there. It is a proposal: every figure in a criterion is for the owner to set.
 
@@ -39,12 +39,12 @@ The body stands, steps, falls and gets up under full simulation and passes every
 | --- | --- | --- |
 | Model | 18 bodies, 17 joints, 80 kg by de Leva's fractions, limits from clinical ranges, left and right mirrored. Head and neck are one body (`neck_01`), each foot is one box, there are no finger bodies. **Since 26 November 19 bodies and 18 joints:** the head is a body of its own on a second joint (`head`), and the body before it is `Specs/physics/npc_body_neck.json` | `Specs/physics/npc_body.json` |
 | Muscles | One spring-damper per joint through Physics Control, in force mode. Four groups: spine 600 N·m/rad (cap 300 N·m), neck 40 (50), arms 40 (80), legs 800 (250); other values per state | `muscles.*`, `states.*` in `Config/Tuning/body.json` |
-| Assist | World-space springs on pelvis, chest, head and feet. Standing: 0.0063 of body weight. Stagger: no horizontal pull, an upright torque on the pelvis of up to 150 N·m. Get-up: 0.27 of body weight (90 N on the pelvis, 30 N a foot). Since 26 November the get-up is led: the world pulls every body toward the clip, 1.16 of body weight on average (R1, `getup.carry`) | `assist.*` |
+| Assist | World-space springs on pelvis, chest, head and feet. Standing: 0.0063 of body weight. Stagger: no horizontal pull, an upright torque on the pelvis of up to 150 N·m. Get-up: 0.27 of body weight (90 N on the pelvis, 30 N a foot). Since 26 November the get-up is led: the world pulls every body toward the clip, 1.16 of body weight on average (R1, `getup.carry_*`) | `assist.*` |
 | Balance | Capture point; ankle and hip strategies as turns of the leg targets; recovery steps that are re-aimed and may cross; regrouping steps; arms thrown the way the body tips; a lean into a held push | `USandboxBodyController::UpdateStrategies`, `UpdateStep`, `UpdateRegroup` |
 | Reactions | Flinch on the tick after the hit: a pose offset, the struck part gives way, its group is at 0.3 of its strength for 0.35 s. Doubling over from 40 N·s into the belly. Knockdown from 35 N·s on the head. A stream of events. Holds are told to the body and used for nothing (since 25 November, `reactions.hold_felt` 1: a hold counts as a push that is kept up, for the lean, the step and a pressed get-up; since 26 November it also takes the led get-up's pull away in proportion) | `FeelFrame`, `UpdatePoseTurns`, `TellHolds` |
 | Poses | A stance; three fall poses, one chosen as the fall starts; get-up by four recorded clips; breathing and sway from the loop `MM_Idle` | `Config/Tuning/poses.json`, `FSandboxClipPose`, `FSandboxIdleMotion` |
 | Content at hand, unused | 29 more ragdoll clips of Epic's sample: reaching in nine directions, three flails, poses on the ground, injured and rolling, get-ups to a crouch, a roll, a walk and a run | `Content/Characters/UEFN_Mannequin/Animations/Ragdoll` |
-| Tools | Suite of 100 scenarios (127 on 26 November), push matrix, knockdowns, the stand of 50 falls on three seeds, grab pulls, sweeps, baselines, films, overlays. Every run records energy, penetration, joint stretch, limit violation, assist share and hashes | `Tools/`, `Scenarios/README.md` |
+| Tools | Suite of 100 scenarios, push matrix, knockdowns, the stand of 50 falls on three seeds, grab pulls, sweeps, baselines, films, overlays. Every run records energy, penetration, joint stretch, limit violation, assist share and hashes | `Tools/`, `Scenarios/README.md` |
 
 **What the films show** (the sheets under `Saved\Films`, looked at for this plan):
 
@@ -106,29 +106,25 @@ The track adds nine requirements and 26 criteria (and, on 27 November 2026, thir
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |
 | --- | --- | --- | --- | --- | --- | --- |
-| C8 | Mechanics come first | `react_passive_first`: the run with reactions and the run without are the same until the reflex delay has passed | They differ from the frame of the hit | The trunk first moves at 106 ms, the head at 142 ms | Passes | N4 |
+| C8 | Mechanics come first | The run with reactions and the run without are the same until the reflex delay has passed (N4's `react_passive_first`, not built; the scorecard reads the first change of a strength and of a target, `first_strength_change_s`, `first_target_change_s`) | They differ from the frame of the hit | The trunk first moves at 106 ms, the head at 142 ms | Passes | N4 |
 | C9 | The reflex comes at a person's delay | `first_target_change_s` after a hit that was not seen | 0.011 s, all of 8 hits | 0.07 to 0.11 s | 0.07 to 0.11 s | N4 |
 | C10 | The step comes at a person's delay | `step_lift_s` and `step_land_s` after the hit | 0.033 s and 0.30 s (80 N·s on the chest) | Lift 0.24 to 0.33 s; down by 0.44 to 0.58 s | Lift 0.20 s or later; down by 0.58 s. The owner's decision 3 | N4 |
 | C11 | A blow that is seen is met | The struck part's displacement, seen over unseen; how long before the contact the brace began | No difference; no brace before a contact | 0.6 (17 mm against 28 mm); muscles on 65 to 145 ms before | 0.7 or less; 50 ms or more, for a threat in view for 0.35 s | N5 |
-| C12 | A gesture is not taken for a blow | `false_alarms` over the owner's recordings of ordinary play | Not applicable | None | 0, or accepted one by one | N5 |
-| C13 | The body looks | Mean gaze error on a slowly moving hand; share of quiet time with the gaze on the viewer | No gaze | None | 15 degrees or less; more than half | N5 |
+| C12 | A gesture is not taken for a blow | `control.perception.false_alarms` over the owner's recordings of ordinary play | Not applicable | None | 0, or accepted one by one | N5 |
+| C13 | The body looks | Mean gaze error on a slowly moving hand (`control.perception.gaze_error_mean_deg`); share of quiet time with the gaze on the viewer (N5's `gaze_on_viewer_share`, not built) | No gaze | None | 15 degrees or less; more than half | N5 |
 
 **Falling**
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |
 | --- | --- | --- | --- | --- | --- | --- |
-| C14 | The hands meet the floor first | Share of falls forward and sideways, felled by hand, in which a hand or forearm touches before the trunk and ahead of the chest along the fall (the owner's decision 11) | 86% of 7 by hand, 80% of 5 by blows; wherever it lands 100% and 80%. The head strikes the floor all the same (C15, C16) | 98% of young adults' sideways falls | 80% or more | N6 |
-| C15 | The head stays off the floor | Share of falls by hand in which the head strikes the floor, coming down at 0.5 m/s or more (the owner's decision 12) | Strikes it at 0.5 m/s or more: 67% of 12 by hand, 50% of 8 by blows; touches it at all: 83% and 75% | 11% of young adults' sideways falls | 15% or less | N6 |
+| C14 | The hands meet the floor first | Share of falls forward and sideways, felled by hand, in which a hand or forearm touches before the trunk and ahead of the chest along the fall (the owner's decision 11; `hands_ahead_first`) | 86% of 7 by hand, 80% of 5 by blows; wherever it lands 100% and 80%. The head strikes the floor all the same (C15, C16) | 98% of young adults' sideways falls | 80% or more | N6 |
+| C15 | The head stays off the floor | Share of falls by hand in which the head strikes the floor, coming down at 0.5 m/s or more (the owner's decision 12; `head_struck`) | Strikes it at 0.5 m/s or more: 67% of 12 by hand, 50% of 8 by blows; touches it at all: 83% and 75% | 11% of young adults' sideways falls | 15% or less | N6 |
 | C16 | A head that does land, lands softly | The head's downward speed at the floor, 90th percentile, falls by hand; the same for blows of 200 N·s, reported | 4.5 m/s by hand, 2.8 m/s by blows | 1.7 m/s in a soft backward fall, 3.2 m/s in a hard one | 2.0 m/s or less by hand; under 3.2 m/s for the blows | N6 |
 | C17 | A fall still ends as M3 asked | Rest within 3 s, 40 J or less from the body's own muscles, 2 cm or less into the floor | 1.3 to 2.2 s; 5.6 to 25.5 J; 1.2 cm | None | As they are | N6 |
 
-With R3's catch, arms' curve, head and palms on (variant A, built on 27 to 28 November behind switches at 0, for the owner's look;
-`docs/active-ragdoll.md`, R3 and decisions 55 to 58; `docs/testing.md`, "R3"), on the scorecard's falls: C14 by hand 83% (83% without),
-by blows 100%; C15 by hand 9% (55%), by blows 0% (63%); C16 by hand 5.38 m/s (the forward shove by hand alone over 3.2), by blows 0.19
-m/s (3.00); C17 at rest within 2.94 s and 15.3 J by blows, 2.42 s and 27.5 J by hand. On 96 more falls C14 by hand 44% (61%), C15 by
-hand 16% (44%), by blows 29% (29%), and three blows of 160 N*s rest after 3.1 to 4.0 s. C16 by hand is not met, nor C14 by hand on the
-larger set: the forward shoves by hand throw the body nearly level and reach the floor 0.31 s after it falls. With `fall.blend` as well
-(variant B) C14 by hand is 67% on the scorecard (72% of the 96), C15 by hand 9% (12%), C16 by hand 0.52 m/s.
+C14 to C17 are R3's gates ([`docs/active-ragdoll.md`, R3](active-ragdoll.md#r3-the-fall-as-the-references-drive-it)). R3 is built
+behind switches at 0 and not switched on (decision 58 there): its variant A brings C15 down (by hand 9% of the scorecard's falls
+against 55%) but does not meet C16 by hand nor, on a larger set of 96 falls, C14 by hand; the figures are in `docs/testing.md`, "R3".
 
 **On the floor and getting up**
 
@@ -140,11 +136,9 @@ larger set: the forward shoves by hand throw the body nearly level and reach the
 | C21 | It takes as long as a person | Median time from the first move to standing, bare floor | 4.7 s in the median of 78 (3.2 to 6.4) | 2.6 to 2.9 s young; 4.2 s median at 20 to 50 years | 2.6 to 4.2 s | N7; now R2 |
 
 C19 to C21 with these limits, and C27, are R2's gate since the owner's decision of 26 November 2026 (`docs/active-ragdoll.md`,
-decision 16); C20's "45 or more" is read as 135 or more of 150 over the three seeds. With the led get-up the same day: about 12% of
-attempts given up, 149 standing and 139 at the first attempt, 3.2 s. (Corrected in the review of the audit, 26 November: 18 of
-169 attempts given up, 10.7%; a pose held up to 2.98 s, longer than 1.0 s in 5 of 150 falls; the 3.2 s is of the four `getup_*`.
-C27 on the stand: 60 degrees and 25 cm in the median, both limits met in 65 of 149. `docs/testing.md`, "The review of the audit".)
-C27 is read as the median on the stand of 150 and for each of the four clips apart (`docs/active-ragdoll.md`, decision 21).
+decisions 16 and 21); C20's "45 or more" is read as 135 or more of 150 over the three seeds; C19 to C21 are read by
+`Tools\getup-seeds.ps1` and the scorecard. **Met at R2's gate on 27 November** (decision 52 there; the figures in
+[`docs/testing.md`, "R2's gate with everything on"](testing.md#r2s-gate-with-everything-on-27-november)).
 
 **Standing, and from one time to the next**
 
@@ -170,12 +164,14 @@ the form of those above; every limit is a proposal, and where the owner's decisi
 (`docs/active-ragdoll.md`, section 10; decisions 40 to 48 all taken on 27 November 2026). "Part" is where each is built (`docs/active-ragdoll.md`,
 section 8, R10 and the notes in R4, R5, R6 and M4b; decision 40). Where no human figure was found the limit is set from the body's own
 measurement and the owner's look, and the row says so. The figures are in "Human reference figures", "Protection, pulls and commands".
+"Today" in these tables is the state on 28 November 2026, its figures in `docs/testing.md` ("R10" to "C39's slow four"); a metric
+marked "proposed" is not built yet.
 
 **Pulled, kicked, lifted and thrown (FR-44 to FR-47)**
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |
 | --- | --- | --- | --- | --- | --- | --- |
-| C28 | A yanked arm gives way before the body, and a hard yank fells it | `arm_lead_s`: from the start of a pull on a held wrist or forearm, the time the hand takes to travel 10 cm along the pull, against the time the chest takes to travel 5 cm, and how far the elbow opens toward the pull, both read within the reflex's delay (mechanics first, rule 3; what follows is `docs/active-ragdoll.md`, decisions 19 and 48); the outcome of each pull of the pull table | Not measured; with `reactions.hold_felt` a pulled limb is followed by a step and the arms go out (`Saved\Films\hold_felt.png`); of the grab's 93 pulls 2 fell | Not found | The hand first by 0.05 s or more; the elbow opens by 10 degrees or more toward the pull (set from the body and the owner's look); the pull table's fast row (4 m/s) fells it in the directions a table the owner sets with the pull table names | R4, R5 |
+| C28 | A yanked arm gives way before the body, and a hard yank fells it | `arm_lead_s` (proposed): from the start of a pull on a held wrist or forearm, the time the hand takes to travel 10 cm along the pull, against the time the chest takes to travel 5 cm, and how far the elbow opens toward the pull, both read within the reflex's delay (mechanics first, rule 3; what follows is `docs/active-ragdoll.md`, decisions 19 and 48); the outcome of each pull of the pull table | Not measured; with `reactions.hold_felt` a pulled limb is followed by a step and the arms go out (`Saved\Films\hold_felt.png`); of the grab's 93 pulls 2 fell | Not found | The hand first by 0.05 s or more; the elbow opens by 10 degrees or more toward the pull (set from the body and the owner's look); the pull table's fast row (4 m/s) fells it in the directions a table the owner sets with the pull table names | R4, R5 |
 | C29 | Pulled along, the feet keep up | A hand that pulls a standing body by the wrist at 0.5 and 1 m/s for 2 s: the first foot's lift after the pull began (`step_lift_s`), the trunk's lean toward the pull, the largest distance over the floor between the centre of mass and the middle of the support | Not measured as such; of the grab's 93 pulls 57 step, 34 stand and 2 fall | After a pull at the waist young adults lift a foot at 0.31 to 0.32 s and mostly take one side step with the leg the pull loads | A lift at 0.20 s or later and by 0.45 s; no fall at 1 m/s or less; the centre of mass back over the support within 1 s of each landing | R4, R5 |
 | C30 | A kick at a leg: a weak one is stood, a strong one fells | The sweep table: the kick at the shin, the calf and the knee from the front, behind, outside and inside, at three speeds; the outcome of each (stood, stepped, fell) and the impulse the leg felt | The kick into the thigh 108 N·s and three to six steps, into the calf 73 to 75 N·s and five steps; none fells | Not found for a standing person (trip studies are of walking) | The owner's table of outcomes (decision 43); the outcome decided by the mechanics, as the push matrix's is | M4 (rest), R4 |
 | C31 | Lifting the body is an effort that shows | Two hands that hold the chest of a standing body and rise 30 cm at 0.3 m/s: the hands' gap to their targets (`hands.csv`), how fast the pelvis rises, the feet's load, the force the grab's joints carry (what the controllers' vibration follows in a session; a scenario has no pawn) | Two hands of 300 N lift a lying body's chest to 34 cm and slip; on a standing body 600 N of 785 leave 185 N on the feet (worked out, not measured) | Not found | The hands 10 cm or more behind their targets while they carry more than half the weight; nothing launches; how much may be lifted is set after measuring 300, 400 and 450 N a hand (decision 46) | M4 (rest) |
@@ -185,9 +181,9 @@ measurement and the owner's look, and the row says so. The figures are in "Human
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |
 | --- | --- | --- | --- | --- | --- | --- |
-| C33 | A body the player stands over stays down, and one that was rising lowers itself | A body the player has felled or hit within `behaviour.fear_fade_s` (afraid, decision 41), with the player within `behaviour.near_cm`: attempts begun. An attempt under way when the player comes near: the time to its end, and the pelvis's and the head's downward speed as the body goes down | R10's `behaviour.fear` and `stay_down` on in the files since the owner's decision 67 (28 November): on the stand of 150 with a viewer at 70 cm, three seeds, no attempt begun afraid with it near; 50 turned back within 0.16 s; the head down at 1.86 m/s at most, the pelvis at 0.94 (met; the same runs at the window's end) | A simple reaction to something seen takes 213 to 231 ms | No attempt begun while the player is near and the body is afraid (decision 41); an attempt given up within 0.5 s; the head under C16's 2.0 m/s and the pelvis under 1.0 m/s at the floor (set from the body) | R10 |
-| C34 | The protective pose covers the place | In the protective pose: the gap from the nearer point of each forearm or hand to the place it protects (the face and the head, the chest and the belly, the groin, a leg); the time from the hit or the threat to the pose | Upright, the guard raises one forearm before a fist held at the face in 0.5 s (behind `perception.guard`). On the floor (R10, `behaviour.protect`, on in the files since 28 November): after a hit of 15 N*s on the head lying or kneeling both forearms within 15 cm of it after 0.51 s; 50 N*s on the trunk one within 10 cm after 0.52 to 0.56 s; a leg lying 0.36 s, kneeling 1.07 s (a faster cover's blend made it later, `docs/testing.md`); the groin 0.50 s; held 3 s. Since decision 73 (a leg's cover waits 0.15 s for a hand's hold): a leg lying 0.17 s, kneeling 0.56 s (met) | Not found (covering up is described, not measured) | One forearm within 10 cm of the place within 0.6 s of the hit, both within 15 cm for the head; held for `behaviour.protect_hold_s`; the targets never jump (C25) | R10, R5 |
-| C35 | Dragged, it struggles by chance and breaks free by mechanics | On the stand of drags on three seeds (two hands that drag it 2 m by the ankles or the wrists; one hand does not move a lying body): the share of drags in which it struggles (drawn once a drag); of its attempts, the share after which every grip has let go, less the share of the same drags with the struggle off in which the grips let go by themselves; for each grip that came off, the rule that let it go; the time from free to standing | Dragged by two hands it lies on its muscles alone (decision 18); one hand moves it 6 cm and its grip slips (`grab_drag_fallen_one`). R10's struggle (28 November, behind `behaviour.struggle` at 0): drawn once a drag, attempts that pull the held limbs in and dig the free heels in. With a leg a hand holds no longer covered (decision 73), on twenty seeds: drawn in 9 of 20 drags of each kind; by the ankles every attempt frees the body by the grips' own rule (command jumps up to 287 N*m), by the wrists none (the hands lag 20 cm of the grip's 45); 9 of 18 in all; standing 4.6 to 5.8 s after free; to switch on: decision 72, the owner's | Not found | Struggles in 40 to 60% of drags (the owner's 50%); 35 to 65% of attempts free it, counted so (decision 44); no grip opened by anything but its own rules; free with the player away, standing in C21's time | R10, R6 |
+| C33 | A body the player stands over stays down, and one that was rising lowers itself | A body the player has felled or hit within `behaviour.fear_fade_s` (afraid, decision 41), with the player within `behaviour.near_cm`: attempts begun. An attempt under way when the player comes near: the time to its end, and the pelvis's and the head's downward speed as the body goes down (`control.behaviour.begun_near_afraid`, `lowerings`; `Tools\getup-stand.ps1 -Near 70` on three seeds) | Met (R10, `behaviour.fear` and `stay_down` on, decision 67): no attempt begun afraid with the viewer near; 50 turned back within 0.16 s; the head down at 1.86 m/s at most, the pelvis at 0.94 | A simple reaction to something seen takes 213 to 231 ms | No attempt begun while the player is near and the body is afraid (decision 41); an attempt given up within 0.5 s; the head under C16's 2.0 m/s and the pelvis under 1.0 m/s at the floor (set from the body) | R10 |
+| C34 | The protective pose covers the place | In the protective pose: the gap from the nearer point of each forearm or hand to the place it protects (the face and the head, the chest and the belly, the groin, a leg); the time from the hit or the threat to the pose (`control.behaviour.covers`: `one_within_s`, `both_within_s`, `gap_left_cm`, `gap_right_cm`) | Met on the floor (R10, `behaviour.protect` on, and `protect_held_leg`, decision 73): the head 0.51 s, the trunk 0.52 to 0.56 s, the groin 0.50 s, a leg 0.17 s lying and 0.56 s kneeling; held 3 s. Upright, the guard raises one forearm before a fist held at the face in 0.5 s (behind `perception.guard` 0) | Not found (covering up is described, not measured) | One forearm within 10 cm of the place within 0.6 s of the hit, both within 15 cm for the head; held for `behaviour.protect_hold_s`; the targets never jump (C25) | R10, R5 |
+| C35 | Dragged, it struggles by chance and breaks free by mechanics | On the stand of drags on three seeds (two hands that drag it 2 m by the ankles or the wrists; one hand does not move a lying body): the share of drags in which it struggles (drawn once a drag); of its attempts, the share after which every grip has let go, less the share of the same drags with the struggle off in which the grips let go by themselves; for each grip that came off, the rule that let it go; the time from free to standing (`control.behaviour.struggles`; `drag_lying_*_struggles` and `drag_lying_*_still` on twenty seeds) | Not met with the struggle at 0 (`behaviour.struggle`, decision 72, the owner's): dragged, it lies on its muscles alone (decision 18). With it on: drawn in 9 of 20 drags of each kind; by the ankles every attempt frees the body by the grips' own rule, by the wrists none; 9 of 18 in all; standing 4.6 to 5.8 s after free; within C25 | Not found | Struggles in 40 to 60% of drags (the owner's 50%); 35 to 65% of attempts free it, counted so (decision 44); no grip opened by anything but its own rules; free with the player away, standing in C21's time | R10, R6 |
 
 **Upright protection: the groin, the solar plexus and the face (FR-54, FR-55)**
 
@@ -201,7 +197,7 @@ measurement and the owner's look, and the row says so. The figures are in "Human
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |
 | --- | --- | --- | --- | --- | --- | --- |
-| C39 | A command is taken up in a person's time, then done or refused with a reason | `control.commands`: the time from the command to the first change of a target; done, refused (and why) or interrupted; for `get_up`, C21; for `give_hand`, the hand's gap to the player's nearest open hand; for `jump` (hopping in place until stopped), the feet's height and the hops' rate | R10, `behaviour.commands` on in the files since 28 November: `get_up` and `stop` by the console, the desktop's U and J and the right controller's A and B; the afraid body told to get up with the player near first moves 0.97 s after and stands; on 150 lying poses (`getup-stand.ps1 -Near 70 -CommandAtS 3`, three seeds) 0.49 s in the median, 146 of 150 within 1.0 s (at most 1.74), all 150 standing; since decision 74 (the cover let go 0.3 s after the word, the first change of a target) all 150 at 0.30 s, 149 standing in the end. `give_hand` (H, X; `behaviour.give_hand` on): the arm reaches 0.30 s after the command and comes within 7 to 8 cm of the player's open hand; taken, it gets up on it in 4.2 s (`command_give_hand_lying`) | A simple reaction to a light 213 to 231 ms; to a spoken word not found. Hopping in place: 2.2 hops a second preferred, 2.0 to 2.9 across studies | The first motion within 0.2 to 1.0 s; give a hand: within 10 cm of the player's hand within 1.5 s; jump (M4b): the feet 5 cm or more off the floor, landing standing, 2.0 to 2.9 hops a second | R10, M4b |
+| C39 | A command is taken up in a person's time, then done or refused with a reason | `control.commands`: the time from the command to the first change of a target; done, refused (and why) or interrupted; for `get_up`, C21; for `give_hand`, the hand's gap to the player's nearest open hand; for `jump` (hopping in place until stopped), the feet's height and the hops' rate (`control.commands`: `first_motion_s`, `answer`; `Tools\getup-stand.ps1 -Near 70 -CommandAtS 3` on three seeds) | Met for `get_up`, `stop` and `give_hand` (R10, `behaviour.commands`, `give_hand` and `command_cover_react` on, decisions 67, 71 and 74; by the console, the desktop's U, J and H, the controllers' A, B and X): on 150 lying poses all answer at 0.30 s, 149 standing in the end; the offered arm reaches 0.30 s after the command and comes within 7 to 8 cm of the player's open hand (`command_give_hand_lying`). `jump` is M4b's | A simple reaction to a light 213 to 231 ms; to a spoken word not found. Hopping in place: 2.2 hops a second preferred, 2.0 to 2.9 across studies | The first motion within 0.2 to 1.0 s; give a hand: within 10 cm of the player's hand within 1.5 s; jump (M4b): the feet 5 cm or more off the floor, landing standing, 2.0 to 2.9 hops a second | R10, M4b |
 | C40 | Seated, the seat carries the body and the seated verbs end as the owner said | The seat's share of the weight; the head pressed to the table by a hand: on the table while pressed, the body struggling; the chair kicked out: the pelvis on the floor before the trunk, the head's speed at the floor; the table pushed 30 cm toward the body: the chair goes over with it | No seated body | Sitting down in a fall backward makes the impact 18% slower | The seat carries 60% or more of the weight; the three outcomes as written in 45 or more of 50 seated starts; the head under C16's limit | M4b |
 
 **What else holds for them.** C26 grows with them: the protective pose, the abandoned rise, the struggle, the offered hand, the seated
@@ -211,7 +207,9 @@ repeats to its hashes (`CLAUDE.md`; N9's items 1 and 2, brought forward to R10);
 choice's fixed answer, as N9 has 0 mean no variation; the tables with a draw in them are run on three seeds (C23, C24). Every protective pose, the curl and the struggle are the muscles' work: the authority's budget for a body that lies is 0
 (`docs/active-ragdoll.md`, section 5), and none of them makes the body kinematic or deaf to a touch (FR-18).
 
-**Scenarios that measure them (proposed, `docs/active-ragdoll.md`, R10, R4, R5 and M4b):** `grab_yank_arm_*`, `grab_pull_along_*`
+**Scenarios that measure them (proposed, `docs/active-ragdoll.md`, R10, R4, R5 and M4b; R10's built: the `protect_near_*`,
+`protect_hit_*`, `drag_lying_*` and `command_*` in `Scenarios/`, the stand of drags and `drag_rising_wrists_falls` and
+`escape_then_waits` not made):** `grab_yank_arm_*`, `grab_pull_along_*`
 and the pull table (C28, C29); `kick_leg_*` and the sweep table (C30); `grab_lift_two_hands`, `grab_throw_standing`, `grab_throw_lying`,
 `grab_throw_rising` (C31, C32);
 `protect_near_lying`, `protect_near_rising_sit`, `_knees`, `_rise` (C33); `protect_hit_lying_head`, `_trunk`, `_groin`, `_legs` and the
@@ -313,7 +311,8 @@ quoted by a review is marked so.
 - **The body answers about ten times too soon.** 11 ms to the flinch against 70 to 110 ms; a foot lifting within tens of milliseconds against 240 to 330 ms.
 - **Its ankles are about three times as stiff as a person's.** 800 N·m/rad a leg, where m·g·h for both legs together is 637 (measured in N1; 785 was assumed when this was written).
 - **Its wrist and neck are stiffer than relaxed ones** (40 N·m/rad against 3 to 4 passive at the wrist and 24 at the neck), **and its wrist, elbow and ankle are stronger than a man's** (caps of 80, 80 and 250 N·m against 25, 51 and 112).
-- **Its get-up is slower than a young adult's** (4.1 to 5.7 s against 2.6 to 2.9 s) and inside the range of adults up to 50.
+- **Its get-up is slower than a young adult's** (4.1 to 5.7 s against 2.6 to 2.9 s) and inside the range of adults up to 50. (These
+  are of 25 November; since R2 a get-up takes 3.2 s in the median.)
 
 ### Not found
 
@@ -325,8 +324,7 @@ Not found on 27 November 2026, for C28 to C40: how a person covers up when struc
 
 The parts are numbered as they were first discussed, by what they give.
 
-**The order of work is no longer here.** Since 26 November 2026 it is `docs/active-ragdoll.md`, section 8, the one order of the project, with a table of where each part of this track went (the owner's decision of 26 November): N2, N3 and N4 to R4 (N2's forces through the legs in a get-up also to R7, N4's hand to the struck place to R5), N5 to R5 and R6,
-N6 to R3, N7 to R1 (done), R2, R6 and R7, N9 to R9; N8 B's fingers are shown in R2 and R3, and N8 D's toes are decided before R4. The order this track had (decision 1 of 25 November) is in the table below. Its reason holds in the new order too: walking, sitting and righting a chair (M4b) come after the soft body (R4) and after the authority comes down (R7), so that they are not tuned twice.
+**The order of work is no longer here.** Since 26 November 2026 it is [`docs/active-ragdoll.md`, section 8](active-ragdoll.md#8-order-of-work-and-plan-of-parts), with its table of where each part of this track went ([`Where each part of the natural-body track went`](active-ragdoll.md#where-each-part-of-the-natural-body-track-went)). The order this track had (decision 1 of 25 November) is in the table below. Its reason holds in the new order too: walking, sitting and righting a chair (M4b) come after the soft body (R4) and after the authority comes down (R7), so that they are not tuned twice.
 
 **Decisions for the owner.** Each is put one at a time when its part begins; the recommended answer is first.
 
@@ -507,7 +505,7 @@ A unit test holds the arithmetic: a two-link arm against its analytic torques, a
 
 **First, before step 2: the jumps of a step (decision 13).** The leg's frame, the foot's level and the ankle's limit at a lift, together; then, one by one, the swing strength dropped at a landing, the first placement's reach, the settling's height and the strengths and legs let go as a fall begins. Its own baseline before and after; each correction alone on the suite, the push matrix and the stand on three seeds, with films; a scenario that then fails (`strike_kick_thigh` did in the trial) is read, not loosened. What the trials showed is in `docs/testing.md`, "The natural body, reconnaissance".
 
-**The night of 25 to 26 November (for the owner to confirm):** the jumps' corrections are built behind eight values at 0; no set meets every limit; "all but reach", after an independent reader's repairs, takes the largest jump to 352 N*m and the scenarios over 200 N*m from 39 to 7 (15 before those repairs), keeps the matrix (160) and the stand (148, 131), and changes two scenarios; the film of the first (a hand kept on the chest) shows it worse: the body goes on stepping, turns aside and ends mid-step with its legs crossed, where today it brings its feet together (`docs/testing.md`, "N2 first"). Steps 1 and 2 are built behind shares at 0 and are not usable: the torque given from outside arrives 1.6 to 1.7 times over (the solver's inertia conditioning), given through the drive it arrives whole (the "65 to 100%" first written was the spring's figure, not the arm: the hand ends where a stiff arm holds it), and with every share at 1 the suite fails 14 and the matrix fails ("N2 step 1 and 2"). The next step is what fails with the shares on (R4's since 26 November). **Four of the repairs are on since the owner's decision of 26 November** (`balance.lift_smooth` 1, `release_smooth` 1, `land_ease_s` 0.05, `fall_ease_s` 0.1; on the head as the default body): the largest jump 512 to 439 N*m. `settle_smooth` stays off: with it, lift and land a body brought its feet together after a stagger and fell (`effector_hit_head`), and a blow on the head from behind and aside took two steps (`docs/testing.md`, "N2: four repairs on").
+**How it ended** (`docs/testing.md`, "N2 first", "N2 step 1 and 2", "N2: four of the jumps' repairs on"): the jumps' corrections were built behind values at 0, and four are on since the owner's decision of 26 November (`balance.lift_smooth` 1, `release_smooth` 1, `land_ease_s` 0.05, `fall_ease_s` 0.1: the largest jump 512 to 439 N*m); `settle_smooth` stays 0. Steps 1 and 2 are built behind `muscles.<group>.weight_share` at 0 and not usable yet: given through the drive the torque arrives whole, but with every share at 1 the suite fails 14 and the matrix fails. The rest is R4's.
 
 0. Read N1's compliance and effort tables against the human figures; write down which joints are stiffer than a person's and by how much; agree the scope with the owner.
 1. `FSandboxWeightTorques` with its unit tests.
@@ -580,7 +578,7 @@ N3 gives every joint its own strength and gives the body a tone: how tense it is
 
 ### Steps
 
-**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N3"):** steps 1, 3 and 5 are built and neutral (the hashes of `hold`). Step 2 does not meet its limits and nothing is changed: a man's ankle lets a forward knockdown rest after 3 s, and weaker arms cost the stand 3 to 11 first attempts. With the levels proposed that night, C6 is met for the forearm (3.4 times) and not for the chest (1.3); step 4's relaxed arms swing less, not more, with their damping at 0.7 (it wants to be near the stiffness's share); the brace keeps the push matrix at 159 of 160 (the cell on a threshold); the daze changes nothing in the steps after a second hit.
+**How it ended** (`docs/testing.md`, "N3"): steps 1, 3 and 5 are built and neutral (`muscles.joints.*` scales at 1, every `tone.*` level 1); step 2's caps from the published torques cost the stand 3 to 11 first attempts and are not set; the daze did nothing and went in R2's step 0. The rest is R4's.
 
 1. Values joint by joint, all neutral: the baseline's hashes.
 2. Caps from the published torques; "Must hold"; the joints at their cap in a get-up listed.
@@ -655,7 +653,7 @@ A body that waits catches less: the capture point runs away by e^(ωt), about 1.
 
 ### Steps
 
-**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N4 step 1"):** the reflex's clock is built behind `reactions.reflex_delay_s` (0); the step's and the intent's are not. At 0.08 s the first change of a target comes at 0.100 s instead of 0.011, a second hit does not restart the clock, the knockdowns pass; the push matrix is 156, 155 and 153 of 160 at 0.05, 0.08 and 0.11 (cells that want a step end "held" while the assist holds the waiting body) and the stand is 145 and 120: the second risk in the table above, with its fallback (after N2's step 5, which is R4's since 26 November). Made again after an independent reading (the assist lets go at the hit, as in a flinch): matrix 155 to 156, the stand 150 and 127, the knockdowns by a blow 6 of 8. Off. **Put off by the owner's decision of 26 November (question 5) until N2's step 5** (the assist as torques of the legs): while the body waits for its reflex the world's assist holds it, whatever the delay.
+**How it ended** (`docs/testing.md`, "N4 step 1", "N4 put off and N5 in the session"): the reflex's clock is built behind `reactions.reflex_delay_s` (0); the step's and the intent's are not. With a delay the push matrix and the stand lose cells and first attempts, since the world's assist holds the waiting body (the second risk above). Put off by the owner on 26 November until the assist is torques of the legs: R4's.
 
 1. The three clocks and the frozen goals; `react_passive_first` first, since it proves the phase of mechanics.
 2. The step's delay and the aim with the delay counted in.
@@ -742,7 +740,7 @@ N5 lets the body see what moves near it and feel what holds it, and answer: it l
 
 ### Steps
 
-**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N5 step 1"):** step 1 is built: the run tells the body the hands, feet and things (`"perception": true` in a scenario's `body`), the body judges view, notice and threat and keeps count in `control.perception`; the hashes are the baseline's with it on and off. A hand at the face from the front is a threat 0.21 s before the contact, but the time it reckons is 0.08 s long (the hand still gathers speed), against a limit of 0.05. Step 2, the gaze, is built behind `perception.gaze` (0) and meets its limits: a hand circling a metre in front is followed with a mean error of 10.5 degrees (15 asked), the neck never at its bound and its target never jumping; the eyes do not move yet, and the head follows like a camera on a steady circle. Of step 3 the look at a hold is built (with the gaze): a forearm held at the hip is looked at as far as the neck goes, 63 degrees off on average against a limit of 20 that this geometry cannot meet; the brace of the held chain is not built. Step 4, anticipation, is built behind `perception.anticipate` (0): a slow punch seen coming is braced for 0.10 s before it lands, a fast jab is not and a hovering hand raises no alarm, but the brace does not lessen how far the chest moves (16.5 cm against 15.6 without it), so the plan's 0.7 is missed; at the face it is 0.72 (18.0 cm against 25.1), and the braced body then takes two steps. (The audit of 26 November found why the brace changes nothing: it asks for the tone level `braced`, and every `tone.*` level is 1, so only its pose acts; real levels are R4's.) Of step 5 the guarding arm is built behind `perception.guard` (0): against a fist held before the face the near forearm stands up before it, elbow down, in 0.5 s, and no target jumps; the free hand to a holder is not built. **In the session since the owner's decision of 26 November (question 6):** `Tools\play.ps1 -Perception` tells the body the hands, the foot and the things every frame and switches gaze, anticipation and the guard on for that session (the tuning files keep them off); a recording's replay sees with the same switches (`record-replay.ps1 -Perception`: 13 of 13, the pelvis 0.008 cm).
+**How it ended** (`docs/testing.md`, "N5 step 1", "N4 put off and N5 in the session"): step 1 is built (`"perception": true` in a scenario's `body`; `control.perception`; every hash kept); step 2, the gaze, behind `perception.gaze` 0, meets its limits (10.5 degrees on a circling hand); of step 3 the look at a hold; step 4, anticipation, behind `perception.anticipate` 0, braces before a seen punch but the brace changes no stiffness while every `tone.*` level is 1 (R4's, decision 12 of `docs/active-ragdoll.md`); of step 5 the guarding arm, behind `perception.guard` 0. All three are on in a session with `Tools\play.ps1 -Perception` (the owner's decision of 26 November; the files keep them at 0). The player told to the body came with R10's step 1.
 
 1. `TellSeen`, the judgement of view and threat, the measures. No behaviour yet: with perception on, the hashes are still the baseline's.
 2. Gaze.
@@ -773,7 +771,7 @@ N5 lets the body see what moves near it and feel what holds it, and answer: it l
 
 ## N6. The fall with an aim
 
-**Where it went (26 November 2026):** R3, the fall as the references drive it; the hand target stays (the guard uses it), the reach toward a point of the world is replaced (`docs/active-ragdoll.md`, section 8).
+**Where it went (26 November 2026):** R3, the fall as the references drive it; the hand target stays (the guard, the catch and `give_hand` use it), the reach toward a point of the world is replaced once R3 is switched on (`fall.aim` stays at 0 until the owner's word; `docs/active-ragdoll.md`, section 8).
 
 N6 makes a falling body do what a person does on the way down: reach for the place it will land on, brake with its arms, keep its head off the floor, and turn or sit down when there is time. The measure is how the head and the hands meet the floor, not only that the body comes to rest.
 
@@ -839,7 +837,7 @@ N6 makes a falling body do what a person does on the way down: reach for the pla
 
 ### Steps
 
-**The night of 25 to 26 November (for the owner to confirm; `docs/testing.md`, "N6 step 1", "step 4 in part", "step 5"):** step 1 is built (`hand_target`): its geometry puts the hand within 0.5 cm of the points and `pose_hand_place` holds that, but the arms at their own strength sag 6 to 9 cm under their weight (N2's matter). Step 2 is the scorecard of that night. Step 4 was tried by values alone (the falling neck at 120 N*m/rad and the fall poses' necks turned further away): the head strikes in 33% of the falls by hand instead of 75%, but the stand is two worse and one scenario fails, so by "Must hold" it does not hold. Step 5 is built behind `fall.aim` (hands sent to the floor along the way, every tick, on top of today's poses; steps 3's blend by direction is not built): with the head's values it brings the head's strikes by hand to 17% and the hand first to 100% by blows, and gains up to 83 J in a backward fall by hand and costs the stand three first attempts. Without a reach in a fall backward (`fall.reach_back` 0) it comes closest: energy 38 J at most, the head strikes in 17% of the falls by hand, the matrix 160; it still misses three limits (the head by blows as today, the hand at 35 to 36 rad/s as it meets the floor, the stand one fall worse). Not met; off; recommended for the owner's look. **Measured again on 26 November on the head with four of N2's repairs, and kept off by the owner's decision** (question 4): the head strikes in 18% of the falls by hand (55% without the reach) and 25% by blows (63%), at 1.2 m/s by blows (3.0); but knockdowns 6 of 8 by blows and 5 of 8 by hand, falls at rest only after up to 4.2 s, two shoves by hand that no longer fell the body, the hand at 35 rad/s. Next for N6: why the reach keeps a fall from rest and why those shoves no longer fell (`docs/testing.md`, "N6, the reach on today's body"). (Since 26 November R3 replaces the reach with the catch fall, `docs/active-ragdoll.md`, section 8.)
+**How it ended** (`docs/testing.md`, "N6 step 1", "step 4 in part", "step 5", "N6, the reach on today's body"): step 1, the hand target (`hand_target`, `pose_hand_place`), is built and used; step 5's reach is built behind `fall.aim` 0: it brings the head's strikes down but adds up to 83 J, keeps falls from rest and costs first attempts, and the owner kept it off on 26 November. R3's catch is to replace it.
 
 1. The hand target, on a welded pelvis.
 2. N1's fall figures on today's falls, by blow and by hand: the state before.
@@ -859,13 +857,13 @@ N6 makes a falling body do what a person does on the way down: reach for the pla
 
 ## N7. Life on the floor and the get-up
 
-**Where it went (26 November 2026):** the get-up to R1 (the led get-up, on) and R2 (from however the body lies); breath, settling, stirring and struggling when held to R6; the pull from the world brought down in R7 (`docs/active-ragdoll.md`, section 8). This part's get-up switches are removed in R2's step 0.
+**Where it went (26 November 2026):** the get-up to R1 (the led get-up, on) and R2 (from however the body lies; both done); breath, settling, stirring and struggling when held to R6 (the struggle when dragged to R10, decision 40); the pull from the world brought down in R7 (`docs/active-ragdoll.md`, section 8). This part's get-up switches were removed in R2's step 0; of the names in "Tuning" below, `getup.rate`, `getup.rest_per_ns_s` and `rest_max_s` exist (the last two at 0), `getup.gather_s` went in R2's step 0, and the rest were never built.
 
 N7 makes a body on the floor a person on the floor: it breathes, settles into a way of lying, stirs, gets ready and then gets up, without holding one pose for seconds. The get-up itself loses most of its pull from the world.
 
 **Why.** A body that has fallen lies without one motion until its get-up begins, and reads as dead. About one get-up attempt in four is given up (53 of 203 on three seeds), and while a clip waits the body holds one pose for up to 5 s.
 
-**Begun out of order, 26 November, on the owner's look in the headset** (the get-up "several clips with pauses between them, robotic", then "it rises like a plank"). Measured and kept: the clip's pauses (`control.get_up.paused_s` and its causes) and the plank (`plank_s`: 1.36 s in the median of 150 get-ups with the centre of mass up to 46 cm outside the feet that carry it; `rise_feet_cm`, `rise_trunk_deg`). Tried and not met: sixteen ways to shorten the pauses (switches at 0 in the files; each costs first attempts) and unloading a foot before it steps (taken out; it repeats 25 November's third attempt); also, by the record of the review of the audit, the rise from the clip's crouch by the body itself (`getup.rise`, stopped before the stand) and the rise at the recording's speed (`getup.fast_rise`, not met; the owner: not better), both at 0 (`docs/testing.md`, "N7: a get-up made for this body"). The recorded get-ups pass through that lean by their speed, and this body, slower, is held in it by the world. `docs/testing.md`, "N7 first" and "N7: the plank".
+**Begun out of order, 26 November, on the owner's look in the headset** (the get-up "several clips with pauses between them, robotic", then "it rises like a plank"). Measured and kept: the clip's pauses (`control.get_up.paused_s` and its causes) and the plank (`plank_s`: 1.36 s in the median of 150 get-ups with the centre of mass up to 46 cm outside the feet that carry it; `rise_feet_cm`, `rise_trunk_deg`). Tried and not met: sixteen ways to shorten the pauses (each cost first attempts; their switches went in R2's step 0) and unloading a foot before it steps (taken out; it repeats 25 November's third attempt); also, by the record of the review of the audit, the rise from the clip's crouch by the body itself (`getup.rise`, stopped before the stand) and the rise at the recording's speed (`getup.fast_rise`, not met; the owner: not better), both removed in R2's step 0 (`docs/testing.md`, "N7: a get-up made for this body"). The recorded get-ups pass through that lean by their speed, and this body, slower, is held in it by the world. `docs/testing.md`, "N7 first" and "N7: the plank".
 
 ### Design
 
@@ -907,7 +905,7 @@ N7 makes a body on the floor a person on the floor: it breathes, settles into a 
 - With every new value neutral, the suite has the baseline's hashes.
 - FR-18: a body that is hit, pushed, pressed or held while it settles, rolls, crouches or gathers answers as at any other time. Each new phase gets the three scenarios the get-up has (`getup_push_weak`, `getup_hit_strong`, `getup_held`).
 - The fall scenarios and the knockdowns keep their body down (`"get_up": false`), and their rest time and energy are still those of the fall: the breath and the settling stay under the runner's rest thresholds, and their work is counted in `max_energy_gain_j`.
-- One hand slows a get-up and two hold it, measured on the stand with holding hands. **Open since 26 November 2026:** with the led get-up two hands hold but one no longer slows it (42 of 50 pull free; `grab_getup_held` fails on purpose); it is the first item of R2.
+- One hand slows a get-up and two hold it, measured on the stand with holding hands. (Open on 26 November 2026 with the led get-up; put right by R2's step 3, the hold body by body, decision 14.)
 
 ### Risks
 
@@ -940,7 +938,7 @@ N7 makes a body on the floor a person on the floor: it breathes, settles into a 
 
 ## N8. The body model
 
-**Where it went (26 November 2026):** A, the head, is done and the default body; the wrist is no-go and its asset goes in R2's step 0; B's fingers are shown to the owner in R2 and R3; C is M5's; D's toes are decided yes or no before R4 (`docs/active-ragdoll.md`, section 8).
+**Where it went (26 November 2026):** A, the head, is done and the default body; the wrist is no-go and its asset went in R2's step 0; B's fingers are on since 27 November (decision 53 there); C is M5's; D's toes are decided yes or no before R4 (`docs/active-ragdoll.md`, section 8).
 
 N8 refines the model in the four places where the eye looks: the head on its neck, the fingers, the skin at twisted joints, and the toes. Two of the four change the physics asset and with it every baseline, so they are done before the muscles are tuned again in N2 and N3 (in R4 since 26 November; the toes are decided before it).
 
@@ -987,8 +985,8 @@ The wrist's model moved from M4's part 3 into A on 25 November 2026 (above) and 
 ### Steps
 
 1. Close-ups: a hand, a twisted forearm, a raised shoulder, a bent knee. **Done on 25 November 2026** (`docs/testing.md`; `Saved\Films\n8_*`).
-2. A: the head. A new baseline; everything listed above measured again; go or no-go. **Built on 25/26 November as a second asset; go by every limit but one; taken as the default body on 26 November by the owner's decision** (`PA_SandboxNPC` from `npc_body.json`; the body before it is kept as `PA_SandboxNPCNeck`; `docs/testing.md`, "N8 A taken"): the slap turns the head by 23 to 26 degrees with the palm on the cheek and by 17.7 with the hand held as the old test held it (`docs/testing.md`, "N8 A"). It needs the world's hold on the head off (`assist.head.angular_nm_per_rad` 0) and a neck damping of 0.05. **The wrist in the hand's own frame is no-go**: twenty fewer first attempts on the stand, from the frame and not the 85 degrees; its asset, `PA_SandboxNPCWrist`, stays unused.
-3. B: the fingers, `rest` in the stance first, then `splayed` and `flat` for the floor (in a fall forward two fingers of the lying hand are in the floor). **Built on 25/26 November behind `poses.fingers.weight` (0): rest, half a fist, splayed and flat, chosen by what the body does; bodies' hashes unchanged. The fingers in the floor stay, for the owner to look at.**
+2. A: the head. A new baseline; everything listed above measured again; go or no-go. **Built on 25/26 November as a second asset; go by every limit but one; taken as the default body on 26 November by the owner's decision** (`PA_SandboxNPC` from `npc_body.json`; the body before it is kept as `PA_SandboxNPCNeck`; `docs/testing.md`, "N8 A taken"): the slap turns the head by 23 to 26 degrees with the palm on the cheek and by 17.7 with the hand held as the old test held it (`docs/testing.md`, "N8 A"). It needs the world's hold on the head off (`assist.head.angular_nm_per_rad` 0) and a neck damping of 0.05. **The wrist in the hand's own frame is no-go**: twenty fewer first attempts on the stand, from the frame and not the 85 degrees; its asset, `PA_SandboxNPCWrist`, was removed in R2's step 0.
+3. B: the fingers, `rest` in the stance first, then `splayed` and `flat` for the floor (in a fall forward two fingers of the lying hand are in the floor). **Built on 25/26 November behind `poses.fingers.weight`: rest, half a fist, splayed and flat, chosen by what the body does; bodies' hashes unchanged. The fingers in the floor stay, for the owner to look at. On since 27 November (`poses.fingers.weight` 1, `docs/active-ragdoll.md`, decision 53).**
 4. C: the skin, as above; step 1 did not call for the twist.
 5. D: the toes, decided yes or no before R4 (the owner's decision of 26 November; before M4b in this plan's first order); a new baseline; go or no-go.
 
@@ -1002,7 +1000,7 @@ The wrist's model moved from M4's part 3 into A on 25 November 2026 (above) and 
 
 ## N9. Variation
 
-**Where it went (26 November 2026):** R9, with variation from physics and no added noise (the second architecture's principle 8): the design below with its noise is replaced, and C22 to C24 stay as measures (`docs/active-ragdoll.md`, section 8).
+**Where it went (26 November 2026):** R9, with variation from physics and no added noise (the second architecture's principle 8): the design below with its noise is replaced, and C22 to C24 stay as measures (`docs/active-ragdoll.md`, section 8). Its items 1 and 2, the seed and the streams, came forward to R10 (decision 40) and are built (`FSandboxChance`, a scenario's `"seed"`).
 
 N9 makes two meetings with the body differ the way two meetings with a person do, while every run still repeats from its seed. It also replaces the looping sway with one that has a person's irregularity.
 
@@ -1072,36 +1070,9 @@ N9 makes two meetings with the body differ the way two meetings with a person do
 
 ## How to work on this track
 
-The rules of `CLAUDE.md` and the working agreements hold. These are the ones this track leans on hardest, each learned the hard way in M2 to M4.
-
-**Before a part**
-
-- Read `CLAUDE.md` (the rules and "Things that have already bitten"), the areas of `docs/pitfalls.md` that the part touches (since 26 November 2026), this plan's section for the part, and the last sections of `docs/testing.md`.
-- Open with a plan: classes and modules, scenarios and measures, risks. Put the part's decisions to the owner one at a time, with options and the recommended one.
-- Take the reference: `Tools\suite.ps1 -SaveBaseline pre_<part>`, and the push matrix, the knockdowns, the stand on three seeds and the grab's pulls as they are now.
-
-**While building**
-
-- Every new behaviour has a tuning value whose neutral setting leaves every hash as it was. The name and its value go into the same build. (R4, which changes the body's base, takes a new baseline and new tables instead.)
-- A value that can change at run time gets a `tune_live_*` scenario that shows the change reached the solver.
-- A new measure is shown to leave the hashes alone, and is checked on a case whose answer is known, before any figure from it is believed.
-- A setting is chosen on three seeds. One scenario is one fall; a figure from one seed is luck.
-- When a figure does not move with its setting, find what else bounds it before raising the setting.
-- To say what a change does, switch that change alone (`-Tune`).
-- When a state is never left, write down the condition of every way out and look for the values that satisfy none.
-
-**Before calling a part done**
-
-- Look at the motion: `Tools\film.ps1` sheets and a dense strip around each event. Say plainly what still looks unnatural. Passing every check is not moving like a person.
-- Measure again everything a written claim rests on, not only the suite: the suite with `-Long`, the push matrix, the knockdowns, the stand on three seeds (with `-PressN` and `-HoldHands` if the get-up was touched), the grab's pulls, the record and replay, the scorecard, the bootstrap.
-- Name every scenario whose hashes moved, and what moved in it.
-- Have the diff read by someone who did not write it after unattended work.
-- Close with the report: what was done, what was verified, what went off plan, and the questions for the owner's session.
-
-**The owner's look**
-
-- Each part ends with three to six questions for a session, at the desktop or in the headset.
-- A run in the headset is started only on the owner's word, in that message, that the headset is on and SteamVR is up.
+The rules and the cross-cutting pitfalls are in `CLAUDE.md`, the rest of what has bitten in `docs/pitfalls.md` by area, and how an
+R part is judged in [`docs/active-ragdoll.md`, section 7](active-ragdoll.md#7-what-this-changes-in-the-rules). Each part also ends
+with three to six questions for the owner's session, at the desktop or in the headset.
 
 **Where things are written**
 
@@ -1109,7 +1080,8 @@ The rules of `CLAUDE.md` and the working agreements hold. These are the ones thi
 | --- | --- |
 | The order of work, and where each part of this track went | `docs/active-ragdoll.md`, section 8 (since 26 November 2026) |
 | The project's status | `docs/PRD.md`, "Status" |
-| A part's record and the decisions on it | This tab and `docs/natural-body.md` |
+| A part's record and the decisions on it | This file (and its tab), decisions 1 to 15; the decisions since 26 November in `docs/active-ragdoll.md`, section 10 |
+| The criteria and their human figures | This file (C27 in `docs/active-ragdoll.md`, section 6) |
 | Measurements | `docs/testing.md`, a section a part |
 | New pitfalls, new commands | `CLAUDE.md` (new pitfalls into their area of `docs/pitfalls.md` since 26 November) |
 | Scenario fields and expectations | `Scenarios/README.md` |
@@ -1141,3 +1113,8 @@ The human figures are linked where they stand, in "Human reference figures". The
 - The capture point, SIMBICON and DReCon are in the main plan's sources
 
 **Not chosen, and why.** A controller learned by reinforcement from recorded motion (DReCon and its successors) gives the most natural motion published. It needs hundreds of millions of simulated steps, which Chaos does not give at this project's speed, and it would replace a controller whose every value is named and tunable by one that cannot be read. The middle way stays open: a search over this plan's tuning values against N1's scorecard, on the sweeps that exist.
+
+<!-- removed: tone.daze_* getup.rise getup.fast_rise getup.gather_* strike_punch_belly_steps measure_drop_flat -->
+<!-- planned: react_touch_chest drag_rising_wrists_falls grab_yank_arm_* grab_pull_along_* grab_lift_two_hands grab_throw_* strike_slap_face_holds strike_punch_face_holds strike_punch_groin_bends strike_kick_groin_curls strike_punch_plexus_bends strike_kick_plexus_curls tune_live_weight_share stand_npc_no_assist gaze_rests_on_viewer fall_forward_hands_first fall_back_sits fall_side_turns fall_way_changes getup_rolls_first getup_two_stage_table getup_gathers balance.step_delay_s reactions.intent_delay_s reactions.touch_from_ns reactions.touch_s perception.lean_away_cm fall.reach_share fall.arm_yield_s fall.arm_yield_damping_s fall.head_away_deg fall.turn_deg poses.lie_* tone.resting.* getup.ready_deg getup.clip_roll_left getup.clip_roll_right getup.clip_crouch_* -Drag -Tone -->
+<!-- not-names: gaze_on_viewer_share -->
+

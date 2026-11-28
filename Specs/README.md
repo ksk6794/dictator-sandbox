@@ -67,9 +67,8 @@ that asset in the place of `PA_SandboxNPC` in a copy of each scenario of the que
 asset whose head is part of the neck (`PA_SandboxNPCNeck`, `PA_SandboxNPCToes`)
 `SANDBOX_HEAD_BODY=neck_01` makes what a scenario does to `head` act on that bone.
 
-The wrist limited in the hand's own axes (`npc_body_wrist.json`, `PA_SandboxNPCWrist`, and the joint field `limits_in`
-that only it used) was a no-go of the natural-body track and was removed on 26 November 2026 (R2's step 0: decision 9,
-and the owner's choice of that day to take `limits_in` with it); a spec that still names `limits_in` is refused.
+A spec that names the joint field `limits_in` (the wrist limited in the hand's own axes, removed at R2's step 0, decision
+29) is refused.
 
 ### Joints
 
@@ -121,15 +120,12 @@ there (2.3 cm) and do not touch.
 The template's own collision table is not carried over. It is not the same on the left and on the right
 (an upper arm collides with its hand on one side only), and left and right must behave alike.
 
-Until M3 the generated asset had no self-collision at all: the engine call that creates a body
-(`FPhysicsAssetUtils::CreateNewBody`) switches collision off between the new body and every earlier one
-unless told otherwise, and the generator only ever took pairs away. An arm went through the chest. The test
-`DictatorSandbox.Generated.PhysicsAsset.MatchesSpec` now counts the pairs that can collide.
+The test `DictatorSandbox.Generated.PhysicsAsset.MatchesSpec` counts the pairs that can collide (why:
+`docs/pitfalls.md`, "`FPhysicsAssetUtils::CreateNewBody` switches collision off").
 
 What comes from the template and what from the spec: shapes (unless written out) and the joints'
-projection settings are the template's; the set of bodies, masses, joint axes, joint limits and what a
-joint does at its limit, and
-collision pairs are the spec's. Three things differ from the stock MetaHuman asset on purpose, because its
+projection settings are the template's; the set of bodies, masses, joint axes, joint limits, what a
+joint does at its limit and the collision pairs are the spec's. Three things differ from the stock MetaHuman asset on purpose, because its
 values break a fully simulated body:
 
 - **Joint positions and axes.** Both anchors of a joint sit on the child bone, so they coincide in the
@@ -144,21 +140,14 @@ values break a fully simulated body:
   shapes, a tilted box and a toe capsule that sits 1.5 cm below the floor, make the foot rock, and through a
   stiff ankle the whole body leans.
 
-The generator log (`Saved\Tools\gen-assets.log`) lists colliding body pairs whose bounding boxes overlap in
-the reference pose. Bounding boxes overstate capsules, so a small overlap can be a false alarm.
-
 The ranges in `npc_body.json` are the starting limits of `docs/PRD.md`, with these choices where the table
 or the engine leaves room:
 
-- **Shoulder: two links since M3.** The engine was believed to limit the two swings of a joint together, as an elliptical
-  cone around one direction, so one joint cannot give 180 degrees of flexion and 180 of abduction. The
-  shoulder joint's cone is 105 degrees wide around a direction forward and to the side: the arm hangs at
-  the side and reaches straight up, both with 15 degrees to spare, but reaches back by only about 20 degrees
-  instead of 50. Each collarbone is a body of its own (0.64 kg, taken from the chest's mass) on a
-  sternoclavicular joint: 40 degrees of elevation and 10 of depression (swing1), 20 of protraction and 25
-  of retraction (swing2), plus or minus 30 of rotation about its length. The shoulder girdle adds its range
-  to the arm's, as a person's does, and the arm can rise in front and to the side. Its muscle is in the
-  `spine` group, not `arms` (`FSandboxBodyTuning::GroupOfBone`): with the arms' soft muscles each collarbone sagged
+- **Shoulder: two links since M3.** Each collarbone is a body of its own (its mass taken from the chest's) on a
+  sternoclavicular joint, whose range adds to the arm's, as a person's shoulder girdle does. They were added when
+  the engine was believed to limit a joint's two swings together, as a cone (it limits each by itself: "Limits and
+  continuous collision detection", below); they stay, as anatomy, and the poses are written for them. Its muscle is in
+  the `spine` group, not `arms` (`FSandboxBodyTuning::GroupOfBone`): with the arms' soft muscles each collarbone sagged
   10 degrees under its arm.
 - **Spine.** The table's totals are split evenly over the two spine joints.
 - **Neck.** Two joints since 26 November 2026, the head a body of its own: `neck_01` (swing1 -40 to 50) and `head`
@@ -177,18 +166,14 @@ or the engine leaves room:
 Measured in M3 part 5 (`docs/testing.md`), not assumed:
 
 - **The engine limits each swing by itself.** Its joint solver takes the turn of a joint apart into a twist
-  and a swing and holds the twist and the swing's two angles each within its own range: a box. (The shoulder
-  paragraph above was written when it was believed to be an ellipse; with a box one joint could have given
-  the arm its range. The collarbones stay: they are anatomy, and the poses are written for them.)
+  and a swing and holds the twist and the swing's two angles each within its own range: a box, not an ellipse.
 - **Every joint has the soft limit of the stock asset, stiffness 50 and damping 5,** now written in the spec
   instead of copied from the template in silence. It is not soft in effect: a joint stays within 1 to 2.5
   degrees of its range in a knockdown and within 6 at the ankle in a hard step. Hard limits hold no better and
   bounce: a fall gained 46 J against 26 and took 4.0 s to rest against 3.6.
 - **No body has continuous collision detection.** In 32 knockdowns nothing went deeper than 1.5 cm into the
   floor, under the 2 cm at which the owner's rule switches it on. A passive body dropped from 1.5 m does go
-  8.3 cm in, and gains 149 J on the way out (the body of 18, M3 part 5; 130 J on the body of 19, baseline `led`); sweeping
-  the feet, or the feet and the head, changes neither
-  figure. It is the solver not converging in the engine's 8 iterations (3.2 cm with 32, 1.5 cm with 64, which
+  8.3 cm in, and gains over 100 J on the way out; sweeping the feet, or the feet and the head, changes neither figure. It is the solver not converging in the engine's 8 iterations (3.2 cm with 32, 1.5 cm with 64, which
   is what a body under control has).
 
 ### Inertia of the hands

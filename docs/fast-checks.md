@@ -7,11 +7,11 @@ against the code, the engine's source, the logs and new measurements, and what c
 the tab "Fast checks" of the plan in Claude Docs (with two drawings: a chart of the suite's phases where this file has their
 table, and the stages in section 9), kept in step by hand.
 
-**Status:** decided and audited on 27 November 2026 (the owner's decisions are at the end of section 9; 6 to 9 came out of the
-audit; 10 and 11 after stage 1). Stage 1 (SP-0 to SP-3) built the same day, every run's hashes kept, and accepted by the owner
-(decision 10): what was built, where it differs from this text, and its stage check are in section 11. R2's step 9 comes next and
-stage 2 after R2 (decision 11; `docs/active-ragdoll.md`, section 8). Changed by the owner's decision 54 of 27 November
-(`docs/active-ragdoll.md`, section 10): R3 first, stage 2 after R3.
+**State of this work:** decided and audited on 27 November 2026 (the owner's decisions are at the end of section 9). Stage 1
+(SP-0 to SP-3) as built and accepted (decision 10): section 11. Stage 2's SP-6 and SP-4 (started by hand) as built (decisions 12
+and 13, confirmed on 28 November): section 12. The rest of stage 2 and stage 3 are not begun; when they come is
+[`docs/active-ragdoll.md`, section 8](active-ragdoll.md#8-order-of-work-and-plan-of-parts), and the project's status is
+[`docs/PRD.md`, Status](PRD.md#status).
 
 ## Terms
 
@@ -677,8 +677,8 @@ section 3's 10.7 s timed, takes 5.8 to 6.1 s now; the rest is PowerShell, the sc
 
 ## 12. Stage 2, SP-6 first (28 November, the night, the owner away)
 
-By decision 54 stage 2 comes after R3; R3 was built in the night and waits for the owner's look, and SP-6 needs nothing of the owner
-and nothing of SP-4 (a process of a queue lives for its batch: the suite's 174 jobs are about 22 a process), so it was taken first.
+By decision 54 stage 2 comes after R3; R3 was built in the night behind its switches (then waiting for the owner's look), and SP-6
+needs nothing of the owner and nothing of SP-4 (a process of a queue lives for its batch: the suite's 174 jobs are about 22 a process), so it was taken first.
 
 - **Built:** `-ScenarioKeep=<file>` (`UScenarioBatchSubsystem::KeepAssets`): after the warm-up a queue's process loads the assets
   `Tools\batch_keep.json` lists and holds them for its life, a fixed set whatever its jobs: the NPC's body and face meshes and its
@@ -697,8 +697,8 @@ and nothing of SP-4 (a process of a queue lives for its batch: the suite's 174 j
   before, its process starts for that run alone).
 - **SP-6's acceptance:** a job's world in 0.15 s or less, met (0.036); `AssetCompile SkinnedAsset` only before a process's first job,
   met; the suite's hashes the same in two orders, met (eight processes and one); a process's memory 200 MB or less over 500 jobs, 58 MB
-  over 174 and levelling off (500 not run). For the owner's look at the stage's check.
-- **SP-4, the pool, built the same night as far as it is started by hand** (planned from the code first: `docs/recon/sp4_plan.md`):
+  over 174 and levelling off (500 not run). On by default since decision 12 (confirmed on 28 November).
+- **SP-4, the pool, built the same night as far as it is started by hand** (the record of its plan: `docs/recon/sp4_plan.md`):
   `Tools\pool.ps1 -Start [-Processes 8] [-IdleS 600] | -Stop | -Status`. Its processes (`-ScenarioPoolIdleS`, `-ScenarioPoolPrint`)
   wait in the start map when their queue (`Saved\Pool\queue`) is empty, sleeping 0.1 s a frame, and exit when they have waited that
   long, on a file `stop` or `yield_<pid>`, when `Saved\Pool\pool.json` no longer names the fingerprint they started with, after 500
@@ -729,5 +729,12 @@ and nothing of SP-4 (a process of a queue lives for its batch: the suite's 174 j
   rather than using the pool's queue; the fingerprint has no content assets (gen-assets.ps1 and bake-lighting.ps1 stop the pool;
   `metahuman.ps1` and the fetch scripts do not: stop it by hand before them), nor the engine's build or the `.uproject`; the fingerprint
   is not written into `metrics.json` nor a tool's runs on two fingerprints warned of; small batches do not go before a long one (one
-  scenario waits behind another session's suite); a stop does not name whose batches it waits for; `scenario.ps1` through the pool
-  has no `-TimeoutSec`; the memory's and the 500 jobs' exits are not run to their end.
+  scenario waits behind another session's suite); a stop does not name whose batches it waits for; the memory's and the 500 jobs'
+  exits are not run to their end. (Put right in the audit of 28 November, after its reader: `scenario.ps1` through the pool keeps its
+  `-TimeoutSec`, the job past it given up and its process ended; a scenario at another frame rate than 90 never goes to the pool or a
+  check set; the pool's top-up counts its processes started in the last 20 s as memory still to be taken; a run that must be alone
+  asks the pool's idle processes to give way; a stop whose lock fails leaves the pool taking batches.)
+
+<!-- removed: getup.carry -->
+<!-- planned: Tools\compare.ps1 Tools\profile.ps1 -Tier -->
+

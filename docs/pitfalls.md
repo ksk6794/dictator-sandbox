@@ -1,11 +1,10 @@
 # Pitfalls: what has already bitten
 
-Moved from `CLAUDE.md` on 26 November 2026 (the owner's decision): every entry as it was written, grouped by area, and within an
-area in the order it was found (one figure brought up to date in the move, the colliding pairs of the body of 19; notes added
-later are marked as such). The entries that spoil a result in any part without a sign stayed in `CLAUDE.md`, "Things that
-have already bitten"; read those first. Before a part's plan, read the areas below that its work touches; the plan names them. An
-entry that says "above" or "below" may mean one in another area or in `CLAUDE.md`. A new pitfall goes into its area here; one
-that can spoil any part without a sign goes into `CLAUDE.md` instead.
+Grouped by area, and within an area in the order found. The entries that spoil a result in any part without a sign are in
+[`CLAUDE.md`, "Things that have already bitten"](../CLAUDE.md#things-that-have-already-bitten), and only there; read those first.
+Before a part's plan, read the areas below that its work touches; the plan names them. An entry marked "(historical: ...)" is about
+code that has gone; its lesson still holds. A new pitfall goes into its area here; one that can spoil any part without a sign goes
+into `CLAUDE.md` instead.
 
 | Area | Read it before |
 | --- | --- |
@@ -66,9 +65,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A contact's peak force is not limited by a spring's force cap.** A moving hand that is stopped gives up
   its momentum too: 14 N*s in one frame reads as 1270 N. Check a cap with a hand held against something
   (`final_contact_force_n`), as `effector_force_cap` does.
-- **A substep in which a body sleeps has no contact event.** Contact events exist only for contacts that
-  carried an impulse in that substep, so anything added up from them is short by the substeps slept
-  through. See the pitfall about the solver's sleep.
 - **Contact events arrive once per pair of bodies and substep, and the impulse vector's sign follows the
   solver's order of the pair.** Use `Hit.ImpactNormal` times the impulse's size to add them up. The floor
   under the feet reports the character's weight in every frame (8.7 N*s at 90 Hz, above the flinch
@@ -108,11 +104,10 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   comment the body's index, came back -1 from `OverlapMultiByObjectType`. To learn which body of a character is
   near, ask each (`FBodyInstance::OverlapTest`), as `USandboxEffectorComponent::FindGrabbable` and the runner's
   hand probe do.
-- **A joint's "force" from the engine is its impulse over the last substep** (`FConstraintInstance::
+- **A joint's "force" from the engine is its impulse over the last substep of the frame** (`FConstraintInstance::
   GetConstraintForce`): divide by the substep. Calibrated on a hand that drags at a steady 231 N of its spring
-  (124 kg*cm/s at 180 Hz). A comment in the solver speaks of force times the step squared; the number does not.
-- **The engine keeps a joint's force for the last substep of a frame only.** A largest force read once a frame
-  misses a jolt in the first of two substeps.
+  (124 kg*cm/s at 180 Hz). A comment in the solver speaks of force times the step squared; the number does not. And a
+  largest force read once a frame misses a jolt in the first of two substeps.
 - **A contact event has one point of the contact, the nearest, with the impulse of all of them.** A foot's centre of
   pressure made from the events' points lay 8.6 cm behind the body's centre of mass. Where a force goes through is in
   the solver's manifold points with their own impulses, after each substep (`FNaturalMeasures::AddPressure`); the last
@@ -174,8 +169,9 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   session). `AHUD::OnHUDPostRender` hands out the debug canvas instead. The lines are a `ULineBatchComponent`
   the overlay owns, emptied and filled again every frame, in the foreground depth group so that they show
   through the character.
-- **`Sandbox.Tune` with a value out of range changes nothing, and the run goes on.** A scenario's console
-  event did that (`step_reach_cm=500`, range 300): check `control.tuning_changes` after such an event.
+- **`Sandbox.Tune` takes all of its values or none, and with one out of range the run goes on unchanged**; it says so only
+  in the log. A scenario's console event did that (`step_reach_cm=500`, range 300), and a check scenario whose one value was
+  out of range ran the untuned body and measured that. A scenario that tunes expects `tuning_changes`.
 - **A motion of a few centimetres does not show on a sheet of pictures.** The idle moves the hands by 4 to 7 cm
   and the head by 4; the film's tiles of a standing body with and without it look the same. Such a motion is
   measured (`body.bodies[].settled_travel_cm`, `metrics.settled_head_travel_cm`) and held by a check
@@ -199,8 +195,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   concluding that a thing is not there, draw it.
 - **A limit that a missing thing meets is no check.** `max_prop_travel_cm` passed for a prop that was never
   made (it had travelled 0 cm). A run with props checks that they are there (`props_simulated`).
-- **`Sandbox.Tune` takes all of its values or none**, and says so only in the log: a check scenario whose one value was out
-  of range ran the untuned body and measured that. A scenario that tunes expects `tuning_changes`.
 - **A measure can be met by what it was not meant for.** "A hand touches before the trunk" read 100% of forward falls: the
   hands land beside the hips and the head strikes the floor; asked for a hand ahead of the chest, it still read 86%. Look at
   the motion (`film.ps1 -Around`) before a criterion that is met is believed, and run a sharper rule before saying what it
@@ -213,8 +207,9 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A tuning file edited while runs go is read by them.** Every scenario run looks at `Config/Tuning` every 30 frames and reloads it
   (hot reload). On 27 November 2026 a value added to `body.json` for code not yet built went in while three stands ran: the running
   processes refused the changed file and kept their values (an error in each run's log, the physics as before), but every process that
-  started after it could not read the tuning at all, and one stand of 150 ended with no result. Change the tuning files only while no
-  engine process runs (or put the new value in after the build that knows it, before the runs); a stand that spans an edit is run again.
+  started after it could not read the tuning at all, and one stand of 150 ended with no result. A build that does not know a name
+  refuses the file ("is not a tuning value"): add a name and its value in the same build, change the tuning files only while no
+  engine process runs (or put the new value in after the build that knows it, before the runs), and run a stand that spans an edit again.
 - **Eight falls are not a measure of a fall.** R3's catch and head kept the head off the floor in 8 of the 8 knockdowns by blows (5 of 8
   struck today); on 41 blows of 160 and 240 N*s from 24 directions it struck in 27% (29% today). The knockdowns and the scorecard are a
   few directions at one impulse; a change to how the body falls is judged on many (`knockdowns.ps1 -Directions 24 -Impulses "160,240"`,
@@ -253,7 +248,7 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   loop: the lighter leg turned less, the body rolled onto the other, and under a held push it rocked from foot
   to foot with the assist at 0.43 of body weight.
 - **Sideways, turning the ankles' targets after a blow lifted the unloaded foot, whichever way it turned**
-  (`balance.ankle_side_gain` is 0). A parallelogram lean (ankles and hips together) did the same.
+  (`balance.ankle_side_gain` was 0, taken out on 28 November 2026). A parallelogram lean (ankles and hips together) did the same.
 - **Leaning into a held push needs the ankle targets to tilt.** Moving only the strategies' reference and the
   assist's anchors left the ankle muscles holding the upright pose: the assist carried the whole 40 N push.
 - **A filter that lets a blow count as pressure counts its momentum twice.** A blow's momentum is in the
@@ -330,8 +325,7 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   at 4.4 cm, the body steps, and the cell is judged by how its feet shuffle.
 - **A glide that is cut short has to be gone on from where it was cut.** `PlaceFoot` without `bFromLast` starts a change of
   frame from the frame the leg was going to, not from the one it was last solved in: 21 cm, 27 degrees of the thigh in one
-  frame after a lift (known, to be repaired: `docs/natural-body.md`, decision 13). (Repaired: `balance.lift_smooth` 1, on since
-  the owner's decision of 26 November 2026.)
+  frame after a lift. Repaired by `balance.lift_smooth` (on since 26 November 2026; `docs/natural-body.md`, decision 13).
 - **What held the head back from turning was the world.** "A slap does not turn the head because the neck is stiff and the head
   round" was written on 25 November; over necks of 40 down to 1 N*m/rad the turn went from 6 to 15 degrees only. The assist's hold
   on the head (10 N*m/rad, 0.2 s: a damper of 2 N*m*s/rad on 0.02 kg*m2) took most of it. When a figure hardly moves with the
@@ -365,9 +359,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   (the reference pose's, carried by the upper arm, before; the one across the pole's plane after; `FSandboxLimbTarget::bAnatomicHinge`).
   The first repair, the bend's own axis above a threshold of the bend and the old sign below it, kept a turn-over at the threshold, and it
   reached the guard's arm, which nothing in the suite switches on: a rule for one caller is given to that caller alone.
-- **A target let go at a point of the world jumps while the body moves under it.** A limb target's weight fading over 0.15 s at its last
-  point of the world, as the body lay and rolled, turned the arm's target over in the first tick of the fade. A target that moved with
-  the trunk keeps moving with it until its weight has gone.
 - **A limb's settings outlive the user that set them.** The animation instance keeps a limb end's pole, ease, hinge and ranges
   (`SetLimbBend`, `SetLimbRanges`) until they are set again; R10's struggle drew a leg up with a pole of its own, and the steps' feet,
   which set none, solved with it after: the body got up and staggered, once fell (28 November). A user that sets a limb's settings for a
@@ -379,10 +370,12 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A measure that counts one kind of motion misses another that comes first.** C39 asks for the first change of a target after a command;
   the first motion was recorded at the get-up's start, while the cover had already been let go, in the command's own tick and with no
   reaction at all (28 November). Read a criterion's words against what the code records before tuning toward it.
-- **A target let go at a point of the world, or moved to where the hand is, jumps.** Three users of an arm did it in one window (28
-  November): the offered hand let go from where its hand was (131 degrees), R2's held arm let go at a point of the world as a body given
-  up for a drag fell (150), the struggle's leg the same; and a pole worked out again at the release (129). Let go from the last target,
-  with the pole kept, carried with the chest until the weight has gone (R3's catch's way: `PlaceHeldArm`, `ReleaseOfferArm`).
+- **A target let go at a point of the world, or moved to where the hand is, jumps.** A limb target's weight fading over 0.15 s at its
+  last point of the world, as the body lay and rolled, turned the arm's target over in the first tick of the fade. Three
+  more users of an arm did it in one window (28 November): the offered hand let go from where its hand was (131 degrees), R2's held arm
+  let go at a point of the world as a body given up for a drag fell (150), the struggle's leg the same; and a pole worked out again at
+  the release (129). Let go from the last target, with the pole kept, carried with the chest until the weight has gone (R3's catch's
+  way: `PlaceHeldArm`, `ReleaseOfferArm`).
 - **A thing worked out at the first event it serves does nothing before it.** R3's palm turn read the palm's axes at the hand's first
   touch of the floor, so the turn was never laid on before the touch, and the palm's angle at the touch was 81 degrees with every share
   of the turn. A measure that does not move with the setting that should move it was the sign (as in the solver's entries).
@@ -408,13 +401,13 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **Letting a clip run further ahead of the body leaves less room before the body counts as lost.** With the
   pelvis allowed 16 cm of height and 20 cm of floor behind the clip instead of 12, the stand went from 45 to 48 of
   50, and a 30 N*s push that the get-up had ridden out now put the pelvis 31 cm off, past `getup.lost_cm` at 30:
-  the suite's `getup_push_weak` caught it. The two limits move together (lost is 40 now, and the 200 N*s blow still
-  fells the body at 45).
+  the suite's `getup_push_weak` caught it. The two limits move together. (historical: the clip-following get-up and its
+  lags, removed 27 November 2026; `getup.lost_cm` stays)
 - **A clip must not wait without end for what will not come.** A foot that lay across the other leg was 29 cm
-  from where the clip's first key had it and off the floor; the clip waited for it through six attempts. The wait
-  for a foot is bounded (`getup.foot_wait_s`); the pelvis's height is what a get-up really has to wait for.
+  from where the clip's first key had it and off the floor; the clip waited for it through six attempts. Bound every
+  wait. (historical: the clip-following get-up and its `getup.foot_wait_s`, removed 27 November 2026)
 - **The same clip from the same place fails the same way.** A body that gave a get-up up tried again by the same
-  clip, five and six times. The next attempt takes another clip if one starts at all like the body lies.
+  clip, five and six times. The matcher prices the motion just given up and its mirror image (`getup.match_given_up_cm`).
 - **A body knocked into a wall often does not fall.** Three of eight blows toward a wall 45 to 90 cm away ended
   with the body on its feet against it. A stand of falls draws such a trial again and says how many it drew.
 - **A body appears in its reference pose, the arms out, and brings them down in half a second.** The fingertips
@@ -429,9 +422,9 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A clip that stays where it was put makes the assist drag the body over the floor.** A body that turns into a
   clip's first pose, rolls over or comes onto hands and knees moves 20 to 35 cm, and the clip waited there for the
   pelvis to be pulled back: half the assist's force went into that, and with a weaker assist the clip waited for
-  good. The clip's root follows the pelvis while the feet carry nothing (`getup.pelvis_follow_s`). The assist was
-  believed to be lifting a body whose arms were too weak; the log line of the failed attempts said otherwise
-  (pelvis 30 cm off over the floor, 4 cm in height).
+  good. The assist was believed to be lifting a body whose arms were too weak; the log line of the failed attempts said
+  otherwise (pelvis 30 cm off over the floor, 4 cm in height). (historical: the clip-following get-up, its assist and
+  `getup.pelvis_follow_s`, removed 27 November 2026)
 - **An assist that is capped always pulls at its cap,** so its share of body weight measures the caps and not the
   need. Sweep the caps down against the stand and read what fails, not the share.
 - **A scenario that starts with a fall is written for where that fall puts the body, and every change to the
@@ -448,12 +441,13 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   the hands or the other leg; the simulated body's weight is where its own feet, hands and friction put it. With
   the clip's time waiting only for the pelvis, the body stood up leaning like a plank from a foot 45 cm behind where
   the clip had it; made to wait for the feet too, it waited for good, at 16 cm, for a foot that carried 525 N. A
-  foot the body stands on is where it is: the clip's root follows the loaded feet (`getup.frame_follow_s`), and the
-  clip waits only for a foot that is off the floor.
+  foot the body stands on is where it is. (historical: the clip-following get-up and `getup.frame_follow_s`, removed 27
+  November 2026; the led get-up does not lay the clip over the feet)
 - **The assist of a get-up takes back a blow unless it is capped and the body may be lost.** With 500 N on the
   pelvis and `getup.lost_cm` at 45, a 200 N*s blow moved the body 40 cm and the assist had it back in half a second
-  with 1.2 times its weight. Capped at 250 N (feet 50 N) and lost at 30 cm, the same blow fells it. Sweep the caps
-  down to what the body still gets up with; the share is in `control.get_up`.
+  with 1.2 times its weight. Capped at 250 N (feet 50 N) and lost at 30 cm, the same blow fells it. (historical: the
+  clip-following get-up's assist, removed 27 November 2026; the carry's answer is decision 20, a hit takes authority by its impulse, and the entry
+  "Half of a stiff spring still takes a push back" below)
 - **A scenario about a fall must keep its body down.** With the get-up on for every body, the fall scenarios and
   the knockdowns would measure "at rest for good" at the end of a get-up. A scenario's body gets up only when its
   file says `"get_up": true`; the session's does by default.
@@ -484,7 +478,8 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A count that starts again whenever there is progress does not bound a wait.** `getup.stall_s` (3 s) counts
   while the clip's time stands still; a body that hovers at the lag lets the clip move on by a frame now and
   then, and an attempt lasted 15.6 s, 13 of them in one pose. A wait is bounded by a total (`getup.wait_s`). When
-  a limit "cannot" have been passed, look at when its counter is set back.
+  a limit "cannot" have been passed, look at when its counter is set back. (historical: found on the clip-following
+  get-up, removed 27 November 2026; `getup.wait_s` stays as the bound)
 - **A scripted force is felt as a press; a pin is not.** `impulse` with `duration_s` goes through what the body
   feels (`SustainedN`), so a get-up under it is "pressed" or "held down". To keep a body from rising without
   pressing on it, pin it (`getup_wait_bounded`).
@@ -563,8 +558,8 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   Measure a reversed motion on the stand's late starts by furniture, not only on bodies laid in the open.
 - **A rule of a limb's user meets every other user of that limb.** R2's held arm, answering a hand that took the forearm of a body R10
   lowered, turned the upper arm's target over by 159 degrees in a frame (`protect_phase_lowering_hold`); the C26 scenario of the new
-  phase found it, the suite could not. Until the arbiter of limbs (R10, step 3), a new behaviour that moves the body under a held arm is
-  run with a hold in its phase.
+  phase found it, the suite could not. The arbiter of limbs (`FSandboxLimbClaims`, R10's step 3) came after it; a new behaviour that
+  moves the body under a held arm is still run with a hold in its phase.
 - **A shortcut for the first attempt reaches every attempt after it unless it says otherwise.** The command `get_up` shortened the rest
   before a get-up to the reaction time; the scenarios made for it began one attempt and passed. On the stand of 150 a body by the chair
   failed, and the short rest sent it up again before it lay still, seven times; it never stood (with the usual rest it stood after
@@ -612,9 +607,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   hand in time; with the jumps' repairs it swayed back 0.1 s later and the grip closed on air. It closes while pressing now.
 - **A test for "clear of everything" that leaves a whole actor out leaves out the other hand.** Two hands are
   one actor; a hand that had held something was set back to colliding while it lay inside the other one.
-- **A scripted hand can be sent to a part of the body instead of a point of the world** (`"at_bone"` on an
-  `effector` event: the keys after the first are measured from where that body is when the event begins). A
-  scenario that starts with a fall should use it, and so should any measurement on many falls.
 - **What a source decides about an effector belongs in its target.** The desktop's foot was made weak at rest
   by the pawn setting the effector's strength from outside: the recording did not have it, and a replay's foot
   had 1800 N where the session's had 40. The bootstrap's record-and-replay step caught it. The strength is a
@@ -800,9 +792,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **PowerShell variable names do not tell case apart, and a typed parameter converts what is assigned to
   it.** In a script with a `[string]$Metrics` parameter, `$metrics = Read-JsonFile ...` stores the text of
   the object, and every field of it reads as empty. Give locals names no parameter has.
-- **Add a tuning name and its value in the same build.** A build that does not know a name refuses the
-  file, so a new tuning file dropped in while an older build is running a suite fails every active scenario
-  after it ("is not a tuning value").
 - **Scripts target Windows PowerShell 5.1.** No `&&`, ternaries or null-coalescing.
 - **Moving a file is not a way to take a job from a shared queue.** Windows renames through a handle; two
   processes can each open the file before either renames, both renames succeed, and neither process can then
@@ -886,10 +875,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   plan said the skin had no correctives. The assembled mesh brings `ABP_Body_PostProcess` as its post-process blueprint and
   the engine runs it. It sees the pose the muscles are asked for, not the simulated body, and switching it off changes every
   hash by rounding. Ask the bones (`trace.json`, with the mesh's bone names from an editor script) before saying what moves them.
-- **Every tool runs on another physics asset without a file changed:** `SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck` (and
-  `SANDBOX_HEAD_BODY=neck_01` for a body whose head is part of the neck: `PA_SandboxNPCNeck`,
-  `PA_SandboxNPCToes`) puts that asset into a copy of each scenario in the queue, and what the scenario does to `head` it does
-  to that bone.
 - **Editor Python needs `PythonScriptPlugin` enabled in the `.uproject`.** Without it `-ExecutePythonScript`
   is silently ignored and the editor just sits open.
 - **MetaHuman needs the engine option "MetaHuman Creator Core Data"** (Epic Games Launcher, engine tile,
@@ -905,3 +890,6 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   Epic sign-in, which a person must complete, and later runs reuse the stored sign-in. Never pass account
   credentials on the command line. The rig state is not exposed to Python; `can_build_meta_human()` is true
   only when the character is both rigged and textured.
+
+<!-- removed: getup.foot_wait_s getup.pelvis_follow_s getup.frame_follow_s balance.ankle_side_gain -->
+<!-- not-names: vr_check2 vr_check3 -->

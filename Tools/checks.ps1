@@ -3,7 +3,8 @@
 # draws again, the grab's probes and pulls); then every tool's verdict. In place of a battery that runs the tools one after
 # another, each starting its processes again.
 #   powershell -ExecutionPolicy Bypass -File Tools\checks.ps1 -What suite,matrix,knockdowns,seeds
-#   ... -What "..."              of: suite, matrix, knockdowns, stand, seeds, compliance, natural, natural_quick, grabs
+#   ... -What "..."              of: suite, matrix, knockdowns, stand, seeds, compliance, natural, natural_quick, grabs, links
+#                                (links: Tools\check-links.ps1, the documents; no engine, no tuning)
 #   ... -Tune "name=value,..."   tuning overrides for every run of every tool (needs -Label)
 #   ... -Label <name>            every tool writes into a folder of its own with this label (Saved\Checks\<label>\<tool>, the
 #                                suite into Saved\Suites\checks_<label>, the seeds into Saved\Matrix\getup_seeds\checks_<label>,
@@ -69,13 +70,15 @@ function Get-CheckTool([string]$Name) {
             return @{ script = 'natural.ps1'; arguments = @('-Quick', '-Label', $naturalLabel); result = (Join-Path $RepoRoot "Saved\Natural\$naturalLabel\report.json"); passed = $isThere }
         }
         'grabs' { $out = & $folder 'Saved\Matrix\grab_pulls'; return @{ script = 'grab-pulls.ps1'; arguments = @('-Out', $out); result = (Join-Path $out 'grab_pulls.json'); passed = $okField } }
+        # The documents' links and names: no engine and no tuning, so neither the label nor -Tune reaches it.
+        'links' { return @{ script = 'check-links.ps1'; arguments = @(); untuned = $true; result = (Join-Path $ToolsOut 'links.json'); passed = $okField } }
     }
     return $null
 }
 $names = @($What.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 if ($names.Count -eq 0) { Write-Output 'CHECKS ERROR: -What names no tool'; exit 2 }
 foreach ($name in $names) {
-    if (-not (Get-CheckTool $name)) { Write-Output "CHECKS ERROR: '$name' is no tool of a check set (suite, matrix, knockdowns, stand, seeds, compliance, natural, natural_quick, grabs)"; exit 2 }
+    if (-not (Get-CheckTool $name)) { Write-Output "CHECKS ERROR: '$name' is no tool of a check set (suite, matrix, knockdowns, stand, seeds, compliance, natural, natural_quick, grabs, links)"; exit 2 }
 }
 $started = Get-Date
 $queue = Enter-CheckQueue -Parallel $Parallel
@@ -83,7 +86,7 @@ $children = @()
 foreach ($name in $names) {
     $tool = Get-CheckTool $name
     $arguments = @($tool.arguments)
-    if ($Tune) { $arguments += @('-Tune', $Tune) }
+    if ($Tune -and -not $tool.untuned) { $arguments += @('-Tune', $Tune) }
     $argumentText = "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot $tool.script)`""
     foreach ($argument in $arguments) {
         if ($argument -match '^-[A-Za-z]+$') { $argumentText += " $argument" } else { $argumentText += " `"$([string]$argument)`"" }
