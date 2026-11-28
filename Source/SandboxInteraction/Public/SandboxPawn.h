@@ -43,6 +43,7 @@ enum class ESandboxTool : uint8
  *   V                debug overlays on / off   Escape      quit
  *   K                record the hands / end    N           a new take: character back, a new recording
  *   U                tell the body: get up    J           tell the body: stop (R10; answered with behaviour.commands on)
+ *   H                tell the body: give me a hand (R10; answered with behaviour.give_hand on)
  *
  * Input is made in C++ when the pawn is possessed; there are no input assets. Every key calls one of the
  * public functions below, which a test can call just as well.
@@ -116,6 +117,8 @@ public:
 	 */
 	void CommandGetUp();
 	void CommandStop();
+	/** R10, step 8's rest: "Sandbox.Command give_hand" (answered with behaviour.give_hand on). */
+	void CommandGiveHand();
 	/**
 	 * Begins to keep what the hands are asked for in every stepped frame, or ends it. A recording that ends is
 	 * handed on through OnRecordingStopped; the pawn writes no file. Quitting ends a recording too.
@@ -296,6 +299,14 @@ private:
 	bool bGripsArmed = true;
 	/** Seconds the take's vibration still has to run. */
 	double BuzzLeftS = 0.0;
+	/** R10: the right controller's face buttons as they were in the last stepped frame (a command goes once a press), and the seconds its command's buzz still has to run. */
+	bool bFirstButtonDown = false;
+	bool bSecondButtonDown = false;
+	/** The left controller's first face button (X: give_hand) as it was in the last stepped frame. */
+	bool bLeftFirstButtonDown = false;
+	double CommandBuzzS = 0.0;
+	/** Seconds the left controller's command buzz (X) still has to run. */
+	double CommandBuzzLeftS = 0.0;
 	/** What each controller was last told to vibrate at, left and right. */
 	float LastHaptic[2] = { 0.0f, 0.0f };
 

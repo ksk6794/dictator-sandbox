@@ -133,8 +133,15 @@ Event types. Unknown types are a parse error.
   scenario switched its behaviours on itself. Theirs: `fear_*` (fear), `protect_near_*` and `protect_phase_*` (staying down,
   lowering, and a blow, a push and a hold in those phases; the body is made afraid by a tap of 35 N*s into the pelvis, under
   `protect_from_ns`, so that it is no blow into the groin), `protect_hit_*` (the cover of the struck place after a hit while lying
-  or rising: the head, the trunk, the groin, a leg), `command_*`. They are written by
-  `docs/recon/r10/make_protect.ps1`. `control.behaviour` has fear (`fear`, `fear_max`, `fear_hits`, `fear_threats`,
+  or rising: the head, the trunk, the groin, a leg), `command_*`; and the offered hand (`behaviour.give_hand`, step 8's rest):
+  `command_give_hand_lying` (a player's open hand waits by the afraid body's left shoulder, `give_hand` is told, the body reaches,
+  the hand takes it and pulls it up, the body gets up on it in about the time of an unhelped get-up), `command_give_hand_away_back`
+  (the same, the player's hand gone out of reach for a moment and back: the arm goes down and reaches again once let go),
+  `command_give_hand_off`
+  (refused with the switch off), `offer_phase_hit`, `_push`, `_hold` (C26 while the hand is offered: a blow covers the trunk and
+  ends the offer; a push is felt and the hand is taken; the other forearm held, the hand is taken). They are written by
+  `docs/recon/r10/make_protect.ps1`; `control.behaviour.offers` has each offer (its arm, when it reached, its least gap, when it
+  was taken, how it ended, the slowest pace of the get-up it began). `control.behaviour` has fear (`fear`, `fear_max`, `fear_hits`, `fear_threats`,
   `fear_series`), the attempts begun afraid with the viewer near (`begun_near_afraid`, C33's 0), `held_back_s`,
   `protect_s`, every attempt turned back (`lowerings`: when the viewer came near, when it was decided, ended, the clip's
   times, the pelvis's height then, the pelvis's and the head's fastest way down and when; `turned_back_within_s`,

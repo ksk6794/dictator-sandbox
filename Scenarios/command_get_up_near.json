@@ -94,7 +94,7 @@
                                                                                 },
                                     "control.get_up.starts.0.at_s":  {
                                                                          "min":  4,
-                                                                         "max":  5
+                                                                         "max":  5.5
                                                                      },
                                     "control.behaviour.begun_near_afraid":  {
                                                                                 "max":  0

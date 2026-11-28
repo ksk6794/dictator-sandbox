@@ -368,6 +368,21 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **A target let go at a point of the world jumps while the body moves under it.** A limb target's weight fading over 0.15 s at its last
   point of the world, as the body lay and rolled, turned the arm's target over in the first tick of the fade. A target that moved with
   the trunk keeps moving with it until its weight has gone.
+- **A limb's settings outlive the user that set them.** The animation instance keeps a limb end's pole, ease, hinge and ranges
+  (`SetLimbBend`, `SetLimbRanges`) until they are set again; R10's struggle drew a leg up with a pole of its own, and the steps' feet,
+  which set none, solved with it after: the body got up and staggered, once fell (28 November). A user that sets a limb's settings for a
+  limb whose other users set none forgets them as it lets go (`USandboxAnimInstance::ClearLimbSettings`).
+- **A limb's solve blended into a pose by the joints' turns flips when the two are nearly half a turn apart.** R10's struggle drew a hand
+  in to 25 cm from its shoulder and a foot to 45 cm from its hip; let go into the protective pose (a forearm over the face), the upper arm's
+  target turned by 160 degrees in a frame, a calf's by 152 (28 November, with the struggle on). A pole carried with the trunk did not help;
+  drawing in to 45 and 70 cm did. A placement far from the pose it is let go into is measured on its release, not only while it is held.
+- **A measure that counts one kind of motion misses another that comes first.** C39 asks for the first change of a target after a command;
+  the first motion was recorded at the get-up's start, while the cover had already been let go, in the command's own tick and with no
+  reaction at all (28 November). Read a criterion's words against what the code records before tuning toward it.
+- **A target let go at a point of the world, or moved to where the hand is, jumps.** Three users of an arm did it in one window (28
+  November): the offered hand let go from where its hand was (131 degrees), R2's held arm let go at a point of the world as a body given
+  up for a drag fell (150), the struggle's leg the same; and a pole worked out again at the release (129). Let go from the last target,
+  with the pole kept, carried with the chest until the weight has gone (R3's catch's way: `PlaceHeldArm`, `ReleaseOfferArm`).
 - **A thing worked out at the first event it serves does nothing before it.** R3's palm turn read the palm's axes at the hand's first
   touch of the floor, so the turn was never laid on before the touch, and the palm's angle at the touch was 81 degrees with every share
   of the turn. A measure that does not move with the setting that should move it was the sign (as in the solver's entries).
@@ -554,6 +569,15 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   before a get-up to the reaction time; the scenarios made for it began one attempt and passed. On the stand of 150 a body by the chair
   failed, and the short rest sent it up again before it lay still, seven times; it never stood (with the usual rest it stood after
   three). A change to when a get-up begins is run on the stand, not on the scenarios that show it.
+- **What a body does between its own parts does not move it against a drag.** R10's struggle (28 November) pulled the held arms in and
+  dug the free heels in with muscles up to 3000 N*m/rad: the two hands, 300 N each, still dragged the body, which the floor holds back
+  with at most its friction (about 540 N); only a yank that brings a grip to 450 N for 0.1 s frees it, and that took torque jumps of 600 to
+  1450 N*m (C25's bound 439). Before a behaviour is built to beat a rule of the world (a grip, a drag), work out from the forces whether
+  the body can at all.
+- **A start blended from the body's own pose moves the target to where a displaced limb is.** The suite's largest target step (102 degrees,
+  `command_get_up_held`) was read as two users of one arm; it was the start of a get-up 0.24 s after a hand let go of a forearm it had
+  pulled away, the target stepping to where the arm was (no command jump with it). Read the command jump beside a target step before
+  calling the step a defect.
 
 ## Hands, the grab and blows
 
@@ -658,6 +682,13 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   character doubled over (the rule is made for a fist's blow at 40 N*s). At 10 kg (decision 28) the touch is 6 N*s. And a scenario's
   path that starts at full speed asks a body to accelerate faster than its cap lets it: it fell 23 cm behind and caught up at
   2.4 m/s; a path for a body that a person moves eases in as the person's control does (the stick's 0.2 s).
+- **A grip that closes is a press, and a press is a hit by the body's own sum.** Scripted hands that came for the ankles at about 1 m/s and
+  closed 1 cm into the foot summed 41 N*s on the leg, over R10's line of 40, and the leg was covered for 3 s (28 November;
+  `getup_drag_ankles_crouch` since R10 was switched on, the struggle's ankle drags). A hand that comes to take hold comes slowly and
+  closes on the surface; what a person's hand does there is to be seen in the headset.
+- **"Open" for one user is not "open" for another.** The offered hand followed the player's hand while its grip was under 0.5; the hand
+  closing to take it crossed 0.5 a tick before the grab did (0.4 to 0.6 for the effector), and the arm was let go just before the take.
+  Once a hand is chosen, it is followed whatever its grip.
 
 ## The session, recordings and the headset
 
@@ -801,6 +832,13 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   again, the files were restored by `Copy-Item` from a backup: their times were older than the binary built from the reverted code, the
   build took 1 s, and the tests ran on the reverted code (62 tests instead of 63; a parser test failed on the new event). Touch restored
   files (`(Get-Item f).LastWriteTime = Get-Date`) and check the test count after such a build.
+- **`git diff -- <files> --output=x` writes nothing.** After `--` the option is a path; the patch went to the screen and no file was made
+  (28 November). Options before `--`: `git diff --output=x -- <files>`.
+- **A new `.cpp` regroups the unity build, and names that two files declared quietly clash.** Two file-scope constants of
+  `SandboxCarry.cpp` and `SandboxFingerRig.cpp` hid names of other files once a new file moved them into one group (C4459 as an error,
+  28 November). Name file-scope constants after their file (`CarryGravityMps2`).
+- **A sweep set that switches a value a scenario switches itself measures nothing new and fails `tuning_changes`.** `-Sets
+  "behaviour.struggle=1"` on scenarios that set it by their own console event made every run fail; and `-Sets "|"` runs the files twice.
 
 ## Assets, the MetaHuman, maps and lighting
 

@@ -905,8 +905,9 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		PreviousBodies = Bodies;
 	}
 	FScenarioStage::TellBodyOfHolds(EffectorRig, Ragdoll);
-	// R10, step 1: the viewer is told whether or not the body perceives (only what a behaviour's switch asks reads it); the hands, the
-	// feet and the things only to a body that perceives, as before.
+	// R10, step 1: the viewer is told whether or not the body perceives (only what a behaviour's switch asks reads it); the hands too
+	// (step 8's rest: give_hand reaches for an open one; nothing else reads them without perception); the feet and the things only to a
+	// body that perceives, as before.
 	FSandboxSeen Viewer;
 	// Where the viewer was at the start of the step just made: a path written from a body is put there by ApplyDueEvents, after this, in
 	// the frame its event falls due, so a frame later is the first time it can be told where it is (the independent reading's find: one
@@ -914,7 +915,7 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 	const bool bViewer = TellViewer(FrameIndex * FixedDt, Viewer);
 	if (Spec.bPerception || bViewer || EffectorRig)
 	{
-		// Without perception the rig gives only the player's capsule (a viewer), if it has one.
+		// Without perception the rig gives the player's capsule (a viewer), if it has one, and the hands.
 		FScenarioStage::TellBodyWhatMoves(EffectorRig.Get(), Spec.bPerception ? TConstArrayView<TObjectPtr<AActor>>(Props) : TConstArrayView<TObjectPtr<AActor>>(),
 			Ragdoll, bViewer ? TConstArrayView<FSandboxSeen>(&Viewer, 1) : TConstArrayView<FSandboxSeen>(), !Spec.bPerception);
 	}
@@ -3019,9 +3020,109 @@ void UScenarioRunnerSubsystem::Finish()
 				One->SetField(TEXT("gap_left_cm"), Each.GapCm[0] < TNumericLimits<double>::Max() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.GapCm[0])) : MakeShared<FJsonValueNull>());
 				One->SetField(TEXT("gap_right_cm"), Each.GapCm[1] < TNumericLimits<double>::Max() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.GapCm[1])) : MakeShared<FJsonValueNull>());
 				One->SetNumberField(TEXT("head_down_mps"), Each.HeadDownMps);
+				// behaviour.protect_held_leg: a leg's cover let go because a hand took hold of a leg (written only then).
+				if (Each.LetGoForHoldS >= 0.0)
+				{
+					One->SetNumberField(TEXT("let_go_for_hold_s"), Each.LetGoForHoldS);
+				}
 				Covers.Add(MakeShared<FJsonValueObject>(One));
 			}
 			BehaviourJson->SetArrayField(TEXT("covers"), Covers);
+			if (Behaviour.LegCoversWithheld > 0)
+			{
+				BehaviourJson->SetNumberField(TEXT("leg_covers_withheld"), Behaviour.LegCoversWithheld);
+			}
+			// Step 8's rest: every hand offered (give_hand).
+			TArray<TSharedPtr<FJsonValue>> Offers;
+			for (const FSandboxBehaviourView::FOffer& Each : Behaviour.Offers)
+			{
+				const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+				One->SetNumberField(TEXT("tell_s"), Each.TellS);
+				One->SetStringField(TEXT("side"), Each.Side);
+				One->SetNumberField(TEXT("reach_s"), Each.ReachS);
+				One->SetField(TEXT("reach_after_s"), Each.ReachS >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.ReachS - Each.TellS)) : MakeShared<FJsonValueNull>());
+				One->SetField(TEXT("gap_min_cm"), Each.GapMinCm >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.GapMinCm)) : MakeShared<FJsonValueNull>());
+				One->SetNumberField(TEXT("taken_s"), Each.TakenS);
+				One->SetStringField(TEXT("ended"), Each.Ended);
+				One->SetNumberField(TEXT("ended_s"), Each.EndedS);
+				One->SetNumberField(TEXT("pace_min"), Each.PaceMin);
+				Offers.Add(MakeShared<FJsonValueObject>(One));
+			}
+			BehaviourJson->SetArrayField(TEXT("offers"), Offers);
+			// Step 7: every drag of a body that lies, and the struggle in it.
+			TArray<TSharedPtr<FJsonValue>> Struggles;
+			for (const FSandboxBehaviourView::FStruggle& Each : Behaviour.Struggles)
+			{
+				const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+				One->SetNumberField(TEXT("start_s"), Each.StartS);
+				One->SetNumberField(TEXT("holds_at_start"), Each.HoldsAtStart);
+				One->SetBoolField(TEXT("struggles"), Each.bStruggles);
+				One->SetNumberField(TEXT("attempts"), Each.Attempts);
+				TArray<TSharedPtr<FJsonValue>> Vigours;
+				for (const double Vigour : Each.Vigours)
+				{
+					Vigours.Add(MakeShared<FJsonValueNumber>(Vigour));
+				}
+				One->SetArrayField(TEXT("vigours"), Vigours);
+				One->SetNumberField(TEXT("freed_s"), Each.FreedS);
+				One->SetField(TEXT("freed_after_s"), Each.FreedS >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.FreedS - Each.StartS)) : MakeShared<FJsonValueNull>());
+				One->SetNumberField(TEXT("ended_s"), Each.EndedS);
+				Struggles.Add(MakeShared<FJsonValueObject>(One));
+			}
+			BehaviourJson->SetArrayField(TEXT("struggles"), Struggles);
+			// Step 3: the arbiter of limbs: every change of a limb's holder, the seconds each user held each limb, and the seconds two
+			// users asked for one limb at once (the holder and the one it held off).
+			{
+				const FSandboxLimbClaims& Claims = Controller->GetLimbClaims();
+				const TSharedRef<FJsonObject> LimbsJson = MakeShared<FJsonObject>();
+				TArray<TSharedPtr<FJsonValue>> ChangeList;
+				for (const FSandboxLimbClaims::FChange& Change : Claims.GetChanges())
+				{
+					const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+					One->SetNumberField(TEXT("t"), Change.TimeS);
+					One->SetStringField(TEXT("limb"), FSandboxLimbClaims::LimbName(Change.Limb));
+					One->SetStringField(TEXT("from"), FSandboxLimbClaims::UserName(Change.From));
+					One->SetStringField(TEXT("to"), FSandboxLimbClaims::UserName(Change.To));
+					ChangeList.Add(MakeShared<FJsonValueObject>(One));
+				}
+				LimbsJson->SetArrayField(TEXT("changes"), ChangeList);
+				LimbsJson->SetNumberField(TEXT("changes_dropped"), Claims.GetChangesDropped());
+				const TSharedRef<FJsonObject> HeldJson = MakeShared<FJsonObject>();
+				TArray<TSharedPtr<FJsonValue>> ContestedList;
+				double ContestedTotalS = 0.0;
+				for (int32 LimbIndex = 0; LimbIndex < FSandboxLimbClaims::NumLimbs; ++LimbIndex)
+				{
+					const ESandboxLimb Limb = static_cast<ESandboxLimb>(LimbIndex);
+					const TSharedRef<FJsonObject> ByUser = MakeShared<FJsonObject>();
+					for (int32 UserIndex = 0; UserIndex < FSandboxLimbClaims::NumUsers; ++UserIndex)
+					{
+						const ESandboxLimbUser User = static_cast<ESandboxLimbUser>(UserIndex);
+						if (Claims.GetHeldS(Limb, User) > 0.0)
+						{
+							ByUser->SetNumberField(FSandboxLimbClaims::UserName(User), Claims.GetHeldS(Limb, User));
+						}
+						for (int32 OtherIndex = 0; OtherIndex < FSandboxLimbClaims::NumUsers; ++OtherIndex)
+						{
+							const double Seconds = Claims.GetContestedS(Limb, User, static_cast<ESandboxLimbUser>(OtherIndex));
+							if (Seconds > 0.0)
+							{
+								const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+								One->SetStringField(TEXT("limb"), FSandboxLimbClaims::LimbName(Limb));
+								One->SetStringField(TEXT("holder"), FSandboxLimbClaims::UserName(User));
+								One->SetStringField(TEXT("held_off"), FSandboxLimbClaims::UserName(static_cast<ESandboxLimbUser>(OtherIndex)));
+								One->SetNumberField(TEXT("s"), Seconds);
+								ContestedList.Add(MakeShared<FJsonValueObject>(One));
+								ContestedTotalS += Seconds;
+							}
+						}
+					}
+					HeldJson->SetObjectField(FSandboxLimbClaims::LimbName(Limb), ByUser);
+				}
+				LimbsJson->SetObjectField(TEXT("held_s"), HeldJson);
+				LimbsJson->SetArrayField(TEXT("contested"), ContestedList);
+				LimbsJson->SetNumberField(TEXT("contested_s"), ContestedTotalS);
+				BehaviourJson->SetObjectField(TEXT("limbs"), LimbsJson);
+			}
 			ControlJson->SetObjectField(TEXT("behaviour"), BehaviourJson);
 			// Step 8 in part (C39): every command and its answer.
 			TArray<TSharedPtr<FJsonValue>> CommandList;
@@ -3032,8 +3133,15 @@ void UScenarioRunnerSubsystem::Finish()
 				One->SetNumberField(TEXT("tell_s"), Each.TellS);
 				One->SetStringField(TEXT("answer"), Each.Answer);
 				One->SetNumberField(TEXT("answered_s"), Each.AnsweredS);
-				One->SetNumberField(TEXT("first_motion_s"), Each.FirstMotionS);
-				One->SetField(TEXT("first_motion_after_s"), Each.FirstMotionS >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.FirstMotionS - Each.TellS)) : MakeShared<FJsonValueNull>());
+				// C39's first change of a target: the get-up begun or the arm reaching, or the cover let go for the command if that came first
+				// (behaviour.command_cover_react; written only then, as cover_let_go_s).
+				const double First = Each.CoverLetGoS >= 0.0 && (Each.FirstMotionS < 0.0 || Each.CoverLetGoS < Each.FirstMotionS) ? Each.CoverLetGoS : Each.FirstMotionS;
+				One->SetNumberField(TEXT("first_motion_s"), First);
+				One->SetField(TEXT("first_motion_after_s"), First >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(First - Each.TellS)) : MakeShared<FJsonValueNull>());
+				if (Each.CoverLetGoS >= 0.0)
+				{
+					One->SetNumberField(TEXT("cover_let_go_s"), Each.CoverLetGoS);
+				}
 				One->SetNumberField(TEXT("interrupted"), Each.Interrupted);
 				CommandList.Add(MakeShared<FJsonValueObject>(One));
 			}

@@ -7245,11 +7245,377 @@ on a body on the floor:
 | `record-replay` (hands, `-Perception`, `-Takes`, `-Walk`), the session's self-test | `540f5e9f`, `194c0969`/`4131b101`, 3 of 3, `a7928716`; 15 of 15 | the same |
 | Bootstrap | 15 of 15 steps, 176 s | |
 
-Run hashes kept: `r10on_matrix`, `r10on_seeds`, `r10on_near`, `r10on_command`, `r10on_press`, `r10on_hold1`. **Found, not put right
-here:** the largest target step of the suite (102 degrees of the left upper arm) is where a commanded get-up begins 0.24 s after a
-hand let go of that forearm (`command_get_up_held`): two users of one arm, the arbiter's case (R10, step 3). **My mistake:** a
+Run hashes kept: `r10on_matrix`, `r10on_seeds`, `r10on_near`, `r10on_command`, `r10on_press`, `r10on_hold1`. **The suite's largest
+target step** (102 degrees of the left upper arm, `command_get_up_held` at 6.86 s) is where the commanded get-up begins, 0.24 s after a
+hand that had pulled the covered forearm away let go of it. First read as two users of one arm; it is not (the held arm is answered
+only while a clip leads the body): the start blends from the body's own pose (decision 22, `getup.start_blend_s` 0.3), and the arm's
+own pose was far from the cover's target the muscles had been pulling it back to, so the target steps to where the arm is. With the
+start blend at 0 the step is 55 degrees (to the clip's first pose; `Saved\Sweeps\n2_jump_probe`), and in both the largest command jump
+of the run is 146 N*m at 10.67 s, none at the start: the target moving to where the limb already is puts nothing in. Left as it is. **My mistake:** a
 `baseline.ps1 -SaveRuns` was piped to `Select-Object -First 1` again (exit code 255; every file had been written before the pipe
 closed, checked).
+
+### R3's decision 58 on the body with R10 (28 November, 10:24 to 10:45; under the owner's delegation)
+
+The owner's rule: A (`fall.catch`, `fall.arm_curve`, `fall.head`, `fall.palms` 1) goes on only if the head strikes and C14 are better
+and nothing is worse than the plan's bounds (C25, the stand at 90% or more on each seed, the matrix). Measured on the tree of
+`r10on` (`docs/recon/night2/r3_gate.ps1`): one sweep of R3's 96 falls (24 directions of a blow of 160 and 240 N*s and 24 shoves by
+hand at 3.5 and 4.5 m/s, `Saved\Recon\r3\big`) as the files have them and with A (`Saved\Sweeps\n2_r3_96`, read by
+`docs/recon/r3/falls.py`); one check set with A (`checks.ps1 -Tune A -Label n2_r3A`); the knockdowns by hand; the stands held by one
+hand, pressed, and with a viewer, with A.
+
+| Measure | R3 off (the files) | A |
+| --- | --- | --- |
+| 96 falls (73 fall): the head struck | 36% | 23% |
+| by hand: C14 / C15 / C16 p90 | 61% of 18 / 44% of 32 / 5.00 m/s | 44% / 16% / 5.52 |
+| by blows: C14 / C15 / C16 p90 | 62% of 29 / 29% of 41 / 5.23 | 85% of 27 / 29% / 4.02 |
+| Scorecard C15, by hand / by blows | 55% / 63% | 9% / 0% |
+| Scorecard C16 by hand / by blows | 4.16 / 3.00 m/s | 5.38 / 0.19 |
+| Scorecard C14, C17, C18, C19 | 83%; 1.87 s, 14.2 J; 4.8 s; 7% given up | 83%; 2.94 s, 15.3 J; 3.6 s; 4% |
+| The suite | 207 of 207 | 198 of 207: R3's six fail on `tuning_changes` (they switch A on themselves), and the three covers while rising: the trunk covered after 0.73 s (0.56; C34's 0.6), the head both forearms 0.60 s (0.51), a leg 1.20 s (1.07), the head down at 2.06 m/s (1.95) |
+| The stand on three seeds | 150, 143 at the first attempt | 150, 144 |
+| With a viewer at 70 cm | 150 | 149 (seed 1) |
+| Held by one hand / pressed with 300 N | 149 (32 first) / 149 (91 first) | 149 (46 first) / 150 (83 first) |
+| Matrix, knockdowns | ok; 1.87 s, 14.2 J | ok; 2.94 s, 15.3 J |
+
+With A the catch takes the arms when a hit while kneeling fells the body, and the cover comes after it (the film pair
+`Saved\Films\protect_hit_rising_trunk_pair\pair.mp4`, R3 off on the left: at 4.3 to 5.0 s the right body's arm is still out ahead
+while the left's is at its chest). `fall.head` alone, as a lighter option (`Saved\Sweeps\n2_r3_head`): the head struck in 25% of the
+96, the covers as without A, but C14 by hand 44% and by blows 52%; with `fall.palms` as well the same figures. **Decision 58, taken
+under the delegation: not yet** (C14 by hand and C34 worse); every figure above for the owner.
+
+### The controllers' face buttons for the commands (28 November, 10:05 to 10:25; decision 42)
+
+In the headset the right controller's first face button (A of the Touch profile the PS VR2 controllers arrive as) tells the body
+`get_up`, its second (B) `stop`, once a press (as the button goes down), through the console command the desktop's U and J send, so a
+recording keeps it at its frame; the right controller buzzes for `tools.headset.command_buzz_s` (0.08 s) at `command_buzz_strength`
+(0.5). `FSandboxControllerState` has the two buttons; `FSandboxXRControllers` reads them from the Touch and Index profiles (the first
+session had `OculusTouch_Right_A_Touch` and `_B_Touch` among the keys that arrived); `ASandboxPawn` turns a press into a command. The
+made-up headset's walk (`play.ps1 -Demo -Walk`, `record-replay.ps1 -Walk`) has a ninth check, `face_buttons_reach_the_body`: A and
+then B held six frames each reach the body once each (`get_up` refused, standing; `stop` done), and the session file and the replay now
+hold the commands told while it recorded (`commands given` and `their answers`, 7 of 7 comparisons). The walk's hashes as before
+(`a7928716`/`26744715`), the suite 207 of `r10on`, the session's self-test 15 of 15. Not done: a headset run (none in unattended work);
+which physical button is A on the PS VR2 controllers is SteamVR's binding, to be seen in the owner's session.
+
+### R10, step 3: the arbiter of limbs (28 November, 10:45 to 11:00)
+
+`FSandboxLimbClaims` (`SandboxBody`): six limbs (each arm, each leg, the trunk, the head) and the users in the plan's order of priority,
+a scenario's own targets first: script, fall (R3's catch and N6's reach), balance (the steps' feet), protect (the cover of a struck place
+and a get-up turned back and lowered), guard, hold_answer (R2's held arm), command, disposition (lying covered while afraid with the
+player near). Every tick, after the fall's run and the get-up's and before the held arm, each user's ask is made from its own state
+(`USandboxBodyController::UpdateLimbClaims`); the holder of a limb is its asker of the highest priority. The one rule that moved into it:
+R2's held arm is answered only while the arbiter gives it the arm (`WouldHold`), and a lowering asks for every limb as protection, which
+comes first: decision 63's rule (written into `UpdateHeldArms` as "not while lowered") is now the arbiter's. The rest is a record,
+`control.behaviour.limbs`: every change of holder, the seconds each user held each limb, and the seconds two users asked for one limb
+(`protect_phase_lowering_hold`: the left arm held by protection over the hold's answer for 1.30 s). Two unit tests (67).
+
+Every user of an arm or a leg, named and measured: the catch and the reach (the suite with R3's A on, `checks.ps1 -Tune A`: 207 runs with
+the hashes of the morning's `n2_r3A`), the steps' feet (the push matrix, 160 of `r10on_matrix`), the cover and the lowering (the suite,
+207 of `r10on`; the stand with a viewer, 150 of `r10on_near`), the guard (`record-replay.ps1 -Perception`, `194c0969`/`4131b101`), the
+held arm (the stand held by one hand, 150 of `r10on_hold1`), the command (the stand with `get_up`, 150 of `r10on_command`), the stand on
+three seeds (150 of `r10on_seeds`), the knockdowns (1.87 s, 14.2 J, 1.28 cm): every hash as before. Two names that a new file's unity
+group made clash (`GravityMps2` of `SandboxCarry.cpp`, `FingerNames` of `SandboxFingerRig.cpp`, file-scope constants hiding names of
+other files, C4459) were renamed. Not yet: a user asking the arbiter for anything but the held arm; the catch and the cover sharing the
+arms when a hit fells a kneeling body (R3's decision 58), `give_hand` (step 8's rest) asks as a command.
+The independent reading of the buttons and the arbiter (the diff as a file, 11:00 to 11:08): no path that moves a hash; put right: a
+held arm's answer that loses its arm to a user that places it itself (a scenario's target, the fall's, the guard's) no longer writes
+over that user's target as it lets go; the session file takes the body's last commands as many as the recording kept (it matched them
+by the body's clock a frame behind the recording's, which a body a frame later would have broken); the arbiter's holders begin as
+nobody's by a loop, not a list of six. Kept as known: with R3's catch on, the held arm's answer waits one or two ticks for a catch
+easing out as a get-up begins (the catch's target is not taken over in its fade); buttons are read on stepped frames only (a press
+while paused is not seen; the desktop's keys are); which physical button arrives as A is to be seen in the headset.
+
+### R10, step 8's rest: the offered hand, `give_hand` (28 November, 11:00 to 11:30; decision 47; behind `behaviour.give_hand`)
+
+`Sandbox.Command give_hand` (the desktop's H, the left controller's X, a scenario's `console` event): a body that lies reaches the arm
+of its nearer shoulder, `command_react_s` (0.3 s) after the command, toward the player's nearest open hand (grip under 0.5) within 90
+cm of that shoulder, and keeps to that hand, for `offer_s` (6 s); it begins no get-up meanwhile. Once a hand takes hold of that arm it
+gets up on it as for `get_up`, `command_react_s` after the take whether it lies still or not (the hand that pulls keeps it moving), the
+arm left to the clip and the hand; in that get-up a hand that pulls within `offer_along_deg` (60) of straight up does not slow the clip
+(decision 47; down or along the floor it is a hold as ever, and the world's pull still goes in proportion to any contact). Refused as
+`get_up` is (standing, falling, held by two, pressed, unable) and while it gets up already; `stop`, a hit that covers, a change of state
+and its time running out end it (`control.behaviour.offers`: the arm, when it reached, the least gap to the hand, when it was taken, how
+it ended, the slowest pace of its get-up). The player's hands are now told to a body that does not perceive (nothing but the offer reads
+them then). The arm is lifted by muscles of its own (`offer_arms_nm_per_rad` 120; the lying arm's 6 would not lift it).
+
+What the scenarios found on the way (each run, `Saved\Sweeps\n2_offer1` to `n2_offer7`): the body began its own get-up while it offered
+(the stay-down set aside, its rest lain: the offer now holds the get-up back); the reach toward a hand 53 cm from the shoulder ended 13 cm
+short and the hand never took it (the hand waits 43 cm off now, and goes to the body's hand to take it, as a person's does); the
+helping hand that rose at 0.35 m/s lagged the clip and pulled down (a hold by the rule: pace 0.33); R2's held arm's answer, placing the
+offered arm by a reach's pole toward a hand a metre up, turned the upper arm's target over by 156 to 174 degrees (the helping hand's arm
+is not answered now); a release whose pole was worked out again, or whose target was moved to the hand from the point it reached for,
+turned it over by 129 and 131 degrees (now the catch's way: the pole kept, the last target carried with the chest); and the other hand
+passing nearer on its way to the other forearm took the reach over, 126 degrees (the offer keeps to the hand it chose).
+
+| Scenario | Offer | Get-up | Largest target step | Largest command jump |
+| --- | --- | --- | --- | --- |
+| `command_give_hand_lying` | left arm, reached 0.30 s after the command, 8.0 cm from the hand at least, taken at 6.38 s | 6.68 to 10.03 s (3.36 s; an unhelped one 3.20), done | 64.7 degrees (the get-up's start) | 146 N*m |
+| `offer_phase_push` (30 N*s over 0.25 s at 5.0 s) | felt (fear's hits 2), taken at 6.38 s | 3.36 s | 68.3 | 146 |
+| `offer_phase_hold` (the right forearm held 5.0 to 6.2 s) | taken at 6.38 s | 3.28 s | 64.8 | 146 |
+| `offer_phase_hit` (40 N*s on the chest at 5.0 s) | interrupted: hit; the trunk covered | up at 13.48 s after the viewer went | 31.4 | 146 |
+| `command_give_hand_off` | refused: off | up at 13.5 s after the viewer went | | |
+
+The pace dips to 0.30 for moments in the helped get-ups (the player's hand lagging the clip pulls down); the get-up takes 0.16 s longer
+than an unhelped one, which is what the scenario holds it to (4.0 s at most). Films: `Saved\Films\command_give_hand_lying\film.mp4` and
+`command_give_hand_off\film.mp4` (the same moments; the offered hand on the left, the refusal on the right of
+`Saved\Recon\night2\offer_grid2.png`). With `give_hand` at 0 every hash as before (the suite's 207 of `r10on`, the matrix, the stands
+plain, with a viewer, with a command and held by one hand, the suite with R3's A, the seeing replay); switched on (taken under the
+delegation: decision 71, the gates held): the suite 212 of 212, the 207 of `r10on` as before, the five new with the hashes they had
+when they switched it on themselves; the walk's ninth check presses X as well (`get_up,stop,give_hand`, a standing body refuses
+`give_hand`), 7 of 7 comparisons of its replay, its hashes as before; the session's self-test 15 of 15.
+**The independent reading of `give_hand`** (11:31 to 11:40) found three defects, all put right: a taken offer was kept for every later
+attempt of its command (each begun at once, still or not, and the helping rule left on after the player let go: the offer now ends with
+the get-up it began); any hold on the offered arm counted as the take, one from before the command too (now only the hand it reaches
+for); `give_hand` told while it covered a struck place was accepted and ended in the next tick as interrupted (now refused, "covering").
+And from its remarks: the arm placed again after a release keeps its pole; only the hand that took it helps; the left controller buzzes
+for X; two comments that said otherwise than the code. It also showed the scenarios tested little: the helper's grip slipped a second
+into the get-up (the arm, left to the clip, went where the clip has it, against the hand), and the offer let the arm go a tick before
+the take (the hand closing to take it was no longer "open"). Now the arm keeps holding on to the hand that took it while that hand holds
+it (and follows it whatever its grip once chosen): the helper's grip held through the get-up (323 frames, no slip), the get-up 4.22 s
+(3.84 at `offer_along_deg` 90: the scripted helper, left below the rising body, pulls down, a hold by the rule; a person's hand rises
+with it), the target step at its start 31 degrees (65), the largest command jump 254 N*m. The suite 215 of 215, every hash of `r10on`.
+
+### R10, step 7: the struggle, built and measured: it does not free the body within C25 (28 November, 11:35 to 11:55; behind `behaviour.struggle`, 0)
+
+The plan's first measure (the morning's): an arm alone does not bring a grip to its 450 N or its 45 cm. Built now as the plan says,
+behind its switch: a drag of a lying body (hands that pull it with `struggle_from_n` in all for `perception.react_s`; decision 18's drag
+came 1.7 s into a drag by the wrists, as it waits for the pelvis to move at walking pace) draws once whether it struggles
+(`FSandboxChance`, decision 44); attempts every `struggle_every_s`, each with a vigour drawn from `struggle_vigour_min` to 1: every
+held arm pulled in toward its shoulder, every held leg drawn up, every free leg's heel set on the floor away from the pull (it digs in),
+by muscles of their own with their cap on torque raised, all times the vigour (`control.behaviour.struggles`: when, how many hands, whether
+it struggled, its attempts and vigours, when it was free). Scenarios (`docs/recon/r10/make_struggle.ps1`): `drag_lying_wrists_struggles`,
+`drag_lying_ankles_struggles` (it struggles, no seed: every attempt at full vigour), `drag_lying_wrists_still`, `drag_lying_ankles_still`
+(the switch at 0): two hands take the wrists (toward the head) or the ankles (toward the feet) and drag 2.2 m at about 0.8 m/s.
+
+| Settings (`Saved\Sweeps\n2_struggle2` to `n2_struggle10`) | Grips that slipped | The hands behind their targets at most | Largest command jump | Energy gained |
+| --- | --- | --- | --- | --- |
+| Off (the drag alone) | 0 | 20 cm | 146 N*m | 32 J |
+| The files: arms 600 and legs 600 N*m/rad, cap 250 N*m, attempts 0.6 s every 1.0 s, in over 0.5 s | 0 | 20 cm | 335 N*m | 57 J |
+| The same in over 0.15 s | 0 | 32 cm | 476 N*m | 41 J |
+| Arms 1200, legs 1500, cap 400, attempts 1.5 s every 0.5 s | 0 (1 before the legs' fix below) | 36 cm | 633 to 736 N*m | 53 J |
+| Arms and legs 3000, cap 800, attempts 1.5 s, legs 55 cm | 2 before the legs' fix (free) | 54 cm | 1452 N*m | 109 J |
+
+Why it cannot: two hands at their cap of 300 N each drag the body; the floor holds it back with no more than its friction times its
+weight (about 540 N); what the body's muscles do between its parts changes neither, so the drag goes on and the hands lag 20 to 36 cm,
+short of the grip's 45 cm for 0.25 s; and a yank that brings a grip to 450 N for 0.1 s needs torques that jump by 600 N*m and more (C25's
+bound, decision 15, is 439 for every part). Found on the way and put right: the arbiter gave a lying body's legs to balance (the steps'
+placement left from standing; now only an upright body's); the struggle's legs left their pole and hinge in the animation instance, and
+the steps' feet, which set none, solved with them after (the body got up and staggered, once fell: `ClearLimbSettings` forgets them as the
+leg is let go); the scripted hands came at the ankles at about 1 m/s and their grip sank 1 cm into the foot, a hit of 41 N*s on the leg
+that covered it for 3 s (protection comes before the hold's answer: the legs could not struggle). Still so for the ankles: their grip
+counts 41 N*s as it closes, so the ankles' drag runs covered and the struggle there is not seen; `getup_drag_ankles_crouch` the same since
+R10 on. Films `Saved\Films\drag_lying_wrists_struggles\film.mp4` and `drag_lying_wrists_still\film.mp4` (`Saved\Recon\night2\struggle_grid.png`:
+struggling, the knees stay up and the heels dig in, the arms bent to the head; still, the legs trail straight and the arms are drawn out).
+Decision 72 is the owner's.
+**The independent reading of the struggle** (11:53 to 12:05; it ran a sweep of its own with the struggle on, `Saved\Sweeps\review_struggle_reach`)
+found four defects, all with the switch on only, all put right: the struggle went on into a get-up and began from any one hand's hold
+(the helper of a hand offered, a hand on a forearm), its attempts against the clip and the held arm's answer (118 and 156 degrees in
+`offer_phase_hold` and `command_get_up_held`): now it begins and lasts only while the body lies, held by two hands (decisions 18 and 44);
+its letting go wrote over the target of a user that had placed the limb since (now it leaves that limb, and a leg's settings go at
+once); a leg's settings were kept when a scenario's target held it (a limb with settings is solved as an arm; now always forgotten).
+And: the drag's end after `struggle_every_s` without a hold (a literal second before); "free" only after an attempt. Kept as known: the
+struggle's legs are solved as arms (the foot turns with the shin, the heel not set flat); the dig-in aims at the floor of the last
+get-up.
+
+### R10, step 9: FR-18 in the new phases, and R2's held arm placed as the catch (28 November, 12:00 to 12:15)
+
+C26 in every new phase: the protective pose and the lowering (`protect_phase_*`, the morning's), the offered hand (`offer_phase_hit`,
+`_push`, `_hold`, above) and now the struggle (`struggle_phase_hit`, `_push`: a blow of 40 N*s and a push of 30 N*s on the chest while
+it is dragged by the wrists and struggles; `struggle_phase_hold`: dragged by one wrist, the other hand on its left ankle): each felt,
+each stands in the end, the command jumps within C25 (335 and 340 N*m, 191 for the hold). The hold found a defect of R2's held arm, not
+of the struggle: dragged by one wrist as it got up, the body gave the attempt up (drag) and fell, and the held arm's answer let the arm
+go at a point of the world as the body went down under it (150 degrees in a frame at 3.59 s); put right as the offered arm's: let go
+from where it was placed, carried with the chest until its weight has gone. The same scenario then showed the answer itself turning
+the arm over (138 degrees at 3.16 s: a reach's fixed pole lay along the line to a hand that dragged the wrist up and away): the held arm
+is now placed as R3's catch places an arm (`PlaceHeldArm`: the pole across the reach chosen as the answer begins and kept, the
+anatomical hinge, blended by the joints' turns). Seven scenarios move (every one where a held arm's answer ends), all pass:
+
+| Scenario | Largest target step, degrees | Largest command jump, N*m |
+| --- | --- | --- |
+| `getup_drag_wrists_crouch` | 30.8 (29.2) | 237 (239) |
+| `getup_drag_wrists_rise` | 76.4 (61.8) | 146 (146) |
+| `getup_drag_wrists_sit` | 30.5 (49.2) | 202 (222) |
+| `getup_pull_arm_in_crouch` | 29.2 (29.2) | 146 (173) |
+| `getup_pull_arm_in_sit` | 29.2 (29.2) | 146 (159) |
+| `getup_pull_arm_yield_crouch` | 29.2 (29.2) | 146 (215) |
+| `getup_pull_arm_yield_sit` | 29.2 (37.8) | 228 (262) |
+| `struggle_phase_hold` (new) | 76.3 (150 before both repairs) | 191 |
+
+The stand held by one hand on three seeds (`Saved\Matrix\getup_seeds\n2_heldpole_hold1`): 149 of 150 stand in the end, 33 at the first
+attempt, 295 attempts, 33 pulled free (`r10on_hold1`: 149, 32, 297, 32); 16 of the 150 runs move.
+
+**C34's kneeling leg and C39's slow four, by the cover's blend** (`Saved\Sweeps\n2_cover_blend`, `docs/recon/night2/cover_table.ps1`):
+`behaviour.protect_blend_s` at 0.35 and 0.25 instead of 0.5 covers the head and the trunk sooner (0.38 to 0.46 s instead of 0.51 to
+0.56) but the leg struck kneeling later (1.13, 1.17 s; 1.07 now), the head comes down at 2.14 to 2.16 m/s in that fall (2.0), and the
+target steps pass 110 degrees in `command_get_up_held` and `protect_hit_lying_head`. Not taken; C34 for the kneeling leg stays unmet.
+
+### R10's gate, its automatic part (28 November, 12:15 to 12:40; step 10)
+
+What `docs/recon/r10_plan.md`, step 10, asks of the agent, run by `docs/recon/night2/r10_gate.ps1` on the tree at the end of the
+window (logs `Saved\Recon\night2\gate_*.txt`). Met in its automatic part but for C34's kneeling leg and C35; both met after it, the first
+by decision 73 (a leg a hand takes hold of is not covered, on), the second with the struggle on, which stays at 0 for the owner's decision
+72 (both below). The owner's look at the videos, decision 72 and the headset are left.
+
+| What | Measured | Result |
+| --- | --- | --- |
+| Every R10 switch at 0 (`-Tune` the six to 0) against `r10on_before`, the tree before R10 was switched on (206) | 174 runs with the same hashes; 32 moved: the seven of R2's held arm (step 9, not behind a switch) and 25 of R10 whose files changed when R10 was switched on (they no longer switch R10 on themselves, so at 0 nothing of R10 runs in them: `command_*` but the refusals, `protect_*`, `tune_live_stay_down`) | kept |
+| The same run, its verdicts | 43 of 219 fail, each one that asks for R10 (or switches one off itself and finds it at 0, `tuning_changes`) or one of the eight whose expectations were changed for R10 on (`fear_blow_fades`, `fear_threat_rises`, `getup_hit_strong`, `getup_phase_*_hit`, `getup_roll_hit`, `getup_drag_ankles_crouch`: the same hashes as before, other expectations) | as expected |
+| The suite in the files | 219 of 219; against `r10on` 200 the same, 7 moved (the held arm's), 12 new | met |
+| Push matrix | 160 runs with the hashes of `r10on_matrix` | kept |
+| Knockdowns | 8 of 8; 1.87 s, 14.2 J, 1.28 cm, as before | kept |
+| The stand on three seeds | 150 runs with the hashes of `r10on_seeds`: 150 standing, 143 at the first attempt, 1.08 attempts a fall, assist 1.12 | kept |
+| C33, a viewer at 70 cm by every fallen body | 150 runs with the hashes of `r10on_near`: none begun afraid with it near, 50 turned back within 0.16 s, the head down at 1.86 m/s at most, the pelvis at 0.94 | met |
+| C39, `get_up` 3 s after the viewer came | 150 runs with the hashes of `r10on_command`: 0.49 s in the median, 146 of 150 within 1.0 s (at most 1.74), all standing; `give_hand`: the arm moves 0.30 s after, 7 to 8 cm from the player's open hand | met but four slow `get_up`s |
+| C25 on the scorecard (decision 15's bound 439 N*m) | the largest command jump 439 N*m (`calf_l`, `getup_left` at 3.32 s, the bound itself); the largest target step 102.4 degrees (`command_get_up_held`, the start blended from a displaced arm, above) | met |
+| C34, the covers | the head, the trunk, the groin and a leg struck lying within 0.36 to 0.56 s; a leg struck kneeling 1.07 s | not met for the kneeling leg; **met (0.56 s) once a leg's cover waits for a hold, below** |
+| C35 on six seeds (`Saved\Sweeps\n2_gate_struggle`, the struggle on, its chance 0.5) | drawn in 2 of 6 drags by the wrists and 2 of 6 by the ankles; no grip let go but by its own rules; none freed by the struggle (the scripted hands let go at 4.88 s); in the drags by the ankles the attempts never reach the legs: the closing grips sum 40.6 N*s on the leg, the leg is covered and the arbiter gives every limb to Protect from 1.83 to 4.83 s, above the attempts' HoldAnswer, so those runs have the hashes of the drags without a struggle | not met; **after the leg's rule, on twenty seeds: 9 of 18 attempts free it, all by the ankles (below); the struggle stays at 0, decision 72** |
+| C26, FR-18 in every new phase | step 9, above | met |
+| Videos for every switch proposed to go on | `give_hand`: `Saved\Films\command_give_hand_pair` (0 against 1); the struggle (at 0, for decision 72): `Saved\Films\drag_lying_wrists_struggles`, `drag_lying_wrists_still` | for the owner |
+
+Not in the gate's script and measured before it in the window: the walk with a made-up headset 9 of 9 and its replay with its hashes
+(stage 3), the stand held by one hand after step 9 (149 of 150, 33 pulled free; above); both run again by the bootstrap of the close.
+
+### A leg taken hold of is not covered (28 November, 12:30 to 13:00; `behaviour.protect_held_leg`, decision 73)
+
+The gate's C35 row: in the drags by the ankles the struggle's attempts never reached the legs. Two scripted hands that come for the ankles
+press into the feet before their grips close; the leg's place (both legs, one sum) took 40.6 N*s in 0.11 s (1.72 to 1.83 s), the grips
+closed at 1.94 s, and the leg was covered from 1.83 to 4.83 s with every limb Protect's. In the headset the same happens: a person's hand
+goes into what it reaches for. On the stand held by one hand (150 runs, the chest held) no cover came within 0.5 s of a grab: it is the
+two hands on the legs.
+
+`behaviour.protect_held_leg` (1) begins a leg's cover `protect_leg_wait_s` (0.15 s) after the hit, and not at all if a hand takes hold of
+a leg meanwhile; a leg's cover already on is let go when a hand takes hold of a leg (the arms cannot cover a leg a hand holds). The cover's
+times are still counted from the hit. Recorded: `control.behaviour.leg_covers_withheld`, a cover's `let_go_for_hold_s`.
+
+At 0 every hash of `n2gate` was kept (219). With it on, six scenarios move and nothing else (the stand on three seeds, with the viewer,
+with `get_up`, held by one hand: 150 runs each with the hashes as before; C25 439 N*m as before):
+
+| Scenario | Off (the files before) | On |
+| --- | --- | --- |
+| `drag_lying_ankles_still` | the leg covered 1.83 to 4.83 s, the get-up begun at 7.21 | not covered (`leg_covers_withheld` 1); a get-up begun at 2.02 and given up for the drag; the largest target step 75 degrees at the next start (31.6), the start blended from arms that trailed over the head, as `drag_lying_wrists_still`'s 72.9 in the files; command jump 146 N*m as before |
+| `drag_lying_ankles_struggles` | the struggle's attempts outranked by the cover | the legs pulled in; both grips slip, free at 3.6 s, command jump 225 N*m |
+| `getup_drag_ankles_crouch` | given up for the cover (since R10 was switched on) | given up for the drag, as before R10; a leg covered later at 7.06 s; its expectation back to the drag's |
+| `protect_hit_lying_legs` | one forearm within 10 cm after 0.36 s | 0.17 s (the cover begins 0.15 s after the hit; the arm was near the leg then, and the pose's first tenths had taken it away) |
+| `protect_hit_rising_legs` | 1.07 s (C34 not met) | **0.56 s** (C34 met); command jump 194 N*m (304), target step 33 degrees (40) |
+| `room_movable_fall_gets_up` | a leg struck by a box covered at once, the head later | the leg 0.16 s after; no head cover |
+
+Switched on under the owner's delegation (decision 73; `getup_drag_ankles_crouch` expects the drag's give-up again); the suite 219 of 219,
+the same six moved against `n2review`. Video: `Saved\Films\r10_heldleg_pair` (the files before against now).
+
+**C35 on twenty seeds** (`make_struggle.ps1 -Seeds 1..20`, the struggle on, its chance 0.5; `Saved\Sweeps\n2_struggle20`): drawn in 9 of
+20 drags by the ankles and 9 of 20 by the wrists (45%); by the ankles every attempt frees the body (9 of 9: both grips slip by their own
+rule, 0.73 s into the struggle; command jumps up to 225 N*m; standing 4.6 to 5.8 s after, the get-up begun 1.5 to 2.6 s after free by
+R2's rest), by the wrists none (the arms pull in, the hands lag 20 cm of the grip's 45); over both, 9 of 18 attempts free it (50%;
+decision 44's half); with the struggle off no grip slips. Decision 72 stands for the owner with these figures (`docs/active-ragdoll.md`,
+section 10).
+
+### The struggle switched on (28 November, 12:55 to 13:05; `docs/recon/night2/struggle_on.ps1`; not taken)
+
+With `behaviour.struggle=1` by `-Tune` on the files of the window's end: the stand held by two hands on three seeds, 0 of 150 pull free
+(0 with it off; decision 13's limit 5), 144 stand in the end (145), 36 of the 150 runs move. The suite: 10 scenarios move (the drags, the
+get-ups dragged by the wrists and the ankles, `grab_drag_fallen_two`, `grab_overload_tears`, `command_refused_held`), the five that switch
+it on themselves fail their `tuning_changes` only, and `command_refused_held` fails its target step: the right upper arm's target turns by
+160 degrees at 6.33 s, three frames after an attempt's end gives the limbs back to the protective pose (the body lies afraid with the
+player near, held by both arms); `getup_drag_ankles_crouch` has 152 degrees on the left calf, `getup_drag_ankles_sit` 93 on the right upper
+arm. A sweep (`Saved\Sweeps\n2_refused_struggle`): the arms pulled in to 45 cm instead of 25 have no such step (54 degrees, later), 35 cm
+has it, a release of 0.25 s has it earlier (6.16 s). A pole carried with the chest and kept across the line each tick did not help (162
+degrees at 6.54 s) and was taken out. Left as the cause: the limb's solve blended into the pose by the joints' turns while the two
+differ by nearly half a turn (a hand drawn in to 25 cm from its shoulder against a forearm over the face).
+
+**Drawn in less** (`docs/recon/night2/struggle_reach.ps1`, `struggle_on2.ps1`; 13:05 to 13:15): the hands to 45 cm from the shoulder and
+the feet to 70 cm from the hip (`struggle_pull_in_cm`, `struggle_leg_in_cm`, now in the files; the struggle itself stays at 0). With it on,
+the largest target steps are each a get-up's start a frame before (94 degrees in `getup_drag_ankles_crouch` at 8.49 s, the start at 8.48;
+the files' own largest is 102), but for 67 degrees on the right thigh as an attempt by the ankles begins (3.49 s); command jumps up to 287
+N*m; the suite with it on passes but for the five that switch it on themselves (their `tuning_changes`); `command_refused_held` passes. On
+twenty seeds: by the ankles 9 of 9 attempts free the body, by the wrists 0 of 9, as at 25 and 45 cm. The stand held by two hands: 0 of 150
+pull free, 145 stand in the end, as with it off. In the files only the five scenarios that switch it on themselves move. Video:
+`Saved\Films\r10_struggle_ankles_pair` (the legs kick free at 3.6 to 4.1 s and the body gets up on all fours from 6.2 s). Decision 72's
+(e) is recommended to the owner; the struggle stays at 0.
+
+### C39's slow four: the cover let go after the reaction (28 November, 13:15 to 13:30; `behaviour.command_cover_react`, decision 74)
+
+The four of the 150 that answered `get_up` after more than 1.0 s (1.11 to 1.74 s; seed 2's trials 19, 38 and 40, seed 3's 31) were each
+covered when told: the cover was let go in the command's own tick, the body's arms fell, and the get-up waited for it to lie still
+(`lay still for 1.50 s`). The first motion was counted only from that get-up, though C39 asks for the first change of a target, and the
+cover's going is one, made with no reaction at all. `behaviour.command_cover_react` (1) lets the cover go `command_react_s` (0.3 s) after a
+`get_up` or a `give_hand` and counts it (`cover_let_go_s`; `first_motion_s` the earlier of it and the get-up or the reach).
+
+At 0 every hash of `n2reach` was kept (219). On (`docs/recon/night2/cover_react.ps1`): nine scenarios move, the commands' and the offers'
+(`command_get_up_held`, `_near`, `command_give_hand_lying`, `command_hit_interrupted`, `command_lowering_up`, `command_stop`,
+`offer_phase_hit`, `_hold`, `_push`), all pass but `command_get_up_near`, whose get-up begins at 5.27 s instead of 4.97 (its window to
+5.5 s); the stand with a viewer and `get_up` 3 s after it came, three seeds: every answer 0.30 s after the command (146 of 150 within 1.0 s
+before; at most 1.74), all done, 94 at the first attempt (92), 149 standing in the end (150): trial 45 of seed 1, by the furniture, made
+five attempts instead of two (two stopped by the clip waiting 3 s), stood at 39.0 s and stepped at 39.6 s, as the 40 s ended. Switched on
+under the delegation (decision 74); the suite 219 of 219; the walk with a made-up headset 7 of 7 with it on. Video:
+`Saved\Films\r10_cover_react_pair` (the cover opening at once against 0.3 s after the word).
+
+### The independent reading of the window's code (28 November, 12:20 to 12:40)
+
+A reader who had not written it read the code diff since commit 3 (`Saved\Backups\night2_code_review.patch`, the arbiter's files whole):
+nothing that changes a run with the files as they were, nothing that crashes; seven findings, most only with the struggle or R3's catch
+on. Put right (every hash of `n2gate` kept but the four scenarios that switch the struggle on with a free leg, which move by the fourth):
+
+1. The offered arm's release wrote over a user that had just taken the arm (the catch begun in the tick a cover gave the get-up up; the
+   struggle's attempt): `ReleaseOfferArm` now leaves an arm that a scenario, the catch, the guard, the held arm's answer or the struggle
+   places.
+2. A struggle's release faded a taken offered arm out, and the offer, which only moved its target, never placed it again: the taken offer
+   places the arm again once the arbiter gives it back (and lets it go while a user above asks for it); the struggle carries its release
+   with the chest until the offer places the arm.
+3. Replays of a session did not set `behaviour.struggle` (nor now `protect_held_leg`) as the session had them.
+4. A free leg digging in was asked to push its ankle into the floor: the heel's target is now the ankle's height over the sole.
+5. `struggle_every_s` at 0 passed the checks and drew a new struggle every tick: refused with the struggle on.
+
+Left, written here: a taken offer begins its get-up as soon as the cover's muscles are let go, still or not (by design: the player's pull
+keeps it moving; the start's step is measured, not its command jump); an arm placed again while its release fades moved its target from
+where the release had it to the player's hand with weight on (when the chosen hand leaves the 90 cm and comes back): **put right at
+14:20** (an arm is placed again only once its release, or a struggle's on it, has let go; the new `command_give_hand_away_back`, the
+hand gone from 4.8 to 5.05 s: the arm let go at 4.878 s and placed again at 5.278, the largest target step 31.7 degrees; every hash of
+`n2end` kept, 220 scenarios; a fourth reading of it found it sound and widened the wait to any release's weight on the hand, R2's held
+arm's too, as the catch waits, and the C39 gap measured only while the arm reaches; every hash kept); `ArmPoleAcross`
+repeats the catch's pole and the bone tables repeat in five places (for the audit).
+
+### The second reading (28 November, 13:27 to 13:50): the code since the first, and the rest of the diff again
+
+Six real findings, all in the window's newest code, all put right:
+
+1. **`command_cover_react` held back the whole wish to stay down for 0.3 s, not only the pose** (confirmed by a run): a get-up the
+   command had just stopped lowering was turned back again 0.15 s later (`command_lowering_up`: two lowerings, done at 11.16 s instead of
+   6.16). Now only the protective pose waits for the command to be heard; the wish itself is set aside at once. `command_lowering_up` has
+   its hashes from before the switch again (`ce961b44`).
+2. **A leg's delayed cover overrode a cover begun during its wait**, and one blow on the trunk and a leg interrupted a command twice: a
+   cover begun since the leg's hit now keeps the arms.
+3. **A leg's cover was dropped when the get-up ended for another reason during the wait** (lost, dragged): only an upright body is no
+   longer covered.
+4. **A hand that held one ankle before the other leg was kicked kept that leg from being covered**: only a hold taken since the hit (or
+   since the cover began, for letting it go) answers.
+5. **`cover_let_go_s` was written while a hit's cover still held the pose**: it is written in the tick the pose is let go, and not while a
+   hit's cover holds it.
+6. **Replays did not set `command_cover_react`**: they do now, with the other behaviours.
+
+And a smaller one: no get-up begins while a leg's cover waits (`CanBeginGetUp`), and a switch turned off during the wait covers the leg
+at once. Measured after: the files' suite 219 of 219 with only `command_lowering_up` moved (back to its hashes without the switch); with
+both switches at 0 against `n2review`, only the four scenarios that switch the struggle on with a free leg move (the struggle's reach);
+the stands with a viewer and with `get_up` keep every run's hashes (C39 150 of 150 at 0.30 s, 149 standing in the end).
+
+**The third reading (13:55 to 14:05), of those fixes alone:** nothing that changes either switch at 0; with them on, two real and four
+small, all put right: `cover_let_go_s` was written for a release the command did not cause (a hit's cover that timed out, a leg taken
+hold of, a body held up): now only when the pose would still be held to stay down but for the command, the body down and not held up; a
+new hold on a leg was found by counting holds, so a hand that let one ankle go and took the other leg was missed (and a grip that slipped
+and closed again kept a cover on): now by each hold's hand and bone; a second leg hit during the wait no longer moves the first's time;
+`behaviour.protect` switched off during the wait covers nothing; the holds a leg's cover is measured against are taken whenever a leg's
+cover begins; the due time has the file's tolerance. Left, written here: a `get_up` or `give_hand` told during a leg's 0.15 s wait is
+accepted and then interrupted by the cover as it begins.
+
+**The window's last measurement (14:00 to 14:15; `docs/recon/night2/final_gate.ps1`), on the code and files committed:** the suite 219
+of 219 with every hash of `n2r2` (the third reading's fixes move no scenario), baseline `n2end`; with `protect_held_leg` and
+`command_cover_react` at 0, against `n2review`, only the four scenarios that switch the struggle on with a free leg move (its reach); the
+push matrix's 160 runs with the hashes of `r10on_matrix`, the knockdowns 1.87 s, 14.2 J, 1.28 cm; the stand on three seeds (150 standing,
+143 at the first attempt) and with a viewer, each 150 runs with the hashes of `r10on_seeds` and `r10on_near`; with `get_up` 150 runs as
+after decision 74 (C39 150 of 150 at 0.30 s, 149 standing); held by one hand and by two hands 150 runs each as before (one hand 33 pulled
+free, two 0); C25 on the scorecard 439 N*m (the largest target step now 86.6 degrees, `getup_wait_bounded`; `command_get_up_held`'s 102
+went with decision 74). Run hashes kept as `n2end_seeds`, `_near`, `_command`, `_hold1`, `_hold2`. At the close (14:35), after the
+offered arm's last fix: `record-replay -Perception` with its morning hashes (`194c0969`, `4131b101`), `-Takes` 3 of 3, `-Walk -Twice` 8 of
+8, `play -Smoke` 15 of 15, the bootstrap 15 of 15 in 153 s (the suite 220 of 220).
 
 ## Known behaviour of the stock mannequin
 

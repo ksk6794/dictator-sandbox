@@ -923,6 +923,11 @@ struct FSandboxBehaviourTuning
 	/** From a get_up to the first attempt for it, at least, s (C39: a person answers a spoken word in 0.2 to 1.0 s; a light in 0.15). */
 	double CommandReactS = 0.0;
 	/**
+	 * R10's gate (C39): 1 lets the protective pose go command_react_s after a get_up or a give_hand is told, not in its tick, and counts
+	 * that as the command's first change of a target. 0: let go in the command's tick, the first motion the get-up begun or the arm reaching.
+	 */
+	double CommandCoverReact = 0.0;
+	/**
 	 * The cover after a hit (step 6, in part: the head; C34; decision 45): 1 makes a hit on the head that sums protect_from_head_ns or more
 	 * in one contact, while the body lies or gets up, give an attempt up (ESandboxGiveUp::Protect) and cover the head (poses.protect_head)
 	 * for protect_hold_s; no get-up begins meanwhile. The body's own landing is no such hit (the static world is not felt as one). 0 none.
@@ -933,12 +938,57 @@ struct FSandboxBehaviourTuning
 	double ProtectFromNs = 0.0;
 	double ProtectHoldS = 0.0;
 	double ProtectBlendS = 0.0;
+	/**
+	 * A leg taken hold of is not covered (R10's gate, C35): 1 begins a leg's cover protect_leg_wait_s after the hit, and not at all if a
+	 * hand takes hold of a leg meanwhile; a leg's cover is let go when a hand takes hold of a leg. Two hands that close on the ankles press
+	 * 40 N*s into the feet before their grips close (28 November). 0 covers a struck leg at once, as before.
+	 */
+	double ProtectHeldLeg = 0.0;
+	double ProtectLegWaitS = 0.0;
 	/** N*m/rad of the spine's, the neck's, the arms' and the legs' muscles while the body protects itself lying; their damping, s. */
 	double ProtectSpineNmPerRad = 0.0;
 	double ProtectNeckNmPerRad = 0.0;
 	double ProtectArmsNmPerRad = 0.0;
 	double ProtectLegsNmPerRad = 0.0;
 	double ProtectDampingS = 0.0;
+	/**
+	 * The offered hand (step 8's rest; FR-52, decision 47; C39): 1 answers give_hand: a body that lies reaches the arm of its nearer
+	 * shoulder toward the player's nearest open hand (grip under offer_open_grip) within offer_reach_cm of that shoulder, for offer_s;
+	 * once a hand takes hold of that arm, it gets up on it as for get_up, and while that get-up runs a hand that pulls within
+	 * offer_along_deg of straight up is a help, not a hold: it does not slow the clip (decision 47; the world's pull still goes in
+	 * proportion to the contact, as for any hold). 0 refuses give_hand ("off").
+	 */
+	double GiveHand = 0.0;
+	double OfferS = 0.0;
+	double OfferReachCm = 0.0;
+	double OfferOpenGrip = 0.0;
+	/** The arm comes and goes over this long, s, its muscles (the lying arm's are too weak to lift it) with it: N*m/rad, damping s. */
+	double OfferBlendS = 0.0;
+	double OfferArmsNmPerRad = 0.0;
+	double OfferDampingS = 0.0;
+	double OfferAlongDeg = 0.0;
+	/**
+	 * The struggle (step 7; FR-50, decision 44; C35): 1: a body that lies and is dragged (the drag of decision 18) struggles in a share
+	 * struggle_chance of drags (drawn once a drag, FSandboxChance), in attempts every struggle_every_s that last struggle_attempt_s, each
+	 * with a vigour drawn from struggle_vigour_min to 1: every held arm is pulled in (its hand toward its shoulder, struggle_pull_in_cm
+	 * from it, along the line to where it is held) and every held leg drawn up (its foot toward its hip, struggle_leg_in_cm from it), by
+	 * muscles of struggle_arms_nm_per_rad and struggle_legs_nm_per_rad times the vigour. Whether a grip lets go is the grip's own rule;
+	 * the body never opens one. 0 none.
+	 */
+	double Struggle = 0.0;
+	double StruggleChance = 0.0;
+	double StruggleEveryS = 0.0;
+	double StruggleAttemptS = 0.0;
+	double StruggleVigourMin = 0.0;
+	double StrugglePullInCm = 0.0;
+	double StruggleLegInCm = 0.0;
+	double StruggleArmsNmPerRad = 0.0;
+	double StruggleLegsNmPerRad = 0.0;
+	double StruggleBlendS = 0.0;
+	/** A drag, for the struggle: hands that pull the lying body with this much in all (N) for perception.react_s. */
+	double StruggleFromN = 0.0;
+	/** The pulled-in limbs' muscles' cap on torque during an attempt, N*m, times the vigour (a yank: what can bring a grip to its 450 N). */
+	double StruggleMaxTorqueNm = 0.0;
 };
 
 /** How the weight torques are worked out ("muscles.weight_*"). */

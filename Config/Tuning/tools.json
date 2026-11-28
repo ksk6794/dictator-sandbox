@@ -50,6 +50,8 @@
       "haptic_full_n": 300,
       "take_buzz_s": 0.2,
       "take_buzz_strength": 0.8,
+      "command_buzz_s": 0.08,
+      "command_buzz_strength": 0.5,
       "move_speed_mps": 1.4,
       "move_dead_zone": 0.15,
       "move_ease_s": 0.2,

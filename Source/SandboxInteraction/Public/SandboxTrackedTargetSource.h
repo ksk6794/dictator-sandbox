@@ -36,6 +36,13 @@ struct FSandboxControllerState
 	float Squeeze = 0.0f;
 	/** The controller's thumbstick: x to the right, y forward, each -1 to 1 (FR-42: the right one moves the player, the left one turns). */
 	FVector2D Stick = FVector2D::ZeroVector;
+	/**
+	 * The controller's two face buttons, held down: the first (A on the right controller, X on the left, as the Touch profile names
+	 * them; the PS VR2 controllers arrive as that profile) and the second (B, Y). R10's commands in the headset (decision 42): the
+	 * right controller's first tells the body get_up, its second stop (ASandboxPawn).
+	 */
+	bool bFirstButton = false;
+	bool bSecondButton = false;
 };
 
 /**

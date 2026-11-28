@@ -61,9 +61,21 @@ kept in recordings). Decisions 59 to 66 taken for the owner, 67 the owner's (whi
 `Saved\Films\r10_staydown_*`, `r10_protect_hit`). **28 November, the owner's word:** 55 to 57, 59 to 66, 68 and the faster checks'
 12 and 13 confirmed; **R10 switched on by decision 67** (`behaviour.fear`, `stay_down`, `protect`, `commands` 1 in the files; a
 scenario that wants one off switches it off itself; baseline `r10on`, 207 scenarios; the matrix, the knockdowns and the stand keep
-every hash; `docs/testing.md`, "R10 switched on"). Next (the second window of 28 November, `docs/recon/night2_plan.md`): R3's
-decision 58 under the owner's delegation, the controllers' buttons for the commands and the page for the headset session of 29
-November, R10's step 3 (the arbiter), `give_hand`, step 7. DLSS is deferred to M5.
+every hash; `docs/testing.md`, "R10 switched on"). **The second window of 28 November, 09:48 to 17:48, the owner away**
+(`docs/recon/night2_plan.md`): R3's decision 58 under the owner's delegation, not yet (C14 by hand and C34 worse with variant A);
+the controllers' face buttons for the commands (right A `get_up`, right B `stop`, left X `give_hand`, a short buzz; the walk with a
+made-up headset presses them, nine checks; decision 69); R10's step 3, the arbiter of limbs (`FSandboxLimbClaims`, decision 70; every
+hash kept; `control.behaviour.limbs`); step 8's rest, `give_hand` (decision 71, on: the arm reaches 0.30 s after the command and comes
+within 8 cm of the player's open hand; taken, the body gets up on it; `control.behaviour.offers`); step 7, the struggle when dragged by
+two hands (`behaviour.struggle` at 0: it frees none within C25, decision 72 the owner's; `control.behaviour.struggles`); step 9, FR-18
+in every new phase, which found R2's held arm let go at a point of the world and placed by a fixed pole (both put right, seven held-arm
+scenarios move); step 10's automatic part (`docs/testing.md`, "R10's gate"), which found and put right two more, on under the
+delegation: a leg a hand takes hold of is not covered (`behaviour.protect_held_leg`, decision 73; C34 met) and the cover let go a
+reaction after a command (`behaviour.command_cover_react`, decision 74; C39 150 of 150); C35 met with the struggle on (by the ankles,
+never by the wrists), which stays at 0 for the owner (decision 72); 220 scenarios, baseline `n2end`, 67 unit tests. Pages: the headset
+session https://claude.ai/artifact/XatvKGwU2Ru7fJ3KE1ASYh, the window's videos https://claude.ai/artifact/Ht7A6SiqFvMbtuLc6wcda2.
+**Next: the audit** (`docs/active-ragdoll.md`, section 8, item 3; its plan after the owner's answer), then the rest of M4. DLSS is
+deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 
@@ -211,7 +223,7 @@ decides what comes next), `active-ragdoll.md` (the second architecture of the ac
 
 ## Things that have already bitten
 
-The rest of the list is `docs/pitfalls.md`: 217 entries on 28 November 2026 (238 with the 21 below), grouped by area (the
+The rest of the list is `docs/pitfalls.md`: 228 entries on 28 November 2026, evening (249 with the 21 below), grouped by area (the
 solver; measuring, runs and tests; muscles, poses and the standing body; falls and the get-up; hands, the grab and blows; the
 session, recordings and the headset; PowerShell, scripts and building; assets, the MetaHuman, maps and lighting), each with when
 to read it. The entries below are the ones that spoil a result in any part without a sign; they are here only, and every

@@ -108,6 +108,8 @@ namespace
 		Visitor(FString(TEXT("tools.headset.haptic_full_n")), Tuning.Tools.HeadsetHapticFullN);
 		Visitor(FString(TEXT("tools.headset.take_buzz_s")), Tuning.Tools.HeadsetTakeBuzzS);
 		Visitor(FString(TEXT("tools.headset.take_buzz_strength")), Tuning.Tools.HeadsetTakeBuzzStrength);
+		Visitor(FString(TEXT("tools.headset.command_buzz_s")), Tuning.Tools.HeadsetCommandBuzzS);
+		Visitor(FString(TEXT("tools.headset.command_buzz_strength")), Tuning.Tools.HeadsetCommandBuzzStrength);
 		Visitor(FString(TEXT("tools.headset.move_speed_mps")), Tuning.Tools.HeadsetMoveSpeedMps);
 		Visitor(FString(TEXT("tools.headset.move_dead_zone")), Tuning.Tools.HeadsetMoveDeadZone);
 		Visitor(FString(TEXT("tools.headset.move_ease_s")), Tuning.Tools.HeadsetMoveEaseS);
@@ -313,6 +315,8 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 		!CheckRange(TEXT("tools.headset.haptic_full_n"), Tools.HeadsetHapticFullN, 0.0, 10000.0, true, OutError) ||
 		!CheckRange(TEXT("tools.headset.take_buzz_s"), Tools.HeadsetTakeBuzzS, 0.0, 5.0, false, OutError) ||
 		!CheckRange(TEXT("tools.headset.take_buzz_strength"), Tools.HeadsetTakeBuzzStrength, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.command_buzz_s"), Tools.HeadsetCommandBuzzS, 0.0, 5.0, false, OutError) ||
+		!CheckRange(TEXT("tools.headset.command_buzz_strength"), Tools.HeadsetCommandBuzzStrength, 0.0, 1.0, false, OutError) ||
 		!CheckRange(TEXT("tools.headset.move_speed_mps"), Tools.HeadsetMoveSpeedMps, 0.0, 10.0, false, OutError) ||
 		!CheckRange(TEXT("tools.headset.move_dead_zone"), Tools.HeadsetMoveDeadZone, 0.0, 0.9, false, OutError) ||
 		!CheckRange(TEXT("tools.headset.move_ease_s"), Tools.HeadsetMoveEaseS, 0.0, 5.0, false, OutError) ||

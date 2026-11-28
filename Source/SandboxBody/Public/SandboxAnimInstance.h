@@ -176,6 +176,18 @@ public:
 	/** The weight a limb target is going to (0 once let go), whatever its blend has reached. */
 	double GetLimbGoalWeight(int32 EndMeshBoneIndex) const;
 
+	/**
+	 * Forgets the bend, the ease, the hinge and the ranges set for a limb end, so that its next target is solved as one never set was (R10's
+	 * struggle drew a leg up with a pole of its own, and the steps' feet, which set none, kept it after: the body staggered and fell).
+	 */
+	void ClearLimbSettings(int32 EndMeshBoneIndex)
+	{
+		Bends.Remove(EndMeshBoneIndex);
+		EasedTwice.Remove(EndMeshBoneIndex);
+		AnatomicHinge.Remove(EndMeshBoneIndex);
+		Ranges.Remove(EndMeshBoneIndex);
+	}
+
 	/** The ranges an arm's two segments are held to (FSandboxLimbTarget::RootLimits, MiddleLimits). */
 	void SetLimbRanges(int32 EndMeshBoneIndex, const FSandboxJointLimits& Root, const FSandboxJointLimits& Middle) { Ranges.Add(EndMeshBoneIndex, TPair<FSandboxJointLimits, FSandboxJointLimits>(Root, Middle)); }
 

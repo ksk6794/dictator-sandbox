@@ -1,0 +1,302 @@
+{
+    "name":  "offer_phase_hold",
+    "duration_s":  24,
+    "body":  {
+                 "mesh":  "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+                 "physics_asset":  "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+                 "attached_meshes":  [
+                                         "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+                                     ],
+                 "control":  "active",
+                 "get_up":  true,
+                 "location_cm":  [
+                                     0,
+                                     90,
+                                     0
+                                 ],
+                 "laid_deg":  0
+             },
+    "events":  [
+                   {
+                       "t":  0.6,
+                       "type":  "impulse",
+                       "body":  "pelvis",
+                       "impulse_ns":  35,
+                       "direction":  [
+                                         0,
+                                         0,
+                                         -1
+                                     ]
+                   },
+                   {
+                       "t":  0.9,
+                       "type":  "viewer",
+                       "at_bone":  "pelvis",
+                       "path":  [
+                                    {
+                                        "t":  0,
+                                        "location_cm":  [
+                                                            300,
+                                                            90,
+                                                            165
+                                                        ]
+                                    },
+                                    {
+                                        "t":  0.05,
+                                        "location_cm":  [
+                                                            300,
+                                                            0,
+                                                            160
+                                                        ]
+                                    },
+                                    {
+                                        "t":  1.05,
+                                        "location_cm":  [
+                                                            70,
+                                                            0,
+                                                            160
+                                                        ]
+                                    },
+                                    {
+                                        "t":  10.05,
+                                        "location_cm":  [
+                                                            70,
+                                                            0,
+                                                            160
+                                                        ]
+                                    },
+                                    {
+                                        "t":  11.05,
+                                        "location_cm":  [
+                                                            400,
+                                                            0,
+                                                            160
+                                                        ]
+                                    }
+                                ]
+                   },
+                   {
+                       "t":  3.5,
+                       "type":  "effector",
+                       "effector":  "hand_right",
+                       "at_bone":  "upperarm_l",
+                       "path":  [
+                                    {
+                                        "t":  0,
+                                        "location_cm":  [
+                                                            40,
+                                                            90,
+                                                            120
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  0.6,
+                                        "location_cm":  [
+                                                            30,
+                                                            -5,
+                                                            30
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  2.4,
+                                        "location_cm":  [
+                                                            30,
+                                                            -5,
+                                                            30
+                                                        ],
+                                        "grip":  0
+                                    }
+                                ]
+                   },
+                   {
+                       "t":  5.9,
+                       "type":  "effector",
+                       "effector":  "hand_right",
+                       "at_bone":  "hand_l",
+                       "follow_bone_s":  0.5,
+                       "path":  [
+                                    {
+                                        "t":  0,
+                                        "location_cm":  [
+                                                            47.6,
+                                                            33.1,
+                                                            41.4
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  0.4,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  0.5,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  0.8,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  1.8,
+                                        "location_cm":  [
+                                                            10,
+                                                            0,
+                                                            40
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  3,
+                                        "location_cm":  [
+                                                            20,
+                                                            0,
+                                                            90
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  3.4,
+                                        "location_cm":  [
+                                                            20,
+                                                            0,
+                                                            110
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  4,
+                                        "location_cm":  [
+                                                            20,
+                                                            0,
+                                                            110
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  4.1,
+                                        "location_cm":  [
+                                                            20,
+                                                            0,
+                                                            110
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  4.8,
+                                        "location_cm":  [
+                                                            60,
+                                                            0,
+                                                            150
+                                                        ],
+                                        "grip":  0
+                                    }
+                                ]
+                   },
+                   {
+                       "t":  4.2,
+                       "type":  "console",
+                       "command":  "Sandbox.Command give_hand"
+                   },
+                   {
+                       "t":  4.4,
+                       "type":  "effector",
+                       "effector":  "hand_left",
+                       "at_bone":  "lowerarm_r",
+                       "follow_bone_s":  1.2,
+                       "path":  [
+                                    {
+                                        "t":  0,
+                                        "location_cm":  [
+                                                            40,
+                                                            90,
+                                                            120
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  0.5,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  0.6,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  1.8,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  1
+                                    },
+                                    {
+                                        "t":  1.9,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            0
+                                                        ],
+                                        "grip":  0
+                                    },
+                                    {
+                                        "t":  2.4,
+                                        "location_cm":  [
+                                                            0,
+                                                            0,
+                                                            80
+                                                        ],
+                                        "grip":  0
+                                    }
+                                ]
+                   }
+               ],
+    "expect":  {
+                   "tuning_changes":  0,
+                   "max_joint_stretch_cm":  2,
+                   "measures":  {
+                                    "control.behaviour.offers.0.ended":  {
+                                                                             "equals":  "taken"
+                                                                         },
+                                    "control.behaviour.offers.0.side":  {
+                                                                            "equals":  "left"
+                                                                        },
+                                    "control.behaviour.offers.0.taken_s":  {
+                                                                               "min":  6
+                                                                           },
+                                    "control.pose.target_step_max_deg":  {
+                                                                             "max":  110
+                                                                         }
+                                },
+                   "end_state":  "standing",
+                   "min_get_ups":  1,
+                   "effector_grabs":  2
+               }
+}

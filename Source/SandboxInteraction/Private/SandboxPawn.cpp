@@ -465,17 +465,44 @@ void ASandboxPawn::UpdateHeadset(float DeltaTime)
 		bGripsArmed = false;
 		RequestNewTake();
 	}
+	// R10's commands in the headset (decision 42; the desktop's U and J): the right controller's first face button tells the body
+	// get_up, its second stop, once a press (as the button goes down), and the right controller answers with a short buzz. The
+	// command goes through the console, as the keys' do, so a recording keeps it at its frame.
+	if (Right.bFirstButton && !bFirstButtonDown)
+	{
+		CommandGetUp();
+		CommandBuzzS = Tuning.Tools.HeadsetCommandBuzzS;
+	}
+	if (Right.bSecondButton && !bSecondButtonDown)
+	{
+		CommandStop();
+		CommandBuzzS = Tuning.Tools.HeadsetCommandBuzzS;
+	}
+	// And the left controller's first (X): give_hand; the left controller buzzes for it.
+	if (Left.bFirstButton && !bLeftFirstButtonDown)
+	{
+		CommandGiveHand();
+		CommandBuzzLeftS = Tuning.Tools.HeadsetCommandBuzzS;
+	}
+	bFirstButtonDown = Right.bFirstButton;
+	bSecondButtonDown = Right.bSecondButton;
+	bLeftFirstButtonDown = Left.bFirstButton;
 	// The controllers vibrate with what their hands press or strike with (the hands' own contacts: the pawn
-	// knows nothing of what they touch), and for a moment when a take begins. A stand-in has nothing to vibrate.
+	// knows nothing of what they touch), for a moment when a take begins, and the right one for a moment when a button gives a
+	// command. A stand-in has nothing to vibrate.
 	const float TakeBuzz = BuzzLeftS > 0.0 ? static_cast<float>(Tuning.Tools.HeadsetTakeBuzzStrength) : 0.0f;
+	const float CommandBuzz = CommandBuzzS > 0.0 ? static_cast<float>(Tuning.Tools.HeadsetCommandBuzzStrength) : 0.0f;
+	const float CommandBuzzLeft = CommandBuzzLeftS > 0.0 ? static_cast<float>(Tuning.Tools.HeadsetCommandBuzzStrength) : 0.0f;
 	BuzzLeftS = FMath::Max(BuzzLeftS - DeltaTime, 0.0);
+	CommandBuzzS = FMath::Max(CommandBuzzS - DeltaTime, 0.0);
+	CommandBuzzLeftS = FMath::Max(CommandBuzzLeftS - DeltaTime, 0.0);
 	const FName Hands[2] = { SandboxEffectors::HandLeft, SandboxEffectors::HandRight };
 	for (int32 Index = 0; Controllers && Index < 2; ++Index)
 	{
 		const USandboxEffectorComponent* Effector = Rig->FindEffector(Hands[Index]);
 		// What the hand presses with, or what it pulls with on a thing it holds, whichever is more.
 		const double FeltN = Effector ? FMath::Max(Effector->GetContactForceN(), Effector->GetGrabForceN()) : 0.0;
-		const float Amplitude = FMath::Max(TakeBuzz, FSandboxXRControllers::HapticAmplitude(FeltN, Tuning.Tools.HeadsetHapticFullN));
+		const float Amplitude = FMath::Max(FMath::Max(TakeBuzz, Index == 1 ? CommandBuzz : CommandBuzzLeft), FSandboxXRControllers::HapticAmplitude(FeltN, Tuning.Tools.HeadsetHapticFullN));
 		// One call is one frame of vibration: asked for in every frame it is to go on, and once more to stop it.
 		if (Amplitude > 0.0f || LastHaptic[Index] > 0.0f)
 		{
@@ -766,6 +793,15 @@ void ASandboxPawn::CommandStop()
 	}
 }
 
+void ASandboxPawn::CommandGiveHand()
+{
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->ConsoleCommand(TEXT("Sandbox.Command give_hand"));
+		LastAction = TEXT("told the body: give me a hand (answered with behaviour.give_hand on; hold an open hand near its shoulder)");
+	}
+}
+
 void ASandboxPawn::ToggleOverlays()
 {
 	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
@@ -965,7 +1001,7 @@ void ASandboxPawn::GetHudLines(TArray<FString>& OutLines) const
 	{
 		ExtraHudLines(OutLines);
 	}
-	OutLines.Add(TEXT("1 2 3 tool | buttons use | G open hands | F kick | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | K record | N new take | U get up | J stop | Esc quit"));
+	OutLines.Add(TEXT("1 2 3 tool | buttons use | G open hands | F kick | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | K record | N new take | U get up | J stop | H give hand | Esc quit"));
 }
 
 void ASandboxPawn::OnMove(const FInputActionValue& Value)
@@ -1090,6 +1126,7 @@ void ASandboxPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	Input->BindAction(MakeKey(TEXT("NewTake"), EKeys::N), ETriggerEvent::Started, this, &ASandboxPawn::RequestNewTake);
 	Input->BindAction(MakeKey(TEXT("CommandGetUp"), EKeys::U), ETriggerEvent::Started, this, &ASandboxPawn::CommandGetUp);
 	Input->BindAction(MakeKey(TEXT("CommandStop"), EKeys::J), ETriggerEvent::Started, this, &ASandboxPawn::CommandStop);
+	Input->BindAction(MakeKey(TEXT("CommandGiveHand"), EKeys::H), ETriggerEvent::Started, this, &ASandboxPawn::CommandGiveHand);
 	Input->BindAction(MakeKey(TEXT("Quit"), EKeys::Escape), ETriggerEvent::Started, this, &ASandboxPawn::OnQuit);
 
 	Subsystem->AddMappingContext(MappingContext, 0);

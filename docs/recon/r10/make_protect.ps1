@@ -126,7 +126,8 @@ Add-Viewer $s 0.9 1.0 9.0
 $s.expect.end_state = 'standing'
 $s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'done' }
 $s.expect.measures['control.commands.0.first_motion_after_s'] = [ordered]@{ min = 0.0; max = 1.0 }
-$s.expect.measures['control.get_up.starts.0.at_s'] = [ordered]@{ min = 4.0; max = 5.0 }
+# (The cover is let go command_react_s after the command since decision 74, and the get-up begins 0.3 s later: 5.27 s.)
+$s.expect.measures['control.get_up.starts.0.at_s'] = [ordered]@{ min = 4.0; max = 5.5 }
 $s.expect.measures['control.behaviour.begun_near_afraid'] = [ordered]@{ max = 0 }
 Save $s
 $s = New-Base 'command_stop' 22.0
@@ -206,6 +207,120 @@ $s.events = [System.Collections.ArrayList]@(
 $s.expect.tuning_changes = 1
 $s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'refused: off' }
 Save $s
+
+# Step 8's rest, give_hand (decision 47; C39): the afraid body lies covered with the viewer near (on its left side, +x); the player's
+# right hand comes open to 30 cm beside and 30 cm above the body's left shoulder at 3.5 to 4.1 s and waits; give_hand at 4.2 s: the body
+# uncovers and reaches its left hand to it; from 5.9 s the player's hand goes to the body's hand, closes on it at 6.4 s, from 6.7 s pulls
+# it up with the rising body and toward the player (40 cm over the first second, 90 cm in all over 2.2 s: a hand that rose 110 cm in
+# 1.5 s left the body behind and its grip slipped a second after the take), holds, and lets go at 10.0 s. The body gets up on it; the
+# pull, within offer_along_deg of up, does not slow the clip.
+function Add-OfferHand($Spec) {
+    # Open, 30 cm out and 30 cm up from the body's left shoulder (as the shoulder was at 3.5 s), waiting.
+    $Spec.events.Add([ordered]@{ t = 3.5; type = 'effector'; effector = 'hand_right'; at_bone = 'upperarm_l'; path = @(
+        [ordered]@{ t = 0.0; location_cm = @(40, 90, 120); grip = 0 },
+        [ordered]@{ t = 0.6; location_cm = @(30, -5, 30); grip = 0 },
+        [ordered]@{ t = 2.4; location_cm = @(30, -5, 30); grip = 0 }) }) | Out-Null
+    # At 5.9 s to the body's left hand where it reached (followed for 0.5 s), closed on it, then pulled up and toward the player. The
+    # first key is where the waiting hand is (the shoulder at 3.5 s, (17.6, -51.9, 11.4) from where the body was put, measured on the run
+    # of 28 November, plus the wait's offset): the hand's next event begins with a jump of its target to it.
+    $Spec.events.Add([ordered]@{ t = 5.9; type = 'effector'; effector = 'hand_right'; at_bone = 'hand_l'; follow_bone_s = 0.5; path = @(
+        [ordered]@{ t = 0.0; location_cm = @(47.6, 33.1, 41.4); grip = 0 },
+        [ordered]@{ t = 0.4; location_cm = @(0, 0, 0); grip = 0 },
+        [ordered]@{ t = 0.5; location_cm = @(0, 0, 0); grip = 1 },
+        [ordered]@{ t = 0.8; location_cm = @(0, 0, 0); grip = 1 },
+        [ordered]@{ t = 1.8; location_cm = @(10, 0, 40); grip = 1 },
+        [ordered]@{ t = 3.0; location_cm = @(20, 0, 90); grip = 1 },
+        [ordered]@{ t = 3.4; location_cm = @(20, 0, 110); grip = 1 },
+        [ordered]@{ t = 4.0; location_cm = @(20, 0, 110); grip = 1 },
+        [ordered]@{ t = 4.1; location_cm = @(20, 0, 110); grip = 0 },
+        [ordered]@{ t = 4.8; location_cm = @(60, 0, 150); grip = 0 }) }) | Out-Null
+}
+$s = New-Base 'command_give_hand_lying' 24.0
+Add-Viewer $s 0.9 1.0 9.0
+Add-OfferHand $s
+$s.events.Add([ordered]@{ t = 4.2; type = 'console'; command = 'Sandbox.Command give_hand' }) | Out-Null
+$s.expect.end_state = 'standing'
+$s.expect.effector_grabs = 1
+$s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'done' }
+$s.expect.measures['control.commands.0.first_motion_after_s'] = [ordered]@{ min = 0.2; max = 1.0 }
+$s.expect.measures['control.behaviour.offers.0.side'] = [ordered]@{ equals = 'left' }
+$s.expect.measures['control.behaviour.offers.0.ended'] = [ordered]@{ equals = 'taken' }
+$s.expect.measures['control.behaviour.offers.0.gap_min_cm'] = [ordered]@{ max = 10 }
+# Decision 47: the helping pull does not slow the get-up. The scripted helper's hand does not follow the rising body as a person's does:
+# where it is left below the body's hand it pulls down, which is a hold by the rule (the pace, offers.0.pace_min, dips to 0.33 for
+# those moments), so the get-up is held to 4.5 s at most against an unhelped one's 3.2 (C21's median); the arm holds on to the hand
+# that took it, whose grip does not slip.
+$s.expect.measures['control.get_up.duration_s'] = [ordered]@{ max = 4.5 }
+$s.expect.measures['effectors.list.hand_right.grab_slips'] = [ordered]@{ max = 0 }
+$s.expect.measures['control.pose.target_step_max_deg'] = [ordered]@{ max = 110 }
+Save $s
+# The chosen hand leaves the 90 cm and comes back while the offered arm is still let go (the first reading of the window's code, its
+# seventh find): the arm goes down and reaches again once its release has let go, its target never moved with the weight on.
+$s = New-Base 'command_give_hand_away_back' 24.0
+Add-Viewer $s 0.9 1.0 9.0
+Add-OfferHand $s
+$approach = $s.events | Where-Object { $_.type -eq 'effector' -and $_.t -eq 3.5 } | Select-Object -First 1
+$approach.path = @(
+    [ordered]@{ t = 0.0; location_cm = @(40, 90, 120); grip = 0 },
+    [ordered]@{ t = 0.6; location_cm = @(30, -5, 30); grip = 0 },
+    [ordered]@{ t = 1.3; location_cm = @(30, -5, 30); grip = 0 },
+    [ordered]@{ t = 1.4; location_cm = @(30, -5, 140); grip = 0 },
+    [ordered]@{ t = 1.45; location_cm = @(30, -5, 140); grip = 0 },
+    [ordered]@{ t = 1.55; location_cm = @(30, -5, 30); grip = 0 },
+    [ordered]@{ t = 2.4; location_cm = @(30, -5, 30); grip = 0 })
+$s.events.Add([ordered]@{ t = 4.2; type = 'console'; command = 'Sandbox.Command give_hand' }) | Out-Null
+$s.expect.end_state = 'standing'
+$s.expect.effector_grabs = 1
+$s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'done' }
+$s.expect.measures['control.behaviour.offers.0.ended'] = [ordered]@{ equals = 'taken' }
+$s.expect.measures['control.pose.target_step_max_deg'] = [ordered]@{ max = 110 }
+Save $s
+# The same with the switch at 0 (switched off by the scenario: on in the files since the night of 28 November): refused, off; the body
+# stays covered and gets up after the viewer goes.
+$s = New-Base 'command_give_hand_off' 24.0
+$s.events.Insert(0, [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.give_hand=0' })
+$s.expect.tuning_changes = 1
+Add-Viewer $s 0.9 1.0 9.0
+$s.events.Add([ordered]@{ t = 4.2; type = 'console'; command = 'Sandbox.Command give_hand' }) | Out-Null
+$s.expect.end_state = 'standing'
+$s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'refused: off' }
+$s.expect.measures['control.get_up.starts.0.at_s'] = [ordered]@{ min = 11.0 }
+Save $s
+# C26 (FR-18) in the offer's phase: a blow of 40 N*s on the chest (it covers the trunk: the offer is interrupted), a push of 30 N*s over
+# 0.25 s (felt; the offer goes on and is taken), a hand that takes the other forearm for 1.2 s (the offer goes on and is taken), each at
+# 5.0 s, while the left arm reaches.
+foreach ($kind in @('hit', 'push', 'hold')) {
+    $s = New-Base "offer_phase_$kind" 24.0
+    Add-Viewer $s 0.9 1.0 9.0
+    Add-OfferHand $s
+    $s.events.Add([ordered]@{ t = 4.2; type = 'console'; command = 'Sandbox.Command give_hand' }) | Out-Null
+    $s.expect.end_state = 'standing'
+    $s.expect.min_get_ups = 1
+    if ($kind -eq 'hit') {
+        $s.events.Add([ordered]@{ t = 5.0; type = 'impulse'; body = 'spine_04'; impulse_ns = 40; direction = @(0, 0, -1) }) | Out-Null
+        $s.expect.measures['control.behaviour.offers.0.ended'] = [ordered]@{ equals = 'interrupted: hit' }
+        $s.expect.measures['control.behaviour.covers.0.place'] = [ordered]@{ equals = 'trunk' }
+    } elseif ($kind -eq 'push') {
+        $s.events.Add([ordered]@{ t = 5.0; type = 'impulse'; body = 'spine_04'; impulse_ns = 30; direction = @(1, 0, 0); duration_s = 0.25 }) | Out-Null
+        $s.expect.measures['control.behaviour.offers.0.ended'] = [ordered]@{ equals = 'taken' }
+        $s.expect.measures['control.behaviour.offers.0.side'] = [ordered]@{ equals = 'left' }
+        $s.expect.measures['control.behaviour.fear_hits'] = [ordered]@{ min = 2 }
+    } else {
+        $s.events.Add([ordered]@{ t = 4.4; type = 'effector'; effector = 'hand_left'; at_bone = 'lowerarm_r'; follow_bone_s = 1.2; path = @(
+            [ordered]@{ t = 0.0; location_cm = @(40, 90, 120); grip = 0 },
+            [ordered]@{ t = 0.5; location_cm = @(0, 0, 0); grip = 0 },
+            [ordered]@{ t = 0.6; location_cm = @(0, 0, 0); grip = 1 },
+            [ordered]@{ t = 1.8; location_cm = @(0, 0, 0); grip = 1 },
+            [ordered]@{ t = 1.9; location_cm = @(0, 0, 0); grip = 0 },
+            [ordered]@{ t = 2.4; location_cm = @(0, 0, 80); grip = 0 }) }) | Out-Null
+        $s.expect.effector_grabs = 2
+        $s.expect.measures['control.behaviour.offers.0.ended'] = [ordered]@{ equals = 'taken' }
+        $s.expect.measures['control.behaviour.offers.0.side'] = [ordered]@{ equals = 'left' }
+        $s.expect.measures['control.behaviour.offers.0.taken_s'] = [ordered]@{ min = 6.0 }
+    }
+    $s.expect.measures['control.pose.target_step_max_deg'] = [ordered]@{ max = 110 }
+    Save $s
+}
 
 # A switch changed while the body runs (docs/pitfalls.md: a value that "applied" has not necessarily reached what reads it): stay_down
 # switched on as the body lies afraid, before the viewer comes (it then stays down and covers); protect switched on just before a hit on

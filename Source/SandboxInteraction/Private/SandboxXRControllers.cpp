@@ -81,7 +81,36 @@ bool FSandboxXRControllers::GetController(FName Effector, FSandboxControllerStat
 	}
 	OutState.Squeeze = ReadSqueeze(bLeft);
 	OutState.Stick = ReadStick(bLeft);
+	ReadButtons(bLeft, OutState.bFirstButton, OutState.bSecondButton);
 	return true;
+}
+
+void FSandboxXRControllers::ReadButtons(bool bLeft, bool& bOutFirst, bool& bOutSecond) const
+{
+	bOutFirst = false;
+	bOutSecond = false;
+	const APlayerController* Controller = Player.Get();
+	if (!Controller)
+	{
+		return;
+	}
+	// The first session in the headset (vr_check3) had OculusTouch_Right_A_Touch and _B_Touch among the keys that arrived: the
+	// PS VR2 controllers answer as the Touch profile, whose buttons are A and B on the right and X and Y on the left. Index's are
+	// A and B on both.
+	const FKey First[] = {
+		bLeft ? EKeys::OculusTouch_Left_X_Click : EKeys::OculusTouch_Right_A_Click,
+		bLeft ? EKeys::ValveIndex_Left_A_Click : EKeys::ValveIndex_Right_A_Click };
+	const FKey Second[] = {
+		bLeft ? EKeys::OculusTouch_Left_Y_Click : EKeys::OculusTouch_Right_B_Click,
+		bLeft ? EKeys::ValveIndex_Left_B_Click : EKeys::ValveIndex_Right_B_Click };
+	for (const FKey& Key : First)
+	{
+		bOutFirst = bOutFirst || Controller->IsInputKeyDown(Key);
+	}
+	for (const FKey& Key : Second)
+	{
+		bOutSecond = bOutSecond || Controller->IsInputKeyDown(Key);
+	}
 }
 
 bool FSandboxXRControllers::GetHead(FVector& OutLocation, FQuat& OutRotation) const

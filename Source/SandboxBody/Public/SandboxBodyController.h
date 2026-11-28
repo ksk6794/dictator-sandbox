@@ -9,6 +9,7 @@
 #include "SandboxClipPose.h"
 #include "SandboxFingerRig.h"
 #include "SandboxIdleMotion.h"
+#include "SandboxLimbClaims.h"
 #include "SandboxMotionLibrary.h"
 #include "SandboxPoseRig.h"
 #include "SandboxWeightTorques.h"
@@ -170,8 +171,12 @@ struct FSandboxBehaviourView
 		double GapCm[2] = { TNumericLimits<double>::Max(), TNumericLimits<double>::Max() };
 		/** The head's fastest way down from 0.1 s after the hit while covered, m/s. */
 		double HeadDownMps = 0.0;
+		/** behaviour.protect_held_leg: when a leg's cover was let go because a hand took hold of a leg; below 0 never. */
+		double LetGoForHoldS = -1.0;
 	};
 	TArray<FCover> Covers;
+	/** behaviour.protect_held_leg: a leg struck and not covered because a hand took hold of a leg within protect_leg_wait_s. */
+	int32 LegCoversWithheld = 0;
 	/**
 	 * Step 8 in part (behaviour.commands; C39): every command told, when, its answer ("accepted", "done", "stopped", "refused: <why>",
 	 * "given up: <why>") and when it was given, when the body first moved for it (a get-up begun), and how often a hit interrupted it.
@@ -183,16 +188,53 @@ struct FSandboxBehaviourView
 		FString Answer;
 		double AnsweredS = -1.0;
 		double FirstMotionS = -1.0;
+		/** behaviour.command_cover_react: when the protective pose was let go for the command (a change of target, C39); below 0 not. */
+		double CoverLetGoS = -1.0;
 		int32 Interrupted = 0;
 	};
 	TArray<FCommand> Commands;
+	/**
+	 * Step 8's rest (behaviour.give_hand; C39): every hand offered: when it was told, the arm ("left", "right", "" before one was chosen),
+	 * when it began to reach, the least gap from the body's hand to the player's open hand it reached for, when a hand took it, how it
+	 * ended ("taken", "not taken", "stopped", "interrupted: <why>") and when, and the slowest pace of the get-up it began.
+	 */
+	struct FOffer
+	{
+		double TellS = 0.0;
+		FString Side;
+		double ReachS = -1.0;
+		double GapMinCm = -1.0;
+		double TakenS = -1.0;
+		FString Ended;
+		double EndedS = -1.0;
+		double PaceMin = 1.0;
+	};
+	TArray<FOffer> Offers;
+	/**
+	 * Step 7 (behaviour.struggle; C35): every drag of a body that lies: when it began, how many hands held it then, whether the body
+	 * struggled in it (drawn once a drag), its attempts with their vigours, when every grip was off (below 0: never), and when the drag
+	 * was over (nothing had held it for a second).
+	 */
+	struct FStruggle
+	{
+		double StartS = 0.0;
+		int32 HoldsAtStart = 0;
+		bool bStruggles = false;
+		int32 Attempts = 0;
+		TArray<double> Vigours;
+		double FreedS = -1.0;
+		double EndedS = -1.0;
+	};
+	TArray<FStruggle> Struggles;
 };
 
-/** R10, step 8 in part: what a session or a run may ask of the body (FR-51, FR-52). give_hand and the M4b actions are not built. */
+/** R10, step 8: what a session or a run may ask of the body (FR-51, FR-52). The M4b actions (jump, sit) are not built. */
 enum class ESandboxCommand : uint8
 {
 	GetUp,
-	Stop
+	Stop,
+	/** Step 8's rest (behaviour.give_hand): the lying body offers a hand to the player's open hand, and gets up on it once it is taken. */
+	GiveHand
 };
 /** A thing the body took for a threat, at the moment it did. */
 struct FSandboxThreatEvent
@@ -710,6 +752,8 @@ public:
 	const FSandboxGetUpView& GetGetUpView() const { return GetUpView; }
 	/** R10: the viewer, and later fear and the behaviours (FSandboxBehaviourView). */
 	const FSandboxBehaviourView& GetBehaviourView() const { return BehaviourView; }
+	/** R10, step 3: who held which limb, when that changed, and how long two users asked for one limb at once (control.behaviour.limbs). */
+	const FSandboxLimbClaims& GetLimbClaims() const { return LimbClaims; }
 	/**
 	 * R10, step 2: the seed the body's choices draw from (FSandboxChance), told by the run (a scenario's "seed") or the session (a counter
 	 * of its own) as the body starts; 0, the default, draws nothing. Nothing draws yet (the struggle of step 7 will).
@@ -1261,6 +1305,13 @@ private:
 	FVector HeldArmInChest[2] = { FVector::ZeroVector, FVector::ZeroVector };
 	/** Where each held arm's hand is placed now: it follows its answer's point over getup.arm_follow_s, from where the hand was, never in a step. */
 	FVector HeldArmPlaced[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/** A held arm let go: its placed point in the chest's frame, which the fading target follows until its weight has gone. */
+	bool bHeldArmReleasing[2] = { false, false };
+	FVector HeldArmReleaseInChest[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/** The held arm's elbow pole, chosen across the reach as the answer begins and kept to its release (ArmPoleAcross). */
+	FVector HeldArmPole[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/** A held arm placed as R3's catch places an arm: the pole kept, the anatomical hinge, blended by the joints' turns. */
+	void PlaceHeldArm(int32 Side, const FVector& Point, double Weight, bool bNewPole);
 	/** Whether the body braces now (an asked tone, a brace, anticipation): what decides an arm's answer by state. */
 	bool IsBraced() const;
 	/** The holds' pull together, as vectors (N), and whether they pull or move the pelvis as a drag does now. */
@@ -1627,6 +1678,14 @@ private:
 	/** R10: what the behaviours keep for result files, and the step that measures the viewer every tick (read only). */
 	FSandboxBehaviourView BehaviourView;
 	FSandboxChance Chance;
+	/**
+	 * R10, step 3: the arbiter of limbs. Every tick, before the held arm is answered, each user's ask is made from its own state (the
+	 * catch, the fall's reach, the steps' feet, the cover and the lowering, the guard, the held arm, a command, staying down, a scenario's
+	 * targets); a user asks the arbiter whether it holds its limb where two meet (today: the held arm and the lowering, decision 63's
+	 * rule), and the rest is a record.
+	 */
+	FSandboxLimbClaims LimbClaims;
+	void UpdateLimbClaims(double DeltaTime);
 	double ViewerSeriesNextS = 0.0;
 	void MeasureViewer();
 	/**
@@ -1666,6 +1725,21 @@ private:
 	double PlaceFeltS[3] = { -1.0e9, -1.0e9, -1.0e9 };
 	bool bPlaceCounted[3] = { false, false, false };
 	ECoverPlace ProtectPosePlace = ECoverPlace::Head;
+	/** behaviour.protect_held_leg: a leg's cover waiting for protect_leg_wait_s (its hit's time, sum and bone), until when. */
+	bool bLegCoverPending = false;
+	double LegCoverDueS = 0.0;
+	double LegCoverHitS = 0.0;
+	double LegCoverHitNs = 0.0;
+	FName LegCoverBone;
+	/** The holds on a leg's bones as the leg was struck, and as its cover began: only a hold taken since (another hand or bone) answers. */
+	TArray<FSandboxBodyHold> LegHoldsAtHit;
+	TArray<FSandboxBodyHold> LegHoldsAtCover;
+	/** The holds on a leg's bones (thigh, calf, foot) now. */
+	TArray<FSandboxBodyHold> LegHoldsNow() const;
+	/** Whether a hold on a leg's bones now was not among Before (by its hand and its bone). */
+	bool HasNewLegHold(const TArray<FSandboxBodyHold>& Before) const;
+	/** behaviour.protect_held_leg: a leg's cover waits, begins or is let go by whether a hand takes hold of a leg. */
+	void UpdateHeldLegCover();
 	/** R10, step 8 in part: the get_up command in force, and its record in BehaviourView.Commands (INDEX_NONE: none). */
 	bool bGetUpCommanded = false;
 	int32 CommandRecord = INDEX_NONE;
@@ -1674,6 +1748,78 @@ private:
 	void EndCommand(const FString& Answer);
 	/** A get_up in force interrupted (a cover after a hit, an attempt given up): ended after behaviour.command_tries times. */
 	void InterruptCommand(const TCHAR* What);
+	/**
+	 * Step 8's rest (behaviour.give_hand): the hand offered under way: whether there is one, whether a hand has taken it and when, the arm
+	 * (-1 before one is chosen) and whether it is placed, until when it is offered, its record in BehaviourView.Offers and its command's in
+	 * BehaviourView.Commands; and each arm's share of the offering muscles.
+	 */
+	struct FOfferRun
+	{
+		bool bActive = false;
+		bool bTaken = false;
+		bool bPlaced = false;
+		/** Taken, the get-up it began has begun (the offer is over when that get-up is). */
+		bool bGetUpBegun = false;
+		/** Its arm's pole has been chosen (a later placement keeps it). */
+		bool bPoleSet = false;
+		int32 Side = -1;
+		/** The player's hand it reaches for, once chosen (another open hand that passes nearer is not followed). */
+		FName Hand;
+		double UntilS = -1.0;
+		double TakenS = -1.0;
+		int32 Record = INDEX_NONE;
+		int32 CommandIndex = INDEX_NONE;
+	};
+	FOfferRun Offer;
+	double OfferShare[2] = { 0.0, 0.0 };
+	/** An offering arm let go: where its hand was, in the chest's frame, which the fading target follows until its weight has gone. */
+	bool bOfferReleasing[2] = { false, false };
+	FVector OfferReleaseInChest[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/** The elbow's pole the offering arm was placed with, kept for its release (as R3's catch keeps its own); its last target, world. */
+	FVector OfferPole[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	FVector OfferTarget[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	/**
+	 * The offering arm placed at a point (weight 1) or let go from where its hand is (weight 0), as R3's catch places an arm: the elbow's
+	 * pole across the line from the shoulder to the point, its anatomical hinge, blended by the joints' turns (a reach's pole lay along
+	 * that line for a lying body's arm and its upper arm's target turned over by 172 degrees in a frame, offer_phase_hold).
+	 */
+	void PlaceOfferArm(int32 Side, const FVector& Point, double Weight);
+	void ReleaseOfferArm(int32 Side);
+	/** The elbow's pole for an arm placed at a point, as R3's catch chooses it (the mesh's space): across the line from the shoulder. */
+	FVector ArmPoleAcross(int32 Side, const FVector& Point) const;
+	/**
+	 * Step 7 (behaviour.struggle): the drag under way and the struggle in it: whether there is one, whether the body struggles, its record
+	 * in BehaviourView.Struggles, when the next attempt begins, until when this one lasts, its vigour, how long nothing has held it.
+	 * The four limbs a struggle pulls in (left and right arm, left and right leg): placed, their pole and last target, let go and carried
+	 * with the chest or the pelvis until their weight has gone, and each one's share of the struggle's muscles.
+	 */
+	struct FStruggleRun
+	{
+		bool bActive = false;
+		bool bStruggles = false;
+		bool bAttempting = false;
+		int32 Record = INDEX_NONE;
+		double NextAttemptS = -1.0;
+		double AttemptUntilS = -1.0;
+		double Vigour = 0.0;
+		double NoHoldS = 0.0;
+		/** The way the hands pull it over the floor, a unit vector (zero until they pull with struggle_from_n). */
+		FVector DragWay = FVector::ZeroVector;
+	};
+	FStruggleRun StruggleRun;
+	/** How long hands have pulled the lying body with struggle_from_n or more in all (a drag begins after perception.react_s of it). */
+	double StrugglePulledS = 0.0;
+	bool bStrugglePlaced[4] = { false, false, false, false };
+	bool bStruggleReleasing[4] = { false, false, false, false };
+	FVector StrugglePole[4] = { FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector };
+	FVector StruggleTarget[4] = { FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector };
+	FVector StruggleReleaseInFrame[4] = { FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector, FVector::ZeroVector };
+	double StruggleShare[4] = { 0.0, 0.0, 0.0, 0.0 };
+	void UpdateStruggle(double DeltaTime);
+	void PlaceStruggleLimb(int32 Limb, const FVector& Point, double Weight, bool bNewPole);
+	void UpdateOffer(double DeltaTime);
+	/** Ends the hand offered, how (taken, not taken, stopped, interrupted), and lets its arm go over offer_blend_s. */
+	void EndOffer(const FString& How);
 	void StartCover(ECoverPlace Place, double HitNs, FName Bone);
 	void MeasureCover();
 	/** Whether a hit with this impulse comes at the trunk from its front (the belly's rule, IsIntoBelly, without its band). */

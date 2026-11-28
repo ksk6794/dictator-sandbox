@@ -5,7 +5,7 @@
 
 namespace
 {
-	const TCHAR* const FingerNames[5] = { TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky") };
+	const TCHAR* const FingerRigNames[5] = { TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky") };
 
 	// How a curl is shared out over a finger's three joints (a relaxed hand and a fist both bend most in the middle), and over the thumb's.
 	constexpr double FingerShares[3] = { 0.36, 0.40, 0.24 };
@@ -24,7 +24,7 @@ bool FSandboxFingerRig::Init(const FReferenceSkeleton& Skeleton)
 		const TCHAR* Suffix = Side == 0 ? TEXT("_l") : TEXT("_r");
 		const auto BoneAt = [&Skeleton, Suffix](int32 Finger, int32 Segment)
 		{
-			return Skeleton.FindBoneIndex(FName(*FString::Printf(TEXT("%s_%02d%s"), FingerNames[Finger], Segment + 1, Suffix)));
+			return Skeleton.FindBoneIndex(FName(*FString::Printf(TEXT("%s_%02d%s"), FingerRigNames[Finger], Segment + 1, Suffix)));
 		};
 		int32 Bones[5][3];
 		bool bAll = true;

@@ -163,6 +163,18 @@ if ($Walk) {
     $hasBody = @($seen.hands.PSObject.Properties | Where-Object { $_.Name -eq 'body' }).Count -eq 1
     Add-Row "the player's body is recorded" "$hasBody" "$([bool]$replay.effectors.list.body)" ($hasBody -and [bool]$replay.effectors.list.body)
 }
+# R10: the commands told while the recording ran (the walk's face buttons, the desktop's keys, the console), given again by the
+# replay at their frames: judged by their names and order; their answers are the body's, judged where the outcome is.
+$seenCommands = @($seen.commands | Where-Object { $_ })
+if ($seenCommands.Count -gt 0) {
+    $replayCommands = @($replay.control.commands | Where-Object { $_ })
+    $seenNames = ($seenCommands | ForEach-Object { $_.command }) -join ','
+    $replayNames = ($replayCommands | ForEach-Object { $_.command }) -join ','
+    Add-Row 'commands given' $seenNames $replayNames ($seenNames -eq $replayNames)
+    $seenAnswers = ($seenCommands | ForEach-Object { $_.answer }) -join '; '
+    $replayAnswers = ($replayCommands | ForEach-Object { $_.answer }) -join '; '
+    Add-Row 'their answers' $seenAnswers $replayAnswers ($seenAnswers -eq $replayAnswers) $judgeOutcome
+}
 $touched = @($seen.hands.PSObject.Properties | Where-Object { [double]$_.Value.contact_impulse_ns -gt 0 }).Count
 if ($touched -eq 0) {
     Add-Row 'a hand touched something' 'no' '' $false

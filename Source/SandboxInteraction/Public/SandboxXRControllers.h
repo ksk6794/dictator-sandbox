@@ -58,6 +58,8 @@ private:
 	float ReadSqueeze(bool bLeft) const;
 	/** The thumbstick of every profile is asked, as the grip is, and the one tilted most counts. */
 	FVector2D ReadStick(bool bLeft) const;
+	/** The face buttons of every profile that has them (Touch, Index), as the grip is: down if any profile's is down. */
+	void ReadButtons(bool bLeft, bool& bOutFirst, bool& bOutSecond) const;
 
 	TWeakObjectPtr<APlayerController> Player;
 	/** Filled as the keys are read, which is a question and changes nothing else. */

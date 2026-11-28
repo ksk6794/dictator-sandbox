@@ -123,16 +123,39 @@ namespace
 		Visitor(FString(TEXT("behaviour.commands")), Tuning.Behaviour.Commands);
 		Visitor(FString(TEXT("behaviour.command_tries")), Tuning.Behaviour.CommandTries);
 		Visitor(FString(TEXT("behaviour.command_react_s")), Tuning.Behaviour.CommandReactS);
+		Visitor(FString(TEXT("behaviour.command_cover_react")), Tuning.Behaviour.CommandCoverReact);
 		Visitor(FString(TEXT("behaviour.protect")), Tuning.Behaviour.Protect);
 		Visitor(FString(TEXT("behaviour.protect_from_head_ns")), Tuning.Behaviour.ProtectFromHeadNs);
 		Visitor(FString(TEXT("behaviour.protect_from_ns")), Tuning.Behaviour.ProtectFromNs);
 		Visitor(FString(TEXT("behaviour.protect_hold_s")), Tuning.Behaviour.ProtectHoldS);
 		Visitor(FString(TEXT("behaviour.protect_blend_s")), Tuning.Behaviour.ProtectBlendS);
+		Visitor(FString(TEXT("behaviour.protect_held_leg")), Tuning.Behaviour.ProtectHeldLeg);
+		Visitor(FString(TEXT("behaviour.protect_leg_wait_s")), Tuning.Behaviour.ProtectLegWaitS);
 		Visitor(FString(TEXT("behaviour.protect_spine_nm_per_rad")), Tuning.Behaviour.ProtectSpineNmPerRad);
 		Visitor(FString(TEXT("behaviour.protect_neck_nm_per_rad")), Tuning.Behaviour.ProtectNeckNmPerRad);
 		Visitor(FString(TEXT("behaviour.protect_arms_nm_per_rad")), Tuning.Behaviour.ProtectArmsNmPerRad);
 		Visitor(FString(TEXT("behaviour.protect_legs_nm_per_rad")), Tuning.Behaviour.ProtectLegsNmPerRad);
 		Visitor(FString(TEXT("behaviour.protect_damping_s")), Tuning.Behaviour.ProtectDampingS);
+		Visitor(FString(TEXT("behaviour.give_hand")), Tuning.Behaviour.GiveHand);
+		Visitor(FString(TEXT("behaviour.offer_s")), Tuning.Behaviour.OfferS);
+		Visitor(FString(TEXT("behaviour.offer_reach_cm")), Tuning.Behaviour.OfferReachCm);
+		Visitor(FString(TEXT("behaviour.offer_open_grip")), Tuning.Behaviour.OfferOpenGrip);
+		Visitor(FString(TEXT("behaviour.offer_blend_s")), Tuning.Behaviour.OfferBlendS);
+		Visitor(FString(TEXT("behaviour.offer_arms_nm_per_rad")), Tuning.Behaviour.OfferArmsNmPerRad);
+		Visitor(FString(TEXT("behaviour.offer_damping_s")), Tuning.Behaviour.OfferDampingS);
+		Visitor(FString(TEXT("behaviour.offer_along_deg")), Tuning.Behaviour.OfferAlongDeg);
+		Visitor(FString(TEXT("behaviour.struggle")), Tuning.Behaviour.Struggle);
+		Visitor(FString(TEXT("behaviour.struggle_chance")), Tuning.Behaviour.StruggleChance);
+		Visitor(FString(TEXT("behaviour.struggle_every_s")), Tuning.Behaviour.StruggleEveryS);
+		Visitor(FString(TEXT("behaviour.struggle_attempt_s")), Tuning.Behaviour.StruggleAttemptS);
+		Visitor(FString(TEXT("behaviour.struggle_vigour_min")), Tuning.Behaviour.StruggleVigourMin);
+		Visitor(FString(TEXT("behaviour.struggle_pull_in_cm")), Tuning.Behaviour.StrugglePullInCm);
+		Visitor(FString(TEXT("behaviour.struggle_leg_in_cm")), Tuning.Behaviour.StruggleLegInCm);
+		Visitor(FString(TEXT("behaviour.struggle_arms_nm_per_rad")), Tuning.Behaviour.StruggleArmsNmPerRad);
+		Visitor(FString(TEXT("behaviour.struggle_legs_nm_per_rad")), Tuning.Behaviour.StruggleLegsNmPerRad);
+		Visitor(FString(TEXT("behaviour.struggle_blend_s")), Tuning.Behaviour.StruggleBlendS);
+		Visitor(FString(TEXT("behaviour.struggle_from_n")), Tuning.Behaviour.StruggleFromN);
+		Visitor(FString(TEXT("behaviour.struggle_max_torque_nm")), Tuning.Behaviour.StruggleMaxTorqueNm);
 		Visitor(FString(TEXT("fall.aim")), Tuning.FallAim.Aim);
 		Visitor(FString(TEXT("fall.reach_ahead_cm")), Tuning.FallAim.ReachAheadCm);
 		Visitor(FString(TEXT("fall.hand_height_cm")), Tuning.FallAim.HandHeightCm);
@@ -704,15 +727,38 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Behaviour.Commands, 1.0, TEXT("behaviour"), TEXT("commands"), OutError) ||
 		!CheckRange(Behaviour.CommandTries, 100.0, TEXT("behaviour"), TEXT("command_tries"), OutError) ||
 		!CheckRange(Behaviour.CommandReactS, 5.0, TEXT("behaviour"), TEXT("command_react_s"), OutError) ||
+		!CheckRange(Behaviour.CommandCoverReact, 1.0, TEXT("behaviour"), TEXT("command_cover_react"), OutError) ||
 		!CheckRange(Behaviour.Protect, 1.0, TEXT("behaviour"), TEXT("protect"), OutError) ||
 		!CheckRange(Behaviour.ProtectFromHeadNs, 500.0, TEXT("behaviour"), TEXT("protect_from_head_ns"), OutError) ||
 		!CheckRange(Behaviour.ProtectFromNs, 1000.0, TEXT("behaviour"), TEXT("protect_from_ns"), OutError) ||
 		!CheckRange(Behaviour.ProtectHoldS, 30.0, TEXT("behaviour"), TEXT("protect_hold_s"), OutError) ||
+		!CheckRange(Behaviour.ProtectHeldLeg, 1.0, TEXT("behaviour"), TEXT("protect_held_leg"), OutError) ||
+		!CheckRange(Behaviour.ProtectLegWaitS, 1.0, TEXT("behaviour"), TEXT("protect_leg_wait_s"), OutError) ||
 		!CheckRange(Behaviour.ProtectSpineNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_spine_nm_per_rad"), OutError) ||
 		!CheckRange(Behaviour.ProtectNeckNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_neck_nm_per_rad"), OutError) ||
 		!CheckRange(Behaviour.ProtectArmsNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_arms_nm_per_rad"), OutError) ||
 		!CheckRange(Behaviour.ProtectLegsNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_legs_nm_per_rad"), OutError) ||
-		!CheckRange(Behaviour.ProtectDampingS, 2.0, TEXT("behaviour"), TEXT("protect_damping_s"), OutError))
+		!CheckRange(Behaviour.ProtectDampingS, 2.0, TEXT("behaviour"), TEXT("protect_damping_s"), OutError) ||
+		!CheckRange(Behaviour.GiveHand, 1.0, TEXT("behaviour"), TEXT("give_hand"), OutError) ||
+		!CheckRange(Behaviour.OfferS, 60.0, TEXT("behaviour"), TEXT("offer_s"), OutError) ||
+		!CheckRange(Behaviour.OfferReachCm, 300.0, TEXT("behaviour"), TEXT("offer_reach_cm"), OutError) ||
+		!CheckRange(Behaviour.OfferOpenGrip, 1.0, TEXT("behaviour"), TEXT("offer_open_grip"), OutError) ||
+		!CheckRange(Behaviour.OfferBlendS, 5.0, TEXT("behaviour"), TEXT("offer_blend_s"), OutError) ||
+		!CheckRange(Behaviour.OfferArmsNmPerRad, 3000.0, TEXT("behaviour"), TEXT("offer_arms_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.OfferDampingS, 2.0, TEXT("behaviour"), TEXT("offer_damping_s"), OutError) ||
+		!CheckRange(Behaviour.OfferAlongDeg, 90.0, TEXT("behaviour"), TEXT("offer_along_deg"), OutError) ||
+		!CheckRange(Behaviour.Struggle, 1.0, TEXT("behaviour"), TEXT("struggle"), OutError) ||
+		!CheckRange(Behaviour.StruggleChance, 1.0, TEXT("behaviour"), TEXT("struggle_chance"), OutError) ||
+		!CheckRange(Behaviour.StruggleEveryS, 30.0, TEXT("behaviour"), TEXT("struggle_every_s"), OutError) ||
+		!CheckRange(Behaviour.StruggleAttemptS, 10.0, TEXT("behaviour"), TEXT("struggle_attempt_s"), OutError) ||
+		!CheckRange(Behaviour.StruggleVigourMin, 1.0, TEXT("behaviour"), TEXT("struggle_vigour_min"), OutError) ||
+		!CheckRange(Behaviour.StrugglePullInCm, 100.0, TEXT("behaviour"), TEXT("struggle_pull_in_cm"), OutError) ||
+		!CheckRange(Behaviour.StruggleLegInCm, 150.0, TEXT("behaviour"), TEXT("struggle_leg_in_cm"), OutError) ||
+		!CheckRange(Behaviour.StruggleArmsNmPerRad, 5000.0, TEXT("behaviour"), TEXT("struggle_arms_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.StruggleLegsNmPerRad, 5000.0, TEXT("behaviour"), TEXT("struggle_legs_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.StruggleBlendS, 2.0, TEXT("behaviour"), TEXT("struggle_blend_s"), OutError) ||
+		!CheckRange(Behaviour.StruggleFromN, 5000.0, TEXT("behaviour"), TEXT("struggle_from_n"), OutError) ||
+		!CheckRange(Behaviour.StruggleMaxTorqueNm, 5000.0, TEXT("behaviour"), TEXT("struggle_max_torque_nm"), OutError))
 	{
 		return false;
 	}
@@ -725,6 +771,12 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	if (Behaviour.Protect > 0.5 && (Behaviour.ProtectBlendS < 0.02 || Behaviour.ProtectFromHeadNs <= 0.0 || Behaviour.ProtectFromNs <= 0.0))
 	{
 		OutError = TEXT("behaviour.protect needs protect_blend_s of at least 0.02 s and protect_from_head_ns and protect_from_ns above 0");
+		return false;
+	}
+	if (Behaviour.Struggle > 0.5 && (Behaviour.StruggleEveryS <= 0.0 || Behaviour.StruggleAttemptS <= 0.0 || Behaviour.StruggleBlendS < 0.02))
+	{
+		// At 0 a drag's run ended in the tick it began and was drawn again every tick (the independent reading of the window's diff).
+		OutError = TEXT("behaviour.struggle needs struggle_every_s and struggle_attempt_s above 0 and struggle_blend_s of at least 0.02 s");
 		return false;
 	}
 	if (!CheckRange(FallAim.Aim, 1.0, TEXT("fall"), TEXT("aim"), OutError) || !CheckRange(FallAim.ReachAheadCm, 200.0, TEXT("fall"), TEXT("reach_ahead_cm"), OutError) ||

@@ -2774,6 +2774,19 @@ bool USandboxBodyController::CanBeginGetUp(FString& OutWhy) const
 		OutWhy = FString::Printf(TEXT("it covers where it was hit (%.2f s more)"), ProtectUntilS - ElapsedS);
 		return false;
 	}
+	// R10's gate (behaviour.protect_held_leg): nor while a leg struck waits to be covered (begun in the wait, the attempt was given up for
+	// the cover a moment later: the second reading). Never with the switch at 0.
+	if (bLegCoverPending)
+	{
+		OutWhy = TEXT("a leg struck waits to be covered");
+		return false;
+	}
+	// R10, step 8's rest (give_hand): not while it offers a hand that has not been taken (it waits for the hand; taken, it rises on it).
+	if (Offer.bActive && !Offer.bTaken)
+	{
+		OutWhy = TEXT("it offers a hand");
+		return false;
+	}
 	// R10: nor while the protective pose's muscles are still let go (begun then, the get-up's muscles would be blended toward them for
 	// protect_blend_s; the independent reading's find). 0 whenever every behaviour's switch is 0.
 	if (ProtectShare > 0.0)
@@ -2808,6 +2821,12 @@ void USandboxBodyController::StartCover(ECoverPlace Place, double HitNs, FName B
 	CoverPlace = Place;
 	CoverBone = Bone;
 	ProtectUntilS = ElapsedS + Tuning.Behaviour.ProtectHoldS;
+	// behaviour.protect_held_leg: the leg holds there are as a leg's cover begins, whichever way it began (the third reading); only one
+	// taken since lets the cover go. Read only otherwise.
+	if (Place == ECoverPlace::Leg)
+	{
+		LegHoldsAtCover = LegHoldsNow();
+	}
 	UE_LOG(LogSandbox, Display, TEXT("Body controller: hit of %.1f N*s on the %s (%s) at %.2f s while %s: it covers it until %.2f s"),
 		HitNs, *Cover.Place, *Bone.ToString(), ElapsedS, FSandboxBodyTuning::StateName(State), ProtectUntilS);
 	// A get_up in force is interrupted: it protects, then goes on, at most behaviour.command_tries times (an attempt given up for it is
@@ -2822,6 +2841,81 @@ void USandboxBodyController::StartCover(ECoverPlace Place, double HitNs, FName B
 		GiveUpGetUp(ESandboxGiveUp::Protect, FString::Printf(TEXT("hit on the %s with %.1f N*s"), *Cover.Place, HitNs));
 		bProtectGivenUp = true;
 	}
+}
+
+void USandboxBodyController::UpdateHeldLegCover()
+{
+	// R10's gate (behaviour.protect_held_leg; C35): two hands that came for the ankles pressed 40.6 N*s into the feet 0.11 s before their
+	// grips closed, and the leg was covered for it (the arms then held every limb, and a struggle never reached the legs). A leg struck
+	// waits protect_leg_wait_s: a hand that takes hold of a leg meanwhile made no blow. A leg's cover is let go when a hand takes hold of
+	// a leg: the arms cannot cover a leg a hand holds.
+	// Only a hold taken since answers, by its hand and its bone: a hand that held an ankle before the other leg was kicked is no sign the
+	// kick was a hand (the second reading), and a hand that lets one ankle go and takes the other leg is (the third).
+	const bool bProtectOn = Tuning.Behaviour.Protect > 0.5;
+	const bool bOn = bProtectOn && Tuning.Behaviour.ProtectHeldLeg > 0.5;
+	if (bLegCoverPending)
+	{
+		if (!bProtectOn)
+		{
+			// The cover switched off during the wait: nothing is covered, as with it off (the third reading).
+			bLegCoverPending = false;
+		}
+		else if (bOn && HasNewLegHold(LegHoldsAtHit))
+		{
+			bLegCoverPending = false;
+			++BehaviourView.LegCoversWithheld;
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: a leg struck at %.2f s (%.1f N*s) is taken hold of by %.2f s: not covered"),
+				LegCoverHitS, LegCoverHitNs, ElapsedS);
+		}
+		// Due, or this rule switched off during the wait (then it is covered at once, as with it off).
+		else if (ElapsedS >= LegCoverDueS - KINDA_SMALL_NUMBER || !bOn)
+		{
+			bLegCoverPending = false;
+			// A cover begun since the leg was struck (the same blow on another place, or another blow) keeps the arms (the second reading:
+			// a head covered meanwhile lost its arms to the leg, and one blow interrupted a command twice). Down or rising was judged at the
+			// hit (FeelFrame); now only an upright body is not covered (a get-up given up meanwhile for another reason still is).
+			const bool bCoveredSince = BehaviourView.Covers.Num() > 0 && BehaviourView.Covers.Last().HitS > LegCoverHitS;
+			if (!bCoveredSince && !IsUpright())
+			{
+				StartCover(ECoverPlace::Leg, LegCoverHitNs, LegCoverBone);
+				// Its times are measured from the hit, the wait included (C34).
+				BehaviourView.Covers.Last().HitS = LegCoverHitS;
+			}
+		}
+	}
+	if (bOn && CoverPlace == ECoverPlace::Leg && ElapsedS < ProtectUntilS && BehaviourView.Covers.Num() > 0 &&
+		BehaviourView.Covers.Last().LetGoForHoldS < 0.0 && HasNewLegHold(LegHoldsAtCover))
+	{
+		ProtectUntilS = ElapsedS;
+		BehaviourView.Covers.Last().LetGoForHoldS = ElapsedS;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: a hand takes hold of a covered leg at %.2f s: the cover is let go"), ElapsedS);
+	}
+}
+
+TArray<FSandboxBodyHold> USandboxBodyController::LegHoldsNow() const
+{
+	TArray<FSandboxBodyHold> Legs;
+	for (const FSandboxBodyHold& Hold : Holds)
+	{
+		if (FSandboxBodyTuning::GroupOfBone(Hold.Bone) == ESandboxMuscleGroup::Legs)
+		{
+			Legs.Add(Hold);
+		}
+	}
+	return Legs;
+}
+
+bool USandboxBodyController::HasNewLegHold(const TArray<FSandboxBodyHold>& Before) const
+{
+	for (const FSandboxBodyHold& Hold : Holds)
+	{
+		if (FSandboxBodyTuning::GroupOfBone(Hold.Bone) == ESandboxMuscleGroup::Legs &&
+			!Before.ContainsByPredicate([&Hold](const FSandboxBodyHold& Other) { return Other.Holder == Hold.Holder && Other.Bone == Hold.Bone; }))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 FVector USandboxBodyController::TrunkForward() const
@@ -2937,7 +3031,7 @@ void USandboxBodyController::MeasureCover()
 void USandboxBodyController::TellCommand(ESandboxCommand Command)
 {
 	FSandboxBehaviourView::FCommand& Record = BehaviourView.Commands.AddDefaulted_GetRef();
-	Record.Name = Command == ESandboxCommand::GetUp ? TEXT("get_up") : TEXT("stop");
+	Record.Name = Command == ESandboxCommand::GetUp ? TEXT("get_up") : Command == ESandboxCommand::GiveHand ? TEXT("give_hand") : TEXT("stop");
 	Record.TellS = ElapsedS;
 	const int32 Index = BehaviourView.Commands.Num() - 1;
 	const auto Answer = [this, Index](const FString& Text)
@@ -2953,11 +3047,47 @@ void USandboxBodyController::TellCommand(ESandboxCommand Command)
 	}
 	if (Command == ESandboxCommand::Stop)
 	{
+		if (Offer.bActive)
+		{
+			EndOffer(TEXT("stopped"));
+		}
 		if (bGetUpCommanded)
 		{
 			EndCommand(TEXT("stopped"));
 		}
 		Answer(TEXT("done"));
+		return;
+	}
+	// give_hand (step 8's rest; decision 47): a body that lies offers a hand; refused as get_up is, and while it gets up already.
+	if (Command == ESandboxCommand::GiveHand)
+	{
+		const FString WhyNot = Tuning.Behaviour.GiveHand <= 0.5 ? TEXT("off") : IsUpright() ? TEXT("standing") : State == ESandboxBodyState::Falling ? TEXT("falling") :
+			State == ESandboxBodyState::GetUp ? TEXT("getting up") : Holds.Num() >= 2 ? TEXT("held") :
+			// Covering where it was hit (accepted, the offer would end in the next tick as interrupted by a hit that came before it).
+			(Tuning.Behaviour.Protect > 0.5 && ElapsedS < ProtectUntilS) ? TEXT("covering") :
+			(Tuning.GetUp.HoldForceN > 0.0 && SustainedN.Size() >= Tuning.GetUp.HoldForceN) ? TEXT("pressed") : bHeldUp || !bGetUpAllowed || bGetUpBroken ? TEXT("unable") :
+			FString();
+		if (!WhyNot.IsEmpty())
+		{
+			Answer(FString(TEXT("refused: ")) + WhyNot);
+			return;
+		}
+		if (Offer.bActive)
+		{
+			EndOffer(TEXT("replaced"));
+		}
+		if (bGetUpCommanded)
+		{
+			EndCommand(TEXT("replaced"));
+		}
+		Offer = FOfferRun();
+		Offer.bActive = true;
+		Offer.UntilS = ElapsedS + Tuning.Behaviour.OfferS;
+		Offer.CommandIndex = Index;
+		BehaviourView.Offers.AddDefaulted_GetRef().TellS = ElapsedS;
+		Offer.Record = BehaviourView.Offers.Num() - 1;
+		BehaviourView.Commands[Index].Answer = TEXT("accepted");
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the command give_hand is accepted: the body offers a hand for %.1f s"), ElapsedS, Tuning.Behaviour.OfferS);
 		return;
 	}
 	// get_up: from the floor only, and not while something keeps it there (decision 41's cases: held by two, pressed, held up).
@@ -2972,6 +3102,10 @@ void USandboxBodyController::TellCommand(ESandboxCommand Command)
 	if (bGetUpCommanded)
 	{
 		EndCommand(TEXT("replaced"));
+	}
+	if (Offer.bActive)
+	{
+		EndOffer(TEXT("replaced"));
 	}
 	bGetUpCommanded = true;
 	CommandRecord = Index;
@@ -3071,8 +3205,19 @@ void USandboxBodyController::UpdateStayDown(double DeltaTime)
 	// Near, and with the margin once near (so that the line is not crossed back and forth); measured by MeasureViewer this tick.
 	const double ViewerCm = BehaviourView.ViewerLastCm;
 	bViewerNear = ViewerCm >= 0.0 && ViewerCm < Limits.NearCm + (bViewerNear ? Limits.NearMarginCm : 0.0);
-	// get_up (step 8 in part) sets the disposition aside.
-	const bool bWanted = Limits.StayDown > 0.5 && IsAfraid() && bViewerNear && !bGetUpCommanded;
+	// get_up (step 8 in part) and give_hand (its rest) set the disposition aside: in the tick they are told, or with
+	// behaviour.command_cover_react command_react_s after (a person answers a spoken word in 0.2 to 1.0 s, C39; the cover was let go in the
+	// command's own tick, and the get-up that followed waited for the body to lie still after it: 1.1 to 1.7 s in four of the 150).
+	// The wish to stay down is set aside at once (no get-up is turned back or held back for it: the second reading found a get-up the command
+	// had stopped lowering turned back again 0.15 s later); only the pose waits for the command to be heard.
+	const bool bHeardLater = Limits.CommandCoverReact > 0.5;
+	const auto Heard = [this, &Limits, bHeardLater](double TellS) { return !bHeardLater || ElapsedS - TellS >= Limits.CommandReactS - KINDA_SMALL_NUMBER; };
+	const bool bCommandAside = bGetUpCommanded && (!BehaviourView.Commands.IsValidIndex(CommandRecord) || Heard(BehaviourView.Commands[CommandRecord].TellS));
+	const bool bOfferAside = Offer.bActive && (!BehaviourView.Offers.IsValidIndex(Offer.Record) || Heard(BehaviourView.Offers[Offer.Record].TellS));
+	const bool bAfraidNear = Limits.StayDown > 0.5 && IsAfraid() && bViewerNear;
+	const bool bWanted = bAfraidNear && !bGetUpCommanded && !Offer.bActive;
+	// The pose's own wish: the same, but a command set aside only once heard (with the switch at 0, exactly bWanted).
+	const bool bPoseWanted = bAfraidNear && !bCommandAside && !bOfferAside;
 	if (bStayDownWanted && !bWanted)
 	{
 		StayDownReleasedS = ElapsedS;
@@ -3153,11 +3298,20 @@ void USandboxBodyController::UpdateStayDown(double DeltaTime)
 	// protect_hold_s after a hit on the head (step 6 in part).
 	const bool bDownNow = State == ESandboxBodyState::Lying || (State == ESandboxBodyState::Falling && (bAfraidGivenUp || bProtectGivenUp));
 	const bool bCovering = Limits.Protect > 0.5 && ElapsedS < ProtectUntilS;
-	const bool bPose = (bWanted || bCovering) && bDownNow && !bHeldUp;
+	const bool bPose = (bPoseWanted || bCovering) && bDownNow && !bHeldUp;
 	// Covering after a hit, the struck place's pose; staying down, the head's.
 	const ECoverPlace WantedPlace = bCovering ? CoverPlace : ECoverPlace::Head;
 	if (bPose != bProtectPose || (bPose && WantedPlace != ProtectPosePlace))
 	{
+		// C39 (behaviour.command_cover_react): the pose let go, in this tick, for a command heard is that command's first change of a target
+		// (not while a hit's cover holds it: the second reading; only when the pose would still be held to stay down but for the command, the
+		// body down and not held up: a cover that timed out, a leg taken hold of or a body held up is no answer to it, the third).
+		const int32 AsideRecord = bGetUpCommanded ? CommandRecord : Offer.bActive ? Offer.CommandIndex : INDEX_NONE;
+		if (bHeardLater && bProtectPose && !bPose && !bCovering && bAfraidNear && bDownNow && !bHeldUp && (bCommandAside || bOfferAside) &&
+			BehaviourView.Commands.IsValidIndex(AsideRecord) && BehaviourView.Commands[AsideRecord].CoverLetGoS < 0.0)
+		{
+			BehaviourView.Commands[AsideRecord].CoverLetGoS = ElapsedS;
+		}
 		bProtectPose = bPose;
 		ProtectPosePlace = WantedPlace;
 		UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s %s"), ElapsedS, bPose ? TEXT("the body covers itself") : TEXT("the body lets its cover go"));
@@ -3237,26 +3391,722 @@ bool USandboxBodyController::IsBraced() const
 		(AnticipateFromS >= 0.0 && ElapsedS < AnticipateUntilS);
 }
 
+namespace
+{
+	const FName HeldChain[2][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
+		{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) } };
+	const ESandboxLimb ArmLimbs[2] = { ESandboxLimb::LeftArm, ESandboxLimb::RightArm };
+	const ESandboxLimb LegLimbs[2] = { ESandboxLimb::LeftLeg, ESandboxLimb::RightLeg };
+}
+
+void USandboxBodyController::UpdateLimbClaims(double DeltaTime)
+{
+	// R10, step 3: every user's ask, made from its own state as this tick's decisions are taken (after the fall's run and the get-up's,
+	// before the held arm, the steps and the fall's reach of this tick, whose asks are then a tick old in the record). Read only: nothing
+	// here changes a target; the held arm asks whether it holds its arm (UpdateHeldArms).
+	LimbClaims.BeginTick();
+	// A scenario's own targets (SetFootTarget from outside), and the fall's reach (N6), which places the hands through the same call.
+	static const FName Ends[4] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")), FName(TEXT("foot_l")), FName(TEXT("foot_r")) };
+	static const ESandboxLimb EndLimbs[4] = { ESandboxLimb::LeftArm, ESandboxLimb::RightArm, ESandboxLimb::LeftLeg, ESandboxLimb::RightLeg };
+	for (int32 End = 0; End < 4 && PlacedFeet.Num() > 0; ++End)
+	{
+		if (PlacedFeet.Contains(Mesh->GetBoneIndex(Ends[End])))
+		{
+			LimbClaims.Ask(EndLimbs[End], End < 2 && bFallAiming ? ESandboxLimbUser::Fall : ESandboxLimbUser::Script);
+		}
+	}
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		// R3's catch, coming in, holding or easing out.
+		if (FallRun.bCatching[Side] || FallRun.bReleasing[Side])
+		{
+			LimbClaims.Ask(ArmLimbs[Side], ESandboxLimbUser::Fall);
+		}
+		// The steps' feet, swinging or planted, of a body that stands (a lying body keeps the placement its standing left: the struggle
+		// found its legs held by balance in the record).
+		if (Placement[Side].Mode != EPlacement::None && IsUpright())
+		{
+			LimbClaims.Ask(LegLimbs[Side], ESandboxLimbUser::Balance);
+		}
+	}
+	// The cover of a struck place, and a get-up turned back and lowered (the whole body: the protective pose, or the clip run back).
+	const bool bCovering = Tuning.Behaviour.Protect > 0.5 && ElapsedS < ProtectUntilS;
+	const bool bLowering = State == ESandboxBodyState::GetUp && GetUpRun.bLowering;
+	if ((bProtectPose && bCovering) || bLowering)
+	{
+		LimbClaims.AskAll(ESandboxLimbUser::Protect);
+	}
+	// Staying down covered while afraid with the player near.
+	if (bProtectPose && !bCovering)
+	{
+		LimbClaims.AskAll(ESandboxLimbUser::Disposition);
+	}
+	if (GuardSide == 0 || GuardSide == 1)
+	{
+		LimbClaims.Ask(ArmLimbs[GuardSide], ESandboxLimbUser::Guard);
+	}
+	// R2's held arm: a hand on its chain while a clip leads the body (UpdateHeldArms answers it if it holds the arm). Not the arm of a hand
+	// offered and taken: that hand helps the body up (give_hand), and the arm goes with the clip, held where the player's hand has it.
+	if (State == ESandboxBodyState::GetUp && !GetUpRun.bRolling && !GetUpRun.Path.IsEmpty() && FMath::RoundToInt32(Tuning.GetUp.ArmAnswer) > 0)
+	{
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (Offer.bActive && Offer.bTaken && Side == Offer.Side)
+			{
+				continue;
+			}
+			for (const FSandboxBodyHold& Each : Holds)
+			{
+				if (Each.Bone == HeldChain[Side][0] || Each.Bone == HeldChain[Side][1] || Each.Bone == HeldChain[Side][2])
+				{
+					LimbClaims.Ask(ArmLimbs[Side], ESandboxLimbUser::HoldAnswer);
+					break;
+				}
+			}
+		}
+	}
+	// A commanded get-up under way, and the arm of a hand offered (its side as chosen by the last tick).
+	if (bGetUpCommanded && State == ESandboxBodyState::GetUp)
+	{
+		LimbClaims.AskAll(ESandboxLimbUser::Command);
+	}
+	if (Offer.bActive && Offer.bPlaced && (Offer.Side == 0 || Offer.Side == 1))
+	{
+		LimbClaims.Ask(ArmLimbs[Offer.Side], ESandboxLimbUser::Command);
+	}
+	// A struggle's attempt: the limbs it pulls in, as the hold's answer (the arms and the legs held).
+	for (int32 Side = 0; Side < 2 && StruggleRun.bAttempting; ++Side)
+	{
+		if (bStrugglePlaced[Side])
+		{
+			LimbClaims.Ask(ArmLimbs[Side], ESandboxLimbUser::HoldAnswer);
+		}
+		if (bStrugglePlaced[2 + Side])
+		{
+			LimbClaims.Ask(LegLimbs[Side], ESandboxLimbUser::HoldAnswer);
+		}
+	}
+	LimbClaims.EndTick(ElapsedS, DeltaTime);
+}
+
+void USandboxBodyController::PlaceOfferArm(int32 Side, const FVector& Point, double Weight)
+{
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	const int32 End = Skeleton.FindBoneIndex(HeldChain[Side][0]);
+	const int32 Middle = End != INDEX_NONE ? Skeleton.GetParentIndex(End) : INDEX_NONE;
+	const int32 Root = Middle != INDEX_NONE ? Skeleton.GetParentIndex(Middle) : INDEX_NONE;
+	const FBodyInstance* Upper = Root != INDEX_NONE ? Mesh->GetBodyInstance(Skeleton.GetBoneName(Root)) : nullptr;
+	if (!Animation || !Upper || !Upper->IsValidBodyInstance())
+	{
+		return;
+	}
+	// The elbow's pole as R3's catch chooses it (the mesh's space): back and out, unless that lies nearly along the line from the shoulder
+	// to the point; then out and down, or out and up, whichever lies more across it; only its part across the line. Chosen as the arm is
+	// placed and kept as it is let go (worked out again for the point it is let go from, it turned the upper arm's target over by 129
+	// degrees in a frame, offer_phase_hold).
+	// A new pole only as an offer first places its arm: placed again after a release (a hand that left reach and came back), the pole is
+	// kept, so that the target does not turn over between the two (the independent reading).
+	if ((Weight > 0.0 && !Offer.bPoleSet) || OfferPole[Side].IsNearlyZero())
+	{
+		OfferPole[Side] = ArmPoleAcross(Side, Point);
+		Offer.bPoleSet = Weight > 0.0;
+	}
+	Animation->SetLimbBend(End, OfferPole[Side], FVector::XAxisVector, /*bEaseTwice*/ true, /*bAnatomicHinge*/ true);
+	FSandboxJointLimits ShoulderLimits;
+	FSandboxJointLimits ElbowLimits;
+	if (FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Root), ShoulderLimits) && FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Middle), ElbowLimits))
+	{
+		Animation->SetLimbRanges(End, ShoulderLimits, ElbowLimits);
+	}
+	Animation->SetLimbTarget(End, Point, Weight, Tuning.Behaviour.OfferBlendS);
+	OfferTarget[Side] = Point;
+}
+
+FVector USandboxBodyController::ArmPoleAcross(int32 Side, const FVector& Point) const
+{
+	const FBodyInstance* Upper = Mesh->GetBodyInstance(HeldChain[Side][2]);
+	const FVector Shoulder = Upper && Upper->IsValidBodyInstance() ? Upper->GetUnrealWorldTransform().GetLocation() : Mesh->GetBoneLocation(HeldChain[Side][2]);
+	const bool bLeft = Side == 0;
+	const FVector Reach = Mesh->GetComponentTransform().InverseTransformVectorNoScale(Point - Shoulder).GetSafeNormal();
+	const FVector Ways[3] = { FVector(bLeft ? 0.4 : -0.4, -1.0, -0.3).GetSafeNormal(), FVector(bLeft ? 0.6 : -0.6, 0.0, -1.0).GetSafeNormal(),
+		FVector(bLeft ? 1.0 : -1.0, 0.0, 0.3).GetSafeNormal() };
+	constexpr double AlongArm = 0.8;
+	FVector Across = Ways[0];
+	if (FMath::Abs(Ways[0] | Reach) >= AlongArm)
+	{
+		Across = FMath::Abs(Ways[1] | Reach) <= FMath::Abs(Ways[2] | Reach) ? Ways[1] : Ways[2];
+	}
+	const FVector Pole = (Across - Reach * (Across | Reach)).GetSafeNormal();
+	return Pole.IsNearlyZero() ? Across : Pole;
+}
+
+void USandboxBodyController::PlaceHeldArm(int32 Side, const FVector& Point, double Weight, bool bNewPole)
+{
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	const int32 End = Skeleton.FindBoneIndex(HeldChain[Side][0]);
+	const int32 Middle = End != INDEX_NONE ? Skeleton.GetParentIndex(End) : INDEX_NONE;
+	const int32 Root = Middle != INDEX_NONE ? Skeleton.GetParentIndex(Middle) : INDEX_NONE;
+	if (!Animation || Root == INDEX_NONE)
+	{
+		return;
+	}
+	if (bNewPole || HeldArmPole[Side].IsNearlyZero())
+	{
+		HeldArmPole[Side] = ArmPoleAcross(Side, Point);
+	}
+	Animation->SetLimbBend(End, HeldArmPole[Side], FVector::XAxisVector, /*bEaseTwice*/ true, /*bAnatomicHinge*/ true);
+	FSandboxJointLimits ShoulderLimits;
+	FSandboxJointLimits ElbowLimits;
+	if (FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Root), ShoulderLimits) && FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Middle), ElbowLimits))
+	{
+		Animation->SetLimbRanges(End, ShoulderLimits, ElbowLimits);
+	}
+	Animation->SetLimbTarget(End, Point, Weight, Tuning.Poses.BlendS);
+}
+
+void USandboxBodyController::PlaceStruggleLimb(int32 Limb, const FVector& Point, double Weight, bool bNewPole)
+{
+	static const FName Ends[4] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")), FName(TEXT("foot_l")), FName(TEXT("foot_r")) };
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	const int32 End = Skeleton.FindBoneIndex(Ends[Limb]);
+	const int32 Middle = End != INDEX_NONE ? Skeleton.GetParentIndex(End) : INDEX_NONE;
+	const int32 Root = Middle != INDEX_NONE ? Skeleton.GetParentIndex(Middle) : INDEX_NONE;
+	const FBodyInstance* Upper = Root != INDEX_NONE ? Mesh->GetBodyInstance(Skeleton.GetBoneName(Root)) : nullptr;
+	if (!Animation || !Upper || !Upper->IsValidBodyInstance())
+	{
+		return;
+	}
+	if (bNewPole || StrugglePole[Limb].IsNearlyZero())
+	{
+		if (Limb < 2)
+		{
+			StrugglePole[Limb] = ArmPoleAcross(Limb, Point);
+		}
+		else
+		{
+			// A leg drawn up: the knee forward and a little out (the mesh's space, forward +y), only its part across the line from the hip.
+			const FVector Reach = Mesh->GetComponentTransform().InverseTransformVectorNoScale(Point - Upper->GetUnrealWorldTransform().GetLocation()).GetSafeNormal();
+			const FVector Across = FVector(Limb == 2 ? 0.2 : -0.2, 1.0, 0.0).GetSafeNormal();
+			const FVector Pole = (Across - Reach * (Across | Reach)).GetSafeNormal();
+			StrugglePole[Limb] = Pole.IsNearlyZero() ? Across : Pole;
+		}
+	}
+	Animation->SetLimbBend(End, StrugglePole[Limb], FVector::XAxisVector, /*bEaseTwice*/ true, /*bAnatomicHinge*/ true);
+	FSandboxJointLimits RootLimits;
+	FSandboxJointLimits MiddleLimits;
+	if (FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Root), RootLimits) && FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Middle), MiddleLimits))
+	{
+		Animation->SetLimbRanges(End, RootLimits, MiddleLimits);
+	}
+	Animation->SetLimbTarget(End, Point, Weight, Tuning.Behaviour.StruggleBlendS);
+	StruggleTarget[Limb] = Point;
+}
+
+void USandboxBodyController::UpdateStruggle(double DeltaTime)
+{
+	static const FName Ends[4] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")), FName(TEXT("foot_l")), FName(TEXT("foot_r")) };
+	static const FName Chains[4][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
+		{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) },
+		{ FName(TEXT("foot_l")), FName(TEXT("calf_l")), FName(TEXT("thigh_l")) }, { FName(TEXT("foot_r")), FName(TEXT("calf_r")), FName(TEXT("thigh_r")) } };
+	static const ESandboxLimb Limbs[4] = { ESandboxLimb::LeftArm, ESandboxLimb::RightArm, ESandboxLimb::LeftLeg, ESandboxLimb::RightLeg };
+	const FSandboxBehaviourTuning& Limits = Tuning.Behaviour;
+	// A drag of a body that lies begins (hands that pull it with struggle_from_n in all for perception.react_s: decision 18's drag, which
+	// waits for the pelvis to move at walking pace, came 1.7 s into a drag by the wrists): whether it struggles in it is drawn once
+	// (decision 44: a share struggle_chance of drags; with no seed, the fixed answer: it does).
+	// A body that lies, held by two hands at least (decisions 18 and 44: one hand does not drag a lying body; the hand that took a hand
+	// offered helps it up). It struggles only while it lies: a get-up that begins ends the struggle (the independent reading found attempts
+	// in the get-up, against the clip and the held arm's answer).
+	const bool bDown = State == ESandboxBodyState::Lying;
+	double PullN = 0.0;
+	for (const FSandboxBodyHold& Each : Holds)
+	{
+		PullN += Each.ForceN;
+	}
+	StrugglePulledS = bDown && Holds.Num() >= 2 && PullN >= Limits.StruggleFromN ? StrugglePulledS + DeltaTime : 0.0;
+	// Which way the hands pull it, over the floor (a free leg digs in against it).
+	FVector PullWay = FVector::ZeroVector;
+	for (const FSandboxBodyHold& Each : Holds)
+	{
+		PullWay += Each.PullN;
+	}
+	PullWay.Z = 0.0;
+	const bool bDragged = Limits.Struggle > 0.5 && bDown && StrugglePulledS >= Tuning.Perception.ReactS - KINDA_SMALL_NUMBER;
+	if (bDragged && !StruggleRun.bActive)
+	{
+		StruggleRun = FStruggleRun();
+		StruggleRun.bActive = true;
+		StruggleRun.bStruggles = Chance.Choose(FSandboxChance::EPurpose::Struggle, Limits.StruggleChance, /*bFixedAnswer*/ true);
+		StruggleRun.NextAttemptS = ElapsedS + Tuning.Perception.ReactS;
+		FSandboxBehaviourView::FStruggle& Record = BehaviourView.Struggles.AddDefaulted_GetRef();
+		Record.StartS = ElapsedS;
+		Record.HoldsAtStart = Holds.Num();
+		Record.bStruggles = StruggleRun.bStruggles;
+		StruggleRun.Record = BehaviourView.Struggles.Num() - 1;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s it is dragged by %d hand(s) and %s"), ElapsedS, Holds.Num(),
+			StruggleRun.bStruggles ? TEXT("struggles") : TEXT("does not struggle"));
+	}
+	if (StruggleRun.bActive)
+	{
+		FSandboxBehaviourView::FStruggle& Record = BehaviourView.Struggles[StruggleRun.Record];
+		StruggleRun.NoHoldS = Holds.Num() == 0 ? StruggleRun.NoHoldS + DeltaTime : 0.0;
+		if (PullWay.Size() >= Limits.StruggleFromN)
+		{
+			StruggleRun.DragWay = PullWay.GetSafeNormal();
+		}
+		// Free: every grip off, by the grips' own rules or let go, once it has struggled.
+		if (Holds.Num() == 0 && Record.FreedS < 0.0 && Record.Attempts > 0)
+		{
+			Record.FreedS = ElapsedS;
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s no hand holds it any more (%d attempt(s))"), ElapsedS, Record.Attempts);
+		}
+		// Over once nothing has held it for struggle_every_s, or the switch is off, or it no longer lies (it gets up, or stands).
+		if (StruggleRun.NoHoldS >= Limits.StruggleEveryS || Limits.Struggle <= 0.5 || State != ESandboxBodyState::Lying)
+		{
+			Record.EndedS = ElapsedS;
+			StruggleRun.bActive = false;
+			StruggleRun.bAttempting = false;
+		}
+	}
+	// The attempts: each with a vigour drawn from struggle_vigour_min to 1 (with no seed, 1).
+	if (StruggleRun.bActive && StruggleRun.bStruggles && Holds.Num() > 0)
+	{
+		if (!StruggleRun.bAttempting && ElapsedS >= StruggleRun.NextAttemptS - KINDA_SMALL_NUMBER)
+		{
+			StruggleRun.bAttempting = true;
+			StruggleRun.AttemptUntilS = ElapsedS + Limits.StruggleAttemptS;
+			StruggleRun.NextAttemptS = StruggleRun.AttemptUntilS + Limits.StruggleEveryS;
+			StruggleRun.Vigour = FMath::Lerp(Limits.StruggleVigourMin, 1.0, Chance.Draw(FSandboxChance::EPurpose::Vigour, 1.0));
+			FSandboxBehaviourView::FStruggle& Record = BehaviourView.Struggles[StruggleRun.Record];
+			++Record.Attempts;
+			Record.Vigours.Add(StruggleRun.Vigour);
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s it struggles (attempt %d, vigour %.2f)"), ElapsedS, Record.Attempts, StruggleRun.Vigour);
+		}
+		if (StruggleRun.bAttempting && ElapsedS >= StruggleRun.AttemptUntilS - KINDA_SMALL_NUMBER)
+		{
+			StruggleRun.bAttempting = false;
+		}
+	}
+	else
+	{
+		StruggleRun.bAttempting = false;
+	}
+	// Each held limb pulled in while an attempt lasts (the hold's answer, as the arbiter gives it): an arm's hand toward its shoulder, a
+	// leg's foot toward its hip, along the line to where it is held; let go over struggle_blend_s after, carried with the chest or the
+	// pelvis until its weight has gone (unless another user has placed the limb since).
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+	bool bChanged = false;
+	for (int32 Limb = 0; Limb < 4 && Animation; ++Limb)
+	{
+		const FSandboxBodyHold* Hold = nullptr;
+		for (const FSandboxBodyHold& Each : Holds)
+		{
+			if (Each.Bone == Chains[Limb][0] || Each.Bone == Chains[Limb][1] || Each.Bone == Chains[Limb][2])
+			{
+				Hold = &Each;
+				break;
+			}
+		}
+		const FBodyInstance* Frame = Limb < 2 ? Chest : Pelvis;
+		const bool bFrame = Frame && Frame->IsValidBodyInstance();
+		// A free leg digs in: its heel set on the floor, struggle_leg_in_cm from its hip, away from where the hands pull (the struggle's
+		// own pull against them, by the floor's friction under the heel).
+		const bool bDigIn = Limb >= 2 && !Hold && !StruggleRun.DragWay.IsNearlyZero();
+		const bool bWant = StruggleRun.bAttempting && (Hold || bDigIn) && LimbClaims.WouldHold(Limbs[Limb], ESandboxLimbUser::HoldAnswer);
+		const int32 End = Mesh->GetBoneIndex(Ends[Limb]);
+		if (bWant)
+		{
+			const FVector Root = Mesh->GetBoneLocation(Chains[Limb][2]);
+			FVector Point;
+			if (Hold)
+			{
+				Point = Root + (Hold->PointCm - Root).GetSafeNormal() * (Limb < 2 ? Limits.StrugglePullInCm : Limits.StruggleLegInCm);
+			}
+			else
+			{
+				// The limb's end is the ankle, which stands FootStandHeightCm over the sole (on the floor itself, the leg was asked to push
+				// the ankle into the floor: the independent reading).
+				Point = Root - StruggleRun.DragWay * Limits.StruggleLegInCm;
+				Point.Z = GetUpFloorZ() + FootStandHeightCm[Limb - 2];
+			}
+			if (!bStrugglePlaced[Limb])
+			{
+				PlaceStruggleLimb(Limb, Point, StruggleRun.Vigour, /*bNewPole*/ true);
+				bStrugglePlaced[Limb] = true;
+				bStruggleReleasing[Limb] = false;
+			}
+			else
+			{
+				Animation->MoveLimbTarget(End, Point, nullptr, nullptr, 0.0, 0.0);
+				StruggleTarget[Limb] = Point;
+			}
+		}
+		else if (bStrugglePlaced[Limb])
+		{
+			// Taken by a user that places the limb itself (a scenario's target, the fall's, the steps', the guard's): that user's target is
+			// the limb's now, and the struggle does not write over it (the independent reading); a leg's settings go at once.
+			const ESandboxLimbUser Holder = LimbClaims.Holder(Limbs[Limb]);
+			const bool bPlacer = Holder == ESandboxLimbUser::Script || Holder == ESandboxLimbUser::Fall || Holder == ESandboxLimbUser::Balance ||
+				Holder == ESandboxLimbUser::Guard;
+			bStrugglePlaced[Limb] = false;
+			if (bPlacer)
+			{
+				bStruggleReleasing[Limb] = false;
+				if (Limb >= 2)
+				{
+					Animation->ClearLimbSettings(End);
+				}
+			}
+			else
+			{
+				PlaceStruggleLimb(Limb, StruggleTarget[Limb], 0.0, /*bNewPole*/ false);
+				bStruggleReleasing[Limb] = true;
+				if (bFrame)
+				{
+					StruggleReleaseInFrame[Limb] = Frame->GetUnrealWorldTransform().InverseTransformPositionNoScale(StruggleTarget[Limb]);
+				}
+			}
+		}
+		else if (bStruggleReleasing[Limb])
+		{
+			const ESandboxLimbUser Holder = LimbClaims.Holder(Limbs[Limb]);
+			// (An offered arm takes it back by placing it again, which ends this release: UpdateOffer. Stopped here while the offer had not
+			// placed it, its target was left at a point of the world.)
+			const bool bOthers = Holder == ESandboxLimbUser::Script || Holder == ESandboxLimbUser::Fall || Holder == ESandboxLimbUser::Balance ||
+				Holder == ESandboxLimbUser::Guard || (Limb < 2 && HeldArmAnswer[Limb] != 0);
+			if (bOthers || !bFrame || Animation->GetLimbWeight(End) <= 0.0)
+			{
+				bStruggleReleasing[Limb] = false;
+				// A leg's own settings go with it, whoever has it now (the steps' feet and a scenario's leg target set none, and a limb with
+				// settings is solved as an arm: the body staggered and fell after a struggle).
+				if (Limb >= 2)
+				{
+					Animation->ClearLimbSettings(End);
+				}
+			}
+			else
+			{
+				Animation->MoveLimbTarget(End, Frame->GetUnrealWorldTransform().TransformPositionNoScale(StruggleReleaseInFrame[Limb]), nullptr, nullptr, 0.0, 0.0);
+			}
+		}
+		// The limb's muscles: in by the vigour while it is pulled in, out over struggle_blend_s (nothing at all while every share is 0).
+		const double Wanted = bStrugglePlaced[Limb] ? StruggleRun.Vigour : 0.0;
+		if (StruggleShare[Limb] != Wanted)
+		{
+			const double Step = Limits.StruggleBlendS > 0.0 ? DeltaTime / Limits.StruggleBlendS : 1.0;
+			StruggleShare[Limb] = Wanted > StruggleShare[Limb] ? FMath::Min(StruggleShare[Limb] + Step, Wanted) : FMath::Max(StruggleShare[Limb] - Step, Wanted);
+			bChanged = true;
+		}
+	}
+	if (bChanged)
+	{
+		PushTuningToControls();
+	}
+}
+
+void USandboxBodyController::ReleaseOfferArm(int32 Side)
+{
+	// Let go from its last target, as R3's catch is (moved to where its hand is instead, the target stepped by the hand's gap to it and the
+	// upper arm's turned over by 131 degrees in a frame, offer_phase_hold), and that point carried with the chest until the weight has
+	// gone (a target let go at a point of the world jumps while the body moves under it: docs/pitfalls.md).
+	// Taken by a user that places the arm itself (a scenario's target, the fall's catch, the guard's, the held arm's answer, the struggle's):
+	// that user's target is the arm's now, and the release does not write over it (the independent reading of the window's diff: a catch
+	// begun in the tick a cover gave the get-up up was faded to 0 by the offer's release).
+	const ESandboxLimbUser Holder = LimbClaims.Holder(ArmLimbs[Side]);
+	if (Holder == ESandboxLimbUser::Script || Holder == ESandboxLimbUser::Fall || Holder == ESandboxLimbUser::Guard || HeldArmAnswer[Side] != 0 ||
+		bStrugglePlaced[Side])
+	{
+		bOfferReleasing[Side] = false;
+		return;
+	}
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	if (!Chest || !Chest->IsValidBodyInstance())
+	{
+		return;
+	}
+	OfferReleaseInChest[Side] = Chest->GetUnrealWorldTransform().InverseTransformPositionNoScale(OfferTarget[Side]);
+	bOfferReleasing[Side] = true;
+	PlaceOfferArm(Side, OfferTarget[Side], 0.0);
+}
+
+void USandboxBodyController::EndOffer(const FString& How)
+{
+	if (!Offer.bActive)
+	{
+		return;
+	}
+	// The arm goes back to the pose over offer_blend_s, from the point it reached for, carried with the chest (ReleaseOfferArm).
+	if (Offer.bPlaced && (Offer.Side == 0 || Offer.Side == 1))
+	{
+		ReleaseOfferArm(Offer.Side);
+	}
+	if (BehaviourView.Offers.IsValidIndex(Offer.Record) && BehaviourView.Offers[Offer.Record].Ended.IsEmpty())
+	{
+		BehaviourView.Offers[Offer.Record].Ended = How;
+		BehaviourView.Offers[Offer.Record].EndedS = ElapsedS;
+	}
+	// Before a hand took it the command is the offer's own; after, it is the get-up's (EndCommand answers it).
+	if (!Offer.bTaken && BehaviourView.Commands.IsValidIndex(Offer.CommandIndex))
+	{
+		BehaviourView.Commands[Offer.CommandIndex].Answer = How;
+		BehaviourView.Commands[Offer.CommandIndex].AnsweredS = ElapsedS;
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the hand offered is %s"), ElapsedS, *How);
+	Offer = FOfferRun();
+}
+
+void USandboxBodyController::UpdateOffer(double DeltaTime)
+{
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	const FSandboxBehaviourTuning& Limits = Tuning.Behaviour;
+	if (Offer.bActive && !Offer.bTaken)
+	{
+		// Ended before a hand took it: switched off, a cover after a hit, the body no longer lying, its time up.
+		const FString Why = Limits.GiveHand <= 0.5 || Limits.Commands <= 0.5 ? FString(TEXT("interrupted: switched off")) :
+			Limits.Protect > 0.5 && ElapsedS < ProtectUntilS ? FString(TEXT("interrupted: hit")) :
+			State != ESandboxBodyState::Lying ? FString::Printf(TEXT("interrupted: %s"), FSandboxBodyTuning::StateName(State)) :
+			ElapsedS >= Offer.UntilS ? FString(TEXT("not taken")) : FString();
+		if (!Why.IsEmpty())
+		{
+			EndOffer(Why);
+		}
+	}
+	if (Offer.bActive && !Offer.bTaken)
+	{
+		FSandboxBehaviourView::FOffer& Record = BehaviourView.Offers[Offer.Record];
+		// Taken: the hand it reaches for holds the offering arm (another hand that held the arm before is no taking: the independent
+		// reading). It gets up on it as told get_up, the offer's command its command (done when it stands).
+		bool bTaken = false;
+		for (const FSandboxBodyHold& Each : Holds)
+		{
+			bTaken = bTaken || ((Offer.Side == 0 || Offer.Side == 1) && !Offer.Hand.IsNone() && Each.Holder == Offer.Hand &&
+				(Each.Bone == HeldChain[Offer.Side][0] || Each.Bone == HeldChain[Offer.Side][1] || Each.Bone == HeldChain[Offer.Side][2]));
+		}
+		if (bTaken)
+		{
+			Offer.bTaken = true;
+			Offer.TakenS = ElapsedS;
+			Record.TakenS = ElapsedS;
+			Record.Ended = TEXT("taken");
+			Record.EndedS = ElapsedS;
+			// The arm stays placed: it holds on to the hand that took it while it rises (left to the clip, it went where the clip has it,
+			// against the helping hand, whose grip slipped a second into the get-up and whose pull slowed the clip to 0.29).
+			bGetUpCommanded = true;
+			CommandRecord = Offer.CommandIndex;
+			CommandInterruptedS = -1.0e9;
+			LyingS = 0.0;
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s a hand takes the hand offered: the body gets up on it"), ElapsedS);
+		}
+		else
+		{
+			// The player's nearest open hand within reach of a shoulder; the arm and the hand, once chosen by the first hand in reach, stay
+			// those (the other hand passing nearer on its way to the other forearm turned the arm's target over by 126 degrees in a frame,
+			// offer_phase_hold).
+			int32 BestSide = -1;
+			double BestCm = Limits.OfferReachCm;
+			FVector BestPoint = FVector::ZeroVector;
+			FName BestHand;
+			for (const FSandboxSeen& Thing : Seen)
+			{
+				// Open to be chosen; once chosen, followed whatever its grip (it closes to take the hand: let go as it closed, the arm was
+				// released a tick before the take).
+				if (Thing.Kind != ESandboxSeenKind::Hand || (Offer.Hand.IsNone() && Thing.Grip >= Limits.OfferOpenGrip) || (!Offer.Hand.IsNone() && Thing.Name != Offer.Hand))
+				{
+					continue;
+				}
+				for (int32 Side = 0; Side < 2; ++Side)
+				{
+					if (Offer.Side >= 0 && Side != Offer.Side)
+					{
+						continue;
+					}
+					const double Cm = FVector::Dist(Thing.LocationCm, Mesh->GetBoneLocation(HeldChain[Side][2]));
+					if (Cm <= BestCm)
+					{
+						BestCm = Cm;
+						BestSide = Side;
+						BestPoint = Thing.LocationCm;
+						BestHand = Thing.Name;
+					}
+				}
+			}
+			// The arm moves a spoken word's reaction after the command (C39; behaviour.command_react_s, as for get_up), not in the next tick.
+			const bool bReacted = ElapsedS - Record.TellS >= Limits.CommandReactS - KINDA_SMALL_NUMBER;
+			if (bReacted && BestSide >= 0 && LimbClaims.WouldHold(ArmLimbs[BestSide], ESandboxLimbUser::Command))
+			{
+				if (Offer.Side < 0)
+				{
+					Offer.Side = BestSide;
+					Offer.Hand = BestHand;
+					Record.Side = BestSide == 0 ? TEXT("left") : TEXT("right");
+				}
+				// Placed again only once a release of that arm has let go: placed while the release still had weight, the target moved from
+				// where the release had it to the player's hand with the weight on (the first reading of the window's code). The arm goes down,
+				// then reaches again, within offer_blend_s.
+				// Any weight left on the hand is a release's (while the arbiter gives the offer the arm, no user above it places it): the offer's,
+				// the struggle's, R2's held arm's (the fourth reading), as the catch waits for any (FSandboxFallRun).
+				const int32 HandEnd = Mesh->GetBoneIndex(Hands[BestSide]);
+				const USandboxAnimInstance* Fading = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+				const bool bStillLetGo = !Offer.bPlaced && Fading && Fading->GetLimbWeight(HandEnd) > 0.0;
+				if (!Offer.bPlaced && !bStillLetGo)
+				{
+					// Placed (again): its own release, and a struggle's that had the arm, are over (the offer's target is the arm's).
+					bOfferReleasing[BestSide] = false;
+					bStruggleReleasing[BestSide] = false;
+					PlaceOfferArm(BestSide, BestPoint, 1.0);
+					Offer.bPlaced = true;
+					if (Record.ReachS < 0.0)
+					{
+						Record.ReachS = ElapsedS;
+						UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the %s hand reaches for the player's open hand, %.0f cm from its shoulder"),
+							ElapsedS, *Record.Side, BestCm);
+					}
+					if (BehaviourView.Commands.IsValidIndex(Offer.CommandIndex) && BehaviourView.Commands[Offer.CommandIndex].FirstMotionS < 0.0)
+					{
+						BehaviourView.Commands[Offer.CommandIndex].FirstMotionS = ElapsedS;
+					}
+				}
+				else if (USandboxAnimInstance* Animation = Offer.bPlaced ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr)
+				{
+					Animation->MoveLimbTarget(Mesh->GetBoneIndex(Hands[BestSide]), BestPoint, nullptr, nullptr, 0.0, 0.0);
+					OfferTarget[BestSide] = BestPoint;
+				}
+				// C39 for give_hand (read only): the body's hand's least gap to the hand it reaches for (while it reaches: not while it waits for
+				// a release to let go, the fourth reading).
+				const FBodyInstance* HandBody = Mesh->GetBodyInstance(Hands[BestSide]);
+				if (Offer.bPlaced && HandBody && HandBody->IsValidBodyInstance())
+				{
+					const double GapCm = FVector::Dist(HandBody->GetCOMPosition(), BestPoint);
+					Record.GapMinCm = Record.GapMinCm < 0.0 ? GapCm : FMath::Min(Record.GapMinCm, GapCm);
+				}
+			}
+			else if (Offer.bPlaced)
+			{
+				// No open hand in reach (or the arm another's): the arm goes back until one is.
+				ReleaseOfferArm(Offer.Side);
+				Offer.bPlaced = false;
+			}
+		}
+	}
+	else if (Offer.bActive && Offer.bTaken)
+	{
+		// The get-up it began, as the command's: its slowest pace (decision 47: a helping pull does not slow it). The offer is over with
+		// that get-up, however it ends (a later attempt for the command is a get_up's, with its rest, and no help: the independent
+		// reading found a taken offer kept for the command's every attempt, each begun at once, still or not).
+		if (State == ESandboxBodyState::GetUp && BehaviourView.Offers.IsValidIndex(Offer.Record))
+		{
+			BehaviourView.Offers[Offer.Record].PaceMin = FMath::Min(BehaviourView.Offers[Offer.Record].PaceMin, HoldPace);
+			Offer.bGetUpBegun = true;
+		}
+		// The arm holds on to the hand that took it, which it follows, while that hand holds it.
+		bool bStillHeld = false;
+		for (const FSandboxBodyHold& Each : Holds)
+		{
+			bStillHeld = bStillHeld || (Each.Holder == Offer.Hand &&
+				(Each.Bone == HeldChain[Offer.Side][0] || Each.Bone == HeldChain[Offer.Side][1] || Each.Bone == HeldChain[Offer.Side][2]));
+		}
+		const FSandboxSeen* Taker = Seen.FindByPredicate([this](const FSandboxSeen& Thing) { return Thing.Name == Offer.Hand; });
+		// The arm is the offer's while no user above it asks for it (the struggle's attempt, a cover, the fall's catch); lost, it is let go
+		// (not written over, ReleaseOfferArm), and placed again once it is the offer's (the independent reading: a struggle's release
+		// faded the arm out and the offer's moves of a target with no weight left it free for good).
+		const bool bArmOurs = LimbClaims.WouldHold(ArmLimbs[Offer.Side], ESandboxLimbUser::Command);
+		if (bStillHeld && Taker && bArmOurs)
+		{
+			// Placed again only once a release of the arm has let go (as above).
+			const USandboxAnimInstance* Fading = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+			const bool bStillLetGo = !Offer.bPlaced && Fading && Fading->GetLimbWeight(Mesh->GetBoneIndex(Hands[Offer.Side])) > 0.0;
+			if (!Offer.bPlaced && !bStillLetGo)
+			{
+				bOfferReleasing[Offer.Side] = false;
+				bStruggleReleasing[Offer.Side] = false;
+				PlaceOfferArm(Offer.Side, Taker->LocationCm, 1.0);
+				Offer.bPlaced = true;
+			}
+			else if (USandboxAnimInstance* Animation = Offer.bPlaced ? Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()) : nullptr)
+			{
+				Animation->MoveLimbTarget(Mesh->GetBoneIndex(Hands[Offer.Side]), Taker->LocationCm, nullptr, nullptr, 0.0, 0.0);
+				OfferTarget[Offer.Side] = Taker->LocationCm;
+			}
+		}
+		else if (Offer.bPlaced)
+		{
+			ReleaseOfferArm(Offer.Side);
+			Offer.bPlaced = false;
+		}
+		if (!bGetUpCommanded || (Offer.bGetUpBegun && State != ESandboxBodyState::GetUp))
+		{
+			if (Offer.bPlaced)
+			{
+				ReleaseOfferArm(Offer.Side);
+			}
+			Offer = FOfferRun();
+		}
+	}
+	// An arm let go: its fading target is carried with the chest until its weight has gone, unless another user has placed the arm since
+	// (the held arm's answer once a hand took it, a scenario's target, the fall's, the guard's).
+	if (USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()))
+	{
+		const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (!bOfferReleasing[Side])
+			{
+				continue;
+			}
+			const int32 End = Mesh->GetBoneIndex(Hands[Side]);
+			const ESandboxLimbUser Holder = LimbClaims.Holder(ArmLimbs[Side]);
+			const bool bOthers = HeldArmAnswer[Side] != 0 || Holder == ESandboxLimbUser::Script || Holder == ESandboxLimbUser::Fall || Holder == ESandboxLimbUser::Guard ||
+				bStrugglePlaced[Side];
+			if (bOthers || Animation->GetLimbWeight(End) <= 0.0 || !Chest || !Chest->IsValidBodyInstance())
+			{
+				bOfferReleasing[Side] = false;
+				continue;
+			}
+			Animation->MoveLimbTarget(End, Chest->GetUnrealWorldTransform().TransformPositionNoScale(OfferReleaseInChest[Side]), nullptr, nullptr, 0.0, 0.0);
+		}
+	}
+	// The offering arm's muscles: in while its hand is placed, out over offer_blend_s (nothing at all while both shares are 0).
+	bool bChanged = false;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const double Wanted = Offer.bActive && Offer.bPlaced && Offer.Side == Side ? 1.0 : 0.0;
+		if (OfferShare[Side] != Wanted)
+		{
+			const double Step = Limits.OfferBlendS > 0.0 ? DeltaTime / Limits.OfferBlendS : 1.0;
+			OfferShare[Side] = Wanted > OfferShare[Side] ? FMath::Min(OfferShare[Side] + Step, 1.0) : FMath::Max(OfferShare[Side] - Step, 0.0);
+			bChanged = true;
+		}
+	}
+	if (bChanged)
+	{
+		PushTuningToControls();
+	}
+}
+
 void USandboxBodyController::UpdateHeldArms(double DeltaTime)
 {
 	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
-	static const FName Chain[2][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
-		{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) } };
 	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
-	// Only while a clip leads the body (not in a roll, not standing: R5 and R6 take the standing and the lying body). Nor while a get-up
-	// turned back is lowered (R10, step 5): the arm that yielded to a hand there had its upper arm's target turn over by 159 degrees in a
-	// frame as the body went down under it (protect_phase_lowering_hold); the held arm goes with the body until the limbs' arbiter (R10,
-	// step 3) gives it to one of the two.
-	const bool bGettingUp = State == ESandboxBodyState::GetUp && !GetUpRun.bRolling && !GetUpRun.Path.IsEmpty() && !GetUpRun.bLowering;
+	// Only while a clip leads the body (not in a roll, not standing: R5 and R6 take the standing and the lying body), and only while the
+	// arbiter of limbs gives the arm to the hold's answer (R10, step 3). A get-up turned back and lowered asks for every limb as protection,
+	// which comes first: the arm that yielded to a hand there had its upper arm's target turn over by 159 degrees in a frame as the body
+	// went down under it (protect_phase_lowering_hold), and the held arm goes with the body (decision 63's rule, now the arbiter's).
+	const bool bGettingUp = State == ESandboxBodyState::GetUp && !GetUpRun.bRolling && !GetUpRun.Path.IsEmpty();
 	bool bChanged = false;
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
 		const FSandboxBodyHold* Hold = nullptr;
-		if (bGettingUp)
+		// The arm of a hand offered and taken is not answered: the hand helps (give_hand; the same rule in UpdateLimbClaims).
+		const bool bHelped = Offer.bActive && Offer.bTaken && Side == Offer.Side;
+		if (bGettingUp && !bHelped && LimbClaims.WouldHold(ArmLimbs[Side], ESandboxLimbUser::HoldAnswer))
 		{
 			for (const FSandboxBodyHold& Each : Holds)
 			{
-				if (Each.Bone == Chain[Side][0] || Each.Bone == Chain[Side][1] || Each.Bone == Chain[Side][2])
+				if (Each.Bone == HeldChain[Side][0] || Each.Bone == HeldChain[Side][1] || Each.Bone == HeldChain[Side][2])
 				{
 					Hold = &Each;
 					break;
@@ -3273,16 +4123,48 @@ void USandboxBodyController::UpdateHeldArms(double DeltaTime)
 			UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the %s arm %s"), ElapsedS, Side == 0 ? TEXT("left") : TEXT("right"),
 				Answer == 1 ? TEXT("yields to the hand that holds it") : Answer == 2 ? TEXT("is pulled in against the hand that holds it") : TEXT("is its own again"));
 		}
+		// The arm taken by a user that places it itself (a scenario's target, the fall's, the guard's): that user's target is the limb's
+		// now, and the hold's answer drops its own without writing over it (the independent reading of the arbiter). Taken by a pose's user
+		// (protection's lowering) or let go, the answer eases it back to the pose as before.
+		const ESandboxLimbUser Holder = LimbClaims.Holder(ArmLimbs[Side]);
+		const bool bTakenByPlacer = Holder == ESandboxLimbUser::Script || Holder == ESandboxLimbUser::Fall || Holder == ESandboxLimbUser::Guard;
 		if (Answer == 0)
 		{
-			if (HeldArmAnswer[Side] != 0)
+			const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+			const bool bChest = Chest && Chest->IsValidBodyInstance();
+			if (HeldArmAnswer[Side] != 0 && !bTakenByPlacer)
 			{
-				// Let go over a pose's blend: the clip's arm comes back, never in a step.
-				const FBodyInstance* HandBody = Mesh->GetBodyInstance(Hands[Side]);
-				PlaceArm(Hands[Side], HandBody && HandBody->IsValidBodyInstance() ? HandBody->GetCOMPosition() : FVector::ZeroVector, 0.0, Tuning.Poses.BlendS, false);
+				// Let go over a pose's blend: the clip's arm comes back, never in a step. From where it was placed, carried with the chest
+				// until its weight has gone (let go from where the hand was, at that point of the world, it turned the upper arm's target
+				// over by 150 degrees in a frame as a get-up given up for a drag went down under it: R10's struggle_phase_hold).
+				PlaceHeldArm(Side, HeldArmPlaced[Side], 0.0, /*bNewPole*/ false);
+				bHeldArmReleasing[Side] = bChest;
+				if (bChest)
+				{
+					HeldArmReleaseInChest[Side] = Chest->GetUnrealWorldTransform().InverseTransformPositionNoScale(HeldArmPlaced[Side]);
+				}
+			}
+			else if (bHeldArmReleasing[Side])
+			{
+				USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+				const int32 End = Mesh->GetBoneIndex(Hands[Side]);
+				// Not once another user has placed the arm (a placer, a hand offered, a struggle).
+				const bool bOthers = bTakenByPlacer || (Offer.bActive && Offer.bPlaced && Offer.Side == Side) || bStrugglePlaced[Side];
+				if (!Animation || !bChest || bOthers || Animation->GetLimbWeight(End) <= 0.0)
+				{
+					bHeldArmReleasing[Side] = false;
+				}
+				else
+				{
+					Animation->MoveLimbTarget(End, Chest->GetUnrealWorldTransform().TransformPositionNoScale(HeldArmReleaseInChest[Side]), nullptr, nullptr, 0.0, 0.0);
+				}
 			}
 		}
 		else
+		{
+			bHeldArmReleasing[Side] = false;
+		}
+		if (Answer != 0)
 		{
 			FVector Target = Hold->PointCm;
 			if (Answer == 1)
@@ -3300,8 +4182,8 @@ void USandboxBodyController::UpdateHeldArms(double DeltaTime)
 				const FTransform ChestNow = Chest && Chest->IsValidBodyInstance() ? Chest->GetUnrealWorldTransform() : FTransform::Identity;
 				if (Answer != HeldArmAnswer[Side])
 				{
-					const FBodyInstance* Shoulder = Mesh->GetBodyInstance(Chain[Side][2]);
-					const FVector From = Shoulder && Shoulder->IsValidBodyInstance() ? Mesh->GetBoneLocation(Chain[Side][2]) : Hold->PointCm;
+					const FBodyInstance* Shoulder = Mesh->GetBodyInstance(HeldChain[Side][2]);
+					const FVector From = Shoulder && Shoulder->IsValidBodyInstance() ? Mesh->GetBoneLocation(HeldChain[Side][2]) : Hold->PointCm;
 					HeldArmInChest[Side] = ChestNow.InverseTransformPositionNoScale(From + (Hold->PointCm - From).GetSafeNormal() * Limits.ArmPullInCm);
 				}
 				Target = ChestNow.TransformPositionNoScale(HeldArmInChest[Side]);
@@ -3318,8 +4200,12 @@ void USandboxBodyController::UpdateHeldArms(double DeltaTime)
 			HeldArmPlaced[Side] += (Target - HeldArmPlaced[Side]) * Follow;
 			if (HeldArmAnswer[Side] == 0)
 			{
-				// Taken in over a pose's blend, then moved where it follows (the blend is not begun again each tick).
-				PlaceArm(Hands[Side], HeldArmPlaced[Side], 1.0, Tuning.Poses.BlendS, false);
+				// Taken in over a pose's blend, then moved where it follows (the blend is not begun again each tick); placed as R3's catch
+				// places an arm, its pole chosen across the reach now and kept (a reach's fixed pole lay along the line to a hand that
+				// dragged the wrist up and away, and the upper arm's target turned over by 138 degrees in a frame: struggle_phase_hold).
+				bHeldArmReleasing[Side] = false;
+				HeldArmPole[Side] = ArmPoleAcross(Side, Target);
+				PlaceHeldArm(Side, HeldArmPlaced[Side], 1.0, /*bNewPole*/ false);
 			}
 			else if (USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance()))
 			{
@@ -3927,19 +4813,29 @@ double USandboxBodyController::HoldPaceForceN() const
 	// or the sum of their sizes, so that two hands pulling apart count twice.
 	// The press counts at getup.hold_press_pace of its force (1: as a hold).
 	const double PressShare = Tuning.GetUp.HoldPressPace;
+	// R10, step 8's rest (decision 47): in the get-up a hand offered and taken began, a hand that pulls within offer_along_deg of straight up
+	// helps the body up: it does not slow the clip (every get-up clip lifts the body; a pull down or along the floor is a hold as ever).
+	const bool bHelped = Offer.bActive && Offer.bTaken && State == ESandboxBodyState::GetUp;
+	const double CosAlong = FMath::Cos(FMath::DegreesToRadians(Tuning.Behaviour.OfferAlongDeg));
+	// Only the hand that took the hand offered helps (decision 47 speaks of that pull; any other hand is a hold as ever).
+	const FName Helper = Offer.Hand;
+	const auto Helps = [bHelped, CosAlong, Helper](const FSandboxBodyHold& Hold)
+	{
+		return bHelped && Hold.Holder == Helper && !Hold.PullN.IsNearlyZero() && Hold.PullN.GetSafeNormal().Z >= CosAlong;
+	};
 	if (Tuning.GetUp.HoldSum > 0.5)
 	{
 		double SizeN = SustainedContactN.Size() * PressShare;
 		for (const FSandboxBodyHold& Hold : Holds)
 		{
-			SizeN += Hold.ForceN;
+			SizeN += Helps(Hold) ? 0.0 : Hold.ForceN;
 		}
 		return SizeN;
 	}
 	FVector SumN = SustainedContactN * PressShare;
 	for (const FSandboxBodyHold& Hold : Holds)
 	{
-		SumN += Hold.PullN;
+		SumN += Helps(Hold) ? FVector::ZeroVector : Hold.PullN;
 	}
 	return SumN.Size();
 }
@@ -5667,7 +6563,28 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 				if (!bPlaceCounted[Place] && bDownOrRising && PlaceHitNs[Place] >= Tuning.Behaviour.ProtectFromNs)
 				{
 					bPlaceCounted[Place] = true;
-					StartCover(Place == 0 ? ECoverPlace::Trunk : Place == 1 ? ECoverPlace::Groin : ECoverPlace::Leg, PlaceHitNs[Place], FrameBone);
+					if (Place == 2 && Tuning.Behaviour.ProtectHeldLeg > 0.5)
+					{
+						// R10's gate (behaviour.protect_held_leg): a leg waits, in case what struck it is a hand that takes hold of it. A second
+						// hit while one waits keeps the first's time and holds (the third reading), its sum the larger.
+						if (!bLegCoverPending)
+						{
+							bLegCoverPending = true;
+							LegCoverDueS = ElapsedS + Tuning.Behaviour.ProtectLegWaitS;
+							LegCoverHitS = ElapsedS;
+							LegCoverHitNs = PlaceHitNs[Place];
+							LegCoverBone = FrameBone;
+							LegHoldsAtHit = LegHoldsNow();
+						}
+						else
+						{
+							LegCoverHitNs = FMath::Max(LegCoverHitNs, PlaceHitNs[Place]);
+						}
+					}
+					else
+					{
+						StartCover(Place == 0 ? ECoverPlace::Trunk : Place == 1 ? ECoverPlace::Groin : ECoverPlace::Leg, PlaceHitNs[Place], FrameBone);
+					}
 				}
 			}
 		}
@@ -5991,7 +6908,10 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 		// times in quick succession and never stood: the stand of 150 with a command, 28 November).
 		LyingS = IsAtRest() && !bHeldUp ? LyingS + DeltaTime : 0.0;
 		const bool bQuickRest = bGetUpCommanded && BehaviourView.Commands.IsValidIndex(CommandRecord) && BehaviourView.Commands[CommandRecord].FirstMotionS < 0.0;
-		const bool bRested = bQuickRest
+		// A hand offered and taken (give_hand): it rises on it command_react_s after the hand took it, still or not (the hand that pulls
+		// moves the body; it would never lie still under it).
+		const bool bOfferTaken = Offer.bActive && Offer.bTaken && bGetUpCommanded;
+		const bool bRested = bOfferTaken ? ElapsedS - Offer.TakenS >= Tuning.Behaviour.CommandReactS - KINDA_SMALL_NUMBER : bQuickRest
 			? LyingS >= FMath::Min(Tuning.Perception.ReactS, GetUpRestS()) - KINDA_SMALL_NUMBER &&
 				ElapsedS - BehaviourView.Commands[CommandRecord].TellS >= Tuning.Behaviour.CommandReactS - KINDA_SMALL_NUMBER
 			: LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER;
@@ -7154,6 +8074,33 @@ void USandboxBodyController::PushTuningToControls()
 				Group.DampingS = FMath::Lerp(Group.DampingS, Behaviour.ProtectDampingS, ProtectShare);
 			}
 		}
+		// R10, step 8's rest: the arm of a hand offered (its shoulder, elbow and wrist) is lifted by muscles of its own, in by its share.
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (OfferShare[Side] > 0.0 && (Muscle.ChildBone == HeldArmBones[Side][0] || Muscle.ChildBone == HeldArmBones[Side][1] || Muscle.ChildBone == HeldArmBones[Side][2]))
+			{
+				Group.StiffnessNmPerRad = FMath::Lerp(Group.StiffnessNmPerRad, Tuning.Behaviour.OfferArmsNmPerRad, OfferShare[Side]);
+				Group.DampingS = FMath::Lerp(Group.DampingS, Tuning.Behaviour.OfferDampingS, OfferShare[Side]);
+			}
+		}
+		// R10, step 7: a limb pulled in by a struggle, by muscles of the struggle's, in by its share (the attempt's vigour).
+		static const FName StruggleBones[4][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
+			{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) },
+			{ FName(TEXT("foot_l")), FName(TEXT("calf_l")), FName(TEXT("thigh_l")) }, { FName(TEXT("foot_r")), FName(TEXT("calf_r")), FName(TEXT("thigh_r")) } };
+		for (int32 Limb = 0; Limb < 4; ++Limb)
+		{
+			if (StruggleShare[Limb] > 0.0 && (Muscle.ChildBone == StruggleBones[Limb][0] || Muscle.ChildBone == StruggleBones[Limb][1] || Muscle.ChildBone == StruggleBones[Limb][2]))
+			{
+				const double Wanted = Limb < 2 ? Tuning.Behaviour.StruggleArmsNmPerRad : Tuning.Behaviour.StruggleLegsNmPerRad;
+				const double Share = FMath::Min(StruggleShare[Limb], 1.0);
+				Group.StiffnessNmPerRad = FMath::Lerp(Group.StiffnessNmPerRad, FMath::Max(Group.StiffnessNmPerRad, Wanted), Share);
+				// A yank: the cap on torque comes up with the vigour (0 is no cap: left as it is).
+				if (Group.MaxTorqueNm > 0.0)
+				{
+					Group.MaxTorqueNm = FMath::Lerp(Group.MaxTorqueNm, FMath::Max(Group.MaxTorqueNm, Tuning.Behaviour.StruggleMaxTorqueNm), Share);
+				}
+			}
+		}
 		// The leg of a step under way is stiffer, so that the foot keeps up with its point.
 		const bool bSwingLeg = Swing.bActive &&
 			(Muscle.ChildBone == ThighBoneName[Swing.Side] || Muscle.ChildBone == CalfBoneName[Swing.Side] || Muscle.ChildBone == FootBoneName[Swing.Side]);
@@ -7325,6 +8272,11 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	}
 	// What the body felt since the last tick: a hit may make it flinch, a held push makes it lean.
 	FeelFrame(DeltaTime);
+	// R10's gate (behaviour.protect_held_leg): a leg struck waits in case a hand takes hold of it (nothing at all with the switch at 0).
+	if (bLegCoverPending || (Tuning.Behaviour.Protect > 0.5 && Tuning.Behaviour.ProtectHeldLeg > 0.5))
+	{
+		UpdateHeldLegCover();
+	}
 	if (AnticipateDueS >= 0.0 || AnticipateFromS >= 0.0 || AnticipateWeight > 0.0 || !bAnticipationJudged || GuardSide >= 0)
 	{
 		UpdateAnticipation(DeltaTime);
@@ -7366,8 +8318,21 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	UpdateFallRun(DeltaTime);
 	UpdateGetUp(DeltaTime);
 	UpdateCarry(DeltaTime);
+	// R10, step 3: who asks for which limb now, and who holds it.
+	UpdateLimbClaims(DeltaTime);
+	// R10, step 8's rest (behaviour.give_hand): a hand offered, reaching, taken, let go (nothing at all without one).
+	if (Offer.bActive || OfferShare[0] > 0.0 || OfferShare[1] > 0.0 || bOfferReleasing[0] || bOfferReleasing[1])
+	{
+		UpdateOffer(DeltaTime);
+	}
+	// R10, step 7 (behaviour.struggle): dragged, it struggles by chance (nothing at all with the switch at 0 and no struggle left to end).
+	if (Tuning.Behaviour.Struggle > 0.5 || StruggleRun.bActive || StruggleShare[0] > 0.0 || StruggleShare[1] > 0.0 || StruggleShare[2] > 0.0 ||
+		StruggleShare[3] > 0.0 || bStruggleReleasing[0] || bStruggleReleasing[1] || bStruggleReleasing[2] || bStruggleReleasing[3])
+	{
+		UpdateStruggle(DeltaTime);
+	}
 	// R2, step 12 (getup.arm_answer): an arm held while getting up yields or is pulled in; and is let go once it is not.
-	if (Tuning.GetUp.ArmAnswer > 0.5 || HeldArmAnswer[0] != 0 || HeldArmAnswer[1] != 0)
+	if (Tuning.GetUp.ArmAnswer > 0.5 || HeldArmAnswer[0] != 0 || HeldArmAnswer[1] != 0 || bHeldArmReleasing[0] || bHeldArmReleasing[1])
 	{
 		UpdateHeldArms(DeltaTime);
 	}

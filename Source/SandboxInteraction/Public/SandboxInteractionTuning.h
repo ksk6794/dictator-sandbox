@@ -214,6 +214,9 @@ struct FSandboxToolTuning
 	/** In a headset: how long, s, and how strongly, 0 to 1, both controllers vibrate when a take begins. */
 	double HeadsetTakeBuzzS = 0.0;
 	double HeadsetTakeBuzzStrength = 0.0;
+	/** In a headset: how long, s, and how strongly, 0 to 1, a controller vibrates when one of its face buttons gives the body a command (R10). */
+	double HeadsetCommandBuzzS = 0.0;
+	double HeadsetCommandBuzzStrength = 0.0;
 
 	/**
 	 * In a headset, the player's movement (FR-42, FSandboxLocomotion). The right stick moves the player in every

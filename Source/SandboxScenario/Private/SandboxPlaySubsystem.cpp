@@ -291,7 +291,7 @@ namespace
 	// command, and a session that records keeps it with its frame.
 	FAutoConsoleCommandWithWorldAndArgs SandboxCommandCommand(
 		TEXT("Sandbox.Command"),
-		TEXT("Tells the body a command (R10): Sandbox.Command get_up | stop. Answered only with behaviour.commands on."),
+		TEXT("Tells the body a command (R10): Sandbox.Command get_up | stop | give_hand. Answered only with behaviour.commands on (give_hand with behaviour.give_hand too)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			if (!World)
@@ -301,12 +301,12 @@ namespace
 			}
 			// The name as the body and a recording know it, whatever case it was typed in (a recording refuses another).
 			const FString Name = Args.Num() == 1 ? Args[0].ToLower() : FString();
-			if (Name != TEXT("get_up") && Name != TEXT("stop"))
+			if (Name != TEXT("get_up") && Name != TEXT("stop") && Name != TEXT("give_hand"))
 			{
-				UE_LOG(LogSandbox, Error, TEXT("Sandbox.Command: give one of get_up, stop"));
+				UE_LOG(LogSandbox, Error, TEXT("Sandbox.Command: give one of get_up, stop, give_hand"));
 				return;
 			}
-			const ESandboxCommand Command = Name == TEXT("get_up") ? ESandboxCommand::GetUp : ESandboxCommand::Stop;
+			const ESandboxCommand Command = Name == TEXT("get_up") ? ESandboxCommand::GetUp : Name == TEXT("give_hand") ? ESandboxCommand::GiveHand : ESandboxCommand::Stop;
 			int32 Told = 0;
 			for (TActorIterator<ASandboxRagdollActor> It(World); It; ++It)
 			{
@@ -377,7 +377,7 @@ void USandboxPlaySubsystem::TellPerception()
 	bViewerToldLastFrame = bViewer;
 	if (!bPerception)
 	{
-		// The head, and the player's capsule in a headset (a viewer too), never the hands: the body does not perceive.
+		// The head, the player's capsule in a headset (a viewer too) and the hands (for give_hand alone): the body does not perceive.
 		FScenarioStage::TellBodyWhatMoves(bHandsSeen && Pawn.IsValid() ? Pawn->GetRig() : nullptr, {}, Character,
 			bViewer ? TConstArrayView<FSandboxSeen>(&Viewer, 1) : TConstArrayView<FSandboxSeen>(), /*bViewersOnly*/ true);
 		return;
@@ -546,7 +546,9 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 		const FSandboxBehaviourTuning& Behaviour = Choosing->GetTuning().Behaviour;
 		const auto Switch = [](const TCHAR* Name, double Value) { return FString::Printf(TEXT("behaviour.%s=%d"), Name, Value > 0.5 ? 1 : 0); };
 		const TArray<FString> Switches = { Switch(TEXT("fear"), Behaviour.Fear), Switch(TEXT("stay_down"), Behaviour.StayDown),
-			Switch(TEXT("protect"), Behaviour.Protect), Switch(TEXT("commands"), Behaviour.Commands) };
+			Switch(TEXT("protect"), Behaviour.Protect), Switch(TEXT("commands"), Behaviour.Commands), Switch(TEXT("give_hand"), Behaviour.GiveHand),
+			Switch(TEXT("struggle"), Behaviour.Struggle), Switch(TEXT("protect_held_leg"), Behaviour.ProtectHeldLeg),
+			Switch(TEXT("command_cover_react"), Behaviour.CommandCoverReact) };
 		const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
 		Event->SetNumberField(TEXT("t"), 0.0);
 		Event->SetStringField(TEXT("type"), TEXT("console"));
@@ -612,6 +614,20 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 		Seen->SetStringField(TEXT("state_sequence"), Sequence);
 		Seen->SetArrayField(TEXT("states"), States);
 		Seen->SetNumberField(TEXT("felt_impulse_ns"), Controller->GetContactImpulseNs());
+		// R10: the commands the recording kept (the body's last as many as the recording has: every one told while it ran was kept), with
+		// the body's answers, in the terms of a run's control.commands, for the replay, which gives the recording's commands again, to be
+		// held against. (Matched first by the body's clock a frame behind the recording's: a body a frame later would have dropped one.)
+		TArray<TSharedPtr<FJsonValue>> Commands;
+		const TArray<FSandboxBehaviourView::FCommand>& Told = Controller->GetBehaviourView().Commands;
+		for (int32 Index = FMath::Max(Told.Num() - Recording->Commands.Num(), 0); Index < Told.Num(); ++Index)
+		{
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetStringField(TEXT("command"), Told[Index].Name);
+			Entry->SetNumberField(TEXT("tell_s"), Told[Index].TellS);
+			Entry->SetStringField(TEXT("answer"), Told[Index].Answer);
+			Commands.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		Seen->SetArrayField(TEXT("commands"), Commands);
 	}
 	const FBodyInstance* Root = bCharacter ? Character->GetBodyMesh()->GetBodyInstance() : nullptr;
 	if (Root && Root->IsValidBodyInstance())
@@ -1008,11 +1024,22 @@ void USandboxPlaySubsystem::TickWalkDemo(ASandboxPawn& Player)
 		Player.StopRecording();
 		const USandboxBodyController* Controller = Character ? Character->GetController() : nullptr;
 		Walk.CharacterStateAtEnd = Controller ? FSandboxBodyTuning::StateName(Controller->GetState()) : FString();
+		for (const FSandboxBehaviourView::FCommand& Given : Controller ? Controller->GetBehaviourView().Commands : TArray<FSandboxBehaviourView::FCommand>())
+		{
+			Walk.CommandNames += (Walk.CommandNames.IsEmpty() ? TEXT("") : TEXT(",")) + Given.Name;
+			Walk.CommandAnswers += FString::Printf(TEXT("%s%s at %.2f s: %s"), Walk.CommandAnswers.IsEmpty() ? TEXT("") : TEXT("; "), *Given.Name, Given.TellS, *Given.Answer);
+		}
 		FinishDemo();
 		return;
 	}
 	Headset.Right.Stick = Move;
 	Headset.Left.Stick = Turn;
+	// R10 (decision 42): the right controller's first face button (A: get_up), then its second (B: stop), then the left's first (X:
+	// give_hand), each held down for six frames: each reaches the body once, through the console, and the recording keeps it.
+	Headset.Right.bFirstButton = Frame >= 640 && Frame < 646;
+	Headset.Right.bSecondButton = Frame >= 660 && Frame < 666;
+	// And the left controller's first (X: give_hand).
+	Headset.Left.bFirstButton = Frame >= 675 && Frame < 681;
 	++DemoFrame;
 }
 
@@ -1057,6 +1084,9 @@ TSharedRef<FJsonObject> USandboxPlaySubsystem::DescribeWalk(bool& bOutPass) cons
 		FString::Printf(TEXT("%.2f m/s at most after the turns (a blow begins at %.1f)"), Walk.HandsMaxSpeedAfterSnapMps, Tuning.Hand.StrikeSpeedMps));
 	Check(TEXT("hands_keep_up_with_a_walk"), Walk.HandsMaxGapWalkingCm > 0.0 && Walk.HandsMaxGapWalkingCm <= 4.0,
 		FString::Printf(TEXT("%.2f cm behind their targets at most while walking"), Walk.HandsMaxGapWalkingCm));
+	// R10: the face buttons give the body a command once a press (the answers are the body's: a standing body refuses get_up).
+	Check(TEXT("face_buttons_reach_the_body"), Walk.CommandNames == TEXT("get_up,stop,give_hand"),
+		FString::Printf(TEXT("A and then B on the right controller and X on the left, each held 6 frames: %s"), Walk.CommandAnswers.IsEmpty() ? TEXT("no command") : *Walk.CommandAnswers));
 	Out->SetArrayField(TEXT("checks"), Checks);
 	Out->SetNumberField(TEXT("walked_m"), Moved.WalkedCm * 0.01);
 	Out->SetNumberField(TEXT("max_speed_mps"), Moved.MaxSpeedCmS * 0.01);

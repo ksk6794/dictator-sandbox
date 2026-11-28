@@ -161,6 +161,9 @@ private:
 		double HandsMaxSpeedAfterSnapMps = 0.0;
 		double HandsMaxGapWalkingCm = 0.0;
 		FString CharacterStateAtEnd;
+		/** R10: the commands the body was told by the end, by name ("get_up,stop"), and each with its answer, for the face buttons' check. */
+		FString CommandNames;
+		FString CommandAnswers;
 	};
 	FWalkSeen Walk;
 

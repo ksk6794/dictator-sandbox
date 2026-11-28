@@ -222,8 +222,10 @@ void FScenarioStage::TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArr
 	{
 		for (const USandboxEffectorComponent* Effector : Rig->GetEffectors())
 		{
-			// A body that does not perceive is told of the player alone (the capsule), never of the hands (R10, step 1).
-			if (!Effector || (bViewersOnly && Effector->GetId() != SandboxEffectors::Body))
+			// A body that does not perceive is told of the player (the capsule, R10, step 1) and of the player's hands with their grips
+			// (R10, step 8's rest: give_hand reaches for an open one; without perception nothing else reads them), never of the kicking foot
+			// or the things.
+			if (!Effector || (bViewersOnly && Effector->GetId().ToString().StartsWith(TEXT("foot"))))
 			{
 				continue;
 			}

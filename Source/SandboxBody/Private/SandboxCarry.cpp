@@ -18,7 +18,7 @@ namespace
 	// 1 N*m = 1e4 kg*cm^2/s^2; Chaos multiplies angular drive stiffness and damping by 1.5, divided out here.
 	constexpr double CarryTorqueToUnreal = 1.0e4;
 	constexpr double CarryChaosAngularDriveScale = 1.5;
-	constexpr double GravityMps2 = 9.81;
+	constexpr double CarryGravityMps2 = 9.81;
 }
 
 bool FSandboxCarry::Create(UPhysicsControlComponent* InControl, USkeletalMeshComponent* InMesh, FString& OutError)
@@ -171,7 +171,7 @@ void FSandboxCarry::Apply(const FSandboxCarrySettings& Settings, double Share, T
 		Data.AngularDampingRatio = 0.0f;
 		Data.AngularExtraDamping = static_cast<float>(AngularSpring * Settings.DampingS);
 		// 1 N = 100 kg*cm/s^2. The caps do not go down with the share: the springs do, and a cap of 0 would mean none.
-		Data.MaxForce = static_cast<float>(Settings.CapShare * Settings.MaxWeights * Body.MassKg * GravityMps2 * 100.0);
+		Data.MaxForce = static_cast<float>(Settings.CapShare * Settings.MaxWeights * Body.MassKg * CarryGravityMps2 * 100.0);
 		Data.MaxTorque = static_cast<float>(Settings.CapShare * Settings.MaxNmPerKg * Body.MassKg * CarryTorqueToUnreal);
 		// The reference's own velocity is given with the target; nothing is taken from the mesh's pose.
 		Data.LinearTargetVelocityMultiplier = 0.0f;
@@ -281,8 +281,8 @@ FVector FSandboxCarry::ForceOn(int32 Index, const FSandboxCarrySettings& Setting
 	{
 		return FVector::ZeroVector;
 	}
-	const double CapN = Settings.CapShare * Settings.MaxWeights * Body.MassKg * GravityMps2;
-	const double CapUpN = Settings.CapShare * Settings.MaxUpWeights * Body.MassKg * GravityMps2;
+	const double CapN = Settings.CapShare * Settings.MaxWeights * Body.MassKg * CarryGravityMps2;
+	const double CapUpN = Settings.CapShare * Settings.MaxUpWeights * Body.MassKg * CarryGravityMps2;
 	if (CapN > 0.0)
 	{
 		CommandN.X = FMath::Clamp(CommandN.X, -CapN, CapN);
