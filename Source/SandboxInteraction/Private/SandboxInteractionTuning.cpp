@@ -65,6 +65,23 @@ namespace
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_s"), Kind), Values.StrikeS);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_speed_mps"), Kind), Values.StrikeSpeedMps);
 			Visitor(FString::Printf(TEXT("effectors.%s.strike_full_speed_mps"), Kind), Values.StrikeFullSpeedMps);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh"), Kind), Values.Mesh);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_wrist_back_cm"), Kind), Values.MeshWristBackCm);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_palm_cm"), Kind), Values.MeshPalmCm);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_open_base_deg"), Kind), Values.MeshOpenBaseDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_open_middle_deg"), Kind), Values.MeshOpenMiddleDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_open_tip_deg"), Kind), Values.MeshOpenTipDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_fist_base_deg"), Kind), Values.MeshFistBaseDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_fist_middle_deg"), Kind), Values.MeshFistMiddleDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_fist_tip_deg"), Kind), Values.MeshFistTipDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_thumb_open_deg"), Kind), Values.MeshThumbOpenDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_thumb_fist_deg"), Kind), Values.MeshThumbFistDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_thumb_across_deg"), Kind), Values.MeshThumbAcrossDeg);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_close_s"), Kind), Values.MeshCloseS);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_wrap"), Kind), Values.MeshWrap);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_wrap_finger_cm"), Kind), Values.MeshWrapFingerCm);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_fit"), Kind), Values.MeshFit);
+			Visitor(FString::Printf(TEXT("effectors.%s.mesh_fit_skin_cm"), Kind), Values.MeshFitSkinCm);
 		};
 		Effector(TEXT("hand"), Tuning.Hand);
 		Body(TEXT("foot"), Tuning.Foot);
@@ -236,6 +253,28 @@ bool FSandboxInteractionTuning::Validate(FString& OutError) const
 		!CheckRange(TEXT("effectors.hand.strike_s"), Hand.StrikeS, 0.0, 2.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_speed_mps"), Hand.StrikeSpeedMps, 0.0, 30.0, false, OutError) ||
 		!CheckRange(TEXT("effectors.hand.strike_full_speed_mps"), Hand.StrikeFullSpeedMps, 0.0, 30.0, false, OutError))
+	{
+		return false;
+	}
+	// The visible hand: a mesh laid on the hand, the fingers bent within what a finger joint does (and a little straighter than its
+	// reference pose for the open hand).
+	if (!CheckRange(TEXT("effectors.hand.mesh"), Hand.Mesh, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_wrist_back_cm"), Hand.MeshWristBackCm, -20.0, 20.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_palm_cm"), Hand.MeshPalmCm, -10.0, 10.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_open_base_deg"), Hand.MeshOpenBaseDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_open_middle_deg"), Hand.MeshOpenMiddleDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_open_tip_deg"), Hand.MeshOpenTipDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_fist_base_deg"), Hand.MeshFistBaseDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_fist_middle_deg"), Hand.MeshFistMiddleDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_fist_tip_deg"), Hand.MeshFistTipDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_thumb_open_deg"), Hand.MeshThumbOpenDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_thumb_fist_deg"), Hand.MeshThumbFistDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_thumb_across_deg"), Hand.MeshThumbAcrossDeg, -45.0, 110.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_close_s"), Hand.MeshCloseS, 0.0, 2.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_wrap"), Hand.MeshWrap, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_wrap_finger_cm"), Hand.MeshWrapFingerCm, 0.1, 3.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_fit"), Hand.MeshFit, 0.0, 1.0, false, OutError) ||
+		!CheckRange(TEXT("effectors.hand.mesh_fit_skin_cm"), Hand.MeshFitSkinCm, 0.0, 3.0, false, OutError))
 	{
 		return false;
 	}

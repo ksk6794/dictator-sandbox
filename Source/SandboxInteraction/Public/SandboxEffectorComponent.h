@@ -4,12 +4,15 @@
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "SandboxGrabJoint.h"
+#include "SandboxHandRig.h"
 #include "SandboxInteractionTuning.h"
 #include "SandboxTargetSource.h"
 #include "SandboxWorldSpring.h"
 #include "SandboxEffectorComponent.generated.h"
 
 class UStaticMeshComponent;
+class UPoseableMeshComponent;
+class USkeletalMesh;
 class USandboxEffectorComponent;
 struct FCollisionShape;
 
@@ -263,6 +266,38 @@ private:
 	/** The open hand as a body, once the hand has opened with effectors.hand.palm_collides on. */
 	UPROPERTY()
 	TObjectPtr<USandboxPalmComponent> PalmBody;
+
+	/** The visible hand (effectors.hand.mesh): the XR mannequin's hand of this side, no collision, its fingers posed by HandRig. */
+	UPROPERTY()
+	TObjectPtr<UPoseableMeshComponent> HandMesh;
+	FSandboxHandRig HandRig;
+	/** Where the mesh lies on the hand's own frame (by its bones and effectors.hand.mesh_wrist_back_cm, mesh_palm_cm). */
+	FTransform HandMeshOnHand = FTransform::Identity;
+	/** How far each finger is closed (the thumb first), 0 open to 1 a fist; it follows the grip over effectors.hand.mesh_close_s, or what a
+	 * held body leaves it (effectors.hand.mesh_wrap). Read only by the mesh; -1 before the first pose. */
+	double FingerCurls[5] = { -1.0, -1.0, -1.0, -1.0, -1.0 };
+	/** The grab the fingers last told of (a log line a grab, effectors.hand.mesh_wrap). */
+	bool bWrapTold = false;
+	/** How far each finger can close on the held body before it lies in it, 0 to 1 (effectors.hand.mesh_wrap; a query that reads only). */
+	void WrapShares(double Wanted, double OutShares[5]) const;
+	/** Loads the visible hand of this side and builds its rig, placed by mesh_wrist_back_cm and mesh_palm_cm; false, with the reason, if its
+	 * mesh or a bone it needs is not there. */
+	bool LoadHandRig(USkeletalMesh*& OutMesh, FString& OutError);
+	/** Lays the mesh on the hand's frame with its wrist at WristOnHand (HandMeshOnHand). */
+	void PlaceHandMesh(const FVector& WristOnHand);
+	/** The box of the hand posed at Share from open to a fist (the thumb in it or not), in its own frame with the wrist at the origin, grown
+	 * by mesh_fit_skin_cm. */
+	void HandBox(double Share, bool bWithThumb, FBox& OutBox) const;
+	/** effectors.hand.mesh_fit: the ball's radius and the plate from the mesh's bones, and the mesh laid with its fist on the ball. */
+	void FitShapesToHand();
+	/** The finger joints' angles with each finger at its share (0 open to 1 a fist, eased) of the way, from the effectors.hand.mesh_* angles. */
+	FSandboxHandCurls CurlsAt(const double Shares[5]) const;
+	/** Makes the visible hand's component from the mesh LoadHandRig read. */
+	void MakeHandMesh(USkeletalMesh* Mesh);
+	/** Puts the visible hand on whichever body is the hand now (the ball, or the plate while it is the body). */
+	void AttachHandMesh();
+	/** Moves the fingers toward the grip and poses them (only what is seen). */
+	void UpdateHandMesh(float DeltaTime);
 
 	FName Id;
 	FSandboxEffectorTuning Tuning;

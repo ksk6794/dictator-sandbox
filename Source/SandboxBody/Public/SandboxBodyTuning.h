@@ -1102,6 +1102,15 @@ struct FSandboxGetUpTuning
 	/** 1: what a hit takes beyond the whole share is owed, so the share stays at 0 until HitBackS has given that much back; 0: it stops at 0. */
 	double HitOverflow = 0.0;
 	/**
+	 * The authority rule after an attempt (the audit of 28 November 2026; docs/recon/window3_plan.md, stage 1). 1: (a) a hit that gives
+	 * an attempt up to cover the struck place takes the world's pull by its impulse first, as a hit does while led (decision 20); (b) a
+	 * hit takes the pull in the same way while it fades after an attempt, whatever the state; and the marks of an attempt given up afraid
+	 * or to cover a place are cleared as the next attempt begins. 2: also (c), a body that lies lets what is left go by the get-up's own
+	 * release (CarryReleaseS), not by behaviour.lower_release_s. 0: as before, bit for bit (a covering hit gave the attempt up before it
+	 * was judged, and the pull after an afraid attempt faded over lower_release_s into Lying, where no hit took it). 0, 1 or 2.
+	 */
+	double StrictRelease = 0.0;
+	/**
 	 * R2, step 8 (docs/recon/r2_step8_plan.md; the only choice since R2's rest, the rule by the pelvis's lean, getup.clip_* and the
 	 * switch getup.match gone): a get-up's clip, the time it starts at and where it is laid come from the motion library and its
 	 * matcher (FSandboxMotionMatcher): the lying body against the first MatchWindowS of every get-up the library lets the matcher

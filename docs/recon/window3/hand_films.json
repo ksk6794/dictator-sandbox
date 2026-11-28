@@ -1,0 +1,11 @@
+﻿[
+  { "file": "docs/recon/window3/hands_look_front.json", "tag": "w3_hands_front", "around": 0.2, "span": 2.6, "every": 0.033, "video": true,
+    "camera": "0,28,128;0,60,120", "tune": "effectors.hand.mesh=1,effectors.hand.mesh_wrap=1" },
+  { "file": "docs/recon/window3/hands_wrap_arm.json", "tag": "w3_hands_wrap_arm", "around": 3.0, "span": 3.0, "every": 0.033, "video": true,
+    "camera": "75,-55,120;24,-3,100", "tune": "effectors.hand.mesh=1,effectors.hand.mesh_wrap=1" },
+  { "name": "palm_close_on_chest", "tag": "w3_hands_palm_chest", "around": 2.9, "span": 2.4, "every": 0.033, "video": true,
+    "camera": "60,110,150;0,0,125", "tune": "effectors.hand.mesh=1,effectors.hand.mesh_wrap=1" },
+  { "file": "docs/recon/window3/hands_punch_torso.json", "tag": "w3_hands_punch", "around": 2.9, "span": 1.5, "every": 0.033, "video": true,
+    "camera": "-90,140,150;0,0,120", "tune": "effectors.hand.mesh=1,effectors.hand.mesh_wrap=1" }
+]
+

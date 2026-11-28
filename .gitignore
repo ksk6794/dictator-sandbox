@@ -19,6 +19,7 @@ Plugins/**/Intermediate/
 
 # Stock engine content, copied by Tools/fetch-stock-content.ps1
 Content/Characters/Mannequins/
+Content/XRMannequins/
 
 # Generator output, rebuilt by Tools/gen-assets.ps1 from Specs/
 Content/Generated/

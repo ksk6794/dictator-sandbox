@@ -325,6 +325,7 @@
     "hold_press_pace": 0.15,
     "hit_back_s": 0.6,
     "hit_overflow": 1,
+    "strict_release": 0,
     "start_blend_s": 0.3,
     "match_window_s": 1.0,
     "match_pelvis": 3,

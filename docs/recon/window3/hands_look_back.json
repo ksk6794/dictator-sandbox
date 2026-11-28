@@ -1,0 +1,37 @@
+{
+  "name": "hands_look_back",
+  "duration_s": 3.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [0, 0, 0],
+    "control": "active"
+  },
+  "camera": { "location_cm": [25, 125, 150], "look_at_cm": [0, 55, 120] },
+  "events": [
+    {
+      "t": 0.2, "type": "effector", "effector": "hand_right",
+      "path": [
+        { "t": 0.0, "location_cm": [12, 60, 120], "rotation_deg": [0, -90, 0], "grip": 0 },
+        { "t": 0.8, "location_cm": [12, 60, 120], "grip": 0 },
+        { "t": 1.1, "location_cm": [12, 60, 120], "grip": 1 },
+        { "t": 1.8, "location_cm": [12, 60, 120], "grip": 1 },
+        { "t": 2.1, "location_cm": [12, 60, 120], "grip": 0 }
+      ]
+    },
+    {
+      "t": 0.2, "type": "effector", "effector": "hand_left",
+      "path": [
+        { "t": 0.0, "location_cm": [-12, 60, 120], "rotation_deg": [0, -90, 0], "grip": 0 },
+        { "t": 0.8, "location_cm": [-12, 60, 120], "grip": 0 },
+        { "t": 1.1, "location_cm": [-12, 60, 120], "grip": 1 },
+        { "t": 1.8, "location_cm": [-12, 60, 120], "grip": 1 },
+        { "t": 2.1, "location_cm": [-12, 60, 120], "grip": 0 }
+      ]
+    }
+  ],
+  "expect": { "end_state": "standing" }
+}

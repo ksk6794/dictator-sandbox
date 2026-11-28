@@ -7722,6 +7722,122 @@ in `docs/active-ragdoll.md`, section 10. The rule was every hash kept.
   frame rate handed to the pool or a set, the pool's memory count, a run that must be alone waiting beside the pool's idle processes,
   the pool's stop on a failed lock, and six defects of the new `check-links.ps1`.
 
+### The authority after an attempt (28 November, evening, the owner away)
+
+The plan and its journal: `docs/recon/window3_plan.md`, stage 1; the runs: `docs/recon/window3/step1_measure.ps1` (logs in
+`Saved\Recon\window3`); decision 79. `getup.strict_release` 0 keeps every hash of `audit_before` (the suite, 220 of 220). At 1: a hit
+that makes a rising body give the attempt up to cover the struck place takes the world's pull by the part of its impulse no flinch of
+the get-up has judged yet (`TakeCarryByHit`, decision 20's arithmetic made one function); a hit takes the pull the same way while it
+fades after any attempt, in any state (summed as the get-up's flinch sums a hit, judged from `thresholds.flinch_impulse_ns`); the marks
+`bAfraidGivenUp` and `bProtectGivenUp` cleared as an attempt or its roll begins. At 2 also: a lying body lets what is left go over
+`getup.carry_release_s` instead of `behaviour.lower_release_s`.
+
+- **The suite:** at 1, ten scenarios move, every one a hit while rising (`command_hit_interrupted`, `getup_hit_strong`,
+  `getup_phase_crouch_hit`, `_rise_hit`, `_sit_hit`, `getup_pressed`, `getup_pressed_two_hands` (the press's rising force is a hit),
+  `protect_hit_rising_head`, `_trunk`, `protect_phase_lowering_hit`); at 2, five more (`protect_near_rising_knees`, `_rise`, `_sit`,
+  `protect_phase_lowering_hold`, `_push`: the lowered bodies). At both, two fail, on their head's 2.0 m/s alone:
+  `protect_hit_rising_head` 2.13 m/s (1.90 at 0), `_trunk` 2.08 (1.95). The cover is quicker: one forearm in place 0.44 s after the hit on
+  the head (0.51) and 0.49 s after the one on the trunk (0.56).
+- **The world's pull by state** (`control.authority`, of body weight, mean and peak), at 0 and at 1: in Falling after a covering blow
+  `getup_hit_strong` 0.21 and 2.53 to none, `getup_phase_sit_hit` 0.36 and 3.00 to none, `_crouch_hit` 0.27 and 2.77 to none, `_rise_hit`
+  0.21 and 2.76 to none, `protect_hit_rising_trunk` 0.60 and 1.71 to 0.13 and 0.95; in Lying `protect_hit_rising_head` 0.008 and 0.36 to
+  none. At 2 in Lying after a lowering: `protect_near_rising_knees` 0.109 and 0.94 to 0.015 and 0.51, `_sit` 0.092 and 0.94 to 0.012 and
+  0.51, `protect_phase_lowering_hold` 0.134 and 0.93 to 0.018 and 0.62.
+- **The stands, three seeds each** (0, 1, 2): plain, 150 of 150 standing, 143 at the first attempt at 1 (the check set; as `audit_after`);
+  a viewer at 70 cm (C33), 150 standing, 92 at the first attempt, no attempt begun afraid with it near, 50 turned back within 0.16 s, the
+  head coming down at 1.86, 0.89 and 0.64 m/s at most on the three seeds at 0 and at 1 (every hash kept at 1), **2.36, 1.41 and 1.10 at 2**
+  (19 of 150 runs move); `get_up` 3 s after the viewer came (C39): 149 standing, 94 at the first attempt, the first motion 0.30 s after the
+  command in the median and at most (every hash kept at 1; at 2, 19 runs move and one answer comes at 0.96 s); pressed by 300 N: 149
+  standing, 91 at the first attempt, the same figures (every hash kept at 2); held by one hand: 149 standing, 33 at the first attempt, grips
+  off by themselves 14, 15 and 14, bodies that pulled free 11, 12 and 10, the same at 0, 1 and 2 (19 of 150 runs move at 1: a grip that
+  closes is a hit, and it now takes what is left of the pull after an attempt).
+- **90 hits while rising** (`docs/recon/window3/rising_hits.ps1`: `protect_hit_rising_trunk`'s body struck at 3.3, 3.6, 3.9, 4.2 and 4.5
+  s, on the head, `spine_04` and `thigh_r`, from behind and from the front, with 15, 50 and 120 N*s; one sweep at 0 and 1): 70 give the
+  attempt up to cover, every body stands in the end. The world's pull in Falling, peak in the median, 0 against 1: 2.20 and 1.91 after 15
+  N*s (on the head: a quarter of the share taken), 2.04 and 0.84 after 50, 2.55 and 0.00 after 120. The head coming down, median, over
+  2.0 m/s, over 3.2: after 15 N*s 2.87, 6, 0 at 0 and 2.81, 8, 0 at 1; after 50 2.16, 16, 1 and 2.25, 19, 2; after 120 2.41, 22, 6 and
+  3.14, 25, 13 (at most 3.55 at 0, 4.81 at 1). The cover in 0.47 and 0.46 s in the median. With R3's `fall.head` 1 as well the same
+  (the head's median 2.17 at 0 and 2.36 at 1 over the 70; 8 and 15 over 3.2), with `fall.curl` 1 every figure the same as without (the
+  curl is decided by the time to impact at a fall's start, and never comes here). With decision 58's A (`fall.catch`, `arm_curve`,
+  `head`, `palms` 1; sweep `w3_rising_hits_r3a`) the catch reaches these falls: the head's median 1.84 m/s at 0 and 2.06 at 1, over 2.0
+  in 29 and 36 of 70, over 3.2 in 5 and 10 (after 120 N*s: 1.92 and 2.73 in the median, 2 and 8 over 3.2), every body standing, but the
+  cover later, 0.49 to 0.63 s in the median at 0 and 0.48 to 0.87 s at 1 (0.46 without A), the catching arm first. Not reached by a
+  stiffer cover at 1 (`docs/recon/window3/rising_hits.ps1`'s files, sweep
+  `w3_rising_hits_c`): its trunk at 400 N*m/rad, at 400 with the neck at 120, at 800, the head's median 2.51, 2.50 and 2.61 m/s, over 3.2
+  in 15, 17 and 19 of 70 (15 at 1 alone); every body stands, the command's largest jump 357 N*m. The hard landing after a strong blow
+  while rising is the body's own fall from a crouch to answer: R3's catch does a part of it, at the cover's cost.
+- **With movable furniture** (`getup-stand.ps1 -PropsFile Tools\stand_furniture_props.json -Only floor -Floor 50`, asked by the reader: a
+  thing that strikes a body takes the fading pull as a hand does): 50 of 50 standing, 48 at the first attempt, every hash the same at 0
+  and 1. After the reader's fix (a hit the flinch judged in a tick whose attempt ends later in it), level 1 gives the same hashes as
+  before it in the suite, the viewer's stand and the stand held by one hand: that path did not come up.
+- **The scorecard** (`natural.ps1 -Quick` in the check set): every row the same at 0, 1 and 2. The push matrix and the knockdowns (no
+  get-up in them): as at 0.
+- Films (0 on the left, 1 on the right): `Saved\Films\w3_strict_trunk\pair.mp4` (from 3.7 s, the hit at 3.9) and
+  `Saved\Films\w3_strict_strong\pair.mp4` (from 8.3 s, the second blow at 8.5); the hardest of the 90 hits while rising,
+  `rising_hit_42_spine_04_120_x` (120 N*s into the chest kneeling at 4.2 s): `Saved\Films\w3_strict_hard\pair.mp4` (0 and 1: the head
+  down at 1.93 and 4.81 m/s, the trunk thrown back and the head on the floor at 1) and `w3_strict_hard_r3a\pair.mp4` (1 without and with
+  decision 58's A). (Made first without `-Tag`, the first wrote over decision
+  58's `protect_hit_rising_trunk_pair`, R3 0 against A; that pair was made again with its own settings.)
+- Not to be repeated: the hand tuning values were put into `Config\Tuning\effectors.json` for a minute while these stands ran (16:40); five
+  runs of the first level-2 viewer stand logged the refused reload and kept their values; that stand was run again on the next build and
+  gave the same figures.
+
+### The player's visible hands (28 November, evening, the owner away)
+
+The plan and its journal: `docs/recon/window3_plan.md`, stages 2a to 2c; decisions 80 to 82; the pictures from
+`docs/recon/window3/hands_look_back.json`, `hands_look_side.json`, `hands_look_front.json` and `hands_wrap_arm.json` (`scenario.ps1 -File
+... -Shot -Tune "effectors.hand.mesh=1"`).
+
+- **The mesh** (`effectors.hand.mesh`): both of the XR mannequin's hands have the same 47 bones (both sides' chains), the wrist at the
+  origin; `FSandboxHandRig` finds each hand's frame from its bones (the right: the fingers along +y of the mesh, the thumb toward +x, the
+  palm toward -z; the left its mirror image). The suite at 1: 220 of 220 with every hash of `audit_before` (the mesh has no collision);
+  the same with the wrap (`mesh_wrap` 1). Seen from the NPC (`hands_look_front`): the palms face each other, the thumbs on top, the
+  fingertips along the fingers' way; the fist's thumb pointed at the other hand when it was bent toward the palm's normal, and folds over
+  the index finger since it bends toward a point 3 cm in front of the middle knuckle. In the desktop session (`play.ps1 -Smoke -Shot`)
+  the two fists at the bottom of the view, the backs of the hands toward the camera.
+- **The fingers around a grab** (`mesh_wrap`): a right hand that takes hold of the left forearm (`hands_wrap_arm`, from `grab_lift_arm`
+  with the hand turned to face the arm) closes its four fingers to 0.51 to 0.54 of a fist around it; its thumb lies on the arm as the
+  grip closes and stays open.
+- **Decision 46 measured** (FR-47, "lift it a little, it must be felt as an effort"; the owner's (a): two hands at 300, 400 and 450 N
+  on the chest of a standing and of a lying body; `docs/recon/window3/lift_two_hands.ps1` and `lift_stands.ps1`, the cap by `-Tune`,
+  nothing in the files changed). A standing body taken by the chest and pulled 40 cm up for 3 s: at 300 N a hand it rises 6.7 cm (onto
+  its toes, the feet's load 198 N on average and 0 at the least), the hands 43 cm behind their targets, it staggers and stands; at 400 N
+  it rises 28.6 cm, the feet off the floor the whole hold (the body hangs from the hands), the hands 26 cm behind; at 450 N 30.1 cm, the
+  same. A felled body taken where `grab_drag_fallen_two` takes it and pulled 50 cm up: 13.7 cm at 300 N (the hands 31 cm behind), 20.6 cm
+  at 400 and 450 (14 cm behind). No grip slips or tears in these. The stand held by two hands (decision 13, three seeds): no body pulls
+  free at any cap; the grips come off by themselves 0 times at 300 N, 3 at 400 and 26 at 450 (the grip's own limit is 450 N for 0.1 s);
+  148 to 149 of 150 stand in the end at each. The drags (`getup_drag_*`): all pass at 300 N; at 400 and 450 `getup_drag_wrists_rise`
+  fails because one of the two scripted hands misses its wrist (a hand closing at a point of the world). Films (300 N on the left, 400
+  on the right): `Saved\Films\w3_lift_standing\pair.mp4`, `w3_lift_lying\pair.mp4`. Put to the owner in decision 46: 400 N lifts a
+  standing body off the floor, which is not "a little".
+- **The sweep table on today's body** (C30, decision 43: "the sweep table's outcomes are laid beside a table the owner sets after
+  seeing it"; `docs/recon/window3/sweep_table.ps1`, scenario files of its own, nothing changed): the desktop's foot (10 kg, 3500 N) kicks
+  the standing body's left leg (x = 12 cm, where `strike_kick_calf` kicks) 30 cm up (the lower leg) and 50 cm up (the knee) from the
+  front, the back, the outside and the front-outside at 4, 6 and 8 m/s, 6 cm through the leg's middle and back. **No kick of the 24
+  fells the body**: 4 stand (the lower leg from the front at 4 m/s and from the front-outside at every speed), 20 step (1 to 7 steps, a
+  stagger in 16). Delivered 59 to 79 N*s at the lower leg and 81 to 128 at the knee, hardly growing with the speed (the foot's spring and
+  cap bound it). C30's "a medium or strong one fells" is not met by today's body: what R4's soft legs are to change (decision 43 leaves
+  it to the mechanics); measured again on R4's body.
+- **The pull table's figures on today's body** (C28, C29; read from `Tools\grab-pulls.ps1`'s latest run with the files' values,
+  `Saved\Matrix\grab_pulls\grab_pulls.json`; no new runs): of 93 pulls 57 make the body step, 34 leave it standing, 2 fell it (the upper
+  arm yanked back at 4 m/s, the grip slipping; the chest pulled sideways at 2 m/s, the grip holding); 39 grips slip, 54 hold. Pulled
+  along the floor at walking pace (1 and 2 m/s to the left, front and back, 34 pulls): 30 step after the pull (2 to 8 steps), 3 stand, 1
+  falls (C29's "steps and does not fall": 33 of 34). The arm yanked at 4 m/s (15 yanks of the forearm, the hand and the upper arm): 11
+  step after it (1 to 8 steps), 3 stand while the grip slips (every yank down), 1 falls; the grip's force is the hand's cap, 284 to 332 N,
+  so no yank is harder than a pull: C28's "a fast or hard yank can fell it" depends on a yank that is more than the hand's 300 N (the
+  pull table's own run with an outcome for every pull is M4's rest).
+- **The bodies fitted to it** (`mesh_fit`; `docs/recon/window3/step2c_measure.ps1`): the fist's box 11.5 by 7.1 by 9.5 cm with 1 cm of
+  flesh, a ball of 4.61 cm (the files' 4.5), the mesh's wrist 4.75 cm behind the ball's centre (4.5 without the fit); the open hand's box
+  (the fingers 22, 14 and 8 degrees straighter than the reference pose) a plate 21.3 long, 11.1 wide, 4.6 thick, 4.9 cm ahead (18, 9, 3
+  and 4.5 in the files; its middle 1.3 cm off the hand's axis toward the palm, where a plate is not put). With the fit: 80 of the suite's
+  220 runs move, 218 pass (`getup_drag_wrists_rise`: the grips do not close on the wrists; `grab_pull_standing`: the body falls); the
+  grab's 93 pulls pass (two fall, one with the mesh alone; 40 grips slip either way; the joint 483 N in a frame at most, 466); the hand's
+  lag on four speeds the same to the millimetre; `record-replay.ps1 -Takes` 1 of 3 (3 of 3 with the mesh alone); `-Walk` fails its
+  session's check "hands keep up with a walk" (10.1 cm behind). The blows (`docs/recon/window3/step2c_blows.ps1`): the knockdowns by two
+  fists 8 of 8 either way (the slowest at rest 2.88 s against 2.53); the owner's punches of 25 November replayed (`recording-report.ps1
+  -Name "vr_step4*"`): the same first hits within 2 to 12% (the head 6.0, 11.2 and 28.8 N*s against 5.9, 10.0 and 28.0), then the runs
+  part (60 hits in all against 72: a replay with other hands measures nothing after its first hit). Kept at 0 (decision 82).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly
@@ -7739,6 +7855,7 @@ reactions.intent_delay_s reactions.thing_support_max_ns thresholds.fall_pelvis_o
 push_thigh_200_falls strike_punch_belly_steps fall_catch_back getup_hit_strong_yields getup_push_weak_yields getup_match_*
 getup_one_hand_slows gaze_rests_on_viewer Scenarios/getup_one_hand_slows.json Specs/physics/npc_body_head.json
 Specs/physics/npc_body_wrist.json -->
+<!-- not-names: protect_hit_rising_trunk_pair vr_step4* -->
 <!-- not-names: push_neck_01_090_030 push_neck_01_225_030 push_neck_01_315_030 push_spine_04_000_080 push_thigh_l_045_200
 vr_check2 vr_check3 vr_check_plates vr_punch_sweep vr_seeing vr_step4_2 vr_step4_4 vr_step4b vr_step4b_2 -->
 

@@ -15,6 +15,8 @@
 #   ... -Walk                       the way a person in the headset takes, with a made-up headset (play.ps1 -Demo -Walk,
 #                                   recorded as demo_walk): the stick walks the player's body into the character, along
 #                                   it, turns and walks away; the hands and the body are replayed and held against it
+#   ... -Tune "name=value,..."      the session and its replay with other tuning values (play.ps1 -Tune, scenario.ps1 -Tune); with
+#                                   -Recorded the replay alone (a person's session ran with the values it had)
 # A session and a scenario are not the same run: the session's hands exist from its first frame, and a scenario's
 # hashes are of every frame of its own. So the replay is held to the session by figures, and to itself by hashes.
 # The verdict goes to Saved\Tools\record-replay.json as well (-Takes: record-replay-takes.json, -Walk: record-replay-walk.json,
@@ -29,9 +31,12 @@ param(
     [switch]$Twice,
     [switch]$Takes,
     [switch]$Walk,
-    [switch]$Perception
+    [switch]$Perception,
+    [string]$Tune
 )
 . "$PSScriptRoot\common.ps1"
+$tuned = @()
+if ($Tune) { $tuned = @('-Tune', $Tune) }
 
 $resultName = 'record-replay'
 if ($Takes) { $resultName = 'record-replay-takes' } elseif ($Recorded) { $resultName = "record-replay-$Recorded" } elseif ($Walk) { $resultName = 'record-replay-walk' } elseif ($Perception) { $resultName = 'record-replay-seeing' }
@@ -45,7 +50,7 @@ function Stop-Replay([int]$Code, [string]$Line, [string[]]$More = @()) {
 }
 
 if ($Takes) {
-    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Takes
+    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Takes @tuned
     if ($LASTEXITCODE -ne 0) {
         Stop-Replay 2 "RECORD REPLAY ERROR: the session of takes did not give its recordings" @($demo | ForEach-Object { "  $_" })
     }
@@ -56,7 +61,7 @@ if ($Takes) {
     foreach ($take in $takeNames) {
         $more = @()
         if ($Twice) { $more += '-Twice' }
-        $lines = @(& powershell -ExecutionPolicy Bypass -File $PSCommandPath -Name $Name -Recorded $take -PelvisCm $PelvisCm -ImpulsePct $ImpulsePct -Frames $Frames @more)
+        $lines = @(& powershell -ExecutionPolicy Bypass -File $PSCommandPath -Name $Name -Recorded $take -PelvisCm $PelvisCm -ImpulsePct $ImpulsePct -Frames $Frames @more @tuned)
         $code = $LASTEXITCODE
         if ($code -eq 0) { $good++ }
         if ($code -gt $worst) { $worst = $code }
@@ -74,7 +79,7 @@ if (-not $recordName) {
     $seeing = @()
     if ($Perception) { $recordName = 'demo_seeing'; $seeing = @('-Perception') }
     if ($Walk) { $recordName = 'demo_walk'; $seeing += '-Walk' }
-    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Record $recordName @seeing
+    $demo = & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'play.ps1') -Name $Name -Demo -Record $recordName @seeing @tuned
     if ($LASTEXITCODE -ne 0) {
         Stop-Replay 2 "RECORD REPLAY ERROR: the session did not give a recording" @($demo | ForEach-Object { "  $_" })
     }
@@ -88,7 +93,7 @@ if (-not $seen -or -not (Test-Path $replayFile)) {
 
 $script:replayLines = @()
 function Invoke-Replay {
-    $script:replayLines = @(& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'scenario.ps1') -File $replayFile)
+    $script:replayLines = @(& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'scenario.ps1') -File $replayFile @tuned)
     $metricsOfRun = Read-JsonFile (Join-Path $RepoRoot "Saved\Scenarios\$recordName\metrics.json")
     if (-not $metricsOfRun -or -not $metricsOfRun.ok) { return $null }
     return $metricsOfRun

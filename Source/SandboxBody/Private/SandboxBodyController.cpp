@@ -2175,6 +2175,7 @@ bool USandboxBodyController::StartRoll(double SideDeg, bool bOnLeft, bool bFacin
 	{
 		Kept = 1.0;
 	}
+	ClearGiveUpMarks();
 	BeginAttemptView();
 	GetUpView.Clip.Reset();
 	// The pose is the roll's (ApplyPose, through the state's tuning), and the muscles come up from nothing as for any get-up.
@@ -2408,6 +2409,7 @@ bool USandboxBodyController::StartClip(bool bNewAttempt, FString& OutError)
 	{
 		Kept = 1.0;
 	}
+	ClearGiveUpMarks();
 	Pelvis->Target = First * Frame;
 	Pelvis->Target.SetScale3D(FVector::OneVector);
 	SetAssistTarget(*Pelvis);
@@ -2820,7 +2822,7 @@ bool USandboxBodyController::CanBeginGetUp(FString& OutWhy) const
 	return true;
 }
 
-void USandboxBodyController::StartCover(ECoverPlace Place, double HitNs, FName Bone)
+void USandboxBodyController::StartCover(ECoverPlace Place, double HitNs, FName Bone, double UnjudgedNs)
 {
 	static const TCHAR* const PlaceNames[] = { TEXT("head"), TEXT("trunk"), TEXT("groin"), TEXT("leg") };
 	FSandboxBehaviourView::FCover& Cover = BehaviourView.Covers.AddDefaulted_GetRef();
@@ -2847,6 +2849,14 @@ void USandboxBodyController::StartCover(ECoverPlace Place, double HitNs, FName B
 	if (State == ESandboxBodyState::GetUp)
 	{
 		Cover.bGaveUp = true;
+		// getup.strict_release (a): the hit takes the world's pull before the attempt is given up, as it would while led (decision 20).
+		// Without it the attempt ended inside FeelFrame before the get-up's flinch judged the hit, and the pull faded from its full share
+		// over carry_release_s (the audit's reader, 28 November 2026).
+		// (Not in a roll: nothing of the world pulls on a body that rolls, UpdateRoll.)
+		if (Tuning.GetUp.StrictRelease > 0.5 && IsLed() && !GetUpRun.bRolling && Tuning.GetUp.CarryYieldNs > 0.0 && UnjudgedNs > 0.0)
+		{
+			TakeCarryByHit(UnjudgedNs, TEXT("as it gives the attempt up to cover itself"));
+		}
 		GiveUpGetUp(ESandboxGiveUp::Protect, FString::Printf(TEXT("hit on the %s with %.1f N*s"), *Cover.Place, HitNs));
 		bProtectGivenUp = true;
 	}
@@ -4236,6 +4246,14 @@ void USandboxBodyController::GiveUpGetUp(ESandboxGiveUp Kind, const FString& Rea
 	{
 		return;
 	}
+	// getup.strict_release: a hit the get-up's flinch judged in this tick, which UpdateGetUp would take later in it, takes the pull now when
+	// the attempt is given up in between (a leg's cover come due, an afraid give-up, a drag; the independent reading of the window).
+	// (Not in a roll: a hit while it rolls has no authority to take, UpdateRoll.)
+	if (Tuning.GetUp.StrictRelease > 0.5 && IsLed() && !GetUpRun.bRolling && Tuning.GetUp.CarryYieldNs > 0.0 && FlinchStartedS >= StateEnteredS && FlinchStartedS > CarryYieldSeenS)
+	{
+		CarryYieldSeenS = FlinchStartedS;
+		TakeCarryByHit(FlinchImpulseNs.Size(), TEXT("as the attempt is given up"));
+	}
 	++GetUpView.GivenUpBy[static_cast<int32>(Kind)];
 	GetUpView.GivenUp = Reason;
 	// R10, step 8 in part: an attempt made for get_up and given up interrupts the command.
@@ -4339,12 +4357,7 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		// add up; it comes back by getup.hit_back_s (UpdateCarry). No attempt is given up for it: the blow moves the body, and
 		// the get-up's own rules decide what follows (thrown off its clip by lost_cm, standing still too long). (Before it, a hit of
 		// carry_yield_ns gave the attempt up; getup.hit_by_impulse chose between the two until the audit of 28 November 2026.)
-		// With getup.hit_overflow 1, what a hit takes beyond the whole share is owed: the share stays at 0 until its clock has
-		// given that much back (a blow of 200 N*s keeps the world off for 2.3 times hit_back_s). At most ten shares are owed.
-		const double Floor = Limits.HitOverflow > 0.5 ? -10.0 : 0.0;
-		HitFree = FMath::Max(HitFree - FlinchImpulseNs.Size() / Limits.CarryYieldNs, Floor);
-		GetUpView.HitFreeMin = FMath::Min(GetUpView.HitFreeMin, FMath::Max(HitFree, 0.0));
-		UE_LOG(LogSandbox, Display, TEXT("Body controller: a hit of %.1f N*s while led leaves %.2f of the world's pull (%.2f)"), FlinchImpulseNs.Size(), FMath::Max(HitFree, 0.0), HitFree);
+		TakeCarryByHit(FlinchImpulseNs.Size(), TEXT("while led"));
 	}
 	// The muscles and the assist come up from nothing (MuscleScale, PushTuningToControls).
 	const double Ease = GetUpEase();
@@ -4625,6 +4638,37 @@ void USandboxBodyController::CountLed(bool bLed)
 		ElapsedS, *GetUpView.NotLed);
 }
 
+void USandboxBodyController::ClearGiveUpMarks()
+{
+	// getup.strict_release: the marks of an attempt given up afraid or to cover a place belong to the fall from it. Cleared otherwise only
+	// by UpdateStayDown, before a get-up begins in the tick: an attempt begun and given up in one tick for another reason was then taken
+	// for one given up afraid (its release over lower_release_s, the protective pose, the covers of a body going down; the audit's reader).
+	if (Tuning.GetUp.StrictRelease > 0.5)
+	{
+		bAfraidGivenUp = false;
+		bProtectGivenUp = false;
+	}
+}
+
+void USandboxBodyController::TakeCarryByHit(double ImpulseNs, const TCHAR* When)
+{
+	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
+	if (Limits.CarryYieldNs <= 0.0)
+	{
+		return;
+	}
+	// With getup.hit_overflow 1, what a hit takes beyond the whole share is owed: the share stays at 0 until its clock has
+	// given that much back (a blow of 200 N*s keeps the world off for 2.3 times hit_back_s). At most ten shares are owed.
+	const double Floor = Limits.HitOverflow > 0.5 ? -10.0 : 0.0;
+	HitFree = FMath::Max(HitFree - ImpulseNs / Limits.CarryYieldNs, Floor);
+	// The get-up's figure counts the hits of a get-up, not those of the fade after it (getup.strict_release).
+	if (IsLed())
+	{
+		GetUpView.HitFreeMin = FMath::Min(GetUpView.HitFreeMin, FMath::Max(HitFree, 0.0));
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: a hit of %.1f N*s %s leaves %.2f of the world's pull (%.2f)"), ImpulseNs, When, FMath::Max(HitFree, 0.0), HitFree);
+}
+
 void USandboxBodyController::UpdateCarry(double DeltaTime)
 {
 	bool bLed = IsLed();
@@ -4716,7 +4760,9 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 		// pose it began from sitting sinks the rest of the way instead of dropping (exact otherwise: the get-up's own release).
 		// (Not after a hit on the head, behaviour.protect: a hit takes authority away, and the get-up's own release is kept; the independent
 		// reading's find.)
-		const double ReleaseS = bAfraidGivenUp && Tuning.Behaviour.LowerReleaseS > 0.0 ? Tuning.Behaviour.LowerReleaseS : Tuning.GetUp.CarryReleaseS;
+		// getup.strict_release 2 (c): a body that lies keeps the rest only for the get-up's own release (the budget of a lying body is 0).
+		const bool bLyingRelease = Tuning.GetUp.StrictRelease > 1.5 && State == ESandboxBodyState::Lying;
+		const double ReleaseS = bAfraidGivenUp && !bLyingRelease && Tuning.Behaviour.LowerReleaseS > 0.0 ? Tuning.Behaviour.LowerReleaseS : Tuning.GetUp.CarryReleaseS;
 		CarryShare = ReleaseS > 0.0 ? FMath::Max(CarryShare - DeltaTime / ReleaseS, 0.0) : 0.0;
 	}
 	bCarryAimed = Clip != nullptr;
@@ -6494,6 +6540,37 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			}
 		}
 
+		// getup.strict_release (a): what of this hit the get-up's flinch below has not judged yet, its sum so far and this frame (read only
+		// here): a cover that gives the attempt up takes the world's pull by it first.
+		const double UnjudgedNs = ((ElapsedS - HitStartedS > Tuning.Thresholds.FlinchWindowS ? FVector::ZeroVector : HitImpulseNs) + HitNs).Size();
+		// getup.strict_release (b): while the world's pull fades after an attempt (over the get-up's own release, or lower_release_s after
+		// one given up afraid), a hit takes it as it does while led, in any state: summed as the get-up's flinch sums a hit, and judged once
+		// it is as large as makes a standing body flinch. Before the covers below, so that a hit that gives an attempt up in this frame
+		// (judged there, by UnjudgedNs) is not taken twice.
+		if (Tuning.GetUp.StrictRelease > 0.5)
+		{
+			if (IsLed() || CarryShare <= 0.0)
+			{
+				FadeHitNs = FVector::ZeroVector;
+				FadeHitStartedS = -1.0;
+			}
+			else
+			{
+				if (FadeHitStartedS < 0.0 || ElapsedS - FadeHitStartedS > Tuning.Thresholds.FlinchWindowS)
+				{
+					FadeHitNs = FVector::ZeroVector;
+					FadeHitStartedS = ElapsedS;
+				}
+				FadeHitNs += HitNs;
+				if (FadeHitNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && (FadeHitNs | Felt) > 0.0)
+				{
+					TakeCarryByHit(FadeHitNs.Size(), TEXT("as the world's pull fades"));
+					FadeHitNs = FVector::ZeroVector;
+					FadeHitStartedS = -1.0;
+				}
+			}
+		}
+
 		// A knockdown: a hit on the head, from any side, summed over one contact as the belly's is. A kick that
 		// meets the head throws it back on its neck, and the legs go from under the body: it falls. (By momentum
 		// alone a kick felled the body from three points of the head out of nine: the foot slides off.) Only an
@@ -6516,7 +6593,7 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 			if (Tuning.Behaviour.Protect > 0.5 && !bHeadCoverCounted && bDownOrRising && HeadHitNs >= Tuning.Behaviour.ProtectFromHeadNs)
 			{
 				bHeadCoverCounted = true;
-				StartCover(ECoverPlace::Head, HeadHitNs, FrameBone);
+				StartCover(ECoverPlace::Head, HeadHitNs, FrameBone, UnjudgedNs);
 			}
 			const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch || State == ESandboxBodyState::Stagger;
 			if (Reactions.KnockdownHeadNs > 0.0 && !bHeadFelled && bUpright && HeadHitNs >= Reactions.KnockdownHeadNs)
@@ -6572,7 +6649,8 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 					}
 					else
 					{
-						StartCover(Place == 0 ? ECoverPlace::Trunk : Place == 1 ? ECoverPlace::Groin : ECoverPlace::Leg, PlaceHitNs[Place], FrameBone);
+						StartCover(Place == 0 ? ECoverPlace::Trunk : Place == 1 ? ECoverPlace::Groin : ECoverPlace::Leg, PlaceHitNs[Place], FrameBone,
+							State == ESandboxBodyState::GetUp ? UnjudgedNs : 0.0);
 					}
 				}
 			}

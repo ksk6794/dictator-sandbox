@@ -119,6 +119,46 @@ struct FSandboxEffectorTuning
 	double PalmMassKg = 0.0;
 	/** Above the radius: the effector is an upright capsule of this half height, cm (the player's body). 0: a ball. */
 	double HalfHeightCm = 0.0;
+	/**
+	 * The visible hand (docs/active-ragdoll.md, section 8, item 4; decision 76). Above 0.5 a hand is shown as the engine's XR mannequin's
+	 * hand of its side (Content/XRMannequins, copied by Tools/fetch-stock-content.ps1) instead of the ball and the plate: a mesh with no
+	 * collision, laid on the hand's own frame by its bones (FSandboxHandRig), its wrist MeshWristBackCm behind the body's centre along the
+	 * fingers and moved MeshPalmCm toward where the palm faces, its fingers posed by our own arithmetic from the grip: at grip 0 every
+	 * finger joint bent from the mesh's reference pose by MeshOpen*Deg (base, middle, tip; negative is straighter), at grip 1 by
+	 * MeshFist*Deg; the thumb's two outer joints by MeshThumbOpenDeg and MeshThumbFistDeg, its base across the palm by MeshThumbAcrossDeg
+	 * at grip 1. The fingers go from one to the other in MeshCloseS. Nothing of the physics changes. Mesh and where it lies are read when
+	 * the hand is made; the angles at any time. 0: the ball and the plate.
+	 */
+	double Mesh = 0.0;
+	double MeshWristBackCm = 0.0;
+	double MeshPalmCm = 0.0;
+	double MeshOpenBaseDeg = 0.0;
+	double MeshOpenMiddleDeg = 0.0;
+	double MeshOpenTipDeg = 0.0;
+	double MeshFistBaseDeg = 0.0;
+	double MeshFistMiddleDeg = 0.0;
+	double MeshFistTipDeg = 0.0;
+	double MeshThumbOpenDeg = 0.0;
+	double MeshThumbFistDeg = 0.0;
+	double MeshThumbAcrossDeg = 0.0;
+	double MeshCloseS = 0.0;
+	/**
+	 * Fingers that close around what a grab holds (with Mesh; stage 2b of docs/recon/window3_plan.md). Above 0.5, while the hand holds
+	 * a body, each finger closes only as far as it can without its joints and tip, as balls of MeshWrapFingerCm, lying in the held body:
+	 * a query of that body's shape that reads only. 0: every finger closes as the grip says.
+	 */
+	double MeshWrap = 0.0;
+	double MeshWrapFingerCm = 0.0;
+	/**
+	 * The hand's bodies fitted to the visible hand (with Mesh; stage 2c of docs/recon/window3_plan.md). Above 0.5 the sizes are taken
+	 * from the mesh's bones as the hand is made: the fist's box (its wrist, every finger joint and tip at grip 1, grown by MeshFitSkinCm
+	 * all round) is laid with its middle on the ball's centre and the ball given the volume of the ellipsoid in that box; the open hand's
+	 * box (the wrist, the four fingers' joints and tips at grip 0, grown the same way) becomes the plate (its length, width, thickness and
+	 * how far ahead its middle is along the fingers; the plate stays on the hand's axis). The mesh then lies where its fist is the ball, not
+	 * by MeshWristBackCm and MeshPalmCm. Read when the hand is made, as Mesh is. 0: the files' radius_cm and palm_*.
+	 */
+	double MeshFit = 0.0;
+	double MeshFitSkinCm = 0.0;
 };
 
 /** A spring with a force cap, as the drag handle uses it ("tools.drag..."). */

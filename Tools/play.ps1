@@ -122,6 +122,12 @@ if ($spec.map) { $arguments = "$($spec.map) $arguments" }
 if ($Tune) { $arguments += " -Tune=`"$Tune`"" }
 if ($TuningDir) { $arguments += " -TuningDir=`"$([System.IO.Path]::GetFullPath($TuningDir))`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
+# -Shot renders the self-test only; a demo runs without a renderer, and its picture would silently not be made (28 November: asked
+# for with -Demo -Grab, nothing was written and nothing said so). A demo's look: its replay scenario with scenario.ps1 -Shot. Refused
+# before the headset's checks, which stop the pool.
+if ($Shot -and -not $Smoke) {
+    Stop-Play 2 'PLAY ERROR: -Shot renders the self-test (-Smoke) only; for a picture of a demo, run its replay scenario with Tools\scenario.ps1 -File <replay> -Shot'
+}
 if ($VR) {
     $blocker = Get-HeadsetBlocker
     if ($blocker) {

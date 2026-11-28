@@ -1328,6 +1328,13 @@ private:
 	double HoldPace = 1.0;
 	/** Decision 20: what the hits left of the carry's share, 0 to 1; back by getup.hit_back_s. */
 	double HitFree = 1.0;
+	/** Decision 20's arithmetic: a hit of ImpulseNs takes ImpulseNs / carry_yield_ns of the share (HitFree), owed beyond it with hit_overflow. */
+	void TakeCarryByHit(double ImpulseNs, const TCHAR* When);
+	/** getup.strict_release: clears the marks of an attempt given up afraid or to cover a place, as the next attempt begins. */
+	void ClearGiveUpMarks();
+	/** getup.strict_release: the hit felt while the pull fades after an attempt, not yet judged (summed as a get-up's flinch is), N*s. */
+	FVector FadeHitNs = FVector::ZeroVector;
+	double FadeHitStartedS = -1.0;
 	/** The body struck last while led and until when its distance from the carry's target is watched (GetUpView.HitOffCm). */
 	FName HitWatchBone;
 	double HitWatchUntilS = -1.0;
@@ -1812,7 +1819,8 @@ private:
 	void UpdateOffer(double DeltaTime);
 	/** Ends the hand offered, how (taken, not taken, stopped, interrupted), and lets its arm go over offer_blend_s. */
 	void EndOffer(const FString& How);
-	void StartCover(ECoverPlace Place, double HitNs, FName Bone);
+	/** UnjudgedNs: what of the hit no flinch of the get-up has judged yet (getup.strict_release takes the pull by it when this gives an attempt up). */
+	void StartCover(ECoverPlace Place, double HitNs, FName Bone, double UnjudgedNs = 0.0);
 	void MeasureCover();
 	/** Whether a hit with this impulse comes at the trunk from its front (the belly's rule, IsIntoBelly, without its band). */
 	bool IsFromFront(const FVector& HitNs) const;

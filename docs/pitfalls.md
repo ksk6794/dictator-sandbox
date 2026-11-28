@@ -826,6 +826,12 @@ into `CLAUDE.md` instead.
 - **A new `.cpp` regroups the unity build, and names that two files declared quietly clash.** Two file-scope constants of
   `SandboxCarry.cpp` and `SandboxFingerRig.cpp` hid names of other files once a new file moved them into one group (C4459 as an error,
   28 November). Name file-scope constants after their file (`CarryGravityMps2`).
+- **A film pair without `-Tag` is filed under its scenario's name, over any pair made of that scenario before.** The pair of decision 79
+  (`protect_hit_rising_trunk`, `getup.strict_release` 0 and 1) wrote over decision 58's (the same scenario, R3 0 and A), which the
+  documents still named (28 November, evening; made again). A pair that a decision or a page names is made with a `-Tag` of its own.
+- **A switch a script takes and does not use says nothing.** `play.ps1 -Demo -Grab -Shot` ran the demo, printed `PLAY GRAB OK` and made
+  no picture: `-Shot` rendered only the self-test (28 November). It refuses now. A new parameter is either used on every path that takes
+  it or refused where it is not.
 - **A sweep set that switches a value a scenario switches itself measures nothing new and fails `tuning_changes`.** `-Sets
   "behaviour.struggle=1"` on scenarios that set it by their own console event made every run fail; and `-Sets "|"` runs the files twice.
 

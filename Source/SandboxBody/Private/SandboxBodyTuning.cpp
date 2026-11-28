@@ -386,6 +386,7 @@ namespace
 		Visitor(FString(TEXT("getup.hold_press_pace")), Tuning.GetUp.HoldPressPace);
 		Visitor(FString(TEXT("getup.hit_back_s")), Tuning.GetUp.HitBackS);
 		Visitor(FString(TEXT("getup.hit_overflow")), Tuning.GetUp.HitOverflow);
+		Visitor(FString(TEXT("getup.strict_release")), Tuning.GetUp.StrictRelease);
 		Visitor(FString(TEXT("getup.start_blend_s")), Tuning.GetUp.StartBlendS);
 		Visitor(FString(TEXT("getup.match_window_s")), Tuning.GetUp.MatchWindowS);
 		Visitor(FString(TEXT("getup.match_pelvis")), Tuning.GetUp.MatchPelvis);
@@ -897,6 +898,7 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.HoldPressPace, 1.0, TEXT("getup"), TEXT("hold_press_pace"), OutError) ||
 		!CheckRange(GetUp.HitBackS, 10.0, TEXT("getup"), TEXT("hit_back_s"), OutError) ||
 		!CheckRange(GetUp.HitOverflow, 1.0, TEXT("getup"), TEXT("hit_overflow"), OutError) ||
+		!CheckRange(GetUp.StrictRelease, 2.0, TEXT("getup"), TEXT("strict_release"), OutError) ||
 		!CheckRange(GetUp.StartBlendS, 10.0, TEXT("getup"), TEXT("start_blend_s"), OutError) ||
 		!CheckRange(GetUp.MatchWindowS, 10.0, TEXT("getup"), TEXT("match_window_s"), OutError) ||
 		!CheckRange(GetUp.MatchPelvis, 100.0, TEXT("getup"), TEXT("match_pelvis"), OutError) ||

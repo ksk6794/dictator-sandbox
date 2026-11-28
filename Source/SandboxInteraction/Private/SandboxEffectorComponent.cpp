@@ -3,8 +3,10 @@
 #include "CollisionShape.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
+#include "Components/PoseableMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -12,6 +14,7 @@
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "Physics/Experimental/PhysInterface_Chaos.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
+#include "SandboxCore.h"
 
 namespace
 {
@@ -21,6 +24,9 @@ namespace
 	const TCHAR* const CubeMeshPath = TEXT("/Engine/BasicShapes/Cube.Cube");
 	constexpr double CubeMeshEdgeCm = 100.0;
 	constexpr double SphereMeshRadiusCm = 50.0;
+	// The visible hands (effectors.hand.mesh): the engine's XR mannequin's, copied by Tools\fetch-stock-content.ps1.
+	const TCHAR* const EffectorHandMeshLeftPath = TEXT("/Game/XRMannequins/Meshes/SKM_MannyXR_left.SKM_MannyXR_left");
+	const TCHAR* const EffectorHandMeshRightPath = TEXT("/Game/XRMannequins/Meshes/SKM_MannyXR_right.SKM_MannyXR_right");
 }
 
 FName SandboxEffectors::KindOf(FName Effector)
@@ -134,6 +140,11 @@ void USandboxEffectorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 		PalmVisual->DestroyComponent();
 		PalmVisual = nullptr;
 	}
+	if (HandMesh)
+	{
+		HandMesh->DestroyComponent();
+		HandMesh = nullptr;
+	}
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
 }
 
@@ -153,6 +164,18 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 
 	Id = InId;
 	Tuning = InTuning;
+	// The visible hand's bones are read before the bodies are made: with effectors.hand.mesh_fit the ball and the plate take their sizes
+	// from them. Asked for and not there, the hand is not made: a run must not pass on hands it did not ask for.
+	USkeletalMesh* HandAsset = nullptr;
+	const bool bHandMesh = Tuning.Mesh > 0.5 && Tuning.PalmLengthCm > 0.0 && (Id == SandboxEffectors::HandLeft || Id == SandboxEffectors::HandRight);
+	if (bHandMesh && !LoadHandRig(HandAsset, OutError))
+	{
+		return false;
+	}
+	if (bHandMesh && Tuning.MeshFit > 0.5)
+	{
+		FitShapesToHand();
+	}
 	const bool bCapsule = IsCapsule();
 	if (bCapsule)
 	{
@@ -205,6 +228,13 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 		PalmVisual->RegisterComponent();
 	}
 
+	// The visible hand (effectors.hand.mesh): a hand of a side is seen as a hand, the ball and the plate hidden; nothing of the physics
+	// changes (but the sizes mesh_fit gave the bodies above).
+	if (HandAsset)
+	{
+		MakeHandMesh(HandAsset);
+	}
+
 	FBodyInstance* Body = GetBodyInstance();
 	if (!Body || !Body->IsValidBodyInstance() || !Body->IsInstanceSimulatingPhysics())
 	{
@@ -231,6 +261,268 @@ bool USandboxEffectorComponent::Start(FName InId, const FSandboxEffectorTuning& 
 	ApplyTuning(Tuning);
 	Spring.SetTarget(Target.Location, Target.Rotation, FVector::ZeroVector);
 	return true;
+}
+
+bool USandboxEffectorComponent::LoadHandRig(USkeletalMesh*& OutMesh, FString& OutError)
+{
+	const bool bLeft = Id == SandboxEffectors::HandLeft;
+	const TCHAR* const Path = bLeft ? EffectorHandMeshLeftPath : EffectorHandMeshRightPath;
+	OutMesh = LoadObject<USkeletalMesh>(nullptr, Path);
+	if (!OutMesh)
+	{
+		OutError = FString::Printf(TEXT("Cannot load the hand mesh '%s' (Tools\\fetch-stock-content.ps1 copies it)"), Path);
+		return false;
+	}
+	const FReferenceSkeleton& Skeleton = OutMesh->GetRefSkeleton();
+	TArray<FName> Names;
+	TArray<int32> Parents;
+	for (int32 Index = 0; Index < Skeleton.GetNum(); ++Index)
+	{
+		Names.Add(Skeleton.GetBoneName(Index));
+		Parents.Add(Skeleton.GetParentIndex(Index));
+	}
+	FString Error;
+	if (!HandRig.Build(Names, Parents, Skeleton.GetRefBonePose(), bLeft, Error))
+	{
+		OutError = FString::Printf(TEXT("The hand mesh '%s': %s"), Path, *Error);
+		OutMesh = nullptr;
+		return false;
+	}
+	// The mesh's own hand frame, found from its bones, turned onto the effector's; its wrist mesh_wrist_back_cm behind the body's centre
+	// along the fingers (4.5: the fingertips where the plate's front edge is) and moved mesh_palm_cm toward where the palm faces.
+	const FVector Wrist(-Tuning.MeshWristBackCm, bLeft ? Tuning.MeshPalmCm : -Tuning.MeshPalmCm, 0.0);
+	PlaceHandMesh(Wrist);
+	return true;
+}
+
+void USandboxEffectorComponent::PlaceHandMesh(const FVector& WristOnHand)
+{
+	const FTransform& MeshFrame = HandRig.GetHandFrame();
+	const FQuat Turn = MeshFrame.GetRotation().Inverse();
+	HandMeshOnHand = FTransform(Turn, WristOnHand - Turn.RotateVector(MeshFrame.GetLocation()));
+}
+
+void USandboxEffectorComponent::HandBox(double Share, bool bWithThumb, FBox& OutBox) const
+{
+	// The hand at Share of the way from open to a fist, as UpdateHandMesh poses it; the box of its wrist, joints and tips in the hand's
+	// own frame with the wrist at its origin.
+	const double Shares[5] = { Share, Share, Share, Share, Share };
+	TArray<FTransform> Local;
+	TArray<FTransform> Space;
+	HandRig.Pose(CurlsAt(Shares), Local);
+	HandRig.ToMeshSpace(Local, Space);
+	const FTransform& Frame0 = HandRig.GetHandFrame();
+	OutBox = FBox(ForceInit);
+	OutBox += FVector::ZeroVector;
+	for (int32 Finger = bWithThumb ? 0 : 1; Finger < 5; ++Finger)
+	{
+		for (int32 Joint = 0; Joint < 3; ++Joint)
+		{
+			OutBox += Frame0.InverseTransformPosition(Space[HandRig.JointBone(Finger, Joint)].GetLocation());
+		}
+		OutBox += Frame0.InverseTransformPosition(HandRig.TipInMeshSpace(Space, Finger));
+	}
+	OutBox = OutBox.ExpandBy(Tuning.MeshFitSkinCm);
+}
+
+FSandboxHandCurls USandboxEffectorComponent::CurlsAt(const double Shares[5]) const
+{
+	// Each finger at its share of the way from open to a fist (eased), the angles from the tuning: four fingers by MeshOpen*Deg and
+	// MeshFist*Deg, the thumb's two outer joints by MeshThumbOpenDeg and MeshThumbFistDeg, its base across the palm by MeshThumbAcrossDeg.
+	const double OpenDeg[3] = { Tuning.MeshOpenBaseDeg, Tuning.MeshOpenMiddleDeg, Tuning.MeshOpenTipDeg };
+	const double FistDeg[3] = { Tuning.MeshFistBaseDeg, Tuning.MeshFistMiddleDeg, Tuning.MeshFistTipDeg };
+	const double ThumbOpenDeg[3] = { 0.0, Tuning.MeshThumbOpenDeg, Tuning.MeshThumbOpenDeg };
+	const double ThumbFistDeg[3] = { Tuning.MeshThumbAcrossDeg, Tuning.MeshThumbFistDeg, Tuning.MeshThumbFistDeg };
+	FSandboxHandCurls Curls;
+	for (int32 Finger = 0; Finger < 5; ++Finger)
+	{
+		const double S = FMath::SmoothStep(0.0, 1.0, FMath::Clamp(Shares[Finger], 0.0, 1.0));
+		for (int32 Joint = 0; Joint < 3; ++Joint)
+		{
+			Curls.Deg[Finger][Joint] = Finger == 0 ? FMath::Lerp(ThumbOpenDeg[Joint], ThumbFistDeg[Joint], S) : FMath::Lerp(OpenDeg[Joint], FistDeg[Joint], S);
+		}
+	}
+	return Curls;
+}
+
+void USandboxEffectorComponent::FitShapesToHand()
+{
+	// effectors.hand.mesh_fit: the fist's box (the thumb in it) laid with its middle on the ball's centre, the ball of the volume of the
+	// ellipsoid in that box (the radius the geometric mean of its half sizes); the open hand's box (four fingers) the plate, ahead of the
+	// ball by its middle along the fingers only (its middle's offset through the palm and across is logged, not applied: a plate lies on
+	// the hand's axis).
+	FBox Fist;
+	FBox Open;
+	HandBox(1.0, /*bWithThumb*/ true, Fist);
+	HandBox(0.0, /*bWithThumb*/ false, Open);
+	const FVector FistMiddle = Fist.GetCenter();
+	const FVector FistHalf = Fist.GetExtent();
+	PlaceHandMesh(-FistMiddle);
+	// Held to the ranges the files' own sizes are checked against (FSandboxInteractionTuning::Validate): another mesh or much flesh
+	// would not make a hand the files could not.
+	Tuning.RadiusCm = FMath::Clamp(FMath::Pow(FistHalf.X * FistHalf.Y * FistHalf.Z, 1.0 / 3.0), 0.5, 30.0);
+	const FVector OpenSize = Open.GetSize();
+	Tuning.PalmLengthCm = FMath::Clamp(OpenSize.X, 1.0, 40.0);
+	Tuning.PalmThicknessCm = FMath::Clamp(OpenSize.Y, 0.5, 20.0);
+	Tuning.PalmWidthCm = FMath::Clamp(OpenSize.Z, 1.0, 30.0);
+	Tuning.PalmForwardCm = FMath::Clamp(Open.GetCenter().X - FistMiddle.X, -20.0, 20.0);
+	UE_LOG(LogSandbox, Display, TEXT("Effector %s: fitted to its hand: the fist %.1f x %.1f x %.1f cm, a ball of %.2f cm; the plate %.1f long, %.1f wide, %.1f thick, %.1f cm ahead (its middle %.1f cm off the hand's axis through the palm, %.1f across)"),
+		*Id.ToString(), Fist.GetSize().X, Fist.GetSize().Y, Fist.GetSize().Z, Tuning.RadiusCm, Tuning.PalmLengthCm, Tuning.PalmWidthCm, Tuning.PalmThicknessCm,
+		Tuning.PalmForwardCm, Open.GetCenter().Y - FistMiddle.Y, Open.GetCenter().Z - FistMiddle.Z);
+}
+
+void USandboxEffectorComponent::MakeHandMesh(USkeletalMesh* Mesh)
+{
+	const FTransform& MeshFrame = HandRig.GetHandFrame();
+	const FReferenceSkeleton& Skeleton = Mesh->GetRefSkeleton();
+	HandMesh = NewObject<UPoseableMeshComponent>(GetOwner());
+	HandMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HandMesh->SetGenerateOverlapEvents(false);
+	HandMesh->SetSkinnedAssetAndUpdate(Mesh);
+	HandMesh->SetupAttachment(this);
+	HandMesh->SetRelativeTransform(HandMeshOnHand);
+	HandMesh->RegisterComponent();
+	if (Visual)
+	{
+		Visual->SetVisibility(false);
+	}
+	if (PalmVisual)
+	{
+		PalmVisual->SetVisibility(false);
+	}
+	for (double& Curl : FingerCurls)
+	{
+		Curl = -1.0;
+	}
+	UpdateHandMesh(0.0f);
+	UE_LOG(LogSandbox, Display, TEXT("Effector %s: seen as %s (%d bones), its fingers along %s and its thumb toward %s in the mesh's space, the wrist at %s"),
+		*Id.ToString(), *Mesh->GetName(), Skeleton.GetNum(), *MeshFrame.GetRotation().GetAxisX().ToCompactString(), *MeshFrame.GetRotation().GetAxisZ().ToCompactString(),
+		*MeshFrame.GetLocation().ToCompactString());
+}
+
+void USandboxEffectorComponent::AttachHandMesh()
+{
+	if (!HandMesh)
+	{
+		return;
+	}
+	// The plate's frame is the hand's moved by PalmOffset along the fingers.
+	const bool bOnPalm = bPalmActive && PalmBody;
+	FTransform OnBody = HandMeshOnHand;
+	if (bOnPalm)
+	{
+		OnBody.AddToTranslation(-PalmOffset());
+	}
+	HandMesh->AttachToComponent(bOnPalm ? static_cast<USceneComponent*>(PalmBody) : this, FAttachmentTransformRules::KeepRelativeTransform);
+	HandMesh->SetRelativeTransform(OnBody);
+}
+
+void USandboxEffectorComponent::UpdateHandMesh(float DeltaTime)
+{
+	if (!HandMesh || !HandRig.IsBuilt())
+	{
+		return;
+	}
+	// The fingers follow the grip, at most from open to a fist in mesh_close_s (a controller's grip reads 0 or 1); with mesh_wrap, while
+	// the hand holds a body, each closes only as far as that body leaves it.
+	const double Wanted = FMath::Clamp(static_cast<double>(Target.Grip), 0.0, 1.0);
+	double Goals[5] = { Wanted, Wanted, Wanted, Wanted, Wanted };
+	const bool bWrap = Tuning.MeshWrap > 0.5 && Grab.IsHolding();
+	if (bWrap)
+	{
+		WrapShares(Wanted, Goals);
+		if (!bWrapTold)
+		{
+			bWrapTold = true;
+			UE_LOG(LogSandbox, Display, TEXT("Effector %s: holds %s, its fingers close to %.2f %.2f %.2f %.2f %.2f of a fist (the thumb first)"), *Id.ToString(),
+				*Grab.GetBone().ToString(), Goals[0], Goals[1], Goals[2], Goals[3], Goals[4]);
+		}
+	}
+	else
+	{
+		bWrapTold = false;
+	}
+	// Posed every frame, still or not: angles tuned at run time show at once (a few dozen transforms a hand).
+	for (int32 Finger = 0; Finger < 5; ++Finger)
+	{
+		double& Curl = FingerCurls[Finger];
+		if (Curl < 0.0 || Tuning.MeshCloseS <= 0.0)
+		{
+			Curl = Goals[Finger];
+		}
+		else
+		{
+			const double Step = DeltaTime / Tuning.MeshCloseS;
+			Curl += FMath::Clamp(Goals[Finger] - Curl, -Step, Step);
+		}
+	}
+	TArray<FTransform> Local;
+	HandRig.Pose(CurlsAt(FingerCurls), Local);
+	if (HandMesh->BoneSpaceTransforms.Num() == Local.Num())
+	{
+		HandMesh->BoneSpaceTransforms = MoveTemp(Local);
+		HandMesh->MarkRefreshTransformDirty();
+	}
+}
+
+void USandboxEffectorComponent::WrapShares(double Wanted, double OutShares[5]) const
+{
+	for (int32 Finger = 0; Finger < 5; ++Finger)
+	{
+		OutShares[Finger] = Wanted;
+	}
+	UPrimitiveComponent* Held = Grab.GetComponent();
+	const FBodyInstance* Body = Held ? Held->GetBodyInstance(Grab.GetBone()) : nullptr;
+	if (!HandMesh || !Body || !Body->IsValidBodyInstance())
+	{
+		return;
+	}
+	// The angles as UpdateHandMesh poses them; a finger is tried alone, the others open (each finger's joints move only its own bones).
+	const FTransform MeshToWorld = HandMesh->GetComponentTransform();
+	const FCollisionShape Ball = FCollisionShape::MakeSphere(static_cast<float>(Tuning.MeshWrapFingerCm));
+	TArray<FTransform> Local;
+	TArray<FTransform> Space;
+	const auto Touches = [&](int32 Finger, double Share)
+	{
+		double Shares[5] = { 0.0, 0.0, 0.0, 0.0, 0.0 };
+		Shares[Finger] = Share;
+		HandRig.Pose(CurlsAt(Shares), Local);
+		HandRig.ToMeshSpace(Local, Space);
+		// The middle and last joints, the tip, and the middle of each of those two segments.
+		const FVector Middle = Space[HandRig.JointBone(Finger, 1)].GetLocation();
+		const FVector Last = Space[HandRig.JointBone(Finger, 2)].GetLocation();
+		const FVector Tip = HandRig.TipInMeshSpace(Space, Finger);
+		const FVector Points[5] = { Middle, (Middle + Last) * 0.5, Last, (Last + Tip) * 0.5, Tip };
+		for (const FVector& Point : Points)
+		{
+			if (Body->OverlapTest(MeshToWorld.TransformPosition(Point), FQuat::Identity, Ball))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	for (int32 Finger = 0; Finger < 5; ++Finger)
+	{
+		if (Wanted <= 0.0 || !Touches(Finger, Wanted))
+		{
+			continue;
+		}
+		// The furthest it closes and touches nothing, by halving (a finger already on the body stays open); six halvings, 1/64 of the way.
+		double Free = 0.0;
+		double Blocked = Wanted;
+		if (Touches(Finger, 0.0))
+		{
+			OutShares[Finger] = 0.0;
+			continue;
+		}
+		for (int32 Halving = 0; Halving < 6; ++Halving)
+		{
+			const double Mid = 0.5 * (Free + Blocked);
+			(Touches(Finger, Mid) ? Blocked : Free) = Mid;
+		}
+		OutShares[Finger] = Free;
+	}
 }
 
 void USandboxEffectorComponent::UpdateBodySetup()
@@ -549,6 +841,7 @@ void USandboxEffectorComponent::SwitchBody(bool bToPalm)
 		PalmVisual->AttachToComponent(bPalmActive ? static_cast<USceneComponent*>(PalmBody) : this, FAttachmentTransformRules::KeepRelativeTransform);
 		PalmVisual->SetRelativeLocation(bPalmActive ? FVector::ZeroVector : PalmOffset());
 	}
+	AttachHandMesh();
 }
 
 void USandboxEffectorComponent::Update(float DeltaTime)
@@ -678,14 +971,22 @@ void USandboxEffectorComponent::Update(float DeltaTime)
 
 	// What is seen: the plate while the hand is open, and also while the plate is the body though the grip has
 	// closed (a grip closed on something: the hand is still lying there as a plate); the ball otherwise.
+	// With the visible hand (effectors.hand.mesh) both stay hidden and the fingers follow the grip.
 	const bool bShowPlate = !bFist || bPalmActive;
-	if (PalmVisual && PalmVisual->IsVisible() != bShowPlate)
+	if (HandMesh)
 	{
-		PalmVisual->SetVisibility(bShowPlate);
+		UpdateHandMesh(DeltaTime);
 	}
-	if (Visual && Visual->IsVisible() == bPalmActive)
+	else
 	{
-		Visual->SetVisibility(!bPalmActive);
+		if (PalmVisual && PalmVisual->IsVisible() != bShowPlate)
+		{
+			PalmVisual->SetVisibility(bShowPlate);
+		}
+		if (Visual && Visual->IsVisible() == bPalmActive)
+		{
+			Visual->SetVisibility(!bPalmActive);
+		}
 	}
 
 	// A blow is carried through. A player's own hand stops where it sees the body's surface and is on its way
