@@ -20,13 +20,13 @@
                    {
                        "t":  0,
                        "type":  "console",
-                       "command":  "Sandbox.Tune behaviour.commands=1,getup.rest_s=10"
+                       "command":  "Sandbox.Tune getup.rest_s=10"
                    },
                    {
                        "t":  0.6,
                        "type":  "impulse",
                        "body":  "pelvis",
-                       "impulse_ns":  40,
+                       "impulse_ns":  35,
                        "direction":  [
                                          0,
                                          0,

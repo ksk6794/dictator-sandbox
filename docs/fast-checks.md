@@ -572,11 +572,11 @@ Taken on 27 November 2026, one question at a time; 6 to 9 after the audit, 10 an
 11. **R2's step 9 comes next, stage 2 after R2** (27 November, after decision 10): stage 1 took the largest waits away, and
     stage 2's 3 to 4 days would gain about 6% more of the development's time; it is looked at again when R2 is done, or sooner if
     the waits grow. (Changed on 27 November by decision 54 of `docs/active-ragdoll.md`: R3 first, then stage 2.)
-12. **SP-6 on by default** (taken for the owner in the night of 27 to 28 November, reversible; to confirm): every queue's process
+12. **SP-6 on by default** (taken for the owner in the night of 27 to 28 November, reversible; **confirmed by the owner on 28 November**): every queue's process
     keeps the assets of `Tools\batch_keep.json`, since it changes no run's hashes (1677 runs and files, section 12) and takes about 9%
     off every tool's time; `SANDBOX_KEEP_ASSETS=0` runs without it. Not chosen: off by default until the owner's look (the same
     results, slower).
-13. **The pool is started by hand until the owner's look** (taken for the owner in the same night, reversible; to confirm): SP-4
+13. **The pool is started by hand until the owner's look** (taken for the owner in the same night, reversible; **confirmed by the owner on 28 November**): SP-4
     is built and `Tools\pool.ps1 -Start` starts it; a build stops it (SP-5) but does not start it again, so that nothing of it runs
     unless asked for. Not chosen: SP-5's start after every build, as written (the pool would then be in every run of the next
     sessions before the owner has seen it).

@@ -17,11 +17,6 @@
              },
     "events":  [
                    {
-                       "t":  0,
-                       "type":  "console",
-                       "command":  "Sandbox.Tune behaviour.fear=1"
-                   },
-                   {
                        "t":  3.0,
                        "type":  "effector",
                        "effector":  "hand_right",
@@ -77,6 +72,6 @@
                                                                        "max":  0.6
                                                                    }
                                 },
-                   "tuning_changes":  1
+                   "tuning_changes":  0
                }
 }

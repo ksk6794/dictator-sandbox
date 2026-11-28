@@ -126,11 +126,14 @@ Event types. Unknown types are a parse error.
 - A command to the body (R10, step 8 in part) is a `console` event, `Sandbox.Command get_up` or `stop`, answered with
   `behaviour.commands` on (`control.commands`: the answer, when, the first motion; `command_*` scenarios); the same command typed into
   a session's console is kept in its recording at its frame and replayed.
-- R10's behaviours (`behaviour.*` in `Config/Tuning/body.json`, all 0) are switched on by a scenario with a `console`
-  event, `Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1` in one command (stay_down is refused without fear):
-  `fear_*` (fear), `protect_near_*` and `protect_phase_*` (staying down, lowering, and a blow, a push and a hold in those
-  phases), `protect_hit_*` (the cover of the struck place after a hit while lying or rising: the head, the trunk, the groin, a leg,
-  `behaviour.protect=1`). They are written by
+- R10's behaviours (`behaviour.fear`, `stay_down`, `protect`, `commands` in `Config/Tuning/body.json`) are on in the files
+  since the owner's decision 67 (28 November 2026); a scenario that wants one off switches it off with a `console` event,
+  `Sandbox.Tune behaviour.commands=0` (`command_refused_off`; `getup_hit_strong_protect_off`, R2's ride-out of a strong hit with
+  the cover off, which keeps `getup_hit_strong`'s old hashes; `tune_live_*`, off at 0 s and on while the body runs). Until then each
+  scenario switched its behaviours on itself. Theirs: `fear_*` (fear), `protect_near_*` and `protect_phase_*` (staying down,
+  lowering, and a blow, a push and a hold in those phases; the body is made afraid by a tap of 35 N*s into the pelvis, under
+  `protect_from_ns`, so that it is no blow into the groin), `protect_hit_*` (the cover of the struck place after a hit while lying
+  or rising: the head, the trunk, the groin, a leg), `command_*`. They are written by
   `docs/recon/r10/make_protect.ps1`. `control.behaviour` has fear (`fear`, `fear_max`, `fear_hits`, `fear_threats`,
   `fear_series`), the attempts begun afraid with the viewer near (`begun_near_afraid`, C33's 0), `held_back_s`,
   `protect_s`, every attempt turned back (`lowerings`: when the viewer came near, when it was decided, ended, the clip's

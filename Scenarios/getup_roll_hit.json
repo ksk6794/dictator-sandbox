@@ -35,14 +35,15 @@
     "max_joint_stretch_cm": 2.0,
     "hit_events": 1,
     "measures": {
-      "control.get_up.hits": {
-        "min": 1
+      "control.get_up.given_up_by.protect": {
+        "min": 1,
+        "max": 1
+      },
+      "control.behaviour.covers.0.place": {
+        "equals": "trunk"
       },
       "control.get_up.rolls.0.at_s": {
         "max": 2.6
-      },
-      "control.get_up.rolls.0.s": {
-        "min": 0.6
       }
     }
   }

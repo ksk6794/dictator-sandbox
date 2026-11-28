@@ -17,11 +17,6 @@
              },
     "events":  [
                    {
-                       "t":  0,
-                       "type":  "console",
-                       "command":  "Sandbox.Tune behaviour.fear=1"
-                   },
-                   {
                        "t":  3.0,
                        "type":  "impulse",
                        "body":  "spine_04",
@@ -38,7 +33,7 @@
                    "end_state":  "standing",
                    "min_get_ups":  1,
                    "max_joint_stretch_cm":  2.0,
-                   "tuning_changes":  1,
+                   "tuning_changes":  0,
                    "measures":  {
                                     "control.behaviour.fear_max":  {
                                                                        "min":  0.999

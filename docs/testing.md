@@ -7198,6 +7198,59 @@ were copied back with their old times and the build said "up to date" for the bi
 `Select-Object -First` (exit code 255; the baseline had been saved before the pipe closed). Ending the lowering by the chest's height
 was built and measured for nothing (it did not change the case it was for).
 
+### R10 switched on (28 November, 09:55 to 10:25, the owner's decision 67; the owner away)
+
+The owner's word of 28 November: `behaviour.fear`, `stay_down`, `protect` and `commands` on by default (decision 67), decisions 59
+to 66 and 68 confirmed, R3's 55 to 57 and the faster checks' 12 and 13 confirmed. Baseline `r10on_before` (206 of 206, the tree of
+R10's commit `cc2dd89`), the four switches to 1 in `Config/Tuning/body.json` with no engine process running, then the suite against
+it: 179 of 206 with the same hashes, 27 moved, 34 failed. Every one of the 27 is a scenario where a viewer comes near, a command is
+told or a hit of 40 N*s or more lands on a body that lies or gets up, as the plan said:
+
+- **R2's hits while getting up** (`getup_hit_strong`, `getup_phase_sit_hit`, `_crouch_hit`, `_rise_hit`, `getup_roll_hit`): the blow
+  of 200 N*s into the chest gives the attempt up and covers the trunk (decision 45), and the body gets up after the cover; they
+  failed only on their own measures of a body that rides the hit out (`control.get_up.hits`, `hit_free_min`, the roll's 0.6 s).
+  Their measures are now the cover's (`given_up_by.protect` 1, `covers.0.place` trunk); the ride-out is kept by a copy with the
+  cover switched off, `getup_hit_strong_protect_off` (new), which has `getup_hit_strong`'s old hashes to the digit
+  (`18894eb7`/`5b4d0342`): the switch at 0 leaves R2's path as it was.
+- **`getup_drag_ankles_crouch`**: the two hands that come for the ankles at about 4 m/s are a blow on a leg (40 N*s): the attempt is
+  given up for the cover of the leg, not by the drag; measures now the cover's. The other five drags keep their hashes.
+- **`getup_pressed`, `getup_pressed_two_hands`** (pass): a press of 300 N sums 40 N*s as its force rises and covers the groin and the
+  trunk; two hands now leave the body lying at the end (it was in a get-up). Known, as the second reading of R10 said.
+- **`room_movable_fall_gets_up`** (passes): the fall onto movable furniture is a hit, the body covers a leg and its head as it
+  lies, then gets up (first attempt at 10.7 s).
+- **R10's own scenarios**: each switched its behaviours on itself, and `Sandbox.Tune` to a value already set changes nothing, so
+  they failed on `tuning_changes`. With protect on, the tap of 40 N*s that made the body afraid became a blow into the groin and
+  covered it for 3 s, which moved the viewer's moments off the phases they were written for (the `protect_near_rising_*`
+  attempts were not turned back). The generator (`docs/recon/r10/make_protect.ps1`) now writes them without the switches and with
+  a tap of 35 N*s (fear 0.7, afraid for 10.7 s; under `protect_from_ns`); `command_refused_off` switches commands off itself
+  (`Sandbox.Tune behaviour.commands=0`), `tune_live_stay_down` and `tune_live_protect` switch theirs off at 0 s and on while the body
+  runs; `fear_blow_fades` and `fear_threat_rises` lose their switch. `command_refused_off` and `tune_live_protect` have their old
+  hashes; every `protect_hit_*` its old hashes; the rest move by the tap.
+- **The replay of a session** now sets all four switches to the session's values (`Sandbox.Tune behaviour.fear=1,...` at 0 s, on or
+  off), not only the ones that were on: with the files on, a session run with one off would otherwise be replayed with it on.
+
+Then the suite 207 of 207 (baseline **`r10on`**), and the gates on that tree, every hash kept where nobody is near and nothing lands
+on a body on the floor:
+
+| Gate | With R10 on | Before (the files of `r10on_before`, or the tables of the morning) |
+| --- | --- | --- |
+| Push matrix (160) | every hash of `r3base_matrix` | the same |
+| Knockdowns (8) | 1.87 s, 14.2 J, 1.28 cm | the same |
+| The stand on three seeds (150) | every hash of `r3base_seeds`; 150, 143 at the first attempt | the same |
+| The stand with a viewer at 70 cm (C33) | 0 of 150 begun afraid with it near; 50 turned back, within 0.16 s; the pelvis 0.94 m/s, the head 1.86 at most; 150 up after it went (4.62 to 4.73 s, medians) | as `r10near_max` |
+| The same with `get_up` 3 s after the viewer came (C39) | 150 `done`; first motion 0.49 s in the median, 146 of 150 within 1.0 s (1.11, 1.26, 1.47, 1.74 beyond) | as `r10_command_near` |
+| Pressed with 300 N (`-PressN 300`) | 149 of 150 stand in the end, 98 under the press, 91 at the first attempt, 268 attempts | `r2_on_press`: the same figures |
+| One hand on the chest (`-HoldHands 1`) | 149 of 150, 32 pulled free and stood, 32 at the first attempt, 297 attempts | `r2_final_hold1`: 149, 31, 33, 287 |
+| Scorecard, C25 | the largest jump 439 N*m (`getup_left`, as before; decision 15's bound 439); the largest target step 102.4 degrees, `command_get_up_held` at 6.86 s, the left upper arm | that scenario 96.7 degrees before (the tap's cover moves it 6) |
+| `record-replay` (hands, `-Perception`, `-Takes`, `-Walk`), the session's self-test | `540f5e9f`, `194c0969`/`4131b101`, 3 of 3, `a7928716`; 15 of 15 | the same |
+| Bootstrap | 15 of 15 steps, 176 s | |
+
+Run hashes kept: `r10on_matrix`, `r10on_seeds`, `r10on_near`, `r10on_command`, `r10on_press`, `r10on_hold1`. **Found, not put right
+here:** the largest target step of the suite (102 degrees of the left upper arm) is where a commanded get-up begins 0.24 s after a
+hand let go of that forearm (`command_get_up_held`): two users of one arm, the arbiter's case (R10, step 3). **My mistake:** a
+`baseline.ps1 -SaveRuns` was piped to `Select-Object -First 1` again (exit code 255; every file had been written before the pipe
+closed, checked).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

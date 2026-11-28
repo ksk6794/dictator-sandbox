@@ -18,13 +18,18 @@
              },
     "events":  [
                    {
+                       "t":  0,
+                       "type":  "console",
+                       "command":  "Sandbox.Tune behaviour.commands=0"
+                   },
+                   {
                        "t":  1,
                        "type":  "console",
                        "command":  "Sandbox.Command get_up"
                    }
                ],
     "expect":  {
-                   "tuning_changes":  0,
+                   "tuning_changes":  1,
                    "max_joint_stretch_cm":  2,
                    "measures":  {
                                     "control.commands.0.answer":  {

@@ -58,8 +58,12 @@ seeds); step 2, chance with a seed (`FSandboxChance`, a scenario's `"seed"`; not
 the struck place covered after a hit while lying or rising (`behaviour.protect`; head, trunk, groin, leg; C34 not met for a leg struck
 kneeling); step 8 in part, the commands `get_up` and `stop` (`behaviour.commands`; the console's `Sandbox.Command` and the desktop's keys U and J,
 kept in recordings). Decisions 59 to 66 taken for the owner, 67 the owner's (which go on, after the videos
-`Saved\Films\r10_staydown_*`, `r10_protect_hit`). Next: the owner's look at R3, R10 and SP-6/the pool, then R10's step 3 (the arbiter),
-6's other places, 7 to 10. DLSS is deferred to M5.
+`Saved\Films\r10_staydown_*`, `r10_protect_hit`). **28 November, the owner's word:** 55 to 57, 59 to 66, 68 and the faster checks'
+12 and 13 confirmed; **R10 switched on by decision 67** (`behaviour.fear`, `stay_down`, `protect`, `commands` 1 in the files; a
+scenario that wants one off switches it off itself; baseline `r10on`, 207 scenarios; the matrix, the knockdowns and the stand keep
+every hash; `docs/testing.md`, "R10 switched on"). Next (the second window of 28 November, `docs/recon/night2_plan.md`): R3's
+decision 58 under the owner's delegation, the controllers' buttons for the commands and the page for the headset session of 29
+November, R10's step 3 (the arbiter), `give_hand`, step 7. DLSS is deferred to M5.
 
 Everything is driven from the command line. Do not rely on the Unreal Editor GUI.
 

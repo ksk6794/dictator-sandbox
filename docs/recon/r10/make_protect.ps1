@@ -1,6 +1,8 @@
 # R10, step 5: writes the scenarios of staying down and lowering (C33) and their phases (C26) into Scenarios\.
-# Each switches behaviour.fear and behaviour.stay_down on itself; the body is laid on its back, tapped (a hit of 40 N*s into the
-# floor, so that it is afraid: fear 0.8, above fear_stay_down 0.2 for 11 s) and gets up by itself unless the viewer is near.
+# Since decision 67 (28 November) fear, stay_down, protect and commands are on in the files, and a scenario that wants one off
+# switches it off itself. The body is laid on its back, tapped (a hit of 35 N*s into the floor, so that it is afraid: fear 0.7,
+# above fear_stay_down 0.2 for 10.7 s; under protect_from_ns, 40, so that the tap is no blow into the groin that it covers) and gets
+# up by itself unless the viewer is near. (Until decision 67 each switched its behaviours on itself and the tap was 40 N*s.)
 #   powershell -ExecutionPolicy Bypass -File docs\recon\r10\make_protect.ps1
 $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
@@ -20,10 +22,9 @@ function New-Base([string]$Name, [double]$Duration) {
             laid_deg = 0
         }
         events = [System.Collections.ArrayList]@(
-            [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1' },
-            [ordered]@{ t = 0.6; type = 'impulse'; body = 'pelvis'; impulse_ns = 40; direction = @(0, 0, -1) }
+            [ordered]@{ t = 0.6; type = 'impulse'; body = 'pelvis'; impulse_ns = 35; direction = @(0, 0, -1) }
         )
-        expect = [ordered]@{ tuning_changes = 1; max_joint_stretch_cm = 2.0; measures = [ordered]@{} }
+        expect = [ordered]@{ tuning_changes = 0; max_joint_stretch_cm = 2.0; measures = [ordered]@{} }
     }
 }
 
@@ -84,7 +85,6 @@ foreach ($phase in @(@('sit', 3.1), @('knees', 3.9), @('rise', 4.6))) {
 foreach ($case in @(@('lying', 1.0), @('rising', 3.9))) {
     $s = New-Base "protect_hit_$($case[0])_head" 20.0
     $s.events = [System.Collections.ArrayList]@(
-        [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.protect=1' },
         [ordered]@{ t = [double]$case[1]; type = 'impulse'; body = 'head'; impulse_ns = 15; direction = @(1, 0, 0) })
     $s.expect.end_state = 'standing'
     $s.expect.min_get_ups = 1
@@ -104,7 +104,6 @@ foreach ($case in @(@('lying_trunk', 1.0, 'spine_04', @(0, 0, -1), 'trunk'), @('
         @('rising_legs', 3.9, 'thigh_l', @(1, 0, 0), 'leg'))) {
     $s = New-Base "protect_hit_$($case[0])" 20.0
     $s.events = [System.Collections.ArrayList]@(
-        [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.protect=1' },
         [ordered]@{ t = [double]$case[1]; type = 'impulse'; body = $case[2]; impulse_ns = 50; direction = $case[3] })
     $s.expect.end_state = 'standing'
     $s.expect.min_get_ups = 1
@@ -122,7 +121,6 @@ foreach ($case in @(@('lying_trunk', 1.0, 'spine_04', @(0, 0, -1), 'trunk'), @('
 # Step 8 in part (C39): get_up with the player near (up at once, done), get_up and then stop before it moves (it stays down), and the
 # command refused with the switch off.
 $s = New-Base 'command_get_up_near' 22.0
-$s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1,behaviour.commands=1' }
 $s.events.Add([ordered]@{ t = 4.0; type = 'console'; command = 'Sandbox.Command get_up' }) | Out-Null
 Add-Viewer $s 0.9 1.0 9.0
 $s.expect.end_state = 'standing'
@@ -132,7 +130,6 @@ $s.expect.measures['control.get_up.starts.0.at_s'] = [ordered]@{ min = 4.0; max 
 $s.expect.measures['control.behaviour.begun_near_afraid'] = [ordered]@{ max = 0 }
 Save $s
 $s = New-Base 'command_stop' 22.0
-$s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1,behaviour.commands=1' }
 $s.events.Add([ordered]@{ t = 4.0; type = 'console'; command = 'Sandbox.Command get_up' }) | Out-Null
 $s.events.Add([ordered]@{ t = 4.05; type = 'console'; command = 'Sandbox.Command stop' }) | Out-Null
 Add-Viewer $s 0.9 1.0 9.0
@@ -145,7 +142,6 @@ Save $s
 # a hit on the head as it rises (protect on): the cover interrupts it once, and it goes on up (found by the independent reading of the
 # commands: a lowering ended in one frame, a command left accepted after its attempt was given up).
 $s = New-Base 'command_lowering_up' 22.0
-$s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1,behaviour.commands=1' }
 Add-Viewer $s 3.35 0.5 8.0
 $s.events.Add([ordered]@{ t = 4.4; type = 'console'; command = 'Sandbox.Command get_up' }) | Out-Null
 $s.expect.end_state = 'standing'
@@ -155,7 +151,6 @@ $s.expect.measures['control.pose.command_jump_max_nm'] = [ordered]@{ max = 439 }
 $s.expect.measures['control.pose.target_step_max_deg'] = [ordered]@{ max = 110 }
 Save $s
 $s = New-Base 'command_hit_interrupted' 24.0
-$s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1,behaviour.protect=1,behaviour.commands=1' }
 Add-Viewer $s 0.9 1.0 12.0
 $s.events.Add([ordered]@{ t = 4.0; type = 'console'; command = 'Sandbox.Command get_up' }) | Out-Null
 $s.events.Add([ordered]@{ t = 6.0; type = 'impulse'; body = 'head'; impulse_ns = 15; direction = @(1, 0, 0) }) | Out-Null
@@ -179,7 +174,6 @@ function Add-HoldHand($Spec, [string]$Effector, [string]$Bone, [double]$AtS) {
 }
 foreach ($case in @(@('command_get_up_held', 1), @('command_refused_held', 2))) {
     $s = New-Base $case[0] 24.0
-    $s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1,behaviour.commands=1' }
     Add-Viewer $s 0.9 1.0 9.0
     Add-HoldHand $s 'hand_right' 'lowerarm_l' 4.8
     if ($case[1] -eq 2) { Add-HoldHand $s 'hand_left' 'lowerarm_r' 4.8 }
@@ -198,15 +192,18 @@ foreach ($case in @(@('command_get_up_held', 1), @('command_refused_held', 2))) 
 # A body that has lain still for seconds, uncovered (a long rest: getup.rest_s 10), told to get up at 5.0 s: its reaction is timed from
 # the command (C39: 0.2 to 1.0 s), not from when it came to rest (the third independent reading: it began 0.011 s after).
 $s = New-Base 'command_get_up_still' 12.0
-$s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.commands=1,getup.rest_s=10' }
+$s.events.Insert(0, [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune getup.rest_s=10' })
 $s.events.Add([ordered]@{ t = 5.0; type = 'console'; command = 'Sandbox.Command get_up' }) | Out-Null
+$s.expect.tuning_changes = 1
 $s.expect.end_state = 'standing'
 $s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'done' }
 $s.expect.measures['control.commands.0.first_motion_after_s'] = [ordered]@{ min = 0.2; max = 1.0 }
 Save $s
 $s = New-Base 'command_refused_off' 6.0
-$s.events = [System.Collections.ArrayList]@([ordered]@{ t = 1.0; type = 'console'; command = 'Sandbox.Command get_up' })
-$s.expect.tuning_changes = 0
+$s.events = [System.Collections.ArrayList]@(
+    [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.commands=0' },
+    [ordered]@{ t = 1.0; type = 'console'; command = 'Sandbox.Command get_up' })
+$s.expect.tuning_changes = 1
 $s.expect.measures['control.commands.0.answer'] = [ordered]@{ equals = 'refused: off' }
 Save $s
 
@@ -214,7 +211,7 @@ Save $s
 # switched on as the body lies afraid, before the viewer comes (it then stays down and covers); protect switched on just before a hit on
 # the chest of a lying body (it covers the trunk).
 $s = New-Base 'tune_live_stay_down' 22.0
-$s.events[0] = [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.fear=1' }
+$s.events.Insert(0, [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.stay_down=0' })
 $s.events.Add([ordered]@{ t = 1.5; type = 'console'; command = 'Sandbox.Tune behaviour.stay_down=1' }) | Out-Null
 Add-Viewer $s 0.9 1.0 9.0
 $s.expect.tuning_changes = 2
@@ -225,8 +222,10 @@ $s.expect.measures['control.get_up.starts.0.at_s'] = [ordered]@{ min = 11.0 }
 Save $s
 $s = New-Base 'tune_live_protect' 20.0
 $s.events = [System.Collections.ArrayList]@(
+    [ordered]@{ t = 0.0; type = 'console'; command = 'Sandbox.Tune behaviour.protect=0' },
     [ordered]@{ t = 0.8; type = 'console'; command = 'Sandbox.Tune behaviour.protect=1' },
     [ordered]@{ t = 1.0; type = 'impulse'; body = 'spine_04'; impulse_ns = 50; direction = @(0, 0, -1) })
+$s.expect.tuning_changes = 2
 $s.expect.end_state = 'standing'
 $s.expect.measures['control.behaviour.covers.0.place'] = [ordered]@{ equals = 'trunk' }
 $s.expect.measures['control.behaviour.protect_s'] = [ordered]@{ min = 2.5 }

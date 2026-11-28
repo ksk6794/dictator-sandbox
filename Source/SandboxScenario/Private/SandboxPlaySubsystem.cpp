@@ -539,36 +539,19 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 			}
 		}
 	}
-	// R10: a session whose body was afraid or stayed down (switched on by -Tune) is replayed so; both in one command, as stay_down needs
-	// fear on to be taken.
+	// R10: the session's behaviours are replayed as the session had them, on or off, whatever the files say when it is replayed (on in
+	// the files since decision 67; a session may have switched one off by -Tune); all in one command, as stay_down needs fear to be taken.
 	if (const USandboxBodyController* Choosing = Character ? Character->GetController() : nullptr)
 	{
 		const FSandboxBehaviourTuning& Behaviour = Choosing->GetTuning().Behaviour;
-		TArray<FString> On;
-		if (Behaviour.Fear > 0.5)
-		{
-			On.Add(TEXT("behaviour.fear=1"));
-		}
-		if (Behaviour.StayDown > 0.5)
-		{
-			On.Add(TEXT("behaviour.stay_down=1"));
-		}
-		if (Behaviour.Protect > 0.5)
-		{
-			On.Add(TEXT("behaviour.protect=1"));
-		}
-		if (Behaviour.Commands > 0.5)
-		{
-			On.Add(TEXT("behaviour.commands=1"));
-		}
-		if (On.Num() > 0)
-		{
-			const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
-			Event->SetNumberField(TEXT("t"), 0.0);
-			Event->SetStringField(TEXT("type"), TEXT("console"));
-			Event->SetStringField(TEXT("command"), FString(TEXT("Sandbox.Tune ")) + FString::Join(On, TEXT(",")));
-			ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
-		}
+		const auto Switch = [](const TCHAR* Name, double Value) { return FString::Printf(TEXT("behaviour.%s=%d"), Name, Value > 0.5 ? 1 : 0); };
+		const TArray<FString> Switches = { Switch(TEXT("fear"), Behaviour.Fear), Switch(TEXT("stay_down"), Behaviour.StayDown),
+			Switch(TEXT("protect"), Behaviour.Protect), Switch(TEXT("commands"), Behaviour.Commands) };
+		const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
+		Event->SetNumberField(TEXT("t"), 0.0);
+		Event->SetStringField(TEXT("type"), TEXT("console"));
+		Event->SetStringField(TEXT("command"), FString(TEXT("Sandbox.Tune ")) + FString::Join(Switches, TEXT(",")));
+		ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
 	}
 	// R10, step 8 in part: the commands given while it was recorded, at their frames.
 	for (const TPair<int32, FString>& Given : Recording->Commands)

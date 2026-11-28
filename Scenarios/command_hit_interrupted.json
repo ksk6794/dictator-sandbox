@@ -18,15 +18,10 @@
              },
     "events":  [
                    {
-                       "t":  0,
-                       "type":  "console",
-                       "command":  "Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1,behaviour.protect=1,behaviour.commands=1"
-                   },
-                   {
                        "t":  0.6,
                        "type":  "impulse",
                        "body":  "pelvis",
-                       "impulse_ns":  40,
+                       "impulse_ns":  35,
                        "direction":  [
                                          0,
                                          0,
@@ -98,7 +93,7 @@
                    }
                ],
     "expect":  {
-                   "tuning_changes":  1,
+                   "tuning_changes":  0,
                    "max_joint_stretch_cm":  2,
                    "measures":  {
                                     "control.commands.0.answer":  {
