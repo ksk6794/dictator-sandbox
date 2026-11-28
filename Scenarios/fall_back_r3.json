@@ -1,0 +1,55 @@
+{
+  "name": "fall_back_r3",
+  "duration_s": 10.0,
+  "body": {
+    "mesh": "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "physics_asset": "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+    "attached_meshes": [
+      "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+    ],
+    "location_cm": [
+      0,
+      0,
+      0
+    ],
+    "control": "active"
+  },
+  "events": [
+    {
+      "t": 0.0,
+      "type": "console",
+      "command": "Sandbox.Tune fall.catch=1,fall.arm_curve=1,fall.head=1,fall.palms=1"
+    },
+    {
+      "t": 3.0,
+      "type": "impulse",
+      "body": "spine_04",
+      "impulse_ns": 200,
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    }
+  ],
+  "expect": {
+    "tuning_changes": 1,
+    "fell": true,
+    "max_rest_after_fall_s": 3.0,
+    "max_energy_gain_j": 40.0,
+    "max_body_penetration_cm": 2.0,
+    "max_self_penetration_cm": 2.0,
+    "max_joint_stretch_cm": 2.0,
+    "measures": {
+      "control.pose.target_step_max_deg": {
+        "max": 110.0
+      },
+      "control.fall.r3.runs": {
+        "min": 1
+      },
+      "control.fall.head_struck": {
+        "equals": false
+      }
+    }
+  }
+}

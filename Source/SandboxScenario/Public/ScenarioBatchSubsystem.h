@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "ScenarioBatchSubsystem.generated.h"
 
@@ -29,6 +30,16 @@ class FScenarioJobLog;
  * physics scene). The tuning store starts over with the job's directory and overrides. The engine's log lines of a
  * job are also written to <out>/run.log. Rendering, the headset, overlays and console variables (-dpcvars) are the
  * process's, so jobs that differ in them go to another queue.
+ *
+ * With -ScenarioKeep=<file> (docs/fast-checks.md, SP-6) the assets that file lists ({ "assets": [ "<object path>", ... ] }) are
+ * loaded after the warm-up and kept for the life of the process: a fixed set, the same in every process whatever its jobs, so
+ * that a job's world does not load and build them again (the NPC's meshes were built anew for every job, about 0.4 s). Only in
+ * a process that renders nothing: a rendered one (films, shots, the headset) keeps nothing, so that its pictures are as before.
+ *
+ * With -ScenarioPoolIdleS=<s> (docs/fast-checks.md, SP-4; Tools\pool.ps1) the process is one of a pool: when the queue is empty
+ * it opens the map it started in and waits, sleeping 0.1 s a frame, for the next job, and exits when it has waited that long,
+ * when a file 'stop' or 'yield_<pid>' is in the queue, when pool.json beside the queue no longer names the fingerprint it was started
+ * with (-ScenarioPoolPrint=), after 500 jobs, or after a job when it uses over 2.2 GB. Why it exited: exited_<pid>.txt.
  */
 UCLASS()
 class SANDBOXSCENARIO_API UScenarioBatchSubsystem : public UGameInstanceSubsystem
@@ -74,6 +85,16 @@ private:
 	void OpenJob(UWorld& World);
 	bool TakeJob(FJob& OutJob);
 	void CloseLog();
+	/** Loads the assets -ScenarioKeep=<file> lists and keeps them (SP-6); once, after the warm-up. */
+	void KeepAssets();
+	/** A pool's process with nothing to do: waits in the start map (SP-4). */
+	void BeginIdle(UWorld& World);
+	/** Every frame while idle: sleeps, looks for a job and for a reason to exit. */
+	bool TickIdle(float DeltaTime);
+	/** Why a pool's process should exit now, or empty. */
+	FString PoolExitReason(bool bAfterJob) const;
+	/** Ends the process (as when the queue is empty), saying why in exited_<pid>.txt for a pool's process. */
+	void ExitProcess(const FString& Why);
 
 	FString QueueDir;
 	FString StartMap;
@@ -86,4 +107,17 @@ private:
 	int32 Failed = 0;
 	/** Owned; deleted by CloseLog. */
 	FScenarioJobLog* Log = nullptr;
+	/** The assets of -ScenarioKeep, held for the life of the process. */
+	UPROPERTY()
+	TArray<TObjectPtr<UObject>> Kept;
+	/** -ScenarioPoolIdleS (0: not a pool's process) and -ScenarioPoolPrint. */
+	double PoolIdleS = 0.0;
+	FString PoolPrint;
+	bool bIdle = false;
+	/** The start map, opened to wait in, has begun play. */
+	bool bIdleOpened = false;
+	double IdleSinceS = 0.0;
+	/** Since when pool.json has been missing (-1: it is there); read by the const PoolExitReason. */
+	mutable double PoolFileMissingSinceS = -1.0;
+	FTSTicker::FDelegateHandle IdleTick;
 };

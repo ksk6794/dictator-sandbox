@@ -72,6 +72,12 @@ struct FSandboxLimbTarget
 	 * blended by where the hand is, as the hand target and the fall's reach were measured with.
 	 */
 	bool bJointBlend = false;
+	/**
+	 * An arm whose elbow's hinge is taken as its anatomical axis: before the placement the axis the reference pose bends it about,
+	 * carried by the upper arm; after it the axis across the plane the pole puts the elbow in (R3's catch). Without it the hinge is the
+	 * bend's own axis signed against a fallback carried by the least rotation of the upper arm, which turns over near half a turn.
+	 */
+	bool bAnatomicHinge = false;
 	/** An arm's shoulder and elbow are held to these ranges after the placement (not used for a leg). */
 	FSandboxJointLimits RootLimits;
 	FSandboxJointLimits MiddleLimits;
@@ -160,11 +166,15 @@ public:
 	void SetLimbTarget(int32 EndMeshBoneIndex, const FVector& WorldLocation, double Weight, double BlendS);
 
 	/** Which way a limb's middle joint goes and its hinge's fallback (FSandboxLimbTarget), for every target of that end from now on. */
-	void SetLimbBend(int32 EndMeshBoneIndex, const FVector& PoleDirection, const FVector& HingeFallback, bool bEaseTwice = false)
+	void SetLimbBend(int32 EndMeshBoneIndex, const FVector& PoleDirection, const FVector& HingeFallback, bool bEaseTwice = false, bool bAnatomicHinge = false)
 	{
 		Bends.Add(EndMeshBoneIndex, TPair<FVector, FVector>(PoleDirection, HingeFallback));
 		if (bEaseTwice) { EasedTwice.Add(EndMeshBoneIndex); } else { EasedTwice.Remove(EndMeshBoneIndex); }
+		if (bAnatomicHinge) { AnatomicHinge.Add(EndMeshBoneIndex); } else { AnatomicHinge.Remove(EndMeshBoneIndex); }
 	}
+
+	/** The weight a limb target is going to (0 once let go), whatever its blend has reached. */
+	double GetLimbGoalWeight(int32 EndMeshBoneIndex) const;
 
 	/** The ranges an arm's two segments are held to (FSandboxLimbTarget::RootLimits, MiddleLimits). */
 	void SetLimbRanges(int32 EndMeshBoneIndex, const FSandboxJointLimits& Root, const FSandboxJointLimits& Middle) { Ranges.Add(EndMeshBoneIndex, TPair<FSandboxJointLimits, FSandboxJointLimits>(Root, Middle)); }
@@ -216,6 +226,8 @@ private:
 	TMap<int32, TPair<FVector, FVector>> Bends;
 	/** Arms whose weight is eased a second time (a guard raised quickly); the others keep the limb's own ease. */
 	TSet<int32> EasedTwice;
+	/** Arms whose elbow's hinge is its anatomical axis (FSandboxLimbTarget::bAnatomicHinge; R3's catch). */
+	TSet<int32> AnatomicHinge;
 	TMap<int32, TPair<FSandboxJointLimits, FSandboxJointLimits>> Ranges;
 
 	double BlendS = 0.0;

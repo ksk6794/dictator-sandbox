@@ -9,6 +9,8 @@ param(
     [switch]$IncludeRendered
 )
 . "$PSScriptRoot\common.ps1"
+# Each run in a process of its own, not in a pool's (Tools\pool.ps1): the deviation between processes is what is measured.
+$env:SANDBOX_NO_POOL = '1'
 
 $base = Join-Path $RepoRoot "Saved\Scenarios\$Name\repeat"
 $scenarioScript = Join-Path $PSScriptRoot 'scenario.ps1'

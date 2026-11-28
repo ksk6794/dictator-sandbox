@@ -75,6 +75,9 @@ if ($VR) {
         Write-Output "SCENARIO ERROR: the run in the headset was not started. $blocker."
         exit 2
     }
+    # No pool beside a run in the headset (decision 2 of docs/fast-checks.md).
+    $poolWhy = Stop-Pool
+    if ($poolWhy) { Write-Output "SCENARIO ERROR: the run in the headset was not started: the pool did not stop: $poolWhy."; exit 2 }
     $arguments += ' -vr -windowed -ResX=1280 -ResY=720'
 } elseif ($Rendered) {
     $arguments += ' -RenderOffscreen -windowed -ResX=1280 -ResY=720'
@@ -84,8 +87,19 @@ if ($VR) {
 if ($CVars) { $arguments += " -dpcvars=`"$CVars`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 
-# Without the Zen server and the platform check (SP-2), but in the headset.
-$run = Invoke-Editor -ArgumentString $arguments -LogFile $processLog -TimeoutSec $TimeoutSec -VR:$VR -FastStart:(-not $VR)
+# A running pool takes a headless run (Tools\pool.ps1; SP-4): the same warm-up and the same hashes, without the engine's start.
+$poolDir = $null
+if (-not $VR -and -not $Rendered -and -not $CVars -and -not $Overlay) { $poolDir = Get-LivePool }
+if ($poolDir) {
+    Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue
+    $poolNotes = @(Invoke-ScenarioBatch -Jobs @($job) -Parallel 1)
+    foreach ($note in $poolNotes) { [Console]::Error.WriteLine($note) }
+    $processLog = Join-Path (Get-PoolDir) 'process_*.log'
+    $run = [pscustomobject]@{ TimedOut = $false; ExitCode = 0 }
+} else {
+    # Without the Zen server and the platform check (SP-2), but in the headset.
+    $run = Invoke-Editor -ArgumentString $arguments -LogFile $processLog -TimeoutSec $TimeoutSec -VR:$VR -FastStart:(-not $VR)
+}
 $metrics = Read-JsonFile $metricsFile
 if (@(Get-ChildItem $queue -Filter '*.json' -File -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
 

@@ -209,6 +209,22 @@ function Invoke-ScenarioBatch {
             if ($ofTheirOwn.Count -gt 0) { Invoke-ScenarioQueue -Jobs $ofTheirOwn -Parallel $Parallel -TimeoutSec $TimeoutSec }
             return
         }
+        # A running pool with today's fingerprint takes the headless jobs (SP-4); a run that must be alone, several jobs asked for one
+        # at a time (suite.ps1 -Parallel 1, for physics step times nothing disturbs), a renderer and console variables keep processes
+        # of their own.
+        $poolDir = $null
+        if (-not $Alone -and -not ($Parallel -le 1 -and @($Jobs).Count -gt 1)) { $poolDir = Get-LivePool }
+        if ($poolDir) {
+            $inPool = @($Jobs | Where-Object { -not $_.CVars -and -not $_.Rendered -and -not $_.Shot })
+            $ofTheirOwn = @($Jobs | Where-Object { $_.CVars -or $_.Rendered -or $_.Shot })
+            if ($inPool.Count -gt 0) {
+                $env:SANDBOX_CHECK_QUEUE = $poolDir
+                $script:PoolMode = $true
+                try { Submit-CheckJobs -Jobs $inPool } finally { $env:SANDBOX_CHECK_QUEUE = $null; $script:PoolMode = $false }
+            }
+            if ($ofTheirOwn.Count -gt 0) { Invoke-ScenarioQueue -Jobs $ofTheirOwn -Parallel $Parallel -TimeoutSec $TimeoutSec }
+            return
+        }
         Invoke-ScenarioQueue -Jobs $Jobs -Parallel $Parallel -TimeoutSec $TimeoutSec
         return
     }
@@ -304,6 +320,8 @@ function Get-QueueArguments {
     param([string]$Queue, [int]$Fps = 90, [switch]$Headset)
     $warmup = Join-Path $PSScriptRoot 'batch_warmup.json'
     $arguments = "-game -ScenarioQueue=`"$Queue`" -ScenarioWarmup=`"$warmup`" -UseFixedTimeStep -FPS=$Fps"
+    # SP-6: the NPC's meshes and physics asset loaded once after the warm-up and kept (Tools\batch_keep.json); SANDBOX_KEEP_ASSETS=0 not.
+    if ($env:SANDBOX_KEEP_ASSETS -ne '0') { $arguments += " -ScenarioKeep=`"$(Join-Path $PSScriptRoot 'batch_keep.json')`"" }
     if (-not $Headset) { $arguments += " $script:FastStartDdc" }
     return $arguments
 }
@@ -363,8 +381,16 @@ function Invoke-ScenarioQueue {
         for ($i = 0; $i -lt $count; $i++) {
             if ($i -eq 0) { Wait-EngineRoom -NeedGB $need -What 'a queue of runs' }
             else {
-                # The processes just started have not taken their memory yet: it is counted as taken.
+                # The processes just started have not taken their memory yet: it is counted as taken. A pool's idle process asked to
+                # give way (Test-EngineRoom) is waited for, 5 s at most.
                 $why = Test-EngineRoom -NeedGB $need -PendingGB ($need * $i)
+                if ($why -and (Test-Path (Get-PoolFile)) -and (Request-PoolYield) -gt 0) {
+                    $until = (Get-Date).AddSeconds(5)
+                    while ($why -and (Get-Date) -lt $until) {
+                        Start-Sleep -Milliseconds 250
+                        $why = Test-EngineRoom -NeedGB $need -PendingGB ($need * $i)
+                    }
+                }
                 if ($why) { [Console]::Error.WriteLine("QUEUE NOTE: $i engine process(es) for $($groupJobs.Count) job(s), no room for more ($why)"); break }
             }
             $arguments = "`"$ProjectFile`" $(Get-QueueArguments $queue -Fps $fps) $display -nohmd -DisablePlugins=OpenXR -unattended -nopause -nosplash -nosound -abslog=`"$(Join-Path $queue "process_$i.log")`""
@@ -408,11 +434,18 @@ function Test-EngineRoom {
     # launcher of runs, tests and sessions asks it (Invoke-Editor, Invoke-ScenarioQueue, a check set's queue).
     # -PendingGB: memory that processes the caller has just started will still take. The count is not shared between launchers
     # that start at the same instant; each counts what it has started itself.
-    param([double]$NeedGB = 1.8, [double]$PendingGB = 0)
+    # A pool's idle processes give way to a start that has no room (Request-PoolYield), but not to the pool's own (-NoYield).
+    param([double]$NeedGB = 1.8, [double]$PendingGB = 0, [switch]$NoYield)
     $engines = @(Get-EngineProcesses).Count
-    if ($engines -ge 9) { return "$engines engine processes run on the machine, 9 at most" }
+    if ($engines -ge 9) {
+        if (-not $NoYield) { [void](Request-PoolYield) }
+        return "$engines engine processes run on the machine, 9 at most"
+    }
     $free = Get-FreeMemoryGB
-    if ($free - $PendingGB - $NeedGB -lt 1.5) { return ('{0:N1} GB of memory free, {1:N1} GB of it still to be taken by processes just started, {2:N1} GB needed' -f $free, $PendingGB, ($NeedGB + 1.5)) }
+    if ($free - $PendingGB - $NeedGB -lt 1.5) {
+        if (-not $NoYield) { [void](Request-PoolYield) }
+        return ('{0:N1} GB of memory free, {1:N1} GB of it still to be taken by processes just started, {2:N1} GB needed' -f $free, $PendingGB, ($NeedGB + 1.5))
+    }
     return $null
 }
 
@@ -563,6 +596,8 @@ function Submit-CheckJobs {
     $tool = 'tool'
     if ($env:SANDBOX_CHECK_TOOL) { $tool = $env:SANDBOX_CHECK_TOOL -replace '[^A-Za-z0-9_\-]', '' }
     $batch = '{0}-{1}x{2}' -f $tool, $PID, $script:CheckBatch
+    # The pool's queue outlives every submitter, and an id comes back: a name of its own for every batch in it.
+    if ($script:PoolMode) { $batch += '-' + [guid]::NewGuid().ToString('N').Substring(0, 8) }
     $mine = @()
     $number = 0
     foreach ($job in $Jobs) {
@@ -576,13 +611,14 @@ function Submit-CheckJobs {
         $part = Join-Path $queue ($name + '.part')
         [System.IO.File]::WriteAllText($part, ($entry | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
         Move-Item $part (Join-Path $queue $name)
-        $mine += @{ name = $name; out = $entry.out; done = $false; lost = $false }
+        $mine += @{ name = $name; out = $entry.out; done = $false; lost = $false; back = $false; job = $job }
         $number++
     }
     $ownerPid = 0
     try { $ownerPid = [int]([System.IO.File]::ReadAllText((Join-Path $queue 'owner.pid')).Trim()) } catch {}
     while (@($mine | Where-Object { -not $_.done -and -not $_.lost }).Count -gt 0) {
         Update-CheckQueue
+        Update-Pool
         foreach ($item in @($mine | Where-Object { -not $_.done -and -not $_.lost })) {
             # Done once its process says that every file of it is written and its run.log closed (the job's .done marker,
             # UScenarioBatchSubsystem::JobDone): metrics.json comes before series.csv, hands.csv and the log's close.
@@ -603,12 +639,306 @@ function Submit-CheckJobs {
             Write-Output "QUEUE WARNING: the process that keeps the check set's queue ($ownerPid) has ended"
             break
         }
+        # A pool that ended with jobs of this batch nobody took (stopped, or its file gone, and no process of it left): they are taken
+        # back and run in processes of their own. (While a process of it runs, it may still be taking one: not before.)
+        if ($script:PoolMode -and (Test-PoolEnding) -and @(Get-PoolAlive (Read-Pool)).Count -eq 0) {
+            foreach ($item in @($mine | Where-Object { -not $_.done -and -not $_.lost })) {
+                if (Receive-PoolJobBack -Queue $queue -Name $item.name) { $item.back = $true; $item.done = $true }
+            }
+        }
+        # A job whose file is gone with no marker was never taken (a process writes the marker before it moves the file): the queue's
+        # folder was removed under it (pool.ps1 -Start). It runs in a process of its own.
+        if ($script:PoolMode) {
+            foreach ($item in @($mine | Where-Object { -not $_.done -and -not $_.lost })) {
+                $marker = Join-Path $queue "taken\$($item.name).taken"
+                $file = Join-Path $queue $item.name
+                if (-not (Test-Path $file) -and -not (Test-Path $marker)) {
+                    Start-Sleep -Milliseconds 100
+                    if (-not (Test-Path $file) -and -not (Test-Path $marker)) { $item.back = $true; $item.done = $true }
+                }
+            }
+        }
         Start-Sleep -Milliseconds 250
+    }
+    $back = @($mine | Where-Object { $_.back })
+    if ($back.Count -gt 0) {
+        [Console]::Error.WriteLine(("QUEUE NOTE: the pool ended with {0} job(s) of this batch not taken; they run in processes of their own" -f $back.Count))
+        $inPool = $env:SANDBOX_CHECK_QUEUE
+        $wasPool = $script:PoolMode
+        $env:SANDBOX_CHECK_QUEUE = $null
+        $script:PoolMode = $false
+        try { Invoke-ScenarioQueue -Jobs @($back | ForEach-Object { $_.job }) -Parallel 8 } finally { $env:SANDBOX_CHECK_QUEUE = $inPool; $script:PoolMode = $wasPool }
     }
     $lost = @($mine | Where-Object { $_.lost })
     if ($lost.Count -gt 0) {
         Write-Output ("QUEUE WARNING: {0} job(s) of {1} ended without a result; logs kept in {2}" -f $lost.Count, $mine.Count, $queue)
     }
+}
+
+# --- The pool (Tools\pool.ps1; docs/fast-checks.md, SP-4; docs/recon/sp4_plan.md) --------------------------------------------
+# Engine processes that wait for jobs after their queue is empty (-ScenarioPoolIdleS, UScenarioBatchSubsystem), on one queue,
+# Saved\Pool\queue, with Saved\Pool\pool.json naming them and the fingerprint they were started with. Invoke-ScenarioBatch hands a
+# live pool with today's fingerprint its headless jobs, as a tool in a check set hands the set's queue its jobs (Submit-CheckJobs),
+# and tops the pool up while its jobs wait. Nothing of it runs unless Tools\pool.ps1 -Start has started a pool; SANDBOX_NO_POOL=1
+# ignores a running one.
+
+$script:PoolMode = $false
+
+function Get-PoolDir { return (Join-Path $RepoRoot 'Saved\Pool\queue') }
+function Get-PoolFile { return (Join-Path $RepoRoot 'Saved\Pool\pool.json') }
+
+function Get-PoolPrint {
+    # What a pool's process reads once at its start and a job then depends on: the project's DLLs, the engine's settings, the
+    # warm-up, the assets kept and the motion library, the pose database. One hash of their names, sizes and times. Not in it: the
+    # content's assets (gen-assets.ps1 and bake-lighting.ps1 stop the pool; metahuman.ps1 and the fetch scripts do not: stop it
+    # by hand before them, Tools\pool.ps1 -Stop), the engine's own build and the .uproject.
+    $parts = New-Object System.Collections.ArrayList
+    $files = @()
+    $files += @(Get-ChildItem (Join-Path $RepoRoot 'Binaries\Win64') -Filter '*.dll' -File -ErrorAction SilentlyContinue)
+    $files += @(Get-ChildItem (Join-Path $RepoRoot 'Config') -Filter '*.ini' -File -ErrorAction SilentlyContinue)
+    foreach ($relative in @('Tools\batch_warmup.json', 'Tools\batch_keep.json', 'Specs\motion_library.json', 'Saved\PosePrior\prior.bin')) {
+        $full = Join-Path $RepoRoot $relative
+        if (Test-Path $full) { $files += Get-Item $full }
+    }
+    foreach ($file in @($files | Sort-Object FullName)) { [void]$parts.Add(('{0}|{1}|{2}' -f $file.FullName, $file.Length, $file.LastWriteTimeUtc.Ticks)) }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($parts -join "`n")))
+    return (($bytes | Select-Object -First 8 | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Read-Pool {
+    $file = Get-PoolFile
+    if (-not (Test-Path $file)) { return $null }
+    try { return ([System.IO.File]::ReadAllText($file) | ConvertFrom-Json) } catch { return $null }
+}
+
+function Lock-Pool {
+    # The pool's file is read, changed and written by several tools at once (pool.ps1, submitters topping the pool up, Stop-Pool):
+    # each holds this lock file open alone for that time, 30 s at most. Dispose the returned stream to let go.
+    $path = Join-Path $RepoRoot 'Saved\Pool\pool.lock'
+    New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
+    $deadline = (Get-Date).AddSeconds(30)
+    while ($true) {
+        try { return [System.IO.File]::Open($path, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None) }
+        catch {
+            if ((Get-Date) -gt $deadline) { throw "the pool's lock ($path) was held for 30 s" }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+}
+
+function Write-Pool {
+    # Whole: written beside it and put in its place in one step (File.Replace; a move onto it deletes it first), so that a process
+    # reading it never finds it missing or half written. A reader holding it open for a moment makes the replace wait. Under Lock-Pool.
+    param($Pool)
+    $file = Get-PoolFile
+    $part = "$file.$PID.part"
+    [System.IO.File]::WriteAllText($part, ($Pool | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
+    for ($try = 0; $try -lt 40; $try++) {
+        try {
+            if (Test-Path $file) { [System.IO.File]::Replace($part, $file, [NullString]::Value) } else { [System.IO.File]::Move($part, $file) }
+            return
+        } catch { Start-Sleep -Milliseconds 25 }
+    }
+    throw "the pool's file could not be replaced ($file)"
+}
+
+function Get-PoolAlive {
+    # The pool's processes that still run, as pool.json names them ({ id, start }): by id, name and start time, since an id can be
+    # another program's by now.
+    param($Pool)
+    if (-not $Pool) { return @() }
+    $alive = @()
+    foreach ($entry in @($Pool.processes)) {
+        if (-not $entry -or -not $entry.id) { continue }
+        $process = Get-Process -Id ([int]$entry.id) -ErrorAction SilentlyContinue
+        if (-not $process -or $process.ProcessName -notlike 'UnrealEditor*') { continue }
+        $start = $null
+        try { $start = $process.StartTime } catch { }
+        if ($start -and $entry.start -and [Math]::Abs(($start - [datetime]$entry.start).TotalSeconds) -gt 1.0) { continue }
+        $alive += $entry
+    }
+    return $alive
+}
+
+function Get-PoolOpenJobs {
+    # The ids of the processes that hold a job of the pool not yet done: an engine process that still runs and was started before
+    # it wrote the marker (a job whose process ended without it is lost, not open, whatever program has its id by now).
+    $open = @()
+    foreach ($marker in @(Get-ChildItem (Join-Path (Get-PoolDir) 'taken') -Filter '*.taken' -File -ErrorAction SilentlyContinue)) {
+        if (Test-Path ($marker.FullName -replace '\.taken$', '.done')) { continue }
+        $holder = 0
+        try { $holder = [int]([System.IO.File]::ReadAllText($marker.FullName).Trim()) } catch { }
+        if ($holder -le 0) { continue }
+        $process = Get-Process -Id $holder -ErrorAction SilentlyContinue
+        if (-not $process -or $process.ProcessName -notlike 'UnrealEditor*') { continue }
+        $start = $null
+        try { $start = $process.StartTime } catch { }
+        if ($start -and $start -gt $marker.CreationTime.AddSeconds(1)) { continue }
+        $open += $holder
+    }
+    return $open
+}
+
+function Receive-PoolJobBack {
+    # Takes a job of the pool back from its queue as a process takes one (UScenarioBatchSubsystem::TakeJob): under the job's lock file,
+    # only if no process has written its marker; the marker then names no process (0) and the job's file is removed. True if taken.
+    param([string]$Queue, [string]$Name)
+    $taken = Join-Path $Queue 'taken'
+    $marker = Join-Path $taken "$Name.taken"
+    $file = Join-Path $Queue $Name
+    if ((Test-Path $marker) -or -not (Test-Path $file)) { return $false }
+    $lock = $null
+    try { $lock = [System.IO.File]::Open((Join-Path $taken "$Name.lock"), [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None) } catch { return $false }
+    try {
+        if (Test-Path $marker) { return $false }
+        [System.IO.File]::WriteAllText($marker, '0')
+    } finally { $lock.Dispose() }
+    try { Remove-Item $file -Force -ErrorAction Stop } catch { }
+    return $true
+}
+
+function Test-PoolEnding {
+    # The pool takes no new batches: told to stop, draining for a stop, or its file gone.
+    $dir = Get-PoolDir
+    return [bool]((Test-Path (Join-Path $dir 'stop')) -or (Test-Path (Join-Path $dir 'draining')) -or -not (Test-Path (Get-PoolFile)))
+}
+
+function Get-LivePool {
+    # The pool's queue when a pool runs with today's fingerprint and takes batches, or nothing. A pool with another fingerprint (the
+    # settings or the build changed under it) is told to stop. Not with SANDBOX_NO_POOL=1, nor with SANDBOX_SEPARATE_PROCESSES=1
+    # (every job its own process: handed to a pool, scenario.ps1 would hand itself to itself).
+    if ($env:SANDBOX_NO_POOL -eq '1' -or $env:SANDBOX_SEPARATE_PROCESSES -eq '1') { return $null }
+    $pool = Read-Pool
+    if (-not $pool) { return $null }
+    $dir = Get-PoolDir
+    if (Test-PoolEnding) { return $null }
+    if (@(Get-PoolAlive $pool).Count -eq 0) { return $null }
+    if ($pool.print -ne (Get-PoolPrint)) {
+        [System.IO.File]::WriteAllText((Join-Path $dir 'stop'), 'the fingerprint changed')
+        [Console]::Error.WriteLine('QUEUE NOTE: the pool was started on another build or settings and is told to stop')
+        return $null
+    }
+    return $dir
+}
+
+function Start-PoolProcess {
+    param($Pool)
+    $dir = Get-PoolDir
+    $number = [int]$Pool.started
+    $arguments = "`"$ProjectFile`" $(Get-QueueArguments $dir) -ScenarioPoolIdleS=$([int]$Pool.idle_s) -ScenarioPoolPrint=$($Pool.print) -nullrhi -nohmd -DisablePlugins=OpenXR -unattended -nopause -nosplash -nosound -abslog=`"$(Join-Path $dir "process_$number.log")`""
+    # Started through the shell, which hands the process none of this one's handles: started as the queues' processes are, it held
+    # the output of whoever started it (a call with its output redirected, `pool.ps1 -Start *> file`) open until it exited, minutes
+    # later. Its environment is this one's, with the platform check left out for its start (Set-FastStartEnvironment).
+    $previous = $env:UE_SKIP_UBT_SDK_SETUP
+    $env:UE_SKIP_UBT_SDK_SETUP = '1'
+    try {
+        $process = Start-Process -FilePath (Get-EditorCmd) -ArgumentList $arguments -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru
+    } finally {
+        if ($null -eq $previous) { Remove-Item Env:\UE_SKIP_UBT_SDK_SETUP -ErrorAction SilentlyContinue } else { $env:UE_SKIP_UBT_SDK_SETUP = $previous }
+    }
+    $start = $null
+    try { $start = $process.StartTime.ToString('o') } catch { }
+    $Pool.started = $number + 1
+    $Pool.processes = @(@(Get-PoolAlive $Pool) + [pscustomobject]@{ id = $process.Id; start = $start })
+    return $process
+}
+
+function Update-Pool {
+    # While a batch waits in the pool: a process for every waiting job, up to the pool's number and within the room of the machine;
+    # none once the pool is ending.
+    if (-not $script:PoolMode -or (Test-PoolEnding)) { return }
+    $waiting = @(Get-ChildItem (Get-PoolDir) -Filter '*.json' -File -ErrorAction SilentlyContinue).Count
+    if ($waiting -eq 0) { return }
+    $pool = Read-Pool
+    if (-not $pool -or (@(Get-PoolAlive $pool).Count -ge [int]$pool.parallel)) { return }
+    # A failure here (the lock held by a stuck tool, the file not replaced) is said and the batch waits on: it never ends the tool.
+    try {
+        $lock = Lock-Pool
+        try {
+            $pool = Read-Pool
+            if (-not $pool -or (Test-PoolEnding)) { return }
+            $alive = @(Get-PoolAlive $pool)
+            $more = [Math]::Min([int]$pool.parallel - $alive.Count, $waiting)
+            if ($more -le 0) { return }
+            $pool.processes = $alive
+            for ($i = 0; $i -lt $more; $i++) {
+                # Each start looks again: a stop that began meanwhile (Stop-Pool's draining) gets no new process.
+                if ((Test-PoolEnding) -or (Test-EngineRoom -PendingGB (1.7 * $i) -NoYield)) { break }
+                [void](Start-PoolProcess $pool)
+                Write-Pool $pool
+            }
+        } finally { $lock.Dispose() }
+    } catch { [Console]::Error.WriteLine("QUEUE NOTE: the pool could not be topped up ($($_.Exception.Message))") }
+}
+
+function Request-PoolYield {
+    # Another start needs room: one of the pool's idle processes (no job of it in hand) is asked to exit, unless one already is.
+    # Returns how many are asked and still run.
+    param([int]$Count = 1)
+    $pool = Read-Pool
+    if (-not $pool) { return 0 }
+    $dir = Get-PoolDir
+    $busy = @(Get-PoolOpenJobs)
+    $asked = 0
+    foreach ($entry in @(Get-PoolAlive $pool)) {
+        $id = [int]$entry.id
+        if ($busy -contains $id) { continue }
+        $yield = Join-Path $dir "yield_$id"
+        if (Test-Path $yield) { $asked++; continue }
+        if ($asked -ge $Count) { continue }
+        try { [System.IO.File]::WriteAllText($yield, "$PID"); $asked++ } catch { }
+    }
+    return $asked
+}
+
+function Stop-Pool {
+    # Takes no new batches (draining), waits until the jobs in the pool are done (5 minutes at most, then refuses and lets the pool go
+    # on: a batch of another session is not ended), tells the processes to stop and waits for them (30 s, then refuses: they would
+    # hold the DLLs). Returns nothing when there is no pool or it stopped, or why it did not.
+    param([int]$WaitS = 300)
+    $file = Get-PoolFile
+    if (-not (Test-Path $file)) { return $null }
+    try { return (Stop-PoolNow -WaitS $WaitS) } catch { return "the stop failed: $($_.Exception.Message)" }
+}
+
+function Stop-PoolNow {
+    # Stop-Pool's work; what it throws, Stop-Pool says.
+    param([int]$WaitS)
+    $file = Get-PoolFile
+    $dir = Get-PoolDir
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    $draining = Join-Path $dir 'draining'
+    [System.IO.File]::WriteAllText($draining, "$PID")
+    # A top-up under way (Update-Pool holds the lock while it starts processes) ends before the processes are counted.
+    $barrier = Lock-Pool
+    $barrier.Dispose()
+    $deadline = (Get-Date).AddSeconds($WaitS)
+    while ($true) {
+        if (@(Get-PoolAlive (Read-Pool)).Count -eq 0) { break }
+        $waiting = @(Get-ChildItem $dir -Filter '*.json' -File -ErrorAction SilentlyContinue).Count
+        $open = @(Get-PoolOpenJobs).Count
+        if ($waiting -eq 0 -and $open -eq 0) { break }
+        if ((Get-Date) -gt $deadline) {
+            Remove-Item $draining -Force -ErrorAction SilentlyContinue
+            return "the pool still has $waiting job(s) waiting and $open running after $WaitS s"
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    [System.IO.File]::WriteAllText((Join-Path $dir 'stop'), "$PID")
+    $deadline = (Get-Date).AddSeconds(30)
+    while (@(Get-PoolAlive (Read-Pool)).Count -gt 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+    $still = @(Get-PoolAlive (Read-Pool))
+    if ($still.Count -gt 0) { return ('its process(es) {0} still run 30 s after the stop' -f (($still | ForEach-Object { $_.id }) -join ', ')) }
+    $lock = Lock-Pool
+    try {
+        # Looked at again under the lock: no process of it may be left to hold the DLLs.
+        $still = @(Get-PoolAlive (Read-Pool))
+        if ($still.Count -gt 0) { return ('its process(es) {0} still run after the stop' -f (($still | ForEach-Object { $_.id }) -join ', ')) }
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
+        Remove-Item $draining, (Join-Path $dir 'stop') -Force -ErrorAction SilentlyContinue
+    } finally { $lock.Dispose() }
+    return $null
 }
 
 $script:AloneCount = 0

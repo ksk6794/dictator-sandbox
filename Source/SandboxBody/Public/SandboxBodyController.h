@@ -703,6 +703,19 @@ public:
 	/** R3: the way and the time of the fall under way (invalid when not Falling), and when the trunk first met the floor in it (below 0: not yet). */
 	const FSandboxFallSense& GetFallSense() const { return FallSense; }
 	double GetTrunkTouchedS() const { return TrunkTouchedS; }
+	/** R3 (items a to f): how many falls R3 has run, whether the last one curled, which side it turned to (1 left, -1 right, 0 none). */
+	int32 GetFallRunCount() const { return FallRun.Count; }
+	bool GetFallRunCurled() const { return FallRun.bCurl; }
+	int32 GetFallRunTurnSide() const { return FallRun.TurnSide; }
+	double GetFallRunStartTimeToImpactS() const { return FallRun.StartTimeToImpactS; }
+	/** The angle between a hand's palm and the floor at its first touch in the last fall R3 ran (0 flat; -1 it did not touch). Side 0 left. */
+	double GetFallRunPalmToFloorDeg(int32 Side) const { return Side == 0 || Side == 1 ? FallRun.PalmToFloorDeg[Side] : -1.0; }
+	double GetFallRunTouchS(int32 Side) const { return Side == 0 || Side == 1 ? FallRun.TouchS[Side] : -1.0; }
+	double GetFallRunStartS() const { return FallRun.StartS; }
+	/** C26 in R3's catch: hits felt while an arm caught, and whether a hand held the body then (the last run). */
+	int32 GetFallRunHitsWhileCatching() const { return FallRun.HitsWhileCatching; }
+	int32 GetFallRunArmsCaught() const { return FallRun.ArmsCaught; }
+	bool GetFallRunHeldWhileCatching() const { return FallRun.bHeldWhileCatching; }
 	/** The body's weight as the controller counts it, N. */
 	double GetWeightN() const { return WeightN; }
 
@@ -1746,6 +1759,79 @@ private:
 	void UpdateFallBlend(double DeltaTime);
 	/** The sensed way's weights in the body's frame (forward, back, left, right; summing to 1); false without a sense or a frame. */
 	bool FallBlendTargets(double OutWeights[4]) const;
+	/** The same for any way over the floor (world, a unit vector). */
+	bool FallWayWeights(const FVector2D& WayOverFloor, double OutWeights[4]) const;
+	/**
+	 * R3 (docs/recon/r3_plan.md, items a to f): what one fall keeps, from its first sensed tick to its end. The way the catch is aimed
+	 * by (following the sensed way until it is held), the time to impact sensed at the start, each hand's first touch of the world and
+	 * its target in the chest's frame, whether the body curls and which side it turns to; and the shares of the head's turn, the sit and
+	 * the turn, which go out over the fall pose's blend after the fall.
+	 */
+	struct FFallRun
+	{
+		bool bActive = false;
+		double StartS = -1.0;
+		double StartTimeToImpactS = -1.0;
+		FVector2D Way = FVector2D::ZeroVector;
+		bool bAimHeld = false;
+		double TouchS[2] = { -1.0, -1.0 };
+		bool bTouchFrame[2] = { false, false };
+		bool bCatching[2] = { false, false };
+		/** An arm whose catch was let go because the fall turned its way round: it does not catch again in this fall. */
+		bool bCatchDropped[2] = { false, false };
+		/** The way each arm's catch began with, and the way its elbow was sent (the mesh's space). */
+		FVector2D CatchWay[2] = { FVector2D::ZeroVector, FVector2D::ZeroVector };
+		FVector CatchPole[2] = { FVector::ZeroVector, FVector::ZeroVector };
+		/** Where each catching hand's target was last put (world), and whether its catch began blended by the joints. */
+		FVector CatchPoint[2] = { FVector::ZeroVector, FVector::ZeroVector };
+		bool bCatchJoint[2] = { false, false };
+		/** An arm being let go: its target still carried in the chest's frame until its weight is gone (a point left in the world while the
+		 *  body went on moving turned the elbow's target over as it was let go). */
+		bool bReleasing[2] = { false, false };
+		double ReleaseWeight[2] = { 0.0, 0.0 };
+		/** The arm the guard held as the fall began: not caught with in this fall (-1 none). */
+		int32 SkipSide = -1;
+		/** Whether the turn's fall goes forward (the twist the other way round from a fall backward). */
+		bool bTurnForward = false;
+		/** C26, measured: hits felt and whether a hand held the body while an arm caught (read only); the last hit's time seen. */
+		int32 HitsWhileCatching = 0;
+		bool bHeldWhileCatching = false;
+		double LastHitSeenS = -1.0;
+		/** How many arms began a catch in this Falling state (read only). */
+		int32 ArmsCaught = 0;
+		FVector CatchLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };
+		bool bCurl = false;
+		/** 1 toward the body's left, -1 its right, 0 no turn. */
+		int32 TurnSide = 0;
+		double Weights[4] = { 0.0, 0.0, 0.0, 0.0 };
+		double HeadShare = 0.0;
+		double SitShare = 0.0;
+		double TurnShare = 0.0;
+		/** How much of the palm's turn each catching hand has (item f), eased in with the catch and out after it. */
+		double PalmIn[2] = { 0.0, 0.0 };
+		/** At each hand's first touch of the world in the fall: the angle between its palm and the floor's (0: flat on it); -1 none. */
+		double PalmToFloorDeg[2] = { -1.0, -1.0 };
+		int32 Count = 0;
+	};
+	FFallRun FallRun;
+	/** Each hand's palm (away from the back of the hand) and its length toward the middle finger, in the hand bone's own frame. */
+	FVector PalmLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	FVector HandAlongLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	int32 HandMeshIndex[2] = { INDEX_NONE, INDEX_NONE };
+	bool bPalmAxesSet = false;
+	/** Works out PalmLocal and HandAlongLocal from the reference skeleton, once. */
+	void SetPalmAxes();
+	/** The arms' torque caps while catching, a factor (1 otherwise: exact). */
+	double FallArmCapScale = 1.0;
+	/** Each arm's length from the shoulder to the wrist in the reference pose, cm (worked out at the first catch). */
+	double ArmLengthCm[2] = { 0.0, 0.0 };
+	/** R3: begins, follows and ends a fall's run; places the catching arms (item b). Before the tone (item a) and the turns (c, e). */
+	void UpdateFallRun(double DeltaTime);
+	void EndFallRun();
+	/** Lets one catching arm go to the fall's pose over the fall pose's blend, by its joints' turns. */
+	void ReleaseCatch(int32 Side, const FVector& Point);
+	/** The turns R3 lays on the fall's pose (the head, the sit, the turn), added to Turns. */
+	void AddFallTurns(TArray<FSandboxPoseTurn>& Turns) const;
 	double WeightN = 0.0;
 	double StandingComHeightM = 0.0;
 	bool bStarted = false;

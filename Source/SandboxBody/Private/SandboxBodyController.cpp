@@ -501,6 +501,11 @@ void USandboxBodyController::ApplyPose()
 		case EFallWay::Left: Pose = &Tuning.Poses.FallSide; break;
 		case EFallWay::Right: Mirror = FSandboxPoseTuning::Mirrored(Tuning.Poses.FallSide); Pose = &Mirror; break;
 		}
+		// R3, item d (fall.curl): a fall with no time to catch is curled up while it falls; lying, it takes the fall's pose again.
+		if (State == ESandboxBodyState::Falling && FallRun.bCurl && FallRun.bActive && Tuning.FallAim.Curl > 0.5)
+		{
+			Pose = &Tuning.Poses.FallCurl;
+		}
 	}
 	// R2, step 9 (getup.roll): a body that rolls before its clip holds the roll's pose, written for its left side down, mirrored for
 	// the right; it comes in as a pose does, not as a fall's.
@@ -643,6 +648,11 @@ bool USandboxBodyController::FallBlendTargets(double OutWeights[4]) const
 	{
 		return false;
 	}
+	return FallWayWeights(FallSense.Way, OutWeights);
+}
+
+bool USandboxBodyController::FallWayWeights(const FVector2D& WayOverFloor, double OutWeights[4]) const
+{
 	// The body's own forward and left over the floor, as ChooseFallWay takes them.
 	const FAssist* Pelvis = Assists.FindByPredicate([](const FAssist& Assist) { return Assist.Slot == EAssistSlot::Pelvis; });
 	const FBodyInstance* Body = Pelvis ? Mesh->GetBodyInstance(Pelvis->Bone) : nullptr;
@@ -661,7 +671,7 @@ bool USandboxBodyController::FallBlendTargets(double OutWeights[4]) const
 		return false;
 	}
 	const FVector Left(Forward.Y, -Forward.X, 0.0);
-	const FVector Way(FallSense.Way.X, FallSense.Way.Y, 0.0);
+	const FVector Way(WayOverFloor.X, WayOverFloor.Y, 0.0);
 	const double Ahead = FVector::DotProduct(Way, Forward);
 	const double ToLeft = FVector::DotProduct(Way, Left);
 	// The squares of the way's parts: a way straight ahead is all forward, one at 45 degrees half forward and half to a side.
@@ -695,7 +705,9 @@ void USandboxBodyController::UpdateFallBlend(double DeltaTime)
 		bFallBlending = false;
 		return;
 	}
-	const bool bFalling = State == ESandboxBodyState::Falling && !bHeldUp && Fall.Blend > 0.5 && !bFallBlendFailed;
+	// Not for a body the run put down at the controller's first tick (body.laid_deg), as R3's run is not: laid over a laid body, the
+	// reaching poses changed how getup_roll_right_front rolled.
+	const bool bFalling = State == ESandboxBodyState::Falling && StateEnteredS > 0.0 && !bHeldUp && Fall.Blend > 0.5 && !bFallBlendFailed;
 	if (!bFalling)
 	{
 		if (!bFallBlending)
@@ -794,6 +806,466 @@ void USandboxBodyController::UpdateFallBlend(double DeltaTime)
 	}
 	Animation->SetLayer(Bones, Fall.BlendShare * FMath::SmoothStep(0.0, 1.0, FallBlendIn));
 	FallBlendLast = MoveTemp(Bones);
+}
+
+void USandboxBodyController::UpdateFallRun(double DeltaTime)
+{
+	// R3 (docs/recon/r3_plan.md): every item behind a switch of its own (fall.arm_curve, catch, head, curl, sit, turn, palms); with all of
+	// them 0 nothing here reaches the body: the run is begun only by one of them.
+	const FSandboxFallAimTuning& Fall = Tuning.FallAim;
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		if (FallRun.bTouchFrame[Side] && FallRun.bActive && FallRun.TouchS[Side] < 0.0)
+		{
+			FallRun.TouchS[Side] = ElapsedS;
+			// Item f, measured (read only): how the palm meets the floor, 0 flat on it.
+			SetPalmAxes();
+			const FBodyInstance* Hand = HandMeshIndex[Side] != INDEX_NONE ? Mesh->GetBodyInstance(Mesh->GetBoneName(HandMeshIndex[Side])) : nullptr;
+			if (Hand && Hand->IsValidBodyInstance() && !PalmLocal[Side].IsNearlyZero())
+			{
+				const FVector Palm = Hand->GetUnrealWorldTransform().GetRotation().RotateVector(PalmLocal[Side]);
+				FallRun.PalmToFloorDeg[Side] = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Palm | -FVector::UpVector, -1.0, 1.0)));
+			}
+			UE_LOG(LogSandbox, Display, TEXT("Body controller: the %s hand meets the world at %.3f s, %.3f s into the fall, its palm %.0f degrees from the floor's"),
+				Side == 0 ? TEXT("left") : TEXT("right"), ElapsedS, ElapsedS - FallRun.StartS, FallRun.PalmToFloorDeg[Side]);
+		}
+		FallRun.bTouchFrame[Side] = false;
+	}
+	// An arm being let go is carried with the chest until its weight has gone, unless another placement has taken its hand (its weight
+	// rises again).
+	if (FallRun.bReleasing[0] || FallRun.bReleasing[1])
+	{
+		static const FName ReleasedHands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+		USandboxAnimInstance* Released = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+		const FBodyInstance* Carrier = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const int32 End = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton().FindBoneIndex(ReleasedHands[Side]);
+			const double WeightNow = Released && End != INDEX_NONE ? Released->GetLimbWeight(End) : 0.0;
+			if (!FallRun.bReleasing[Side])
+			{
+				continue;
+			}
+			// Another placement has taken the hand when its goal is a weight again, or (taken at a weight held flat) the weight rose.
+			if (WeightNow <= 0.0 || WeightNow > FallRun.ReleaseWeight[Side] + 1.0e-6 || Released->GetLimbGoalWeight(End) > 0.0 || !Carrier ||
+				!Carrier->IsValidBodyInstance())
+			{
+				FallRun.bReleasing[Side] = false;
+				continue;
+			}
+			FallRun.ReleaseWeight[Side] = WeightNow;
+			FallRun.CatchPoint[Side] = Carrier->GetUnrealWorldTransform().TransformPositionNoScale(FallRun.CatchLocal[Side]);
+			Released->MoveLimbTarget(End, FallRun.CatchPoint[Side], nullptr, nullptr, 0.0, 0.0);
+		}
+	}
+	const bool bAny = Fall.ArmCurve > 0.5 || Fall.Catch > 0.5 || Fall.Head > 0.5 || Fall.Curl > 0.5 || Fall.Sit > 0.5 || Fall.Turn > 0.5;
+	// A fall that begins at the controller's very first tick is a body the run put down (body.laid_deg) or spawned in the air: it did
+	// not fall from anything it stood on, and nothing of R3 is done for it (with R3 on, the laid bodies of getup_roll_* reached out).
+	const bool bFalling = bAny && State == ESandboxBodyState::Falling && StateEnteredS > 0.0 && !bHeldUp && !IsPosedFromOutside() && Balance.bValid;
+	if (!bFalling)
+	{
+		if (FallRun.bActive)
+		{
+			EndFallRun();
+		}
+		// What is laid on the pose goes over the fall pose's blend, never in a step.
+		const double OutStep = Tuning.Poses.FallBlendS > 0.0 ? DeltaTime / Tuning.Poses.FallBlendS : 1.0;
+		FallRun.HeadShare = FMath::Max(FallRun.HeadShare - OutStep, 0.0);
+		FallRun.SitShare = FMath::Max(FallRun.SitShare - OutStep, 0.0);
+		FallRun.TurnShare = FMath::Max(FallRun.TurnShare - OutStep, 0.0);
+		FallRun.PalmIn[0] = FMath::Max(FallRun.PalmIn[0] - OutStep, 0.0);
+		FallRun.PalmIn[1] = FMath::Max(FallRun.PalmIn[1] - OutStep, 0.0);
+		return;
+	}
+	if (!FallRun.bActive)
+	{
+		// The run begins at the fall's first sensed tick: the time to impact then decides the curl and the turn, once.
+		if (!FallSense.bValid)
+		{
+			return;
+		}
+		FallRun.bActive = true;
+		FallRun.StartS = ElapsedS;
+		FallRun.StartTimeToImpactS = FallSense.TimeToImpactS;
+		FallRun.Way = FallSense.Way;
+		FallRun.bAimHeld = false;
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			FallRun.TouchS[Side] = -1.0;
+			FallRun.bCatching[Side] = false;
+			FallRun.bCatchDropped[Side] = false;
+			FallRun.PalmToFloorDeg[Side] = -1.0;
+		}
+		// The palms' axes before the first catch turns a hand (item f) or a touch is measured.
+		SetPalmAxes();
+		++FallRun.Count;
+		// The arm the guard holds as the fall begins stays the guard's (and goes with the guard's own release) for the whole fall, as N6's
+		// reach left it; taken by the catch a tick later, its point and its elbow's pole jumped.
+		FallRun.SkipSide = GuardSide;
+		// A run that begins again while what the last one laid on the pose still shows (a body held up for a moment) takes the way's
+		// weights and the turn's side as they are: begun anew, the head's turn and the twist jumped.
+		const bool bShowing = FallRun.HeadShare > 0.0 || FallRun.TurnShare > 0.0;
+		double Start[4];
+		const bool bWeights = FallWayWeights(FallRun.Way, Start);
+		for (int32 Index = 0; Index < 4 && !bShowing; ++Index)
+		{
+			FallRun.Weights[Index] = bWeights ? Start[Index] : (Index == 1 ? 1.0 : 0.0);
+		}
+		// No time to catch, or (fall.curl_from_ns) a hit hard enough that a person would not try: the hit that felled it (FellByNs, the
+		// struck part's sum within the second before the fall).
+		FallRun.bCurl = Fall.Curl > 0.5 && (FallSense.TimeToImpactS < Fall.CurlBelowS || (Fall.CurlFromNs > 0.0 && FellByNs >= Fall.CurlFromNs));
+		// A fall backward or forward with the time turns toward the side its way leans to (none for a way straight back or ahead, or
+		// leaning to a side by less than fall.turn_side_min of the way's weight).
+		if (FallRun.TurnShare <= 0.0)
+		{
+			FallRun.TurnSide = 0;
+			if (Fall.Turn > 0.5 && !FallRun.bCurl && FallSense.TimeToImpactS >= Fall.TurnMinS && FallRun.Weights[0] + FallRun.Weights[1] >= 0.5 &&
+				FMath::Abs(FallRun.Weights[2] - FallRun.Weights[3]) >= Fall.TurnSideMin)
+			{
+				FallRun.TurnSide = FallRun.Weights[2] > FallRun.Weights[3] ? 1 : -1;
+				FallRun.bTurnForward = FallRun.Weights[0] > FallRun.Weights[1];
+			}
+		}
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: R3's fall at %.3f s, %.3f s to the impact (forward %.2f, back %.2f, left %.2f, right %.2f)%s%s"), ElapsedS,
+			FallSense.TimeToImpactS, FallRun.Weights[0], FallRun.Weights[1], FallRun.Weights[2], FallRun.Weights[3], FallRun.bCurl ? TEXT(", curls up") : TEXT(""),
+			FallRun.TurnSide > 0 ? TEXT(", turns to its left") : FallRun.TurnSide < 0 ? TEXT(", turns to its right") : TEXT(""));
+		// The fall's pose asked for again whenever the curl is on, so that a run begun anew that does not curl lets the last one's curl go
+		// (the same pose asked again changes nothing: SetTargetPose).
+		if (Fall.Curl > 0.5)
+		{
+			ApplyPose();
+		}
+	}
+	else if (FallSense.bValid && !FallRun.bAimHeld)
+	{
+		// The way the catch is aimed by follows the sensed way until it is held.
+		const double Follow = Fall.CatchFollowS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Fall.CatchFollowS) : 1.0;
+		const FVector2D Next = (FallRun.Way + (FallSense.Way - FallRun.Way) * Follow).GetSafeNormal();
+		if (!Next.IsNearlyZero())
+		{
+			FallRun.Way = Next;
+		}
+	}
+	const bool bTouched = FallRun.TouchS[0] >= 0.0 || FallRun.TouchS[1] >= 0.0 || TrunkTouchedS >= 0.0;
+	FallRun.bAimHeld = FallRun.bAimHeld || bTouched || (FallSense.bValid && FallSense.TimeToImpactS < Fall.CatchHoldS);
+	// A catch begins only while its placement can still come in before the impact (catch_blend_s; begun later, in a fall whose way
+	// turned from backward to a side 0.26 s in, the arm reached under a body already landing and its target turned over).
+	const bool bTimeToCatch = !FallRun.bAimHeld && FallSense.bValid && FallSense.TimeToImpactS >= Fall.CatchBlendS;
+	double Goal[4];
+	if (FallWayWeights(FallRun.Way, Goal))
+	{
+		const double Follow = Fall.HeadFollowS > 0.0 ? 1.0 - FMath::Exp(-DeltaTime / Fall.HeadFollowS) : 1.0;
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			FallRun.Weights[Index] += (Goal[Index] - FallRun.Weights[Index]) * Follow;
+		}
+	}
+	// The head's turn, the sit and the turn come in over their own times (in, never in a step).
+	const auto Ease = [DeltaTime](double& Share, bool bIn, double InS)
+	{
+		const double Step = InS > 0.0 ? DeltaTime / InS : 1.0;
+		Share = FMath::Clamp(Share + (bIn ? Step : -Step), 0.0, 1.0);
+	};
+	Ease(FallRun.HeadShare, Fall.Head > 0.5, Tuning.Poses.FallBlendS);
+	Ease(FallRun.SitShare, Fall.Sit > 0.5 && !FallRun.bCurl && FallRun.Weights[1] >= Fall.SitFrom, Fall.SitBlendS);
+	Ease(FallRun.TurnShare, Fall.Turn > 0.5 && FallRun.TurnSide != 0, Fall.TurnBlendS);
+
+	// Item b, the catch: each arm placed in the chest's frame toward where the floor will be. N6's reach (fall.aim) and the catch do not
+	// share the hands: with fall.aim on there is no catch.
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	const bool bCatch = Fall.Catch > 0.5 && Fall.Aim < 0.5 && !FallRun.bCurl && !bFallAiming && Animation && Chest && Chest->IsValidBodyInstance() &&
+		!(Fall.CatchLetGoAtTrunk > 0.5 && TrunkTouchedS >= 0.0);
+	// Whether a catch may begin (a fall backward has the written pose's arms unless catch_back) is not whether one goes on: a catch under
+	// way goes on, or is let go (the way turned round, the catch switched off), never left on a point of the world. (A fall forward left
+	// to the written pose's arms too was measured and taken out: docs/testing.md, "R3", the forward catch.)
+	const bool bMayBegin = Fall.CatchBack > 0.5 || FallRun.Weights[1] < 0.5;
+	bool bAnyCatching = false;
+	if (!bCatch)
+	{
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			if (FallRun.bCatching[Side])
+			{
+				// From where the target is now in the chest's frame (the point last put was a tick old), or that point without a chest.
+				const bool bChest = Chest && Chest->IsValidBodyInstance();
+				ReleaseCatch(Side, bChest ? Chest->GetUnrealWorldTransform().TransformPositionNoScale(FallRun.CatchLocal[Side]) : FallRun.CatchPoint[Side]);
+				FallRun.bCatching[Side] = false;
+				FallRun.bCatchDropped[Side] = true;
+			}
+		}
+	}
+	else
+	{
+		const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		const FTransform ChestNow = Chest->GetUnrealWorldTransform();
+		const FVector UpLocal = ChestRefRotation.UnrotateVector(FVector::UpVector);
+		const FVector FloorLocal = FSandboxBodyProbe::CatchDirectionLocal(ChestNow.GetRotation(), UpLocal, FallRun.Way, Fall.CatchTiltDeg, Fall.CatchAhead);
+		for (int32 Side = 0; Side < 2; ++Side)
+		{
+			const int32 End = Skeleton.FindBoneIndex(Hands[Side]);
+			const int32 Middle = End != INDEX_NONE ? Skeleton.GetParentIndex(End) : INDEX_NONE;
+			const int32 Root = Middle != INDEX_NONE ? Skeleton.GetParentIndex(Middle) : INDEX_NONE;
+			const FBodyInstance* Upper = Root != INDEX_NONE ? Mesh->GetBodyInstance(Skeleton.GetBoneName(Root)) : nullptr;
+			if (Root == INDEX_NONE || !Upper || !Upper->IsValidBodyInstance() || Side == FallRun.SkipSide)
+			{
+				continue;
+			}
+			if (ArmLengthCm[Side] <= 0.0)
+			{
+				const FVector Shoulder = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Root).GetLocation();
+				const FVector Elbow = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Middle).GetLocation();
+				const FVector Wrist = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, End).GetLocation();
+				ArmLengthCm[Side] = FVector::Dist(Shoulder, Elbow) + FVector::Dist(Elbow, Wrist);
+			}
+			// The far arm of a fall to a side: the floor's direction from it crosses the trunk, and it keeps the fall pose's arm. And a catch
+			// begins only with the time for it: under catch_hold_s its target would be held at once (a body pressed down as it got up,
+			// dropped head first: the arm swung to a target it could not reach and its elbow's target turned over).
+			// Nor on a hand whose limb another placement still holds (the guard's, R2's held arm, the last catch's, easing out): taken over,
+			// its point jumped.
+			const FVector Outward = ChestRefRotation.UnrotateVector(FVector(Side == 0 ? 1.0 : -1.0, 0.0, 0.0));
+			if (!FallRun.bCatching[Side] && (!bMayBegin || (FloorLocal | Outward) < -0.3 || !bTimeToCatch || FallRun.bCatchDropped[Side] ||
+				Animation->GetLimbWeight(End) > 0.0))
+			{
+				continue;
+			}
+			// A fall that turns its way round (a body that sinks forward and then tips back): the arm aimed the first way is let go to the
+			// fall's pose for the rest of this fall. (Followed round, its target swept past the shoulder and the elbow's turned over.)
+			if (FallRun.bCatching[Side] && FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector2D::DotProduct(FallRun.Way, FallRun.CatchWay[Side]), -1.0, 1.0))) > Fall.CatchTurnDeg)
+			{
+				ReleaseCatch(Side, ChestNow.TransformPositionNoScale(FallRun.CatchLocal[Side]));
+				FallRun.bCatching[Side] = false;
+				FallRun.bCatchDropped[Side] = true;
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: the %s arm lets the catch go at %.3f s: the fall's way turned more than %.0f degrees"),
+					Side == 0 ? TEXT("left") : TEXT("right"), ElapsedS, Fall.CatchTurnDeg);
+				continue;
+			}
+			// Once a hand has touched, or the impact is near, its target stays where it is in the chest's frame.
+			if (!FallRun.bCatching[Side] || (!FallRun.bAimHeld && FallRun.TouchS[Side] < 0.0))
+			{
+				const FVector ShoulderLocal = ChestNow.InverseTransformPositionNoScale(Upper->GetUnrealWorldTransform().GetLocation());
+				FallRun.CatchLocal[Side] = ShoulderLocal + FloorLocal * (Fall.CatchReach * ArmLengthCm[Side]);
+			}
+			const FVector Point = ChestNow.TransformPositionNoScale(FallRun.CatchLocal[Side]);
+			FallRun.CatchPoint[Side] = Point;
+			if (!FallRun.bCatching[Side])
+			{
+				// Where the elbow goes (the mesh's space): back and out, as a reach's (for a hand reaching forward, its part across the arm is
+				// out and down), unless that lies nearly along the line from the shoulder to the target; then out and down, or out and up,
+				// whichever lies more across it; only the part across the line. (Back and out for a hand reaching back and out lay along the
+				// arm: the plane of the bend was all but undefined and the upper arm's target turned over by up to 172 degrees in a frame in
+				// 22 of 96 falls.)
+				const bool bLeft = Side == 0;
+				const FVector Reach = Mesh->GetComponentTransform().InverseTransformVectorNoScale(Point - Upper->GetUnrealWorldTransform().GetLocation()).GetSafeNormal();
+				const FVector Ways[3] = { FVector(bLeft ? 0.4 : -0.4, -1.0, -0.3).GetSafeNormal(), FVector(bLeft ? 0.6 : -0.6, 0.0, -1.0).GetSafeNormal(),
+					FVector(bLeft ? 1.0 : -1.0, 0.0, 0.3).GetSafeNormal() };
+				constexpr double AlongArm = 0.8;
+				FVector Across = Ways[0];
+				if (FMath::Abs(Ways[0] | Reach) >= AlongArm)
+				{
+					Across = FMath::Abs(Ways[1] | Reach) <= FMath::Abs(Ways[2] | Reach) ? Ways[1] : Ways[2];
+				}
+				FVector Pole = (Across - Reach * (Across | Reach)).GetSafeNormal();
+				Pole = Pole.IsNearlyZero() ? Across : Pole;
+				// Blended by the joints' turns, as the guard's arm (FSandboxLimbTarget::bJointBlend), coming in and going: blended by where
+				// the hand is, the hand passed near its shoulder and the elbow's target turned over, up to 175 degrees in a frame, in 3 of 174
+				// scenarios (the head struck in fewer falls by hand that way: docs/testing.md, "R3").
+				FallRun.bCatchJoint[Side] = Fall.CatchJointBlend > 0.5;
+				// The elbow's anatomical hinge for a joint-blended arm only: blended by where the hand is, at a weight near 0 the solution
+				// has to give back the pose, and its hinge before and after would differ by the pose's own bend (third reading).
+				Animation->SetLimbBend(End, Pole, FVector::XAxisVector, /*bEaseTwice*/ FallRun.bCatchJoint[Side], /*bAnatomicHinge*/ FallRun.bCatchJoint[Side]);
+				FallRun.CatchPole[Side] = Pole;
+				++FallRun.ArmsCaught;
+				FSandboxJointLimits ShoulderLimits;
+				FSandboxJointLimits ElbowLimits;
+				if (FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Root), ShoulderLimits) && FSandboxPoseRig::ReadJointLimits(Mesh, Skeleton.GetBoneName(Middle), ElbowLimits))
+				{
+					Animation->SetLimbRanges(End, ShoulderLimits, ElbowLimits);
+				}
+				Animation->SetLimbTarget(End, Point, 1.0, Fall.CatchBlendS);
+				FallRun.bCatching[Side] = true;
+				FallRun.CatchWay[Side] = FallRun.Way;
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: the %s arm catches at %.3f s (the floor at %.2f, %.2f, %.2f in the chest's frame)"),
+					bLeft ? TEXT("left") : TEXT("right"), ElapsedS, FloorLocal.X, FloorLocal.Y, FloorLocal.Z);
+			}
+			else
+			{
+				Animation->MoveLimbTarget(End, Point, nullptr, nullptr, 0.0, 0.0);
+			}
+			bAnyCatching = true;
+		}
+	}
+	// C26, measured (read only): what reached the body while an arm reached for the floor (caught, and neither a hand nor the trunk
+	// had met it yet); kept for the whole Falling state (EnterState), so that a run begun again after a hold does not forget it.
+	if (bAnyCatching && !bTouched)
+	{
+		if (LastHitS >= 0.0 && LastHitS != FallRun.LastHitSeenS && LastHitS >= FallRun.StartS)
+		{
+			++FallRun.HitsWhileCatching;
+		}
+		FallRun.bHeldWhileCatching = FallRun.bHeldWhileCatching || Holds.Num() > 0;
+	}
+	FallRun.LastHitSeenS = LastHitS;
+	// Item f: the palm's turn comes in with each catching arm, and goes once it does not catch.
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const bool bPalm = Fall.Palms > 0.5 && FallRun.bCatching[Side];
+		const double Step = bPalm ? (Fall.CatchBlendS > 0.0 ? DeltaTime / Fall.CatchBlendS : 1.0) : (Tuning.Poses.FallBlendS > 0.0 ? -DeltaTime / Tuning.Poses.FallBlendS : -1.0);
+		FallRun.PalmIn[Side] = FMath::Clamp(FallRun.PalmIn[Side] + Step, 0.0, 1.0);
+	}
+	const double CapScale = bAnyCatching ? Fall.CatchMaxTorqueScale : 1.0;
+	if (CapScale != FallArmCapScale)
+	{
+		FallArmCapScale = CapScale;
+		PushTuningToControls();
+	}
+}
+
+void USandboxBodyController::ReleaseCatch(int32 Side, const FVector& Point)
+{
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const int32 End = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton().FindBoneIndex(Hands[Side]);
+	if (!Animation || End == INDEX_NONE)
+	{
+		return;
+	}
+	// Let go by the joints' turns, as the guard's arm is (FSandboxLimbTarget::bJointBlend): blended by where the hand is, the hand passed
+	// near its shoulder on its way back to the fall's pose and the elbow's target turned over, 170 to 178 degrees in a frame. The blend
+	// and the hinge stay as the catch began (a change of fall.catch_joint_blend in the middle of one does not change them half way through
+	// the weight), and the weight goes down from where it is (1 once the catch has come in, less when it is let go sooner).
+	Animation->SetLimbBend(End, FallRun.CatchPole[Side], FVector::XAxisVector, /*bEaseTwice*/ FallRun.bCatchJoint[Side], /*bAnatomicHinge*/ FallRun.bCatchJoint[Side]);
+	Animation->SetLimbTarget(End, Point, 0.0, Tuning.Poses.FallBlendS);
+	FallRun.bReleasing[Side] = true;
+	FallRun.ReleaseWeight[Side] = Animation->GetLimbWeight(End);
+}
+
+void USandboxBodyController::SetPalmAxes()
+{
+	if (bPalmAxesSet)
+	{
+		return;
+	}
+	bPalmAxesSet = true;
+	// As the finger rig takes them: along the hand toward the middle finger, across the knuckles toward the thumb's side, the back of the
+	// hand from the two (on the right the line across is the other way round), the palm the other way.
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const TCHAR* Suffix = Side == 0 ? TEXT("_l") : TEXT("_r");
+		const int32 Hand = Skeleton.FindBoneIndex(FName(*FString::Printf(TEXT("hand%s"), Suffix)));
+		const int32 Middle = Skeleton.FindBoneIndex(FName(*FString::Printf(TEXT("middle_01%s"), Suffix)));
+		const int32 Index = Skeleton.FindBoneIndex(FName(*FString::Printf(TEXT("index_01%s"), Suffix)));
+		const int32 Pinky = Skeleton.FindBoneIndex(FName(*FString::Printf(TEXT("pinky_01%s"), Suffix)));
+		if (Hand == INDEX_NONE || Middle == INDEX_NONE || Index == INDEX_NONE || Pinky == INDEX_NONE)
+		{
+			continue;
+		}
+		const FTransform HandRef = FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Hand);
+		const FVector Along = (FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Middle).GetLocation() - HandRef.GetLocation()).GetSafeNormal();
+		const FVector Across = (FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Index).GetLocation() -
+			FAnimationRuntime::GetComponentSpaceTransformRefPose(Skeleton, Pinky).GetLocation()).GetSafeNormal() * (Side == 0 ? 1.0 : -1.0);
+		const FVector Back = FVector::CrossProduct(Along, Across).GetSafeNormal();
+		PalmLocal[Side] = HandRef.GetRotation().UnrotateVector(-Back);
+		HandAlongLocal[Side] = HandRef.GetRotation().UnrotateVector(Along);
+		HandMeshIndex[Side] = Hand;
+	}
+}
+
+void USandboxBodyController::EndFallRun()
+{
+	static const FName Hands[2] = { FName(TEXT("hand_l")), FName(TEXT("hand_r")) };
+	USandboxAnimInstance* Animation = Cast<USandboxAnimInstance>(Mesh->GetAnimInstance());
+	const FBodyInstance* Chest = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	const FReferenceSkeleton& Skeleton = Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		const int32 End = Skeleton.FindBoneIndex(Hands[Side]);
+		if (FallRun.bCatching[Side] && Animation && End != INDEX_NONE)
+		{
+			// Let go over the fall pose's blend, from where the target is now (where it was last put, without a chest to carry it). (Let go
+			// more slowly as the body lies, the slow tips after blows of 160 N*s rested later still: docs/testing.md, "R3".)
+			const FVector Point = Chest && Chest->IsValidBodyInstance() ? Chest->GetUnrealWorldTransform().TransformPositionNoScale(FallRun.CatchLocal[Side]) : FallRun.CatchPoint[Side];
+			ReleaseCatch(Side, Point);
+		}
+		FallRun.bCatching[Side] = false;
+	}
+	FallRun.bActive = false;
+	// A run that ends while the body still falls (held up, posed from outside, the switches turned off) lets its curl go: the fall's pose.
+	if (FallRun.bCurl && State == ESandboxBodyState::Falling)
+	{
+		ApplyPose();
+	}
+	if (FallArmCapScale != 1.0)
+	{
+		FallArmCapScale = 1.0;
+		PushTuningToControls();
+	}
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: R3's fall ends at %.3f s (hands at %.3f and %.3f s)"), ElapsedS, FallRun.TouchS[0], FallRun.TouchS[1]);
+}
+
+void USandboxBodyController::AddFallTurns(TArray<FSandboxPoseTurn>& Turns) const
+{
+	const FSandboxFallAimTuning& Fall = Tuning.FallAim;
+	const auto Merge = [&Turns](const FSandboxPoseTurn& Each)
+	{
+		const int32 Bone = Each.MeshBoneIndex;
+		if (FSandboxPoseTurn* Existing = Turns.FindByPredicate([Bone](const FSandboxPoseTurn& Turn) { return Turn.MeshBoneIndex == Bone; }))
+		{
+			Existing->Turn = (Existing->Turn * Each.Turn).GetNormalized();
+		}
+		else
+		{
+			Turns.Add(Each);
+		}
+	};
+	// Item c: the head's own joint turned away from the floor by the way, in the component's frame made one of the head's own (as the gaze).
+	if (FallRun.HeadShare > 0.0 && NeckMeshIndex != INDEX_NONE)
+	{
+		const double Share = FMath::SmoothStep(0.0, 1.0, FallRun.HeadShare);
+		// Pitch up is the head back (as the gaze's); a roll about the front tips the head's top toward the body's left.
+		const double PitchDeg = (Fall.HeadForwardDeg * FallRun.Weights[0] - Fall.HeadBackDeg * FallRun.Weights[1]) * Share;
+		const double RollDeg = Fall.HeadSideDeg * (FallRun.Weights[3] - FallRun.Weights[2]) * Share;
+		const FQuat InComponent = (FQuat(FVector::XAxisVector, FMath::DegreesToRadians(PitchDeg)) * FQuat(FVector::YAxisVector, FMath::DegreesToRadians(RollDeg))).GetNormalized();
+		Merge(FSandboxPoseTurn{ NeckMeshIndex, (NeckRefRotation.Inverse() * InComponent * NeckRefRotation).GetNormalized() });
+	}
+	// Item f: each catching hand bent back at the wrist, the palm turned from where it faces toward where the fingers point, so that
+	// with the arm pointing at the floor the palm faces it (fall.palm_share of a right angle).
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		if (FallRun.PalmIn[Side] > 0.0 && HandMeshIndex[Side] != INDEX_NONE)
+		{
+			const FVector Axis = FVector::CrossProduct(PalmLocal[Side], HandAlongLocal[Side]).GetSafeNormal();
+			if (!Axis.IsNearlyZero())
+			{
+				const double Angle = UE_DOUBLE_HALF_PI * Fall.PalmShare * FMath::SmoothStep(0.0, 1.0, FallRun.PalmIn[Side]);
+				Merge(FSandboxPoseTurn{ HandMeshIndex[Side], FQuat(Axis, Angle) });
+			}
+		}
+	}
+	// Item e: sitting down going backward, and the turn toward a side. (BuildTurns empties what it is handed.)
+	TArray<FSandboxPoseTurn> Drawn;
+	if (FallRun.SitShare > 0.0)
+	{
+		PoseRig.BuildTurns(Tuning.Poses.FallSit, FMath::SmoothStep(0.0, 1.0, FallRun.SitShare), Drawn);
+		for (const FSandboxPoseTurn& Each : Drawn)
+		{
+			Merge(Each);
+		}
+	}
+	if (FallRun.TurnShare > 0.0 && FallRun.TurnSide != 0)
+	{
+		// To land on the side the way leans to, the chest twists that side's shoulder along the way: back going backward, forward going
+		// forward, the opposite twists (poses.fall_turn is written for a fall backward that leans to the left).
+		const FSandboxPose Mirror = FSandboxPoseTuning::Mirrored(Tuning.Poses.FallTurn);
+		const int32 Twist = FallRun.bTurnForward ? -FallRun.TurnSide : FallRun.TurnSide;
+		PoseRig.BuildTurns(Twist > 0 ? Tuning.Poses.FallTurn : Mirror, FMath::SmoothStep(0.0, 1.0, FallRun.TurnShare), Drawn);
+		for (const FSandboxPoseTurn& Each : Drawn)
+		{
+			Merge(Each);
+		}
+	}
 }
 
 void USandboxBodyController::UpdateHeld(double DeltaTime)
@@ -938,6 +1410,11 @@ void USandboxBodyController::UpdatePoseTurns()
 				Turns.Add(Each);
 			}
 		}
+	}
+	// R3 (items c and e): the head kept off the floor, the sit and the turn, as much of each as is on now.
+	if (FallRun.HeadShare > 0.0 || FallRun.SitShare > 0.0 || FallRun.TurnShare > 0.0 || FallRun.PalmIn[0] > 0.0 || FallRun.PalmIn[1] > 0.0)
+	{
+		AddFallTurns(Turns);
 	}
 	// What the body adds for its balance and while it idles is its own, and gives way to a pose asked for from
 	// outside (SetClipPose) as that pose comes in.
@@ -3047,6 +3524,11 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 			Muscle.FallFromVelocityShare = Muscle.PoseVelocityShare;
 		}
 		bFallEaseFromSet = true;
+		// R3's measures of the fall (read only): what reached it while an arm reached for the floor, and how many arms caught.
+		FallRun.HitsWhileCatching = 0;
+		FallRun.bHeldWhileCatching = false;
+		FallRun.LastHitSeenS = LastHitS;
+		FallRun.ArmsCaught = 0;
 		// The strategies' goals let go of as in any fall, not held to the end of a reflex's delay (N4).
 		MechanicsUntilS = -1.0;
 		// The pose of the fall is chosen once, as the fall starts (ApplyTuning below asks for it).
@@ -4422,6 +4904,15 @@ void USandboxBodyController::OnBodyHit(UPrimitiveComponent* HitComponent, AActor
 				bHandTouchedFrame[Bone.EndsWith(TEXT("_r")) ? 1 : 0] = true;
 			}
 		}
+		// R3: a hand or a forearm that meets the world while the body falls (kept apart from N6's, which only its reach reads).
+		if (Group == ESandboxMuscleGroup::Arms && FallRun.bActive)
+		{
+			const FString Bone = Hit.MyBoneName.ToString();
+			if (Bone.StartsWith(TEXT("hand")) || Bone.StartsWith(TEXT("lowerarm")))
+			{
+				FallRun.bTouchFrame[Bone.EndsWith(TEXT("_r")) ? 1 : 0] = true;
+			}
+		}
 		const FBodyInstance* Body = Mesh->GetBodyInstance(Hit.MyBoneName);
 		if (Body && SupportImpulseNs.IsValidIndex(Body->InstanceBodyIndex))
 		{
@@ -5399,6 +5890,27 @@ void USandboxBodyController::UpdateTone(double DeltaTime)
 			GoalStiffness = bTouched ? Tuning.FallAim.YieldStiffness : Tuning.FallAim.ReachStiffness;
 			GoalDampingNow = bTouched ? Tuning.FallAim.YieldDamping : Tuning.FallAim.ReachDamping;
 		}
+		// R3, item a (fall.arm_curve): falling, the arms' tone is a curve of the sensed time to impact: loose far from the floor, braced as
+		// it comes, and giving way once a hand, a forearm or the trunk has met the world.
+		else if (FallRun.bActive && Tuning.FallAim.ArmCurve > 0.5 && Group == static_cast<int32>(ESandboxMuscleGroup::Arms))
+		{
+			const FSandboxFallAimTuning& Fall = Tuning.FallAim;
+			const bool bTouched = FallRun.TouchS[0] >= 0.0 || FallRun.TouchS[1] >= 0.0 || TrunkTouchedS >= 0.0;
+			const bool bNear = FallSense.bValid && FallSense.TimeToImpactS <= Fall.ArmBraceFromS;
+			GoalStiffness = bTouched ? Fall.ArmTouchStiffness : bNear ? Fall.ArmBraceStiffness : Fall.ArmFarStiffness;
+			GoalDampingNow = bTouched ? Fall.ArmTouchDamping : bNear ? Fall.ArmBraceDamping : Fall.ArmFarDamping;
+		}
+		// R3, item e (fall.sit): sitting down going backward, the legs give under the weight as the sit comes in.
+		if (FallRun.bActive && Tuning.FallAim.Sit > 0.5 && FallRun.SitShare > 0.0 && Group == static_cast<int32>(ESandboxMuscleGroup::Legs))
+		{
+			GoalStiffness = FMath::Lerp(GoalStiffness, Tuning.FallAim.SitLegStiffness, FMath::SmoothStep(0.0, 1.0, FallRun.SitShare));
+		}
+		// R3, item c (fall.head): falling, the neck is braced.
+		if (FallRun.bActive && Tuning.FallAim.Head > 0.5 && Group == static_cast<int32>(ESandboxMuscleGroup::Neck))
+		{
+			GoalStiffness = Tuning.FallAim.HeadStiffness;
+			GoalDampingNow = Tuning.FallAim.HeadDamping;
+		}
 		const auto Follow = [&](double& Now, double Goal)
 		{
 			if (Now == Goal)
@@ -6003,6 +6515,11 @@ void USandboxBodyController::PushTuningToControls()
 		const double JointStiffness = (Joint ? Joint->StiffnessScale : 1.0) * ToneStiffness[GroupIndex];
 		const double JointDamping = (Joint ? Joint->DampingScale : 1.0) * ToneDamping[GroupIndex];
 		Group.MaxTorqueNm *= Joint ? Joint->MaxTorqueScale : 1.0;
+		// R3, item b (fall.catch_max_torque_scale): the catching arms' caps (1 otherwise, and then left alone: exact).
+		if (FallArmCapScale != 1.0 && Muscle.Group == ESandboxMuscleGroup::Arms)
+		{
+			Group.MaxTorqueNm *= FallArmCapScale;
+		}
 		// R2, step 12 (getup.arm_answer): a held arm that yields is softer, one pulled in stronger (1 for every other muscle: exact).
 		double HeldArm = 1.0;
 		for (int32 Side = 0; Side < 2; ++Side)
@@ -6183,6 +6700,7 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		UpdateFallBlend(DeltaTime);
 	}
+	UpdateFallRun(DeltaTime);
 	UpdateGetUp(DeltaTime);
 	UpdateCarry(DeltaTime);
 	// R2, step 12 (getup.arm_answer): an arm held while getting up yields or is pulled in; and is let go once it is not.

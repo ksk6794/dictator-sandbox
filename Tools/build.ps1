@@ -17,6 +17,10 @@ param(
 )
 . "$PSScriptRoot\common.ps1"
 
+# A pool's processes hold the module DLLs (Tools\pool.ps1; SP-5): stopped once the jobs in it are done, 5 minutes at most.
+$poolWhy = Stop-Pool
+if ($poolWhy) { Write-Output "BUILD ERROR: the pool did not stop: $poolWhy (Tools\pool.ps1 -Status)"; exit 1 }
+
 $buildBat = Join-Path (Get-EngineRoot) 'Engine\Build\BatchFiles\Build.bat'
 $logFile = Join-Path $ToolsOut 'build.log'
 $resultFile = Join-Path $ToolsOut 'build.json'

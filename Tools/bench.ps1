@@ -58,6 +58,9 @@ function Get-ForeignEngines {
     # Every engine process this bench's tools started has ended by the time it looks again: whatever runs then is someone else's.
     return @(Get-EngineProcesses | ForEach-Object { '{0} {1} (started {2:HH:mm:ss})' -f $_.Name, $_.Id, $_.StartTime })
 }
+# A pool measures as a pool only when asked for; the bench measures the tools as they start their own processes (Tools\pool.ps1).
+$poolWhy = Stop-Pool
+if ($poolWhy) { Write-Output "BENCH REFUSED: the pool did not stop: $poolWhy"; exit 2 }
 $foreignAtStart = @(Get-ForeignEngines)
 if ($foreignAtStart.Count -gt 0) {
     Write-Output "BENCH REFUSED: an engine process runs that this bench did not start ($($foreignAtStart -join ', ')): another session's run or the owner's editor. Measure on an idle machine"

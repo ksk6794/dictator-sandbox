@@ -3253,6 +3253,27 @@ void UScenarioRunnerSubsystem::Finish()
 			SenseJson->SetField(TEXT("way_error_deg"), bWays ? Number(FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector2D::DotProduct(FallSenseWay, Went), -1.0, 1.0)))) : Null());
 			FallJson->SetObjectField(TEXT("sense"), SenseJson);
 		}
+		// R3 (items a to f, docs/recon/r3_plan.md): what the controller's last fall run did, when one ran (read only).
+		if (Controller->GetFallRunCount() > 0)
+		{
+			const TSharedRef<FJsonObject> RunJson = MakeShared<FJsonObject>();
+			RunJson->SetNumberField(TEXT("runs"), Controller->GetFallRunCount());
+			RunJson->SetNumberField(TEXT("start_time_to_impact_s"), Controller->GetFallRunStartTimeToImpactS());
+			RunJson->SetBoolField(TEXT("curled"), Controller->GetFallRunCurled());
+			RunJson->SetNumberField(TEXT("turn_side"), Controller->GetFallRunTurnSide());
+			RunJson->SetNumberField(TEXT("arms_caught"), Controller->GetFallRunArmsCaught());
+			RunJson->SetNumberField(TEXT("hits_while_catching"), Controller->GetFallRunHitsWhileCatching());
+			RunJson->SetBoolField(TEXT("held_while_catching"), Controller->GetFallRunHeldWhileCatching());
+			const TCHAR* const Sides[2] = { TEXT("left"), TEXT("right") };
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const double TouchS = Controller->GetFallRunTouchS(Side);
+				RunJson->SetField(FString::Printf(TEXT("hand_%s_touch_s"), Sides[Side]), TouchS >= 0.0 ? Number(TouchS - Controller->GetFallRunStartS()) : Null());
+				const double PalmDeg = Controller->GetFallRunPalmToFloorDeg(Side);
+				RunJson->SetField(FString::Printf(TEXT("palm_%s_to_floor_deg"), Sides[Side]), PalmDeg >= 0.0 ? Number(PalmDeg) : Null());
+			}
+			FallJson->SetObjectField(TEXT("r3"), RunJson);
+		}
 		Natural.WriteFall(*FallJson);
 		ControlJson->SetObjectField(TEXT("fall"), FallJson);
 		Natural.WriteControl(*ControlJson);

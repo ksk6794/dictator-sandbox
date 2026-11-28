@@ -1,0 +1,8 @@
+{
+  "comment": "The assets every engine process of a queue loads after its warm-up and keeps for its life (docs/fast-checks.md, SP-6; UScenarioBatchSubsystem::KeepAssets): a fixed set, the same in every process whatever its jobs. Without it a job's world loaded and built the NPC's meshes anew, about 0.4 s a job. SANDBOX_KEEP_ASSETS=0 runs without it.",
+  "assets": [
+    "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+    "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh",
+    "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC"
+  ]
+}

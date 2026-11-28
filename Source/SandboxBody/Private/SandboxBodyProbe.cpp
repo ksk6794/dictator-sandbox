@@ -378,6 +378,26 @@ double FSandboxBodyProbe::TimeToFloorS(double HeightCm, double VzCmS, double Gra
 	return (VzCmS + FMath::Sqrt(VzCmS * VzCmS + 2.0 * GravityCmS2 * Above)) / GravityCmS2;
 }
 
+FVector FSandboxBodyProbe::CatchDirectionLocal(const FQuat& ChestWorld, const FVector& ChestUpLocal, const FVector2D& Way, double TiltDeg, double Ahead)
+{
+	const FVector UpLocal = ChestUpLocal.GetSafeNormal();
+	const FVector2D Over = Way.GetSafeNormal();
+	if (UpLocal.IsNearlyZero() || Over.IsNearlyZero())
+	{
+		return -UpLocal;
+	}
+	const FVector Along(Over.X, Over.Y, 0.0);
+	// The chest's up now and where it is foreseen at impact: leaning TiltDeg from vertical toward the way.
+	const FVector UpNow = ChestWorld.RotateVector(UpLocal);
+	const double Tilt = FMath::DegreesToRadians(TiltDeg);
+	const FVector UpThen = (FVector::UpVector * FMath::Cos(Tilt) + Along * FMath::Sin(Tilt)).GetSafeNormal();
+	// Tipped about the axis across the way, so that a body that has turned about the vertical keeps that turn.
+	const FQuat Tip = FQuat::FindBetweenNormals(UpNow, UpThen);
+	const FQuat Then = (Tip * ChestWorld).GetNormalized();
+	const FVector Floor = (-FVector::UpVector + Along * Ahead).GetSafeNormal();
+	return Then.UnrotateVector(Floor).GetSafeNormal();
+}
+
 double FSandboxBodyProbe::OnSideOf(double AngleRad, double ReferenceRad)
 {
 	if (AngleRad - ReferenceRad > UE_DOUBLE_PI)

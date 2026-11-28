@@ -120,6 +120,46 @@ namespace
 		Visitor(FString(TEXT("fall.blend_share")), Tuning.FallAim.BlendShare);
 		Visitor(FString(TEXT("fall.blend_follow_s")), Tuning.FallAim.BlendFollowS);
 		Visitor(FString(TEXT("fall.blend_clip_s")), Tuning.FallAim.BlendClipS);
+		Visitor(FString(TEXT("fall.arm_curve")), Tuning.FallAim.ArmCurve);
+		Visitor(FString(TEXT("fall.arm_brace_from_s")), Tuning.FallAim.ArmBraceFromS);
+		Visitor(FString(TEXT("fall.arm_far_stiffness")), Tuning.FallAim.ArmFarStiffness);
+		Visitor(FString(TEXT("fall.arm_far_damping")), Tuning.FallAim.ArmFarDamping);
+		Visitor(FString(TEXT("fall.arm_brace_stiffness")), Tuning.FallAim.ArmBraceStiffness);
+		Visitor(FString(TEXT("fall.arm_brace_damping")), Tuning.FallAim.ArmBraceDamping);
+		Visitor(FString(TEXT("fall.arm_touch_stiffness")), Tuning.FallAim.ArmTouchStiffness);
+		Visitor(FString(TEXT("fall.arm_touch_damping")), Tuning.FallAim.ArmTouchDamping);
+		Visitor(FString(TEXT("fall.catch")), Tuning.FallAim.Catch);
+		Visitor(FString(TEXT("fall.catch_tilt_deg")), Tuning.FallAim.CatchTiltDeg);
+		Visitor(FString(TEXT("fall.catch_ahead")), Tuning.FallAim.CatchAhead);
+		Visitor(FString(TEXT("fall.catch_reach")), Tuning.FallAim.CatchReach);
+		Visitor(FString(TEXT("fall.catch_follow_s")), Tuning.FallAim.CatchFollowS);
+		Visitor(FString(TEXT("fall.catch_hold_s")), Tuning.FallAim.CatchHoldS);
+		Visitor(FString(TEXT("fall.catch_blend_s")), Tuning.FallAim.CatchBlendS);
+		Visitor(FString(TEXT("fall.catch_back")), Tuning.FallAim.CatchBack);
+		Visitor(FString(TEXT("fall.catch_max_torque_scale")), Tuning.FallAim.CatchMaxTorqueScale);
+		Visitor(FString(TEXT("fall.catch_turn_deg")), Tuning.FallAim.CatchTurnDeg);
+		Visitor(FString(TEXT("fall.catch_joint_blend")), Tuning.FallAim.CatchJointBlend);
+		Visitor(FString(TEXT("fall.catch_let_go_at_trunk")), Tuning.FallAim.CatchLetGoAtTrunk);
+		Visitor(FString(TEXT("fall.head")), Tuning.FallAim.Head);
+		Visitor(FString(TEXT("fall.head_stiffness")), Tuning.FallAim.HeadStiffness);
+		Visitor(FString(TEXT("fall.head_damping")), Tuning.FallAim.HeadDamping);
+		Visitor(FString(TEXT("fall.head_follow_s")), Tuning.FallAim.HeadFollowS);
+		Visitor(FString(TEXT("fall.head_back_deg")), Tuning.FallAim.HeadBackDeg);
+		Visitor(FString(TEXT("fall.head_forward_deg")), Tuning.FallAim.HeadForwardDeg);
+		Visitor(FString(TEXT("fall.head_side_deg")), Tuning.FallAim.HeadSideDeg);
+		Visitor(FString(TEXT("fall.curl")), Tuning.FallAim.Curl);
+		Visitor(FString(TEXT("fall.curl_below_s")), Tuning.FallAim.CurlBelowS);
+		Visitor(FString(TEXT("fall.curl_from_ns")), Tuning.FallAim.CurlFromNs);
+		Visitor(FString(TEXT("fall.sit")), Tuning.FallAim.Sit);
+		Visitor(FString(TEXT("fall.sit_from")), Tuning.FallAim.SitFrom);
+		Visitor(FString(TEXT("fall.sit_blend_s")), Tuning.FallAim.SitBlendS);
+		Visitor(FString(TEXT("fall.sit_leg_stiffness")), Tuning.FallAim.SitLegStiffness);
+		Visitor(FString(TEXT("fall.turn")), Tuning.FallAim.Turn);
+		Visitor(FString(TEXT("fall.turn_min_s")), Tuning.FallAim.TurnMinS);
+		Visitor(FString(TEXT("fall.turn_blend_s")), Tuning.FallAim.TurnBlendS);
+		Visitor(FString(TEXT("fall.turn_side_min")), Tuning.FallAim.TurnSideMin);
+		Visitor(FString(TEXT("fall.palms")), Tuning.FallAim.Palms);
+		Visitor(FString(TEXT("fall.palm_share")), Tuning.FallAim.PalmShare);
 		Visitor(FString(TEXT("assist.internal_share")), Tuning.Weight.InternalShare);
 		Assist(TEXT("pelvis"), Tuning.Pelvis);
 		Assist(TEXT("chest"), Tuning.Chest);
@@ -245,6 +285,9 @@ namespace
 		Pose(TEXT("balance_side"), Tuning.Poses.BalanceSide);
 		Pose(TEXT("roll_to_back"), Tuning.Poses.RollToBack);
 		Pose(TEXT("roll_to_front"), Tuning.Poses.RollToFront);
+		Pose(TEXT("fall_curl"), Tuning.Poses.FallCurl);
+		Pose(TEXT("fall_sit"), Tuning.Poses.FallSit);
+		Pose(TEXT("fall_turn"), Tuning.Poses.FallTurn);
 		Visitor(FString(TEXT("poses.fingers.weight")), Tuning.Poses.Fingers.Weight);
 		Visitor(FString(TEXT("poses.fingers.blend_s")), Tuning.Poses.Fingers.BlendS);
 		const auto Fingers = [&Visitor](const TCHAR* Name, auto& Values)
@@ -624,8 +667,62 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(FallAim.YieldDamping, 20.0, TEXT("fall"), TEXT("arm_yield_damping"), OutError) ||
 		!CheckRange(FallAim.ReachBack, 1.0, TEXT("fall"), TEXT("reach_back"), OutError) ||
 		!CheckRange(FallAim.Blend, 1.0, TEXT("fall"), TEXT("blend"), OutError) || !CheckRange(FallAim.BlendShare, 1.0, TEXT("fall"), TEXT("blend_share"), OutError) ||
-		!CheckRange(FallAim.BlendFollowS, 2.0, TEXT("fall"), TEXT("blend_follow_s"), OutError) || !CheckRange(FallAim.BlendClipS, 10.0, TEXT("fall"), TEXT("blend_clip_s"), OutError))
+		!CheckRange(FallAim.BlendFollowS, 2.0, TEXT("fall"), TEXT("blend_follow_s"), OutError) || !CheckRange(FallAim.BlendClipS, 10.0, TEXT("fall"), TEXT("blend_clip_s"), OutError) ||
+		!CheckRange(FallAim.ArmCurve, 1.0, TEXT("fall"), TEXT("arm_curve"), OutError) || !CheckRange(FallAim.ArmBraceFromS, 2.0, TEXT("fall"), TEXT("arm_brace_from_s"), OutError) ||
+		!CheckRange(FallAim.ArmFarStiffness, 20.0, TEXT("fall"), TEXT("arm_far_stiffness"), OutError) || !CheckRange(FallAim.ArmFarDamping, 20.0, TEXT("fall"), TEXT("arm_far_damping"), OutError) ||
+		!CheckRange(FallAim.ArmBraceStiffness, 20.0, TEXT("fall"), TEXT("arm_brace_stiffness"), OutError) || !CheckRange(FallAim.ArmBraceDamping, 20.0, TEXT("fall"), TEXT("arm_brace_damping"), OutError) ||
+		!CheckRange(FallAim.ArmTouchStiffness, 20.0, TEXT("fall"), TEXT("arm_touch_stiffness"), OutError) || !CheckRange(FallAim.ArmTouchDamping, 20.0, TEXT("fall"), TEXT("arm_touch_damping"), OutError) ||
+		!CheckRange(FallAim.Catch, 1.0, TEXT("fall"), TEXT("catch"), OutError) || !CheckRange(FallAim.CatchTiltDeg, 120.0, TEXT("fall"), TEXT("catch_tilt_deg"), OutError) ||
+		!CheckRange(FallAim.CatchAhead, 5.0, TEXT("fall"), TEXT("catch_ahead"), OutError) || !CheckRange(FallAim.CatchReach, 1.0, TEXT("fall"), TEXT("catch_reach"), OutError) ||
+		!CheckRange(FallAim.CatchFollowS, 2.0, TEXT("fall"), TEXT("catch_follow_s"), OutError) || !CheckRange(FallAim.CatchHoldS, 2.0, TEXT("fall"), TEXT("catch_hold_s"), OutError) ||
+		!CheckRange(FallAim.CatchBlendS, 2.0, TEXT("fall"), TEXT("catch_blend_s"), OutError) || !CheckRange(FallAim.CatchBack, 1.0, TEXT("fall"), TEXT("catch_back"), OutError) ||
+		!CheckRange(FallAim.CatchMaxTorqueScale, 5.0, TEXT("fall"), TEXT("catch_max_torque_scale"), OutError) ||
+		!CheckRange(FallAim.CatchTurnDeg, 180.0, TEXT("fall"), TEXT("catch_turn_deg"), OutError) ||
+		!CheckRange(FallAim.CatchJointBlend, 1.0, TEXT("fall"), TEXT("catch_joint_blend"), OutError) ||
+		!CheckRange(FallAim.CatchLetGoAtTrunk, 1.0, TEXT("fall"), TEXT("catch_let_go_at_trunk"), OutError) ||
+		!CheckRange(FallAim.Head, 1.0, TEXT("fall"), TEXT("head"), OutError) || !CheckRange(FallAim.HeadStiffness, 20.0, TEXT("fall"), TEXT("head_stiffness"), OutError) ||
+		!CheckRange(FallAim.HeadDamping, 20.0, TEXT("fall"), TEXT("head_damping"), OutError) || !CheckRange(FallAim.HeadFollowS, 2.0, TEXT("fall"), TEXT("head_follow_s"), OutError) ||
+		!CheckRange(FallAim.HeadBackDeg, 90.0, TEXT("fall"), TEXT("head_back_deg"), OutError) || !CheckRange(FallAim.HeadForwardDeg, 90.0, TEXT("fall"), TEXT("head_forward_deg"), OutError) ||
+		!CheckRange(FallAim.HeadSideDeg, 90.0, TEXT("fall"), TEXT("head_side_deg"), OutError) ||
+		!CheckRange(FallAim.Curl, 1.0, TEXT("fall"), TEXT("curl"), OutError) || !CheckRange(FallAim.CurlBelowS, 2.0, TEXT("fall"), TEXT("curl_below_s"), OutError) ||
+		!CheckRange(FallAim.Sit, 1.0, TEXT("fall"), TEXT("sit"), OutError) || !CheckRange(FallAim.SitFrom, 1.0, TEXT("fall"), TEXT("sit_from"), OutError) ||
+		!CheckRange(FallAim.SitBlendS, 2.0, TEXT("fall"), TEXT("sit_blend_s"), OutError) ||
+		!CheckRange(FallAim.Turn, 1.0, TEXT("fall"), TEXT("turn"), OutError) || !CheckRange(FallAim.TurnMinS, 2.0, TEXT("fall"), TEXT("turn_min_s"), OutError) ||
+		!CheckRange(FallAim.TurnBlendS, 2.0, TEXT("fall"), TEXT("turn_blend_s"), OutError) ||
+		!CheckRange(FallAim.TurnSideMin, 1.0, TEXT("fall"), TEXT("turn_side_min"), OutError) ||
+		!CheckRange(FallAim.CurlFromNs, 1000.0, TEXT("fall"), TEXT("curl_from_ns"), OutError) ||
+		!CheckRange(FallAim.SitLegStiffness, 20.0, TEXT("fall"), TEXT("sit_leg_stiffness"), OutError) ||
+		!CheckRange(FallAim.Palms, 1.0, TEXT("fall"), TEXT("palms"), OutError) || !CheckRange(FallAim.PalmShare, 1.0, TEXT("fall"), TEXT("palm_share"), OutError))
 	{
+		return false;
+	}
+	// R3's lower bounds: a hand reaching less than half its arm comes near its shoulder (the elbow's target turns over), and a blend of
+	// no time is a step.
+	if (FallAim.CatchReach < 0.5)
+	{
+		OutError = FString::Printf(TEXT("fall.catch_reach is %g; it is 0.5 to 1 (a hand nearer its shoulder turns the elbow over)"), FallAim.CatchReach);
+		return false;
+	}
+	for (const TPair<const TCHAR*, double>& Blend : { TPair<const TCHAR*, double>(TEXT("catch_blend_s"), FallAim.CatchBlendS),
+		TPair<const TCHAR*, double>(TEXT("sit_blend_s"), FallAim.SitBlendS), TPair<const TCHAR*, double>(TEXT("turn_blend_s"), FallAim.TurnBlendS),
+		TPair<const TCHAR*, double>(TEXT("catch_follow_s"), FallAim.CatchFollowS), TPair<const TCHAR*, double>(TEXT("head_follow_s"), FallAim.HeadFollowS) })
+	{
+		if (Blend.Value < 0.02)
+		{
+			OutError = FString::Printf(TEXT("fall.%s is %g; it is 0.02 s or more (a blend or a follow of no time is a step)"), Blend.Key, Blend.Value);
+			return false;
+		}
+	}
+	// A way straight back has no side: with no lower bound it turned the body to its right.
+	if (FallAim.TurnSideMin < 0.01)
+	{
+		OutError = FString::Printf(TEXT("fall.turn_side_min is %g; it is 0.01 to 1 (a way with no side has nothing to turn to)"), FallAim.TurnSideMin);
+		return false;
+	}
+	// The palm's turn is palm_share of a quarter turn about the forearm, and the wrist's range is 60 degrees.
+	if (FallAim.PalmShare > 0.67)
+	{
+		OutError = FString::Printf(TEXT("fall.palm_share is %g; it is 0 to 0.67 (a quarter turn's share beyond the wrist's 60 degrees)"), FallAim.PalmShare);
 		return false;
 	}
 	if (!CheckRange(Weight.FollowS, 5.0, TEXT("muscles"), TEXT("weight_follow_s"), OutError) ||
@@ -890,7 +987,8 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	const TPair<const TCHAR*, const FSandboxPose*> PoseList[] = { { TEXT("stance"), &Poses.Stance }, { TEXT("flinch"), &Poses.Flinch }, { TEXT("double_over"), &Poses.DoubleOver },
 		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide },
 		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide },
-		{ TEXT("roll_to_back"), &Poses.RollToBack }, { TEXT("roll_to_front"), &Poses.RollToFront } };
+		{ TEXT("roll_to_back"), &Poses.RollToBack }, { TEXT("roll_to_front"), &Poses.RollToFront },
+		{ TEXT("fall_curl"), &Poses.FallCurl }, { TEXT("fall_sit"), &Poses.FallSit }, { TEXT("fall_turn"), &Poses.FallTurn } };
 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
 	{
 		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)

@@ -215,6 +215,10 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   processes refused the changed file and kept their values (an error in each run's log, the physics as before), but every process that
   started after it could not read the tuning at all, and one stand of 150 ended with no result. Change the tuning files only while no
   engine process runs (or put the new value in after the build that knows it, before the runs); a stand that spans an edit is run again.
+- **Eight falls are not a measure of a fall.** R3's catch and head kept the head off the floor in 8 of the 8 knockdowns by blows (5 of 8
+  struck today); on 41 blows of 160 and 240 N*s from 24 directions it struck in 27% (29% today). The knockdowns and the scorecard are a
+  few directions at one impulse; a change to how the body falls is judged on many (`knockdowns.ps1 -Directions 24 -Impulses "160,240"`,
+  `-ByHand -Directions 24 -ShoveMps 3.5` and `4.5`, run through one sweep), and the few are reported beside them.
 - **Check a limit against today's body before it judges a change.** "No joint faster than 30 rad/s in the knockdowns" was written
   for N6 and today's neck reaches 36 after the blow at 90 degrees; the plan said "the arms, when they meet the floor". Read today's
   figure of a new limit before the runs it is to judge.
@@ -341,6 +345,29 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   cm once the holding hand followed the arm: the placed hand came near enough to its shoulder for the two-bone placement to turn the
   elbow over. At 35 cm the largest jump is 29 degrees, the clip's own. The suite's `control.pose.target_jump_max_deg` told both; read it
   for every new target that a placement makes, and keep a placed hand well away from its shoulder.
+- **A placed arm blended by where its hand is passes its shoulder on the way.** R3's catch (28 November) put each hand at 0.9 of the
+  arm's length toward the floor; coming in and going out the placement blends the hand's point between the pose's hand and the target,
+  that point passed near the shoulder, and the elbow's target turned over by 170 to 178 degrees in a frame in 3 to 9 of the suite's
+  scenarios, the target itself never near the shoulder. Blended by the joints' turns (`FSandboxLimbTarget::bJointBlend`, the guard's) it
+  does not, and the arm comes in later on that path. `control.pose.target_step_max_deg` over the whole suite with the switch on tells it;
+  the scenarios' own limits did not.
+- **An elbow's pole that lies along the arm leaves the bend undefined.** R3's catch sent the elbow "back and out", as a reach's; for a
+  hand reaching back and out that is nearly the arm's own line, and the upper arm's target turned over by up to 172 degrees in a frame
+  in 22 of 96 falls, none in the suite. The pole is chosen across the line from the shoulder to the target. A placement is measured on
+  many directions of the motion it serves (`control.pose.target_step_max_deg` over every run), not on the suite alone.
+- **A hinge signed by a carried fallback flips when the carrying rotation is near half a turn.** The two-bone placement signs the
+  elbow's (or knee's) hinge against the pose's hinge carried by the least rotation from the pose's upper bone to the solution's; when the
+  two point opposite ways that rotation, and the sign, are undefined, and the arm's target turned over by up to 173 degrees (R3's catch
+  over the fall's reaching poses). An elbow bends about one axis of its upper arm: for the catch's arm the hinge is that anatomical axis
+  (the reference pose's, carried by the upper arm, before; the one across the pole's plane after; `FSandboxLimbTarget::bAnatomicHinge`).
+  The first repair, the bend's own axis above a threshold of the bend and the old sign below it, kept a turn-over at the threshold, and it
+  reached the guard's arm, which nothing in the suite switches on: a rule for one caller is given to that caller alone.
+- **A target let go at a point of the world jumps while the body moves under it.** A limb target's weight fading over 0.15 s at its last
+  point of the world, as the body lay and rolled, turned the arm's target over in the first tick of the fade. A target that moved with
+  the trunk keeps moving with it until its weight has gone.
+- **A thing worked out at the first event it serves does nothing before it.** R3's palm turn read the palm's axes at the hand's first
+  touch of the floor, so the turn was never laid on before the touch, and the palm's angle at the touch was 81 degrees with every share
+  of the turn. A measure that does not move with the setting that should move it was the sign (as in the solver's entries).
 
 ## Falls and the get-up
 
@@ -495,6 +522,21 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   nothing, the muscles pushed the body up off them, and what the world did push downward (its damping) was 0.14 of the body's weight
   (0.09 with the fit). A reference
   carried from another skeleton is checked against the floor where it touches it, not only where it ends.
+- **A body the run lays down is "falling" to the controller at its first tick.** With R3's catch on (28 November), every `getup_roll_*`
+  and `getup_drag_*` scenario failed: `body.laid_deg` puts the body down at 0 s, the controller entered Falling at 0.000 s and the catch
+  reached out with the arms before the get-up. A behaviour of the fall runs only for a fall that began after the controller's first tick;
+  a new behaviour of any state is run on the laid scenarios before it is believed.
+- **A fall's way can turn round.** A body that sinks forward and then tips back (a tuning changed in the middle of `tune_live_*`) turned
+  its sensed way by 180 degrees in 0.4 s; the catch followed it, its target swept past the shoulder and the elbow's target turned over.
+  Whatever is aimed by the way is let go when the way turns far (`fall.catch_turn_deg`), not followed round.
+- **The time to impact at a fall's start does not tell a blow from a shove.** The state Falling begins late (the pelvis tilted 35
+  degrees or 20 cm down): 0.25 to 0.40 s are left for a blow of 200 N*s and for two fists through the chest alike, so "no time to catch"
+  by that time curls all of them or none (R3's `fall.curl`). And the forward shove by hand reaches the floor 0.31 s after it becomes a
+  fall: no arm of the falling body's strength gets forward in that time. What has to happen earlier belongs to the stagger, before the
+  fall.
+- **An arm that props a falling body is part of how it comes to rest.** Letting R3's catch go the moment the trunk touched (so that no arm
+  stayed out under a lying body) kept the sideways knockdowns from rest for 6.3 s and for good: the near arm held the body on its side,
+  and its sudden return to the fall pose rocked it. The catch is let go as the body lies.
 
 ## Hands, the grab and blows
 
@@ -719,6 +761,11 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
   read "its" file. About one job in a thousand was run by nobody. A job is taken by writing a marker while a
   lock file is held open for writing (`UScenarioBatchSubsystem::TakeJob`), and a job without a result now prints
   `QUEUE WARNING` and keeps the processes' logs under `Saved\Queue`.
+- **A process started with `UseShellExecute = $false` holds its starter's output open.** It inherits the handles of the shell
+  that started it; a pool's engine process started that way kept the pipe of `pool.ps1 -Start *> file` open, and the call that
+  redirected it returned only when the pool exited on its idle limit, ten minutes later (a build after it "hung" for as long).
+  A process meant to outlive its starter is started through the shell (`Start-Process -WindowStyle Hidden`), its environment set
+  on this process around the start (`Start-PoolProcess`).
 - **PowerShell hash keys do not tell case apart either.** `@{ s = 0; S = 0 }` does not parse, and a script that
   does not parse fails at once: run a new helper once in the foreground before a long batch in the background.
 - **A `TUniquePtr` to a type that is only declared does not compile in a `UCLASS`** (C4150 from the generated

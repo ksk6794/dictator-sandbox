@@ -122,6 +122,14 @@ The track adds nine requirements and 26 criteria (and, on 27 November 2026, thir
 | C16 | A head that does land, lands softly | The head's downward speed at the floor, 90th percentile, falls by hand; the same for blows of 200 N·s, reported | 4.5 m/s by hand, 2.8 m/s by blows | 1.7 m/s in a soft backward fall, 3.2 m/s in a hard one | 2.0 m/s or less by hand; under 3.2 m/s for the blows | N6 |
 | C17 | A fall still ends as M3 asked | Rest within 3 s, 40 J or less from the body's own muscles, 2 cm or less into the floor | 1.3 to 2.2 s; 5.6 to 25.5 J; 1.2 cm | None | As they are | N6 |
 
+With R3's catch, arms' curve, head and palms on (variant A, built on 27 to 28 November behind switches at 0, for the owner's look;
+`docs/active-ragdoll.md`, R3 and decisions 55 to 58; `docs/testing.md`, "R3"), on the scorecard's falls: C14 by hand 83% (83% without),
+by blows 100%; C15 by hand 9% (55%), by blows 0% (63%); C16 by hand 5.38 m/s (the forward shove by hand alone over 3.2), by blows 0.19
+m/s (3.00); C17 at rest within 2.94 s and 15.3 J by blows, 2.42 s and 27.5 J by hand. On 96 more falls C14 by hand 44% (61%), C15 by
+hand 16% (44%), by blows 29% (29%), and three blows of 160 N*s rest after 3.1 to 4.0 s. C16 by hand is not met, nor C14 by hand on the
+larger set: the forward shoves by hand throw the body nearly level and reach the floor 0.31 s after it falls. With `fall.blend` as well
+(variant B) C14 by hand is 67% on the scorecard (72% of the 96), C15 by hand 9% (12%), C16 by hand 0.52 m/s.
+
 **On the floor and getting up**
 
 | # | Criterion | Measure | Today | People | Proposed limit | Part |

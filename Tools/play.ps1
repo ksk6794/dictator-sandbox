@@ -127,6 +127,9 @@ if ($VR) {
     if ($blocker) {
         Stop-Play 2 "PLAY ERROR: the session in the headset was not started. $blocker."
     }
+    # No pool beside a session in the headset (decision 2 of docs/fast-checks.md).
+    $poolWhy = Stop-Pool
+    if ($poolWhy) { Stop-Play 2 "PLAY ERROR: the session in the headset was not started: the pool did not stop: $poolWhy." }
     $state = Get-HeadsetState
     if ($state -and $state -ne 'Ready') { Write-Output "PLAY NOTE: SteamVR reports '$state': the headset is not being worn." }
 }

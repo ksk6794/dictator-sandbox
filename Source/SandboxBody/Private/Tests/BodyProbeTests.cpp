@@ -148,6 +148,33 @@ bool FBodyProbeTimeToFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/** R3's catch fall: where the floor will be in the chest's frame, against cases worked by hand. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBodyProbeCatchDirectionTest, "DictatorSandbox.Body.Probe.CatchDirection", ProbeTestFlags)
+bool FBodyProbeCatchDirectionTest::RunTest(const FString& Parameters)
+{
+	const FVector Up = FVector::UpVector;
+	// Upright, falling toward +x, foreseen lying flat (90 degrees): the floor, straight down then, is along the chest's +x now.
+	TestTrue(TEXT("upright, flat at impact: the floor lies the way it falls"),
+		FSandboxBodyProbe::CatchDirectionLocal(FQuat::Identity, Up, FVector2D(1.0, 0.0), 90.0, 0.0).Equals(FVector(1.0, 0.0, 0.0), 1.0e-6));
+	// Leaning 60 of its foreseen 60 degrees already: nothing is left to tip, the floor is straight down in the world, seen from the chest.
+	const FQuat Leaning(FVector(0.0, 1.0, 0.0), FMath::DegreesToRadians(60.0));
+	const FVector Down = Leaning.UnrotateVector(-Up);
+	TestTrue(TEXT("already leaning as foreseen: the world's down in the chest's frame"),
+		FSandboxBodyProbe::CatchDirectionLocal(Leaning, Up, FVector2D(1.0, 0.0), 60.0, 0.0).Equals(Down, 1.0e-6));
+	// The same answer from any lean on the way there: held in the chest's frame, the target does not move with the fall's progress.
+	const FQuat Halfway(FVector(0.0, 1.0, 0.0), FMath::DegreesToRadians(25.0));
+	const FVector Start = FSandboxBodyProbe::CatchDirectionLocal(FQuat::Identity, Up, FVector2D(1.0, 0.0), 60.0, 0.5);
+	TestTrue(TEXT("the same in the chest's frame from upright and from half way"),
+		FSandboxBodyProbe::CatchDirectionLocal(Halfway, Up, FVector2D(1.0, 0.0), 60.0, 0.5).Equals(Start, 1.0e-6));
+	// A chest turned about the vertical keeps its turn: falling along its own front, the floor lies along its front.
+	const FQuat Turned(Up, FMath::DegreesToRadians(90.0));
+	TestTrue(TEXT("turned about the vertical: along its own front"),
+		FSandboxBodyProbe::CatchDirectionLocal(Turned, Up, FVector2D(0.0, 1.0), 90.0, 0.0).Equals(FVector(1.0, 0.0, 0.0), 1.0e-6));
+	// No way: straight down in the chest's frame.
+	TestTrue(TEXT("no way: down"), FSandboxBodyProbe::CatchDirectionLocal(Leaning, Up, FVector2D::ZeroVector, 60.0, 0.5).Equals(-Up, 1.0e-12));
+	return true;
+}
+
 /** The seam at 180 degrees: the feet's mean turn and the gaze's side (found on 27 November 2026, R2's step 7 and its review). */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBodyProbeSeamTest, "DictatorSandbox.Body.Probe.AnglesAcrossTheSeam", ProbeTestFlags)
 bool FBodyProbeSeamTest::RunTest(const FString& Parameters)

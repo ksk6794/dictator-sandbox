@@ -6,6 +6,10 @@
 param([switch]$Force, [int]$TimeoutSec = 1800)
 . "$PSScriptRoot\common.ps1"
 
+# The assets the pool's processes keep would be made anew under them (Tools\pool.ps1; SP-5).
+$poolWhy = Stop-Pool
+if ($poolWhy) { Write-Output "GEN-ASSETS ERROR: the pool did not stop: $poolWhy (Tools\pool.ps1 -Status)"; exit 1 }
+
 $resultFile = Join-Path $ToolsOut 'gen-assets.json'
 $logFile = Join-Path $ToolsOut 'gen-assets.log'
 if (Test-Path $resultFile) { Remove-Item $resultFile -Force }

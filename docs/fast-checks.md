@@ -10,7 +10,8 @@ table, and the stages in section 9), kept in step by hand.
 **Status:** decided and audited on 27 November 2026 (the owner's decisions are at the end of section 9; 6 to 9 came out of the
 audit; 10 and 11 after stage 1). Stage 1 (SP-0 to SP-3) built the same day, every run's hashes kept, and accepted by the owner
 (decision 10): what was built, where it differs from this text, and its stage check are in section 11. R2's step 9 comes next and
-stage 2 after R2 (decision 11; `docs/active-ragdoll.md`, section 8).
+stage 2 after R2 (decision 11; `docs/active-ragdoll.md`, section 8). Changed by the owner's decision 54 of 27 November
+(`docs/active-ragdoll.md`, section 10): R3 first, stage 2 after R3.
 
 ## Terms
 
@@ -570,7 +571,15 @@ Taken on 27 November 2026, one question at a time; 6 to 9 after the audit, 10 an
     for stages 2 and 3). One scenario's 7.2 s against its 7 s stands as measured.
 11. **R2's step 9 comes next, stage 2 after R2** (27 November, after decision 10): stage 1 took the largest waits away, and
     stage 2's 3 to 4 days would gain about 6% more of the development's time; it is looked at again when R2 is done, or sooner if
-    the waits grow.
+    the waits grow. (Changed on 27 November by decision 54 of `docs/active-ragdoll.md`: R3 first, then stage 2.)
+12. **SP-6 on by default** (taken for the owner in the night of 27 to 28 November, reversible; to confirm): every queue's process
+    keeps the assets of `Tools\batch_keep.json`, since it changes no run's hashes (1677 runs and files, section 12) and takes about 9%
+    off every tool's time; `SANDBOX_KEEP_ASSETS=0` runs without it. Not chosen: off by default until the owner's look (the same
+    results, slower).
+13. **The pool is started by hand until the owner's look** (taken for the owner in the same night, reversible; to confirm): SP-4
+    is built and `Tools\pool.ps1 -Start` starts it; a build stops it (SP-5) but does not start it again, so that nothing of it runs
+    unless asked for. Not chosen: SP-5's start after every build, as written (the pool would then be in every run of the next
+    sessions before the owner has seen it).
 
 ## 10. The audit of 27 November
 
@@ -665,3 +674,60 @@ section 3's 10.7 s timed, takes 5.8 to 6.1 s now; the rest is PowerShell, the sc
   the work of the runs (about 1100 process-seconds), which only stage 2 (SP-6, a job's world) and stage 3 (SP-8) make smaller. The
   35% was estimated from the four tools' times before SP-2, much of which SP-2 itself took away. The owner accepted stage 1 with the
   criterion "the queue kept full" (decision 10).
+
+## 12. Stage 2, SP-6 first (28 November, the night, the owner away)
+
+By decision 54 stage 2 comes after R3; R3 was built in the night and waits for the owner's look, and SP-6 needs nothing of the owner
+and nothing of SP-4 (a process of a queue lives for its batch: the suite's 174 jobs are about 22 a process), so it was taken first.
+
+- **Built:** `-ScenarioKeep=<file>` (`UScenarioBatchSubsystem::KeepAssets`): after the warm-up a queue's process loads the assets
+  `Tools\batch_keep.json` lists and holds them for its life, a fixed set whatever its jobs: the NPC's body and face meshes and its
+  physics asset. `Get-QueueArguments` passes it to every queue's process; `SANDBOX_KEEP_ASSETS=0` runs without it; a rendered
+  process (films, shots, the headset) keeps nothing (after the third reading: kept meshes keep their textures streamed in, so a
+  rendered job's pictures could depend on the jobs before it, and in the headset the load is a hitch). Each job's
+  `run.log` now says how much memory its process uses as the job ends (read only). The clips are not in the set: their reading showed
+  no build in the logs, and the set grows only if a measurement asks for it.
+- **Measured** (`docs/testing.md`, "Faster checks, SP-6"): a job's world in 0.036 s instead of 0.38 (`LoadMap`, `drop_npc`), no
+  `AssetCompile SkinnedAsset` line in a job's log; the suite in 56.8 s instead of 64.2 (8 at a time); the suite's 174 hashes those of
+  the baseline `r3rev2` with eight processes and with one (each job after another job than before: the order's check); in one process
+  over its 174 jobs the memory went from 1804 to 1862 MB, most of it in the first ten jobs. **Every tool's hashes** (`bench.ps1
+  -Hashes`, `keep0` with `SANDBOX_KEEP_ASSETS=0` and `keep1` against it): 1677 runs and files with the same hashes, the verdicts the
+  same in 25 of 25 tools; every tool once in 762 s instead of 836 (the suite 64.4 to 56.1 s, the matrix 43.7 to 36.5, the stand of
+  three seeds 81.3 to 73.8, the scorecard 104.7 to 91.7, the check set of seven tools 230.8 to 200.9; a call of one or two runs as
+  before, its process starts for that run alone).
+- **SP-6's acceptance:** a job's world in 0.15 s or less, met (0.036); `AssetCompile SkinnedAsset` only before a process's first job,
+  met; the suite's hashes the same in two orders, met (eight processes and one); a process's memory 200 MB or less over 500 jobs, 58 MB
+  over 174 and levelling off (500 not run). For the owner's look at the stage's check.
+- **SP-4, the pool, built the same night as far as it is started by hand** (planned from the code first: `docs/recon/sp4_plan.md`):
+  `Tools\pool.ps1 -Start [-Processes 8] [-IdleS 600] | -Stop | -Status`. Its processes (`-ScenarioPoolIdleS`, `-ScenarioPoolPrint`)
+  wait in the start map when their queue (`Saved\Pool\queue`) is empty, sleeping 0.1 s a frame, and exit when they have waited that
+  long, on a file `stop` or `yield_<pid>`, when `Saved\Pool\pool.json` no longer names the fingerprint they started with, after 500
+  jobs, over 2.2 GB, or with under 1.5 GB of the machine free (why: `exited_<pid>.txt`). `Invoke-ScenarioBatch` and `scenario.ps1`
+  hand a live pool with today's fingerprint (the project's DLLs, `Config\*.ini`, the warm-up, the kept assets, the motion library,
+  the pose database) their headless jobs through the check set's `Submit-CheckJobs`, and top it up while their jobs wait; runs that
+  must be alone, rendered ones and those with console variables keep processes of their own; a start with no room asks the pool's
+  idle processes to give way (`Test-EngineRoom`, `Request-PoolYield`); `SANDBOX_NO_POOL=1` ignores a pool. **SP-5 in part:**
+  `build.ps1`, `gen-assets.ps1`, `bake-lighting.ps1`, `bench.ps1` and every run in the headset stop the pool first (once the jobs in
+  it are done, 5 minutes at most, then they refuse); a build does not start it again (decision 13).
+- **Measured:** an idle pool process 0.6 to 1.4% of a core (3 to 4.5% when it slept 0.05 s a frame), 1.69 GB, flat over 10 minutes;
+  the suite through the pool 48.4 s (57.1 s without), its 174 hashes those of `r3rev2` in a fresh pool, after 10 minutes idle and
+  after jobs on another physics asset; one scenario 2.6 s (7.2 s); six more tools through the pool with every run's hashes those of
+  the bench `keep1` (the matrix 30 s instead of 37, the knockdowns 4 instead of 11, the grab's pulls 25 instead of 42); a build with
+  the pool running stops it and builds. The rest in `docs/testing.md`, "Faster checks, SP-4". **SP-4's acceptance:** one scenario in
+  4 s or less, met; the suite in 45 s or less, not met (48.4); the hashes in a fresh pool, after 10 minutes idle and after another
+  physics asset, met; near the end of 500 jobs, not run; an idle process under 2% of a core, met, its memory flat, met. `-Parallel 1`
+  with several jobs and `repeatability.ps1` keep processes of their own.
+- **Read by an independent reader and put right** (three blocking defects and five others in the scripts, then one found by a test:
+  the pool's processes held their starter's output open; `docs/testing.md`, "Faster checks, SP-4"): a stop takes no new batches
+  first (`draining`), refuses while a process still runs, and a batch whose pool ended takes its untaken jobs back; the pool's file
+  under a lock and replaced whole; processes known by id, name and start time; batch names with a GUID; no pool with
+  `SANDBOX_SEPARATE_PROCESSES=1`; one idle process at a time gives way. Read again after the fixes: nothing blocking; its edges put
+  right (a job taken back under its lock as a process takes one; a stop that waits for a top-up under way and looks again under the
+  lock; no job taken after a stop) and checked: a pool stopped under a batch ran 6 of its 40 jobs, took 34 back, every hash as
+  without a pool.
+- **Not done:** the start after a build (SP-5, decision 13); a check set beside a pool makes the pool's idle processes give way
+  rather than using the pool's queue; the fingerprint has no content assets (gen-assets.ps1 and bake-lighting.ps1 stop the pool;
+  `metahuman.ps1` and the fetch scripts do not: stop it by hand before them), nor the engine's build or the `.uproject`; the fingerprint
+  is not written into `metrics.json` nor a tool's runs on two fingerprints warned of; small batches do not go before a long one (one
+  scenario waits behind another session's suite); a stop does not name whose batches it waits for; `scenario.ps1` through the pool
+  has no `-TimeoutSec`; the memory's and the 500 jobs' exits are not run to their end.

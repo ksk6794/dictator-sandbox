@@ -1,6 +1,7 @@
 #include "SandboxAnimInstance.h"
 
 #include "Animation/AnimNodeBase.h"
+#include "AnimationRuntime.h"
 #include "BonePose.h"
 #include "TwoBoneIK.h"
 
@@ -126,6 +127,7 @@ void FSandboxAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 						Added.Weight = FMath::SmoothStep(0.0, 1.0, FMath::Clamp(Added.Weight, 0.0, 1.0));
 						Added.bJointBlend = true;
 					}
+					Added.bAnatomicHinge = Instance->AnatomicHinge.Contains(Limb.Target.EndMeshBoneIndex);
 				}
 				if (const TPair<FSandboxJointLimits, FSandboxJointLimits>* Range = Instance->Ranges.Find(Limb.Target.EndMeshBoneIndex))
 				{
@@ -304,9 +306,34 @@ void FSandboxAnimInstanceProxy::PlaceLimbs(FPoseContext& Output) const
 				return FQuat(FMatrix(X, Y, FVector::CrossProduct(X, Y), FVector::ZeroVector));
 			};
 			// The knee bends toward +y: thigh down and forward, shin down and back, so the hinge is -x.
-			const FVector HingeBefore = HingeOf(KneeBefore - Hip, EndBefore - KneeBefore, Limb.HingeFallback);
+			FVector HingeBefore = HingeOf(KneeBefore - Hip, EndBefore - KneeBefore, Limb.HingeFallback);
 			const FQuat Least = FQuat::FindBetweenVectors(KneeBefore - Hip, KneeNow - Hip);
-			const FVector HingeNow = HingeOf(KneeNow - Hip, EndNow - KneeNow, Least.RotateVector(HingeBefore));
+			FVector HingeNow = HingeOf(KneeNow - Hip, EndNow - KneeNow, Least.RotateVector(HingeBefore));
+			if (Limb.bAnatomicHinge)
+			{
+				// An elbow bends about one axis of its upper arm (R3's catch, FSandboxLimbTarget::bAnatomicHinge): before, that axis as the
+				// reference pose has it (bent there), carried by the upper arm; after, across the plane the pole put the elbow in, which for the
+				// solved arm is the same flexion's axis. Neither depends on the pose's bend or on the least rotation from the pose's upper arm
+				// to the solution's: signed against that rotation's fallback, the hinge turned over whenever the rotation was near half a turn,
+				// and at the threshold where a nearly straight elbow takes its own axis (the catch: up to 173 degrees in a frame).
+				const FReferenceSkeleton& Reference = Container.GetReferenceSkeleton();
+				const FTransform RootRef = FAnimationRuntime::GetComponentSpaceTransformRefPose(Reference, Container.MakeMeshPoseIndex(Root).GetInt());
+				const FVector MiddleRef = FAnimationRuntime::GetComponentSpaceTransformRefPose(Reference, Container.MakeMeshPoseIndex(Middle).GetInt()).GetLocation();
+				const FVector EndRef = FAnimationRuntime::GetComponentSpaceTransformRefPose(Reference, Limb.EndMeshBoneIndex).GetLocation();
+				// Only from a reference pose that bends the elbow (this mesh's by 37 degrees): of a straight one the axis would be noise.
+				const FVector UpperRef = MiddleRef - RootRef.GetLocation();
+				const FVector LowerRef = EndRef - MiddleRef;
+				const FVector AcrossRef = FVector::CrossProduct(UpperRef, LowerRef);
+				const bool bRefBent = AcrossRef.Size() >= 0.2 * UpperRef.Size() * LowerRef.Size();
+				const FVector Flexion = RootRef.GetRotation().UnrotateVector(AcrossRef.GetSafeNormal());
+				const FVector Before = RootBefore.GetRotation().RotateVector(Flexion);
+				const FVector Now = FVector::CrossProduct(Bend, Line).GetSafeNormal();
+				if (bRefBent && !Before.IsNearlyZero() && !Now.IsNearlyZero())
+				{
+					HingeBefore = Before;
+					HingeNow = Now;
+				}
+			}
 			const FQuat RootTurn = Basis(KneeNow - Hip, HingeNow) * Basis(KneeBefore - Hip, HingeBefore).Inverse();
 			const FQuat MiddleTurn = Basis(EndNow - KneeNow, HingeNow) * Basis(EndBefore - KneeBefore, HingeBefore).Inverse();
 			RootTransform.SetRotation((RootTurn * RootBefore.GetRotation()).GetNormalized());
@@ -427,6 +454,12 @@ void USandboxAnimInstance::MoveLimbTarget(int32 EndMeshBoneIndex, const FVector&
 	State->Target.EndFrame = EndFrame ? *EndFrame : FQuat::Identity;
 	State->Target.EndLimitWeight = FMath::Clamp(EndLimitWeight, 0.0, 1.0);
 	State->Target.ReachShare = FMath::Max(ReachShare, 0.0);
+}
+
+double USandboxAnimInstance::GetLimbGoalWeight(int32 EndMeshBoneIndex) const
+{
+	const FLimbState* State = LimbStates.FindByPredicate([EndMeshBoneIndex](const FLimbState& Limb) { return Limb.Target.EndMeshBoneIndex == EndMeshBoneIndex; });
+	return State ? State->ToWeight : 0.0;
 }
 
 double USandboxAnimInstance::GetLimbWeight(int32 EndMeshBoneIndex) const

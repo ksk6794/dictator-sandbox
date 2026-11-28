@@ -120,6 +120,16 @@ struct SANDBOXBODY_API FSandboxBodyProbe
 	static double TimeToFloorS(double HeightCm, double VzCmS, double GravityCmS2, double RadiusCm);
 
 	/**
+	 * R3's catch fall (docs/recon/r3_plan.md, item b): where the floor will be, as a direction in the chest's own frame. The chest's
+	 * orientation at impact is foreseen as ChestWorld tipped, about the horizontal axis across Way (world, a unit vector over the floor),
+	 * until its up (ChestUpLocal, the body's up in the chest's frame) leans TiltDeg from vertical toward Way; the floor's direction then
+	 * (down, plus Ahead along Way for each unit down) is taken into that foreseen frame. Held in the chest's frame, it moves with the trunk
+	 * and asks the arm for the pose relative to the trunk that the impact needs. A unit vector; straight down in the chest's frame
+	 * (-ChestUpLocal) without a way.
+	 */
+	static FVector CatchDirectionLocal(const FQuat& ChestWorld, const FVector& ChestUpLocal, const FVector2D& Way, double TiltDeg, double Ahead);
+
+	/**
 	 * An angle from -pi to pi taken on Reference's side of the seam at pi: itself, or 2 pi less or more when the two lie more than half a
 	 * turn apart, so that a mean of the two is between them (two feet at 175 and -175 degrees mean 180, not 0). Radians.
 	 */

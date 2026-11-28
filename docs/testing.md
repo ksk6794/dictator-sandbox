@@ -6611,6 +6611,326 @@ changed files (git's warnings under `Stop`); the check set's verdict was held to
 data passed; a note of the queue could become a tool's first line (notes go to the error stream now). After the fixes the whole
 battery again: 1637 runs and files with the same hashes, 25 of 25 verdicts; the stage check above is of the final code.
 
+### R3: the fall as the references drive it, items a to f (27 to 28 November, the night, the owner away; decision 54)
+
+The plan is `docs/recon/r3_plan.md` (read before it: `docs/pitfalls.md`, falls and the get-up, muscles and poses, measuring, the solver;
+here, "N6 step 4", "N6 step 5", "N6, the reach on today's body", "R3, step 1", "R3, step 2"). Baseline `r3base` (the files of 27 November
+evening: 168 scenarios; run hashes `r3base_seeds`, `r3base_matrix`). Every item is behind a switch of its own, 0 in the files; with all
+of them 0 the suite keeps every hash of `r3base` (168 of 168, and six new scenarios), 62 unit tests (the catch's direction, below).
+
+**What was built** (`USandboxBodyController::UpdateFallRun`, `EndFallRun`, `ReleaseCatch`, `AddFallTurns`, `SetPalmAxes`; the
+arithmetic of the catch in `FSandboxBodyProbe::CatchDirectionLocal`, unit-tested; `control.fall.r3` in every run with a fall, read
+only): a fall's run begins at its first sensed tick (`FSandboxFallSense`) and keeps the way, the time to impact sensed then, each
+hand's first touch of the world and the palm's angle to the floor at it.
+
+- **a, `fall.arm_curve`:** the arms' tone a curve of the sensed time to impact (loose far, braced near, soft and damped once a hand, a
+  forearm or the trunk has met the world), through the tone's follow. Measured on the scorecard's 24 falls (8 blows of 200 N*s, 16
+  shoves by hand) with the catch and the head on: bracing near the floor (2.0 to 3.0 times the falling arms, from 0.2 or 0.5 s)
+  brought a hand ahead of the chest in the forward falls by hand (C14 83%) but the head struck in 27% of the falls by hand, falls
+  rested after up to 4.6 s and gained up to 41 J (the braced arms hold the body up, then give); loose far (0.6) the hands came too late.
+  **The values kept are flat until the touch** (far and braced 1.0) **and soft at the touch** (0.4 of the stiffness, 2.5 times the
+  damping): what the curve does in the files is the giving way at the touch.
+- **b, `fall.catch`:** each arm placed in the chest's frame toward where the floor will be: the chest's orientation at impact foreseen
+  as the chest's now tipped along the sensed way to `catch_tilt_deg` (70) from upright, the floor's direction from the shoulder then
+  (down, and `catch_ahead` 1.0 along the way for each unit down) held in that foreseen frame, the hand at 0.9 of the arm's length. The
+  target moves with the trunk, never with the world (N6's mistake). Measured: **the catch backward** (the hands behind the hips) gained
+  37 to 50 J in the falls backward (as N6's reach did, 83 J): `catch_back` 0, a fall backward keeps the written pose's arms (its
+  energy then at most 32 J, today's). The rest is what made the arm's target jump, found by the suite's and the falls' largest target
+  step (`control.pose.target_step_max_deg`, today 102.2 degrees in the suite and under 35 on 96 falls) and put right one by one:
+  - a body the run laid down (`body.laid_deg`) entered Falling at its first tick and reached out (every `getup_roll_*`, `getup_drag_*`
+    failed with R3 on): a fall that begins at the controller's first tick is not run (nor, since then, the blend of `fall.blend`, which
+    turned `getup_roll_right_front` the same way);
+  - a catch begun with no time (a body pressed down as it got up, dropped head first, a fall whose way turned from backward to a side
+    0.26 s in) swung its arm to a target it could not reach: a catch begins only while the time to impact is at least `catch_blend_s`;
+  - a body that sank forward and then tipped back turned its way round in 0.4 s (`tune_live_*`): an arm is let go once the way has
+    turned more than `catch_turn_deg` (60; at 90 one scenario still turned the elbow over) from where it was aimed;
+  - blended by where its hand is (the hand target's way) the hand passed near its shoulder coming in and going out and the elbow's
+    target turned over by 170 to 178 degrees in a frame: the arm is blended by its joints' turns, as the guard's is (`bJointBlend`);
+  - on 96 falls (24 directions by hand at 3.5 and 4.5 m/s, 24 blows of 160 and 240 N*s) the upper arm's target still turned over by up
+    to 172 degrees in 19 to 22 of them: the elbow's pole, "back and out", lay along an arm reaching back and out. The pole is now back
+    and out unless that lies within 0.8 of the line from the shoulder to the target, then out and down or out and up, whichever lies
+    more across it (0 of 96 with the catch alone);
+  - laid over `fall.blend`'s reaching poses, 13 of 96 still turned over: the two-bone placement signed the elbow's hinge against the
+    pose's hinge carried by the least rotation from the pose's upper arm to the solution's, which is undefined near half a turn. For an
+    arm blended by its joints (the guard's and the catch's only) the hinge is now the bend's own axis (an elbow bends one way);
+    `FSandboxAnimInstanceProxy::PlaceLimbs`. Measured on the guard (its six scenarios in `Saved\Recon\n5`, the guard raised in four):
+    the same hashes with the rule and without it (replaced after the second reading, below, by the catch's anatomical hinge);
+  - let go, the target stayed at its last point of the world while the lying body went on moving: it is carried in the chest's frame
+    until its weight is gone (`ReleaseCatch`, `FFallRun::bReleasing`).
+  After them: the suite with R3 on has its largest target step at 94.7 degrees (102.2 today), and of 120 falls (the 96 and the suite's
+  24 falls) one turns over (145 degrees, a blow of 240 N*s from behind and to the left, as the catch is let go when the body lies).
+  Letting the catch go as the trunk meets the floor (`fall.catch_let_go_at_trunk` 1) removed that one too but kept the sideways
+  knockdowns from rest (6.3 s, and one never): 0 in the files. **The joints' blend's price, decision 56:** blended by where the hand is,
+  the head struck in 9% of the scorecard's falls by hand; by the joints 27%.
+- Built after an independent reading of the diff (28 November, 00:00; every finding real, each put right neutral at 0; the turn's
+  twist checked afterwards on two films, `Saved\Films\r3_item_turn_back`, `r3_item_turn_fwd`: with it the leaning side's upper arm and
+  collarbone meet the floor before the trunk, the right going back and right, the left going forward and left): a catch whose gate closed in the middle of a fall (the way turned backward, the switch went off) left its arm on a point of the
+  world at full weight (now let go); the guard's arm, R2's held arm or the last catch's arm still easing out was taken over with a jump
+  (now the side the guard holds at the fall's start is left alone, and a catch begins only on a hand no placement holds); `fall.aim` and
+  `fall.catch` together fought over the hands (no catch with `fall.aim` on); the turn's twist was the same for falls forward and
+  backward (now the other way round forward), and a way straight back picked a side from a hair's lean (`fall.turn_side_min`); a run
+  that began again while the last one's turns still showed made them jump (now they carry on); a catch let go without a chest went to
+  the world's origin (now to its last point); the three new poses were not checked for their ranges, and `catch_reach` and the blend
+  times had no lower bounds (now 0.5 and 0.02 s). The reading said the head's turn is on the `head` joint; it is on `neck_01`, the
+  gaze's joint, and the documents say so (measured as it is). The scenarios were sharpened: a hand first and ahead of the chest by
+  `hands_ahead_first`, the head by `head_struck` or its speed, every one held to a target step of 110 degrees, the C26 ones to a hit
+  or a hold that reached the body while an arm caught (`control.fall.r3.hits_while_catching`, `held_while_catching`, new and read only);
+  `fall_catch_back` became `fall_back_r3` (a fall backward is not caught).
+- Built after a second independent reading of the final diff (28 November, 01:15; no defect with the switches at 0 but the one
+  below; each finding checked in the code, the real ones put right):
+  - the elbow's own hinge (the rule two items up) took the bend's own axis only above a sine of 0.15 and the old sign below it, so the
+    hinge could still turn over as a nearly straight elbow crossed 8.6 degrees, and it reached the guard's arm with R3 at 0 (the guard is
+    joint-blended; no suite scenario has the guard on). Now the rule is the catch's alone (`FSandboxLimbTarget::bAnatomicHinge`, set by
+    `SetLimbBend` only for a catching or released arm) and the hinge is anatomical: before the placement, the axis the reference pose
+    bends the elbow about, carried by the upper arm; after it, the axis across the plane the pole puts the elbow in. Neither depends on
+    the pose's bend. The guard's arm is the code of `r3base` again;
+  - C26's measures counted for as long as an arm was catching, which with `catch_let_go_at_trunk` 0 lasts until the body lies: a hit after
+    the hands had landed passed as "while the arms reach". They count now only before a hand or the trunk has met the floor, and for the
+    whole Falling state (a run begun again after a hold had reset them). The three C26 scenarios still pass as they were timed (the
+    second blow 0.2 s before the first hand's touch, the hold 0.3 s before it); their push is now across the fall's way, not from its front;
+  - the catch scenarios asked for a hand first, which the written fall's poses give without any catch (C14 by blows 100% at `r3base`):
+    each R3 scenario with a catch now also asks for an arm that caught (`control.fall.r3.arms_caught`, new and read only);
+  - a released arm compared its weight on the first tick with 1 instead of the weight it had, and a placement that took the hand in the
+    same tick before the fall's run, or at a weight held flat, was overwritten by the release's point (one tick, or for good): the release
+    now ends as soon as the hand's goal weight is above 0 (`USandboxAnimInstance::GetLimbGoalWeight`), and starts from its weight;
+  - a catch let go as its gate closed went from last tick's point (a few centimetres off in the chest's frame): now from the chest's;
+  - the curl's pose could stay after a run that ended while the body fell (held up, posed from outside): the fall's pose is asked again;
+  - `catch_follow_s` and `head_follow_s` had no lower bound (now 0.02 s), `turn_side_min` 0 turned a way with no side to the right (now at
+    least 0.01), and `palm_share` above 0.67 asked the wrist beyond its 60 degrees (now at most 0.67);
+  - kept as found: `fall_catch_forward` asks for the head's speed at its touch (2.0 m/s), which a fall whose head never touches reads as
+    null and fails (said in the generator); `catch_max_torque_scale` other than 1 changes the arms' cap in a frame (1 in the files); the
+    pole is chosen once, from the body's shoulder rather than the pose's.
+  With the switches at 0 the suite keeps all 168 hashes of `r3base` (171 of `r3after`); of the six R3 scenarios three have other hashes
+  (`fall_catch_forward`, `fall_catch_side`: the hinge; `fall_phase_catch_push`: its push), and the other three the same hashes, their
+  catching arm bending as before about the same axis.
+- **c, `fall.head`:** the neck braced while falling (3 times its stiffness, twice its damping) and the neck's joint the gaze turns
+  (`neck_01`) turned away from the floor by the way (the chin in 35 degrees going backward, the head back 50 going forward, the ear 35
+  toward the upper shoulder going sideways), on top of the fall pose's own turn of it, eased in and out over the fall pose's blend. On
+  the 96 falls it is the item that keeps the head off the floor most: alone, the head struck in 22% of the falls by hand (44% today).
+- **d, `fall.curl`:** the body curled up (`poses.fall_curl`) when the time to impact at the fall's first tick is under `curl_below_s`,
+  or (`fall.curl_from_ns`, the owner's "a blow of 200 N*s") when the hit that felled it was at least that. **Not proposed:** the time does
+  not tell a blow of 200 N*s from a shove by hand (0.25 to 0.40 s at the first tick for both); at 0.3 s only the two sideways blows curl
+  (the head's speed by blows 0.18 m/s instead of 0.44, 26.9 J instead of 15.3); at 0.45 s every fall curls and the head strikes in 45%
+  of the falls by hand; by the blow (150 N*s, every blow of 160 and 240 curls) the head struck in 34% of the 41 falls by blows (27% with
+  the catch) at 5.7 m/s at the 90th percentile, and a fall gained 67 J: the arms in, nothing takes the trunk's speed.
+- **e, `fall.sit`, `fall.turn`:** sitting down going backward (`poses.fall_sit` laid on top, in over `sit_blend_s`; or, with the pose's
+  legs at 0, `fall.sit_leg_stiffness` lets the knees give under the weight) and turning toward a side when there is time
+  (`poses.fall_turn`). **Not proposed:** the sit as written gained 49 J (the legs at 200 N*m/rad folding fast), at half its angles 37.5
+  J and a rest of 3.54 s, by the legs' give (0.4) no head figure better; the turn needs 0.35 s at the first tick and a way leaning to a
+  side, and where it ran the head struck more (28% by hand on the 96 falls, 38% with 0.25 s).
+- **f, `fall.palms`:** the fingers are spread in a fall since decision 53; each catching hand is bent back at the wrist by `palm_share`
+  of a right angle so that, with the arm toward the floor, the palm faces it. The palm's angle to the floor at the hand's first touch, in
+  the median of 32 touches: 81 degrees without, 74 at 0.4, **63 at 0.6 (kept)**, 60 at 0.8 (the dive by hand's head 6.0 m/s either way).
+  Found on the way: the palm's axes were worked out at the first touch only, so the turn did nothing before it (the measure said so: the
+  same 81 degrees with every share); now at the fall's start.
+
+**Measured on more falls before believing the knockdowns.** The eight knockdowns by blows said the head struck in 0 of 8 with R3
+on (5 today); on 41 falls by blows of 160 and 240 N*s from 24 directions it struck in 27% (29% today), at 4.0 m/s at the 90th
+percentile (5.2). Eight falls had been the few where the catch helps most. The table below gives both.
+
+**R3 on, for the owner: A** (`fall.catch`, `fall.arm_curve`, `fall.head`, `fall.palms` 1; the files' values above) **and B** (A and
+`fall.blend` 1, decision 37's switch), every figure measured after the last change of the code and the files, the second reading's
+fixes included (`Saved\Checks\r3Ag2`, `r3Bg2`, `Saved\Matrix\knockdowns_by_hand_r3Ag2`, `_r3Bg2`, `Saved\Matrix\getup_seeds\r3Ag2_*`,
+`r3Bg2_*`; the 96 falls and the suite's 24 `Saved\Sweeps\r3big9`; the same before those fixes: `r3Afinal`, `r3Bfinal`, `r3big8`):
+
+| | R3 off (`r3base`) | A | B (A and `fall.blend`) |
+| --- | --- | --- | --- |
+| Scorecard C14 by hand / by blows (limit 80%) | 83% / 100% | **83%** / 100% (50% before the hinge) | **67%** / 100% |
+| Scorecard C15 by hand / by blows (limit 15%) | 55% / 63% | **9%** / **0%** (27% / 13%) | **9%** / 25% |
+| Scorecard C16 by hand / by blows (limits 2.0 / 3.2 m/s) | 4.16 / 3.00 m/s | 5.38 / **0.19** (5.95 / 1.09) | **0.52** / **1.56** |
+| C17 by blows: rest, energy, into the floor | 1.87 s, 14.2 J, 1.28 cm | 2.94 s, 15.3 J, 1.75 cm | 2.30 s, 20.1 J, 1.02 cm |
+| Knockdowns by hand: head strikes; rest; energy | 3 of 6; 2.53 s; 32.1 J | 1 of 6; 2.42 s; 27.5 J | 1 of 6; 2.39 s; 29.6 J |
+| 96 falls by hand: C14, C15, C16 | 61%, 44%, 5.00 m/s | 44%, 16%, 5.52 (33%, 19%, 5.71) | 72%, 12%, 2.96 |
+| 41 falls by blows of 160 and 240 N*s: C14, C15, C16 | 62%, 29%, 5.23 m/s | 85%, 29%, 4.02 | 75%, 20%, 3.21 |
+| The slowest rest on those (by hand, by blows) | 3.88, 3.56 s | 2.49, 3.96 s | 2.91, **6.43** s |
+| C25 (command jump); the largest target step | 439 N*m; 102.2 deg | **439**; 88.9 (a get-up's; in a fall 51.4) | **439**; 89.5 (a get-up's) |
+| Push matrix | 160 | 160, every outcome the same | 160, every outcome the same |
+| Stand of 150: standing, first attempt | 150, 143 | 150, **144** | 150, 142 |
+| C19 given up; poses over 1.0 s; C21 medians; C27 within both | 7.4%; 0; 3.20 s; 148 | 3.8%; 0 (longest 0.30 s); 2.75 to 2.86 s; 145 | 6.3%; 0; 3.20 s; 147 |
+| One hand: pulled free (decision 13: 20 to 60) | 31 | 46 | 55 |
+| Two hands: pulled free (at most 5) | 0 | 0 | - |
+| Pressed with 300 N: stood under it | 98 | **97** | **128** (4 of 150 not standing at the end) |
+| The suite with the switches by `-Tune` | 168 | 174 but the six R3 scenarios' `tuning_changes`; 49 with an R3 fall other hashes, 119 the same | the same |
+
+**What the anatomical hinge changed** (the only change of code between `r3Afinal` and `r3Ag2`): the catching elbow no longer turns
+over at the threshold of its bend, and of the 120 falls none has an arm's target step over 52 degrees (one of 145 before). On the
+scorecard A now meets C14 and C15 by hand; on the larger set of falls by hand the head strikes in 16% (19% before, 44% with R3 off) and
+a hand is first and ahead in 44% of the 18 falls that are not backward (61% with R3 off: the shoves forward and to the front's sides,
+below). B's slowest rest by blows is 6.43 s (`knockdown_spine_04_345_160`, 2.0 J gained; not looked at on film), against 4.54 before
+the fix; A's 3.96 s is the same fall as before (`_315_160`), and three blows of 160 N*s rest after more than 3 s in A (3.96, 3.28, 3.10).
+
+**The full scorecard with A** (`Tools\natural.ps1 -Label r3A_full -Tune <A> -Baseline r2_night_full`, the stand of 150 included;
+04:55): 7 criteria within the proposed limits (C7, C14, C15, C17, C19, C20, C21), 10 outside, 9 not measured or not judged; against
+`r2_night_full` (the night of 26 to 27 November, before R2's rest was on) C15 has come in by R3, C19 and C20 by R2's rest; C16 is out
+by the forward shove by hand alone (5.38 m/s); C25 439 N*m, read from the suite with R3 off (with A on it is 439.3 in the check set's
+suite, `r3Ag2`).
+
+**The catch's two aims, swept after the fix** (never swept before; A with one value changed, on the same 120 falls, `Saved\Sweeps\r3ahead`,
+`r3ahead2`): by hand C14 of 18, C15 of 32, C16; by blows C14, C15, C16; the slowest rest by blows.
+
+| `fall.catch_ahead` / `catch_tilt_deg` | By hand | By blows | Rest |
+| --- | --- | --- | --- |
+| 0.3 / 70 | 0%, 22%, 4.74 | 79%, 27%, 5.13 | 4.20 s |
+| 0.6 / 70 | 22%, 16%, 4.92 | 86%, 27%, 4.56 | 3.29 s |
+| **1.0 / 70 (the files)** | **44%, 16%, 5.52** | **85%, 29%, 4.02** | **3.96 s** |
+| 1.2 / 70 | 50%, 19%, 5.52 | 85%, 27%, 3.94 | 3.80 s |
+| 1.5 / 70 | 72%, 25%, 5.55 | 75%, 27%, 3.60 | 2.86 s |
+| 1.0 / 50 | 17%, 22%, 5.72 | 79%, 27%, 4.78 | 3.93 s |
+| 1.0 / 78 | 67%, 25%, 5.46 | 81%, 27%, 3.81 | 5.28 s |
+| 1.0 / 85 | 72%, 25%, 5.46 | 71%, 22%, 2.68 | 3.93 s |
+
+The hands aimed further along the way are first and ahead in more of the falls by hand, and the head strikes in more of them (three
+falls of 32 between 16 and 25%): the trade is C14 against C15, and none of the values is better in both. The files keep 1.0 and 70.
+
+**The forward falls by hand, item by item** (the 14 shoves at 3.5 and 4.5 m/s from 45 to 135 degrees of the 96, and the scorecard's
+forward shove; `Saved\Sweeps\r3dive`): C14 of 15, C15 of 15, C16 at the 90th percentile.
+
+| Switches | C14 | C15 | C16 |
+| --- | --- | --- | --- |
+| None (today) | 73% | 60% | 5.00 m/s |
+| The catch alone | 40% | 93% | 5.33 |
+| The head alone | 53% | 53% | 5.30 |
+| A without the head (catch, curve, palms) | 53% | 100% | 5.41 |
+| A | 53% | 40% | 5.52 |
+| A, the head turned back 20 degrees going forward (50) | 53% | 53% | 5.47 |
+
+Going forward the catch alone is worse than the written forward pose's arms (up and forward, the elbows bent 50 degrees), and the head
+item carries A. Tried from that: **no catch in a fall that goes mostly forward** (its forward share 0.5 or more; a switch
+`fall.catch_forward`, built for the measurement): on the 120 falls with A, by hand C14 39% (44%), C15 28% (16%), the slowest rests 5.23
+s by hand and 5.87 by blows (2.49, 3.96). Worse with the rest of A on; taken out again (`Saved\Backups\r3_catch_forward_full.patch` is
+the whole diff with it), every hash as before.
+
+**The slow rests after blows of 160 N*s** (the 24 blows of 160 N*s of the 96, `Saved\Sweeps\r3b160`; the time from the fall's start to
+rest): with A three of them rest after more than 3 s, 060 3.28 s, 120 3.10, 315 3.96; with nothing on 2.03, 2.04, 1.46. One item off
+at a time: without the catch 2.17, 2.19, 1.77; without the head 3.26, 3.23, 2.28; without the arms' curve 3.08, 3.24, 1.54. The catch
+is what keeps them moving. On film (`Saved\Films\r3_rest315_A`, `r3_rest315_off`, 3.6 to 7.2 s) the body of 315 lands on its left side
+in both; with A the left arm is out on the floor where it caught, and in the 0.3 s after the body is said to lie (4.33 s) the body rolls
+over that arm onto its front and settles slowly; without R3 it stays on its side. Tried: the catching arm let go more slowly as the
+body lies (0.5, 1.0, 2.0 s instead of the fall pose's 0.15; a value built for the measurement, `Saved\Sweeps\r3rel`): longer still
+(060 3.47, 3.74, 4.42 s; 315 4.02 to 4.07). Taken out again (`Saved\Backups\r3_catch_end_release_full.patch`). Tried last (04:30):
+**the catching hand's target settled where the hand landed** (`fall.catch_settle`, built for the measurement: once a hand has met
+the world its target goes over `catch_follow_s` to where the hand is, in the chest's frame; `Saved\Sweeps\r3settle*`). As first
+built the rests came down (one fall over 3 s, 3.12 s) and C15 by hand to 12%, but two blows of 240 N*s turned an arm's target over by
+164 degrees in a frame (a hand that slid past its shoulder); bounded (not nearer the shoulder than 0.6 of the arm, not more than 45
+degrees from the catch's aim) no target over 89 degrees, two blows over 3 s (3.51, 3.33; 315 at 2.93), C15 16% by hand and 27% by
+blows, C14 by hand 39% (44%): no better on the whole. Taken out again (`Saved\Backups\r3_catch_settle_full.patch`); the suite after it
+174 of 174 with the hashes of `r3rev2`, 62 unit tests. Not put right: written as known for A (three of the 41 blows, all of 160 N*s,
+the slow tips).
+
+With every switch at 0 the suite keeps all 168 hashes of `r3base` (and the six R3 scenarios pass, switching A on themselves; baseline
+`r3after`, 174), 62 unit tests. **Not met at the gate:** for A, C16 by hand (5.38 m/s against 2.0), and on the larger set C14 by hand
+(44%) and the rest within 3 s after three blows of 160 N*s; for B, C14 by hand on the scorecard (67%) and the rest after two blows (6.43
+and 4.98 s). The forward shove by hand (two fists through the back at 4 m/s, the body thrown nearly level, its arms dragged back by the shove) reaches
+the floor 0.31 s after it becomes a fall: no arm of the falling body's strength gets forward in that time, braced or not, and the face
+meets the floor at 5 to 6 m/s in every variant; C14 by hand is lower for the same reason in the forward-diagonal shoves (the catch asks
+the arms forward and they arrive behind the chest, where the written forward pose's arms arrived under it). With B the reaching poses
+already have the arms forward and C14 by hand on the 96 falls is 72%. **Worse with a reason (decision 7):** B's press holds fewer
+bodies down (128 of 150 stand under 300 N, 98 today): the bodies lie with their arms where the reaching poses put them and get up under
+the hand more often; A keeps 97. The knockdowns' slowest rest with A is 2.94 s (1.87 today; within the 3 s): the body lands on its
+side on the catching arm and then rolls slowly toward its front over that arm, where today it stays on its side (videos
+`Saved\Films\r3A_kd180`, `r3A_kd090`; the same roll as the blows of 160 N*s above). (A's pose held 2.98 s on the stand before the hinge's fix is gone: the longest now 0.30 s.) The C26
+scenarios pass: `fall_phase_catch_hit` (a second blow of 40 N*s as the arms reach, 0.2 s before the first hand meets the floor), `_push`
+(30 N*s over 0.25 s across the fall's way as it goes down), `_hold` (a hand that follows the left forearm takes hold of it as it falls
+and holds 1.2 s; the held arm cannot catch and the head meets the floor at 2.4 m/s). Videos: `Saved\Films\r3A_*`, `r3B_*`, `r3_item_*` (`pair.mp4`, the left side as named on it).
+
+**Mistakes of mine in this part:** the first figures were taken on the eight knockdowns and called the head kept off the floor (0 of
+8); 41 falls by blows said 27%. A tuning value went into `body.json` while a check set ran (for code not yet built): the set's three
+stands found no falls and were run again (`docs/pitfalls.md` has had this since 27 November). The palm's turn did nothing until its
+axes were read before the first touch. A plan line and a generator were changed with `sed` instead of the editor (the content checked
+after). And for an hour of the night I took the time to be three hours later than it was and began to close the window early.
+The second reading found two more of mine: the first repair of the elbow's hinge changed a path the guard shares (the pitfall
+`CLAUDE.md` names: "a change to a path that several features share"), checked only on the guard's six scenarios of N5 and not given to
+the catch alone; and the C26 scenarios were said to test a hit "while the arms reach" when their measure counted until the body lay.
+The figures first given to the owner's page (C14 by hand 50%, C15 by hand 27%) were of the hinge before its repair.
+
+### Faster checks, SP-6: the assets kept between jobs (28 November, 02:20 to 03:00, the owner away)
+
+Stage 2's third part, taken first (`docs/fast-checks.md`, section 12). Every job of a queue loaded and built the NPC's body and face
+meshes again (four `AssetCompile SkinnedAsset` lines in `drop_npc`'s `run.log` as job 19 of its process, `LoadMap` 0.383 s). With
+`-ScenarioKeep=Tools\batch_keep.json` the two meshes and the physics asset are loaded after the warm-up and kept:
+
+| | Without (`SANDBOX_KEEP_ASSETS=0`) | With |
+| --- | --- | --- |
+| A job's world (`LoadMap`, `drop_npc`) | 0.383 s | 0.036 s |
+| `AssetCompile SkinnedAsset` lines in a job's log | 4 | 0 |
+| The suite, 8 at a time | 64.4 s | 56.1 s |
+| The push matrix | 43.7 s | 36.5 s |
+| The stand on three seeds | 81.3 s | 73.8 s |
+| The scorecard | 104.7 s | 91.7 s |
+| Seven tools as one check set | 230.8 s | 200.9 s |
+| Every tool once (`bench.ps1 -Hashes`) | 836 s | 762 s |
+
+Hashes: the suite against `r3rev2` with eight processes and with one process for all 174 jobs, 174 of 174 the same; every tool
+(`bench.ps1 -Hashes -Label keep1 -Against keep0`): 1677 runs and files the same, 25 of 25 verdicts the same. Memory in one process over
+174 jobs: 1804 MB after the first, 1855 after the 88th, 1862 after the last.
+
+**A third independent reading** (28 November, 03:20; the diff of the code as it stood and the one the second reader had, the new
+files; no code defect, R3 at 0 or on): a row of `Config/Tuning/README.md` was joined to the next (put right); the catch's anatomical
+hinge applied with `fall.catch_joint_blend` 0 as well, where at a weight near 0 the solution has to give back the pose (now only for a
+joint-blended catch); the hinge's axis taken from the reference pose with no check that the reference bends the elbow (now not used
+when it bends by less than a sine of 0.2; this mesh's 37 degrees, 0.6); assets kept in rendered processes, whose first job's pictures
+could differ from a later one's by the textures already streamed in, and in the headset a hitch (now a rendered process keeps
+nothing); a comment on the release's weight out of date. After the fixes: the suite 174 of 174 with the hashes of `r3rev2`, 62 unit
+tests, a job's world 0.05 s; a rendered film of `drop_npc` with its suite hashes.
+
+### Faster checks, SP-4: the pool, started by hand (28 November, 03:20 to 03:45, the owner away)
+
+Planned from the code first (`docs/recon/sp4_plan.md`), built as far as `Tools\pool.ps1 -Start` (`docs/fast-checks.md`, section 12;
+decision 13: a build stops the pool and does not start it again). Measured with eight processes:
+
+| | Without the pool | Through the pool |
+| --- | --- | --- |
+| An idle process, share of a core | - | 3.0 to 4.5% sleeping 0.05 s a frame; **0.6 to 1.4%** at 0.1 s |
+| An idle process's memory | - | 1686 to 1696 MB at the start of the wait, 1696 to 1702 MB after 10 minutes |
+| The suite | 57.1 s | 48.4 s (48.5 s after 10 minutes idle) |
+| One scenario (`drop_npc`; `getup_left`) | 7.2 s | 2.6 s; 4.5 s |
+| The push matrix | 36.5 s | 30.3 s |
+| The knockdowns | 11.0 s | 4.4 s |
+| The stand of 50 | 34.8 s | 27.9 s |
+| The compliance table | 18.2 s | 10.2 s |
+| The grab's pulls | 41.7 s | 25.3 s |
+| The hand's lag | 12.1 s | 5.1 s |
+
+(Without the pool: the bench `keep1`, SP-6 on.) Hashes: the suite against `r3rev2` with a fresh pool, after the pool had waited 10
+minutes and 20 seconds, and after 40 jobs of the pool had run on another physics asset (`SANDBOX_PHYSICS_ASSET=PA_SandboxNPCNeck`, a
+row of the matrix; its own verdict not judged here): 174 of 174 the same each time. The six tools through the pool held run by run
+against the same tools' runs of `keep1` (`Saved\Recon\r3\pool_compare.py`): the matrix 160, the knockdowns 8, the stand 50, the
+compliance 48, the grab's pulls 101, the hand's lag 16, one scenario 1: every one the same. A build with the pool running stopped it
+and built. Not run: a process to its 500th job, the exits on memory, two sessions' batches in one pool, a check set beside a pool
+(its start makes the pool's idle processes give way).
+
+**Read by an independent reader** (the diff of `Tools` and of the queue's engine code, not their account; 04:00): the path with no
+pool started as before, the engine's waiting, waking and exits sound; three blocking defects and five others in the scripts, all put
+right: `SANDBOX_SEPARATE_PROCESSES=1` beside a pool started `scenario.ps1` within itself without end (a live pool is not used then);
+a stop could strand a batch whose jobs were written while it looked, did not wait for processes started while it waited and said it
+had stopped with processes alive (now it first takes no new batches, `draining`, reads the pool's file again each time, refuses if a
+process still runs 30 s after the stop, and a batch whose pool ended with jobs nobody took takes them back to processes of its own);
+a job lost to a crashed process held every stop for 5 minutes (a job is open only while its process runs); the pool's batch names
+could come back with a process id (now with a GUID); a dead pool process's id taken by another program looked alive (now by id, name
+and start time); the pool's file was read, changed and written with no lock (now `Lock-Pool`) and replaced by delete-then-move (now
+`File.Replace`, and the engine exits on a missing file only after 2 s); a start with no room made every idle process of the pool
+give way and then gave up (now one at a time, and the start waits 5 s for it); smaller: a process's own `yield_<pid>` is removed as it
+exits, the exit reasons are heeded before the start map has opened, and the fingerprint's comment says what it leaves out. Found
+after the fixes, by a test: started as the queues' processes are, the pool's processes inherited the handles of whoever started
+them, and `pool.ps1 -Start *> file` returned only when the pool exited on its idle limit (`docs/pitfalls.md`); now started through
+the shell. Measured after all of it: the start 2.0 s; the suite through the pool 48.4 s, 174 of 174 with the hashes of `r3rev2`;
+one run 2.9 s; `SANDBOX_SEPARATE_PROCESSES=1` beside the pool a run of its own, 7.0 s, the same hashes; a stop with a job lost to a
+process that no longer runs, 2.0 s; a row of the matrix (40 jobs) on a pool of one process stopped under it: 7 run in the pool, 33
+taken back, all 40 with the hashes of `keep1`; a build with the pool running 3.1 s; an idle process 0.6 to 1.4% of a core.
+
+**Read again** (04:25; the code the first reader had and the code after the fixes): nothing blocking, five of the eight fixes whole;
+put right after it: a job is taken back under its lock file as a process takes one, and only if no process has marked it
+(`Receive-PoolJobBack`, the marker then naming no process), and a job whose file went with no marker (the queue's folder removed by
+`pool.ps1 -Start`) runs in a process of its own; a stop first waits on the pool's lock (a top-up under way ends), looks again under
+the lock before it removes the pool's file and removes its `stop` and `draining`; a top-up looks for a stop before each start; a
+process takes no job after its warm-up once told to stop; a job's holder counts only if it is an engine process started before its
+marker; `pool.ps1 -Start` writes the pool's file before its first process and after each; the 5 s wait for room only when a pool
+process was asked to give way; the stop and the top-up say their failures instead of ending the tool. After them (`Saved\Recon\r3\
+pool_tests3.txt`): the suite without a pool and through one, 174 of 174 with the hashes of `r3rev2`; one run 2.9 s; a build with the
+pool running 3.0 s; a pool of one stopped under a row of the matrix: 6 jobs run in it, 34 taken back, all 40 with the hashes of
+`keep1`; the bootstrap, 15 of 15 in 137.9 s. Not put right (written in `docs/fast-checks.md`, section 12): `scenario.ps1` through the
+pool has no time limit.
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

@@ -615,6 +615,14 @@ struct FSandboxPoseTuning
 	FSandboxPose RollToBack;
 	FSandboxPose RollToFront;
 	/**
+	 * R3 (docs/recon/r3_plan.md): the curl of a body that has no time to catch its fall (item d: the pose itself, the knees and the
+	 * arms in, the back rounded, the chin in); and, laid on top of the fall's pose, sitting down going backward and turning toward a
+	 * side (item e; the turn written for the left, mirrored for the right).
+	 */
+	FSandboxPose FallCurl;
+	FSandboxPose FallSit;
+	FSandboxPose FallTurn;
+	/**
 	 * The clip whose motion a standing body carries on top of its stance: breathing, the shoulders, a slow sway
 	 * (FSandboxIdleMotion; "poses.idle.animation", an asset path, empty for none). Read when the body starts; a
 	 * change while it runs is not followed.
@@ -709,6 +717,100 @@ struct FSandboxFallAimTuning
 	FString ClipReachBack;
 	FString ClipReachLeft;
 	FString ClipReachRight;
+
+	/**
+	 * R3, item a (docs/recon/r3_plan.md): 1 makes the arms' tone while the body falls a curve of the sensed time to impact (as the
+	 * sample's strengths from curves): loose far from the floor, braced as the floor comes, giving way once a hand or a forearm touches
+	 * the world; 0 does not (today's fall, bit for bit). Every change goes through the tone's follow (tone.rise_s, tone.fall_s).
+	 */
+	double ArmCurve = 0.0;
+	/** The sensed time to impact under which the arms brace. Seconds. */
+	double ArmBraceFromS = 0.0;
+	/** The arms' tone far from the floor, braced, and once a hand or a forearm has touched: factors of the falling arms' stiffness and damping. */
+	double ArmFarStiffness = 0.0;
+	double ArmFarDamping = 0.0;
+	double ArmBraceStiffness = 0.0;
+	double ArmBraceDamping = 0.0;
+	double ArmTouchStiffness = 0.0;
+	double ArmTouchDamping = 0.0;
+	/**
+	 * R3, item b: 1 places the arms in the trunk's frame toward where the floor will be (the catch fall); 0 does not. The trunk's
+	 * orientation at impact is foreseen as the chest's now tipped along the sensed way until it leans CatchTiltDeg from upright; the
+	 * floor's direction from each shoulder then (down, and CatchAhead along the way) is held in that foreseen chest's frame, so the
+	 * hand's target moves with the trunk, never with the world.
+	 */
+	double Catch = 0.0;
+	/** How far the trunk is foreseen to lean from upright as it meets the floor. Degrees. */
+	double CatchTiltDeg = 0.0;
+	/** How far along the way the floor's direction from the shoulder goes, for each unit down: 0 straight down. */
+	double CatchAhead = 0.0;
+	/** The hand's distance from its shoulder, a share of the arm's length (1: straight). */
+	double CatchReach = 0.0;
+	/** How fast the way the catch is aimed by follows the sensed way; and the time to impact under which it is held. Seconds. */
+	double CatchFollowS = 0.0;
+	double CatchHoldS = 0.0;
+	/** How fast the placement comes in. Seconds. */
+	double CatchBlendS = 0.0;
+	/** 1: the arms catch a fall backward too (behind the hips); 0: a fall backward keeps the written pose's arms. */
+	double CatchBack = 0.0;
+	/** The arms' torque caps while they catch: a factor of the arms' max_torque_nm. */
+	double CatchMaxTorqueScale = 0.0;
+	/** A catching arm is let go, for the rest of that fall, once the way turns more than this from the way it was aimed by. Degrees. */
+	double CatchTurnDeg = 0.0;
+	/**
+	 * 1: a catching arm is blended in and out by its joints' turns (as the guard's arm, FSandboxLimbTarget::bJointBlend); 0: by where its
+	 * hand is (the hand target's way), which turned the elbow's target over in some falls (docs/testing.md, "R3"; decision 56).
+	 */
+	double CatchJointBlend = 0.0;
+	/** 1: the catch is let go once the trunk has met the world (the arms' work is done); 0: when the body lies (impact_let_go_s later). */
+	double CatchLetGoAtTrunk = 0.0;
+	/**
+	 * R3, item c: 1 keeps the head off the floor (the neck's tone braced while falling, and the head's own joint turned away from the
+	 * floor by the sensed way: the chin in going backward, the head back going forward, the ear to the upper shoulder going sideways);
+	 * 0 does not.
+	 */
+	double Head = 0.0;
+	/** The neck's tone while falling: factors of the falling neck's stiffness and damping. */
+	double HeadStiffness = 0.0;
+	double HeadDamping = 0.0;
+	/** How fast the head's turn follows the way. Seconds. */
+	double HeadFollowS = 0.0;
+	/** The head's turn, going backward (the chin in), forward (the head back) and sideways (away from the floor). Degrees. */
+	double HeadBackDeg = 0.0;
+	double HeadForwardDeg = 0.0;
+	double HeadSideDeg = 0.0;
+	/**
+	 * R3, item d: 1 curls the body up when there is no time to catch (the sensed time to impact at the fall's first tick under
+	 * CurlBelowS): the fall's pose is poses.fall_curl for that whole fall and the arms do not catch; 0 does not.
+	 */
+	double Curl = 0.0;
+	double CurlBelowS = 0.0;
+	/** Or by the hit that felled it: a fall begun within a second of a hit of at least this (the struck part's sum) curls; 0 not by a hit. N*s. */
+	double CurlFromNs = 0.0;
+	/**
+	 * R3, item e: 1 sits a fall backward down (poses.fall_sit laid on top of the fall's pose, over SitBlendS, once the backward share of
+	 * the way is over SitFrom); 0 does not.
+	 */
+	double Sit = 0.0;
+	double SitFrom = 0.0;
+	double SitBlendS = 0.0;
+	/** While it sits down, the legs' tone: a factor of the falling legs' stiffness (below 1 the knees give under the weight). */
+	double SitLegStiffness = 0.0;
+	/**
+	 * R3, item e: 1 turns a fall backward or forward toward a side when there is time (the sensed time to impact at its first tick at
+	 * least TurnMinS): poses.fall_turn, written for a turn to the left, mirrored for the right, laid on top over TurnBlendS; 0 does not.
+	 */
+	double Turn = 0.0;
+	double TurnMinS = 0.0;
+	double TurnBlendS = 0.0;
+	/** The least difference of the way's left and right weights that picks a side to turn to (a way straight back picks none). */
+	double TurnSideMin = 0.0;
+	/**
+	 * R3, item f: 1 turns each catching hand so that its palm faces the floor's direction at impact (PalmShare of the turn, within
+	 * the wrist's range); 0 leaves the hand as the arm's placement has it.
+	 */
+	double Palms = 0.0;
+	double PalmShare = 0.0;
 };
 
 /** What the body makes of what moves near it (N5, "perception.*"). Step 1 judges and does nothing with it. */

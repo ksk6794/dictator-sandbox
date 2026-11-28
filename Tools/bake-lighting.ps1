@@ -12,6 +12,10 @@ param(
 )
 . "$PSScriptRoot\common.ps1"
 
+# The map the pool's processes may have open would be saved anew under them (Tools\pool.ps1; SP-5).
+$poolWhy = Stop-Pool
+if ($poolWhy) { Write-Output "BAKE ERROR: the pool did not stop: $poolWhy (Tools\pool.ps1 -Status)"; exit 1 }
+
 $resultFile = Join-Path $ToolsOut 'bake-lighting.json'
 if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
 $logFile = Join-Path $ToolsOut 'bake-lighting.log'
