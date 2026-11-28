@@ -1,0 +1,112 @@
+{
+    "name":  "protect_near_rising_sit",
+    "duration_s":  24,
+    "body":  {
+                 "mesh":  "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+                 "physics_asset":  "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+                 "attached_meshes":  [
+                                         "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+                                     ],
+                 "control":  "active",
+                 "get_up":  true,
+                 "location_cm":  [
+                                     0,
+                                     90,
+                                     0
+                                 ],
+                 "laid_deg":  0
+             },
+    "events":  [
+                   {
+                       "t":  0,
+                       "type":  "console",
+                       "command":  "Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1"
+                   },
+                   {
+                       "t":  0.6,
+                       "type":  "impulse",
+                       "body":  "pelvis",
+                       "impulse_ns":  40,
+                       "direction":  [
+                                         0,
+                                         0,
+                                         -1
+                                     ]
+                   },
+                   {
+                       "t":  2.55,
+                       "type":  "viewer",
+                       "at_bone":  "pelvis",
+                       "path":  [
+                                    {
+                                        "t":  0,
+                                        "location_cm":  [
+                                                            300,
+                                                            90,
+                                                            165
+                                                        ]
+                                    },
+                                    {
+                                        "t":  0.05,
+                                        "location_cm":  [
+                                                            300,
+                                                            0,
+                                                            160
+                                                        ]
+                                    },
+                                    {
+                                        "t":  0.55,
+                                        "location_cm":  [
+                                                            70,
+                                                            0,
+                                                            160
+                                                        ]
+                                    },
+                                    {
+                                        "t":  6.55,
+                                        "location_cm":  [
+                                                            70,
+                                                            0,
+                                                            160
+                                                        ]
+                                    },
+                                    {
+                                        "t":  7.55,
+                                        "location_cm":  [
+                                                            400,
+                                                            0,
+                                                            160
+                                                        ]
+                                    }
+                                ]
+                   }
+               ],
+    "expect":  {
+                   "tuning_changes":  1,
+                   "max_joint_stretch_cm":  2,
+                   "measures":  {
+                                    "control.get_up.given_up_by.afraid":  {
+                                                                              "min":  1,
+                                                                              "max":  1
+                                                                          },
+                                    "control.behaviour.turned_back_within_s":  {
+                                                                                   "max":  0.5
+                                                                               },
+                                    "control.behaviour.lowered_head_down_mps":  {
+                                                                                    "max":  2
+                                                                                },
+                                    "control.behaviour.lowered_pelvis_down_mps":  {
+                                                                                      "max":  1
+                                                                                  },
+                                    "control.behaviour.begun_near_afraid":  {
+                                                                                "max":  0
+                                                                            },
+                                    "control.pose.target_step_max_deg":  {
+                                                                             "max":  110
+                                                                         }
+                                },
+                   "end_state":  "standing",
+                   "min_get_ups":  1,
+                   "min_get_up_attempts":  2
+               }
+}

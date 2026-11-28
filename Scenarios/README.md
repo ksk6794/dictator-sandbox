@@ -108,6 +108,35 @@ Event types. Unknown types are a parse error.
   `Config/Tuning` is never written to. Active control only.
 - `effector` moves one of the player's hands (`"effector": "hand_left"` or `"hand_right"`), a kicking foot
   (`"foot_left"` or `"foot_right"`), or the player's body (`"body"`), along a `path`. See below.
+- `viewer` (R10, step 1) is the player's head as the body is told of it, `ESandboxSeenKind::Viewer`: a `path` of keys
+  (`t`, `location_cm`) as an effector's, one key for a place, with `at_bone` as an effector's (the keys after the first
+  measured from that body as the event begins; no `follow_bone_s`). Before its first event it waits at that event's first
+  key. Nothing collides with it. It is told every frame whether or not the body perceives, and nothing reads it unless a
+  behaviour's switch asks (`behaviour.stay_down`): `viewer_path_measured` and `viewer_with_gaze` have the hashes of
+  `stand_npc` and `gaze_follows_hand`. `control.behaviour.viewer_cm` (last frame), `viewer_min_cm`, `viewer_frames` and
+  `viewer_series` (every 0.25 s) are the nearest viewer's distance over the floor to the nearest body of the character;
+  `viewer_from` says where it came from (`scenario`, `recording`, `none`). A replay of a recording has the head its
+  session kept (`"heads"`); one made before R10 has none, and `viewer_from` says so. A scenario has viewer events or a
+  recording, not both.
+- `"seed"` (R10, step 2; top level, a whole number, 0 when left out): what the body's choices draw from (`FSandboxChance`,
+  a stream per purpose). 0 draws nothing and every choice takes its fixed answer; nothing draws yet (the struggle of R10's
+  step 7 will). `control.chance` has the seed and every draw (`draw_count`); `chance_seed_told` has `stand_npc`'s hashes.
+  The stand (`Tools\getup-stand.ps1`) hands its `-Seed` to every trial; a session takes a seed from its own counter
+  (`Saved\Play\session_seed.txt`) and writes it into the scenario that replays its recording.
+- A command to the body (R10, step 8 in part) is a `console` event, `Sandbox.Command get_up` or `stop`, answered with
+  `behaviour.commands` on (`control.commands`: the answer, when, the first motion; `command_*` scenarios); the same command typed into
+  a session's console is kept in its recording at its frame and replayed.
+- R10's behaviours (`behaviour.*` in `Config/Tuning/body.json`, all 0) are switched on by a scenario with a `console`
+  event, `Sandbox.Tune behaviour.fear=1,behaviour.stay_down=1` in one command (stay_down is refused without fear):
+  `fear_*` (fear), `protect_near_*` and `protect_phase_*` (staying down, lowering, and a blow, a push and a hold in those
+  phases), `protect_hit_*` (the cover of the struck place after a hit while lying or rising: the head, the trunk, the groin, a leg,
+  `behaviour.protect=1`). They are written by
+  `docs/recon/r10/make_protect.ps1`. `control.behaviour` has fear (`fear`, `fear_max`, `fear_hits`, `fear_threats`,
+  `fear_series`), the attempts begun afraid with the viewer near (`begun_near_afraid`, C33's 0), `held_back_s`,
+  `protect_s`, every attempt turned back (`lowerings`: when the viewer came near, when it was decided, ended, the clip's
+  times, the pelvis's height then, the pelvis's and the head's fastest way down and when; `turned_back_within_s`,
+  `lowered_head_down_mps`, `lowered_pelvis_down_mps` over all) and every cover of the head (`covers`: the hit, whether it
+  gave an attempt up, `place`, `one_within_s` and `both_within_s` for C34, the least gaps, `head_down_mps`).
 
 ## Hands
 

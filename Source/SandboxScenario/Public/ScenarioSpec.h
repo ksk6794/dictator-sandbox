@@ -4,6 +4,12 @@
 #include "Dom/JsonObject.h"
 #include "SandboxScriptedTargetSource.h"
 
+/** R10, step 1: the name a scenario's "viewer" (the player's head, told to the body) goes by, in its own scripted source. */
+namespace ScenarioViewer
+{
+	inline const FName Name(TEXT("viewer"));
+}
+
 /**
  * A scripted stimulus applied at a fixed simulation time.
  *   "impulse"           an instantaneous impulse on one body
@@ -18,6 +24,8 @@
  *   "step"              asks the body for a step with one foot, to offset_cm from where the foot is
  *   "clip_pose"         asks the body's muscles for the pose a recorded clip has at time_s, and holds it; with a
  *                       rate the clip's time runs on from there; "release": true lets the pose go again
+ *   "viewer"            the player's head as the body is told of it (R10): a path as an effector's, or one key for a place;
+ *                       "at_bone" as an effector's. Before its first event it waits at that event's first key
  */
 struct FScenarioEvent
 {
@@ -308,6 +316,8 @@ struct SANDBOXSCENARIO_API FScenarioSpec
 	bool bGetUp = false;
 	/** Whether the body judges what moves near it (N5, perception.*): only when the scenario says so, so that the suite stays as it was. */
 	bool bPerception = false;
+	/** R10, step 2 ("seed"): what the body's choices draw from (FSandboxChance); 0, the default, draws nothing. */
+	int32 Seed = 0;
 
 	/** Start-up transient: "settled" metrics and expectations only look at the run after this time. */
 	double SettleS = 2.0;

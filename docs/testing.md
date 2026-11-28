@@ -6931,6 +6931,273 @@ pool running 3.0 s; a pool of one stopped under a row of the matrix: 6 jobs run 
 `keep1`; the bootstrap, 15 of 15 in 137.9 s. Not put right (written in `docs/fast-checks.md`, section 12): `scenario.ps1` through the
 pool has no time limit.
 
+### R10: the player told, fear, staying down, chance, the head covered (28 November, 05:15 to 06:30, the owner away)
+
+The plan is `docs/recon/r10_plan.md`; the owner's order for the window: steps 1, 4, 5, then 2 or 6 if time is left (step 3, the
+arbiter, not in this window). Decision 58 left empty: R3 stays at 0. Baseline `r10base` (= `r3rev2`, 174 of 174), then `r10s1` (176)
+and `r10after` (191: 17 new scenarios). Every step behind its own switch at 0; with all of them at 0 the suite keeps every hash of
+`r10base` (174 of 174, every later run too), the push matrix all 160 of `r3base_matrix`, the stand of 150 all of `r3base_seeds` (with
+a viewer by every fallen body and with the seed handed to every trial), the knockdowns their figures (1.87 s, 14.2 J, 1.28 cm), and
+`record-replay.ps1 -Perception` its hashes (`194c0969`/`4131b101`, before the part and after it, the "before" built from the tree with
+step 1's patch taken back). 65 unit tests (62 before; new: the recording's head, two of chance). The R10 diff alone: `Saved\Backups\r10_review.patch`
+against the start's index (`r10_start.index`, built from `r10_start_lf.patch`); each step's in `Saved\Backups\r10_step*.patch`.
+
+**Step 1, who the player is (measure only).** `FSandboxSeen` has the hand's grip (its target's); the stage tells the player's capsule
+(`body`) as a viewer instead of leaving it out; a scenario's `viewer` event (a path as an effector's, `at_bone`) has a scripted source of
+its own (`UScenarioRunnerSubsystem::TellViewer`); the session tells the pawn's head every frame whether or not it perceives (the camera
+on the desktop, the headset's head), only while a recording runs if it records; the rig keeps the head with each frame's targets
+(`FSandboxTargetRecording::Heads`, the file's optional `"heads"`, all frames or none); a replay tells the recording's head, and one made
+before R10 has none and says so (`viewer_from`). `control.behaviour.viewer_*`: the nearest viewer's distance over the floor to the
+nearest body of the character (`USandboxBodyController::NearestViewerCm`). Checks: `viewer_path_measured` (a viewer from 3 m to 1 m in
+front of the standing body and back) has `stand_npc`'s hashes, its least distance 94.2 cm (the nearest body 5.8 cm ahead of the
+origin), its last 293.4; `viewer_with_gaze` (a viewer sweeping 70 cm before the face with the gaze on) has `gaze_follows_hand`'s.
+The demo session with perception records 240 frames of the head and its replay tells it (239 frames, nearest 78 cm).
+
+**Step 4, fear (`behaviour.fear`).** A contact's whole hit from something that moves (counted once as its sum grows, from the flinch's
+threshold) adds `fear_per_ns` (0.02 a N*s) and a threat seen `fear_per_threat` (0.2); it falls in a straight line to 0 over
+`fear_fade_s` (15 s) from the last rise. The suite with fear on: all 176 hashes as with it off (nothing reads it). Figures: a blow of 200
+N*s 1.00 (0.13 left 13 s later), 10 N*s 0.20, a punch summed 74.8 N*s 1.00, a hand that touched with 17.1 N*s after a threat 0.54, a
+drag 1.00. `fear_blow_fades` and `fear_threat_rises` switch it on themselves and keep `getup_back`'s and `perceive_hand_front`'s hashes.
+
+**Step 5, staying down and lowering (`behaviour.stay_down`, with fear).** The pose first: the sample's `M_ragdoll_poses_injured` and
+`_OnGround` read frame by frame (`Tools\clip-film.ps1`, every 1/30 s; `Saved\Films\dense`): injured holds a body bent with the hands low
+(0 to 0.03 s), both hands at the face (0.07 to 0.10), one hand on top of the head (0.13 to 0.17), the hands at the belly and the groin
+with the knees bent (0.20 to 0.30), then stands; OnGround the knees drawn up and the arms at the chest (0 to 0.03), then one hand at the
+face, the other arm across the chest and a knee up (0.07 on). Neither has both forearms over the head with the knees up: `poses.protect_head`
+is written as joint angles, chosen of four arms on a pinned body (`Saved\Films\r10_pose_a` to `_d`; c: the upper arms 25 up, 95 forward,
+twisted 45, the elbows 125, the hands on the head). Lying, the muscles of the lying state cannot hold it (arms 6, legs 10 N*m/rad):
+the `protect_*` stiffnesses come in with the pose over `protect_blend_s`. As it comes in the legs gain 51.7 J (`protect_near_lying`, the
+muscles' work of drawing the knees up; the R10 scenarios have no energy limit for it).
+A get-up under way when the viewer comes near is turned back after `perception.react_s`: its clip runs back (`ClipHold.Rate` below 0)
+to where the attempt began, led as it rose, then the attempt is given up (`ESandboxGiveUp::Afraid`). Measured on the way
+(`Saved\Sweeps\r10_lower*`, `r10_release`; three scenarios, the viewer near as the body sits up, kneels, rises, the pelvis 16, 46 and 82
+cm up as it is decided):
+
+| Variant | Sit: pelvis / head down, m/s | Knees | Rise |
+| --- | --- | --- | --- |
+| Back at 0.7 of the pace, turned in a frame | 0.14 / 0.80 | 1.01 / 1.04 | 0.99 / 1.67 (hung on the world's pull at the end, then dropped) |
+| The same at 0.5 / 0.4 of the pace | 0.14 / 0.59 | 0.76 / 0.64 | 1.10 / 1.83; 1.19 / 2.00 |
+| Ended when the pelvis is 25 or 40 cm up (the muscles take it from there) | 0.13 / 0.86 | 0.76 to 1.01 / 2.0 to 2.9 | 1.10 / 1.83 |
+| Ended when the chest is 25 or 35 cm up | 0.13 / 0.86 | 0.76 to 1.01 / 1.4 to 1.8 | as above |
+| **0.7, turned over 0.3 s, the world's pull let go over 1.5 s after (the files)** | **0.14 / 0.83** | **0.95 / 1.14** | **0.81 / 1.16** |
+
+Run back from a standing rise the clip's first frames swing the legs up and hold the body a few centimetres off the floor on the world's
+pull (the film `Saved\Films\r10_rise_07`, 6.4 to 6.8 s): the body was declared held up and the attempt given up for that, then the
+pelvis dropped at 1.0 to 1.1 m/s. A lowered body that is held up now ends its lowering there, as lowered. Found by the C26 scenarios: a
+hand that took the left forearm while the body was lowered made the arm yield (R2's held arm) and its upper arm's target turned over by
+159 degrees in a frame: the held arm is not answered while a get-up is lowered (a rule for the lowering alone; the arbiter, step 3, is to
+give the arm to one of the two).
+
+**The stand with a viewer** (`Tools\getup-stand.ps1 -Near 70`, new: a viewer walks in to 70 cm of every fallen pelvis from 5 s, stays 8 s,
+walks away; three seeds, `-Tune "behaviour.fear=1,behaviour.stay_down=1"`, `Saved\Matrix\getup_seeds\r10near3`, before the independent
+reading's fixes; after them, "C33 at the gate" below): 150 of 150 stand in
+the end; **0 of 150 bodies began an attempt afraid with the viewer near** (C33); all 150 lay covered while it was near; 44 attempts were
+turned back, each within 0.16 s of the viewer coming near; the head came down at 1.83 m/s at most, the pelvis at **1.02** (one fall, seed
+1 trial 30, at a wall); from the viewer gone to standing 4.62 to 4.71 s in the seeds' medians (its margin, `getup.rest_s` twice and a
+get-up). C19's count is 27.5% of attempts given up, the 44 turned back among them. On the way: run back to where the attempt began and
+let go over 0.4 s, a body that began sitting against a wall (the matcher's start 0.8 s into its clip) was let go with its chest 43 cm up
+and its head met the floor at 2.48 m/s (`r10near`); run back to the clip's own start instead, a body that began sitting against the chair
+was pulled toward where the clip lies, 40 cm off, lost and dropped, 3.11 m/s (`r10near2`). With the viewer and the switches off the stand
+keeps every hash of `r3base_seeds` (`r10near_off`). The suite with fear and stay_down on: 188 of 188 hashes as off (no older scenario has
+a viewer; the R10 scenarios switch it on themselves and fail only on `tuning_changes`, as R3's did).
+
+Scenarios (each switches its behaviour on itself; the body laid on its back, tapped with 40 N*s into the floor so that it is afraid,
+`docs/recon/r10/make_protect.ps1`): `protect_near_lying` (no attempt while the viewer is near for 9 s, covered 9.7 s, up 1.6 s after it
+has gone, at 13.5 s), `protect_near_rising_sit`, `_knees`, `_rise` (turned back within 0.16 s, the figures in bold above, up after the
+viewer goes), and C26 in the new phases: `protect_phase_lowering_hit`, `_push`, `_hold` (a blow of 40 N*s, a push of 30 N*s over
+0.25 s, a hand that takes the left forearm for 1.2 s, while it is lowered) and `protect_phase_cover_*` (the same while it lies covered):
+each is felt (fear's hits, the grab's frames), the body goes on lowering or covered and gets up after the viewer goes; no target step over
+42 degrees. Videos: `Saved\Films\r10_staydown_lying\pair.mp4`, `r10_staydown_rise\pair.mp4` (stay_down 0 on the left, 1 on the right).
+
+**Step 2, chance with a seed** (infrastructure). `FSandboxChance` (`SandboxCore`): a stream per purpose from the run's seed and the
+purpose's index, drawn only when a choice is made; seed 0 draws nothing and takes each choice's fixed answer. A scenario's `"seed"`, the
+stand's `-Seed` handed to every trial, a session's seed from a counter of its own (`Saved\Play\session_seed.txt`, said in its log, written
+into its replay's scenario), `control.chance`. Nothing draws yet. Unit tests: the same seed draws the same and another seed otherwise;
+a purpose's draws do not move when another purpose draws between them. `chance_seed_told` has `stand_npc`'s hashes; the stand with its
+seeds handed keeps all 150 of `r3base_seeds`.
+
+**Step 6 in part, the head covered after a hit** (`behaviour.protect`; C34 for the head only): a hit on the head of 10 N*s or more in one
+contact (decision 45's line), while lying or getting up, gives the attempt up (`ESandboxGiveUp::Protect`), covers the head with
+`poses.protect_head` for `protect_hold_s` (3 s) and holds the get-up back meanwhile. `protect_hit_lying_head` (15 N*s while it lies):
+one forearm within 10 cm of the head and both within 15 after 0.52 s, the least gaps 0.1 and 0.0 cm, the head down at 0.55 m/s, up at
+4.0 s; `protect_hit_rising_head` (15 N*s as it kneels): given up, covered after 0.51 s, the head down at 1.90 m/s with the world's
+pull let go over the get-up's 0.4 s (1.83 over 1.5 s, 1.13 over 3 s, measured; the slow release after a hit was taken back after the
+independent reading: a hit takes authority away), the body falling from its knees onto its face before it covers (the film), up at 8.1 s. The suite with it on: 191 of 191 hashes as off. Video `Saved\Films\r10_protect_hit\pair.mp4`.
+
+**Step 6, the other places** (06:50 to 07:05, after the first reading): the trunk (a spine body, or the pelvis struck from behind), the
+groin (the pelvis struck from the front, `IsFromFront`: the belly's rule without its band) and a leg (a body of the legs' group), each a
+sum of one contact from `protect_from_ns` (40 N*s, decision 45), covered by its own pose (`poses.protect_trunk`, `_groin`, `_leg`; the
+first of two arms each on a pinned body, `Saved\Films\r10_pose_*`, the leg's arms then swept on the lying body, `Saved\Sweeps\r10_cover_pose`:
+the hands to the thigh instead of the knees). C34 measured from the nearer forearm or hand to the place: the head's middle, the chest's,
+the groin's front (8 cm forward of the point between the hip joints, 5 cm; measured between the hip joints themselves the gap read
+14 to 16 cm and did not tell a hand on the groin from one on the thigh), the nearer of the struck thigh and calf (7 cm). Scenarios of
+50 N*s:
+
+| Scenario | One forearm within 10 cm | Least gaps, cm | Head down, m/s | C34 |
+| --- | --- | --- | --- | --- |
+| `protect_hit_lying_head` (15 N*s) | 0.52 s (both within 15: 0.52) | -2.4 / -1.0 | 0.55 | met |
+| `protect_hit_rising_head` (15 N*s) | 0.51 s (both 0.51) | -2.8 / -2.2 | 1.90 | met |
+| `protect_hit_lying_trunk` | 0.52 s | 3.0 / 2.6 | 0.03 | met |
+| `protect_hit_rising_trunk` | 0.56 s | 3.7 / 2.8 | 1.95 | met |
+| `protect_hit_lying_legs` | 0.36 s | 6.8 / 19.1 | 0.43 | met |
+| `protect_hit_rising_legs` | 1.07 s (it falls from its knees first) | 6.1 / 18.5 | 1.22 | not met |
+| `protect_hit_lying_groin` | 0.50 s | 8.8 / 8.8 | 0.06 | met |
+
+The groin's first pose (the arms of the pinned body's picture) put the forearms up above the belly when lying (the film
+`Saved\Films\protect_hit_lying_groin`): its hands stayed 13.6 to 19.4 cm off with seven arms and three ways of the legs
+(`Saved\Sweeps\r10_cover_pose`, `r10_cover_groin`, `r10_cover_groin2`); the upper arms turned in by 90 degrees with the elbows at 50
+(`r10_cover_groin3`, six arms) put the hands at the groin, 8.8 cm, seen on the lying body (`Saved\Films\r10_groin2`). With `behaviour.protect` on, 19 runs of the suite move (`Saved\Suites\r10_protect2`): the hits
+while getting up give the attempt up and cover the place, as the plan says (`getup_hit_strong`, `getup_phase_sit_hit`, `_crouch_hit`,
+`_rise_hit`, `getup_roll_hit`; they then fail their own expectations, written for a body that rides the hit out), and three more that
+are no blows: `getup_drag_ankles_crouch` (the hands that come for the ankles), `getup_pressed`, `getup_pressed_two_hands` (a press of 300 N
+sums 40 N*s as its force rises: the place's sum takes what the body counts as hit, as the head's and the belly's do) and
+`room_movable_fall_gets_up` (a fall onto movable furniture is a hit); the R10 scenarios with a tap or a hold move with it. Videos
+`Saved\Films\r10_protect_trunk\pair.mp4` (the chest hit as it kneels: it falls forward and curls on its side), `r10_protect_legs\pair.mp4`
+(the thigh hit lying: a tight curl).
+
+**Read by an independent reader** (the R10 diff and the new files, not their account; 06:30): no path that moves a hash with every
+switch at 0; with them on, put right: an attempt given up afraid or for a hit on the head charged its clip and its roll as failed, so the
+next attempt was pushed off the clip that fit (now neither); a get-up could begin while the protective pose's muscles were still being
+let go, its own muscles blended toward them for 0.5 s (now it waits); the world's pull was let go slowly after a hit on the head, against
+"a hit takes authority away" (now the get-up's own 0.4 s; the kneeling body's head then 1.90 m/s, under 2.0); a lowering had no bound
+(now `getup.wait_s`) and a comment said a press slows it (it does not: it takes the world's pull away); a lowered body held up by a hand
+was counted as lowered (now held up); a replay did not carry `behaviour.protect`; the cover's least gap read wrong below 0; the stand's
+viewer waited 3 m off, within reach of a body that fell that way (now 20 m); a path written from a body was told one frame before it was
+put there (the viewer is now told where it was at the start of the step just made); a literal 0.05 s in code (gone); the capsule was not
+told to a body that does not perceive (now it is, the hands still not). Kept as known: a fall onto movable furniture is a hit, so it
+raises fear and, on the head while rising, gives the attempt up (the body counts hits from any simulated thing, as before). After the
+fixes: the suite 191 of 191, the 176 of `r10s1` the same, the 12 R10 scenarios with a behaviour on moved (baseline `r10final`), 65
+tests, `record-replay -Perception` the same hashes.
+
+**C33 at the gate** (the stand above, run again after the reading's fixes, `Saved\Matrix\getup_seeds\r10near_final`; the lowering
+scenarios): no attempt begun with the viewer near and the body afraid, 0 of 150 (limit 0); 50 attempts turned back, each within 0.16 s
+(0.5); the head at the floor 1.86 m/s at most (2.0); the pelvis 1.02 m/s at most (1.0): not met by 0.02 m/s in 1 of 50 attempts turned
+back (seed 1, trial 30, at a wall; met after the bound below); all 150 stood after the viewer went, 4.62 to 4.73 s after it in the seeds' medians; 92 of 150 stood
+at their first attempt (143 with nobody near). The lowering scenarios: sit 0.14 / 0.82 m/s (pelvis / head), knees 0.99 / 1.16, rise
+0.81 / 1.18.
+
+**The pelvis's last 0.02 m/s** (07:05): the 1.02 m/s came during the lowering itself (decided 5.98 s, fastest at 6.39 s, ended 6.63 s;
+seed 1, trial 30, a body that began sitting against a wall), where the recording had risen fast: at 0.7 of its pace the reference came
+down at more than 1 m/s. The pace back is now bounded so that the clip's pelvis comes down no faster than `behaviour.lower_max_mps`
+(0.8). **C33 at the gate after it** (`Saved\Matrix\getup_seeds\r10near_max`, three seeds, every R10 change in): 0 of 150 attempts begun
+afraid with the viewer near; 50 turned back, each within 0.16 s; **the pelvis down at 0.94 m/s at most, the head at 1.86: C33 met**;
+150 of 150 up after the viewer went (medians 4.62 to 4.73 s). The lowering scenarios: sit 0.14 / 0.82, knees 0.90 / 1.14, rise 0.78 / 1.17.
+
+**C25 with the behaviours on** (the R10 scenarios, which switch them on themselves; the scorecard's figure is read from the suite, where
+they are 0): the largest command jump 358 N*m (`protect_near_rising_rise`, the thigh, in the get-up after the viewer went; decision 15's
+bound 439), the largest target step 69 degrees (`protect_hit_lying_groin`, as the cover comes in; the scenarios' limit 110).
+
+**A second independent reading** (of the step 6 delta, 07:05): with every switch at 0 nothing moves (the head's knockdown block as it
+was); kept as known with `behaviour.protect` on: the line of 40 N*s is reached by the tap of 40 N*s into the pelvis that the stay-down
+scenarios use to make the body afraid (with all three switches on it would start a cover of the groin at 0.6 s) and by R2's blows of 40
+N*s in the get-up's phases (which then give the attempt up, as decision 45 says); a press counts by the hit the body feels as its force
+rises (about a tenth of its force in N*s, so about 400 N on the trunk start a cover); one contact that slides from the pelvis onto the
+spine, or whose way leaves the front's cone, splits its sum between two places (two covers, or none), and the latest cover replaces one
+under way; the leg measured is the one struck as the sum crossed its line; the toes of the toes asset belong to no place. Put right: the
+leg's bodies checked before they are measured, a comment.
+
+**Step 8 in part, the commands `get_up` and `stop`** (`behaviour.commands`, 0; 07:30 to 07:35): `USandboxBodyController::TellCommand`,
+answered in `control.commands` (accepted, done, stopped, refused with why: off, standing, falling, held by two hands, pressed, unable;
+given up after `behaviour.command_tries` hits). `get_up` sets the disposition aside (the body gets up with the player near, a get-up
+being lowered goes on up), rests only `perception.react_s` before it begins, and a cover after a hit interrupts it; `stop` ends it. Given
+by the console in any session or run, `Sandbox.Command get_up|stop` (a scenario's `console` event; decision 42's console), told to every
+body of the world; a session that records keeps each command at its frame (`"commands"` in the recording) and its replay gives it at that
+time. Scenarios: `command_get_up_near` (the afraid body with the viewer at 70 cm is told to get up at 4.0 s: its first motion 0.97 s later,
+C39's 0.2 to 1.0; standing, `done`, at 8.17 s), `command_stop` (told to stop 0.05 s after: it stays covered and gets up after the viewer
+goes, at 13.5 s), `command_refused_off` (`refused: off`). The suite 201 of 201, every hash of `r10end` and `r10s1` as before, 65 tests.
+The independent reading of the commands' delta (07:37 to 07:42, the diff as a file) found two defects, both put right: a command stayed
+"accepted" for good when its attempt was given up and the get-up broken (only one of three such places ended it; now any attempt given
+up under the command counts as an interruption, as a cover does, the command ends after `command_tries`, and a broken get-up or the switch
+turned off ends it), and a lowering ended by `get_up` turned the clip from going back to going up in one frame (now over `lower_turn_s`,
+as the lowering itself). Two scenarios for those paths: `command_lowering_up` (told to get up 0.54 s into a lowering: the lowering ends
+"commanded up", the body stands at 6.16 s, the largest command jump 146 N*m, the largest target step 29 degrees) and
+`command_hit_interrupted` (a hit on the head 1.2 s into the commanded attempt: covered, interrupted once, up again at 10.2 s, `done` at
+12.0 s). Also put right: the recording refuses a command's frame that is no frame; a tuning comment had slid off its value. Kept as known:
+a command given before a recording begins is not in it (a take begins with the character put back, so nothing of a command is left then).
+The recording's commands round-trip in `RecordingKeepsTheHead`. The suite 203 of 203 (baseline `r10end`, every other hash as before),
+65 tests, `record-replay -Perception` 194c0969/4131b101 as before, the session's self-test 14 of 14.
+Then (07:52 to 07:57) the plan's two held cases and the desktop's keys: `command_get_up_held` (one hand holds the left forearm of the
+covered body from 5.4 s for 1.2 s; told at 6.0 s: the first motion 0.84 s after, standing, `done`, at 10.0 s) and `command_refused_held`
+(two hands: `refused: held`; the body stays covered and gets up after the viewer goes, at 13.6 s); the keys U (`get_up`) and J (`stop`)
+on the desktop send the console command through the player controller (the pawn knows nothing of the body), listed on the screen; the
+session's self-test presses U's function after its reset and finds the command at the body (`command_key_reaches_the_body`, refused:
+off). The suite 205 of 205 (baseline `r10end`, every other hash as before), 65 tests, the self-test 15 of 15, `record-replay
+-Perception` 194c0969/4131b101 and `-Takes` 3 of 3 as before.
+A second independent reading of the fixes and the keys (07:58 to 08:03, `Saved\Backups\r10_delta_fixes_keys.patch`): both defects put
+right in every path; four small findings, all taken: the rate's turn up no longer overrides a clip held still (pressed down, through its
+end) and never runs it below where the attempt began; one blow on two places interrupts a command once (within `perception.react_s`);
+the tuning README's row; a recorded command's name is a word of small letters. The suite 205 of 205, every hash of `r10end` as before.
+With `behaviour.commands=1` alone (`suite.ps1 -Tune ... -Label r10_commands_on`): 204 of 205 hashes as `r10end`, `command_refused_off`
+the one that moves (the command is accepted), as it must: the switch acts only when a command is told.
+Videos (one film each, the scenario switches the commands on itself): `Saved\Films\r10_command_get_up\film.mp4` (from 3.8 s),
+`r10_command_lowering_up\film.mp4` (from 3.3 s).
+
+**The gates again after the commands (08:11 to 08:22).** C33 at the gate after the last change (`getup-seeds.ps1 -Near 70 -Tune
+"behaviour.fear=1,behaviour.stay_down=1" -Label r10near_end`): all 150 trials with the hashes of `r10near_max` (07:06), so every figure
+of C33 above stands. Every switch on, the commands too (`checks.ps1 -What "matrix,knockdowns,seeds" -Tune "behaviour.fear=1,
+behaviour.stay_down=1,behaviour.protect=1,behaviour.commands=1" -Label r10_allon4`): the matrix's 160, the knockdowns' 8 and the stand's
+150 with the hashes of `r10_allon`. **C39 on 150 lying poses:** `getup-stand.ps1 -CommandAtS 3` (new; with `-Near`, the console's
+`get_up` 3 s after the viewer has come, every body afraid and covered), through `getup-seeds.ps1 -Near 70 -CommandAtS 3 -Tune
+"behaviour.fear=1,behaviour.stay_down=1,behaviour.commands=1" -Label r10_command_near`. The first run found a defect: the short rest
+(`perception.react_s`) applied before every attempt under the command, so a body by the chair (seed 3, trial 45) tried seven times in
+quick succession, the command given up after four, and it never stood (without the command: three attempts, standing at 28.7 s). Now
+the short rest is for the first attempt alone. Then: 150 of 150 stand, every command `done`; the first motion after the command 0.49 s
+in the median on each seed, at most 0.69, 1.74 and 1.11 s; 146 of 150 within C39's 1.0 s. The four beyond it (seed 2: 1.26, 1.47,
+1.74; seed 3: 1.11) wait for the cover's release (`protect_blend_s`, 0.5 s) and for the body to come to rest before the attempt: a
+body told to get up could begin without lying still, a choice for the owner. Every hash of `r10end` as before.
+
+**A third independent reading (08:22 to 08:26, `Saved\Backups\r10_delta_last.patch`)** found two small defects and a gap in C39, all put
+right (08:25 to 08:35): a command typed in other case (`Get_Up`) was accepted and recorded so, and the recording then refused (the
+console command now gives the body and the recording its name in small letters); the time of the last interruption was not reset with a
+new command; and a body that had lain still and uncovered for long began its get-up 0.011 s after the command, under a person's 0.2 s
+(`command_get_up_still`, new: the rest made 10 s, told at 5.0 s). The reaction to a command is now `behaviour.command_react_s` (0.3 s,
+new: a spoken word, not `perception.react_s`'s light) from the command, and the body lies still for `perception.react_s` as before.
+Tried first and taken back: the reaction timed from the command whether the body lay still or not (the covered bodies answered in 0.49
+s instead of 0.97, but began while their limbs still moved after the cover was let go: the largest target step went from 44 to 99
+degrees in `command_get_up_near`). Now `command_get_up_still` answers in 0.30 s, the covered bodies as before (0.97, 0.84), every hash
+of `r10end` as before (206 scenarios with the new one); the stand with the command again 150 of 150, 0.49 s in the median, 146 of 150
+within 1.0 s.
+Not built: `give_hand` (N6's hand target to the player's open hand, decision 47), the controllers' face buttons (no headset run in
+unattended work), a scenario event of its own (the console event does it).
+
+**A switch changed while the body runs** (the plan's `tune_live_*` for each switch, 07:28): `tune_live_stay_down` switches
+`behaviour.stay_down` on at 1.5 s as the afraid body lies (it covers for 9.7 s and gets up at 13.5 s, as `protect_near_lying` does);
+`tune_live_protect` switches `behaviour.protect` on 0.2 s before a hit on the chest of a lying body (it covers the trunk). The suite is
+198 scenarios (baseline `r10end`; 22 of R10 and these two).
+
+**The tables with every R10 behaviour on** (`Tools\checks.ps1 -What "matrix,knockdowns,seeds" -Tune "behaviour.fear=1,behaviour.stay_down=1,
+behaviour.protect=1" -Label r10_allon`, 07:24; no viewer in them): the push matrix's 160 runs and the stand's 150 have the hashes of
+`r3base_matrix` and `r3base_seeds`, the knockdowns their figures (1.87 s, 14.2 J, 1.28 cm): fear rises, but nothing reads it without a
+viewer, and no hit lands on a body that lies or gets up there. What the switches change is where a player stands near (the stand with
+`-Near`) or hits a body on the floor (the R10 scenarios, and the 19 runs of the suite named above for `protect`).
+
+**Step 7's first measure, the risk** (07:25; the plan: "can the muscles bring a grip to its 450 N for 0.1 s or 45 cm for 0.25 s"; no
+code, `docs/recon/r10/make_struggle_probe.ps1`, `Saved\Sweeps\r10_struggle_probe`): a body laid on its back, a hand that takes hold of the
+left forearm at 1.0 s and then keeps its place, and the body's left hand asked toward its chest and head at 2.0 s (`hand_target`, weight
+1). The grab's joint and the hand's gap to its target (the grip's rules: 450 N for 0.1 s, or 45 cm for 0.25 s):
+
+| The lying body's arms | The grab's joint at most | The hand dragged off its target | Grip |
+| --- | --- | --- | --- |
+| As in the files (6 N*m/rad) | 91 N | 2.8 cm | held |
+| 1200 N*m/rad, the cap of 80 N*m (the standing arms') | 337 N | 15.6 cm | held |
+| The same, the cap 120 N*m (the get-up's) | 315 N | 16.3 cm | held |
+| The same, the cap 300 N*m | 597 N for a moment | 15.8 cm | held |
+| The same, the spine at 600 and the legs at 800 N*m/rad | 434 N | 18.0 cm | held |
+
+An arm alone, at a person's strength, does not free the body from one hand that keeps its place: the hand's spring of 300 N holds it 16
+cm off at most, and the joint passes 450 N only in a peak. What the plan says the struggle needs (the free legs pushing on the floor, a
+twist away, the body moving off while the hands drag it) is not optional; and against two hands that drag at walking pace the grip's
+45 cm is what is to be reached. Measured before step 7, so that its design starts from it.
+
+**Mistakes of mine in this part.** The first "sit" scenario brought the viewer before the clip had moved (its muscles' ease): it tested
+an attempt given up at once, not a body sitting up; read from the clip's time (`from_clip_s` 0.00). Two scenario runs were made in a
+PowerShell loop (the rule says one call). The start's patch was written with PowerShell's `>`, as UTF-8 with a mark and CRLF lines, and
+`git apply` refused it until it was normalised (`docs/pitfalls.md`). After taking step 1's patch back and putting it on again, the files
+were copied back with their old times and the build said "up to date" for the binary of the reverted code: the unit tests ran 62 and
+`RepoScenariosParse` failed, which showed it; the files were touched and built again. One `baseline.ps1 -Save` was piped to
+`Select-Object -First` (exit code 255; the baseline had been saved before the pipe closed). Ending the lowering by the chest's height
+was built and measured for nothing (it did not change the case it was for).
+
 ## Known behaviour of the stock mannequin
 
 - **Residual hand motion.** After the 80 N*s impulse in `impulse_passive`, the right hand keeps rotating slowly

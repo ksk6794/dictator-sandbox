@@ -124,6 +124,19 @@ void ASandboxEffectorRig::UpdateTargets(float DeltaTime)
 			Recording->Targets.Add(Effector->GetTarget());
 		}
 	}
+	// R10, step 1: the head with this frame's targets, from the first frame of the recording or not at all.
+	if (Recording && bHasViewer && Recording->Heads.Num() + 1 == Recording->NumFrames())
+	{
+		Recording->Heads.Add(ViewerCm);
+	}
+}
+
+void ASandboxEffectorRig::NoteCommand(const FString& Name)
+{
+	if (Recording)
+	{
+		Recording->Commands.Emplace(Recording->NumFrames(), Name);
+	}
 }
 
 bool ASandboxEffectorRig::SetRecording(TSharedPtr<FSandboxTargetRecording> InRecording, FString& OutError)

@@ -5,6 +5,7 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "SandboxBodyTuning.h"
 #include "SandboxCarry.h"
+#include "SandboxChance.h"
 #include "SandboxClipPose.h"
 #include "SandboxFingerRig.h"
 #include "SandboxIdleMotion.h"
@@ -96,6 +97,102 @@ struct FSandboxSeen
 	FVector LocationCm = FVector::ZeroVector;
 	FVector VelocityCmS = FVector::ZeroVector;
 	double RadiusCm = 0.0;
+	/**
+	 * R10, step 1: a hand's grip as its target has it, 0 an open hand to 1 a fist, so that an open hand held out is not taken for a fist;
+	 * 1 for what is not a hand. Nothing reads it yet.
+	 */
+	double Grip = 1.0;
+};
+/**
+ * R10 (docs/recon/r10_plan.md): what the body's behaviours made of the player and of themselves, for result files. Read only; seconds
+ * since Start. Step 1: the viewer (the player's head and body, ESandboxSeenKind::Viewer), measured and read by nothing else.
+ */
+struct FSandboxBehaviourView
+{
+	/** Frames in which a viewer was told; the nearest viewer's distance over the floor to the nearest body of the character, least and last. cm. */
+	int32 ViewerFrames = 0;
+	double ViewerMinCm = -1.0;
+	double ViewerLastCm = -1.0;
+	/** That distance every quarter of a second while a viewer was told: (time, cm). */
+	TArray<FVector2D> ViewerSeries;
+	/**
+	 * Step 4 (behaviour.fear): the fear now, the most it reached, every quarter of a second while it was above 0 (time, fear), and what
+	 * raised it: hits (their N*s in all) and threats.
+	 */
+	double Fear = 0.0;
+	double FearMax = 0.0;
+	TArray<FVector2D> FearSeries;
+	int32 FearHits = 0;
+	double FearHitNs = 0.0;
+	int32 FearThreats = 0;
+	/**
+	 * Step 5 (behaviour.stay_down; C33): get-ups begun while the body was afraid and a viewer within behaviour.near_cm (measured whenever
+	 * fear is on: 0 is C33's limit), how long a get-up was held back by them, how long the body held the protective pose.
+	 */
+	int32 BegunNearAfraid = 0;
+	double HeldBackS = 0.0;
+	double ProtectS = 0.0;
+	/** Each attempt turned back: when the viewer came near and when it was decided, lowered and ended; the clip's time from and to. */
+	struct FLowering
+	{
+		double NearS = -1.0;
+		double DecidedS = -1.0;
+		double EndedS = -1.0;
+		double FromClipS = 0.0;
+		double ToClipS = 0.0;
+		/** How high the pelvis was over the floor as it was decided, cm (the phase it was turned back in). */
+		double FromPelvisCm = 0.0;
+		/** The pelvis's and the head's fastest way down while it was lowered and for a second after (C16's limit on the head), m/s. */
+		double PelvisDownMps = 0.0;
+		double HeadDownMps = 0.0;
+		/** When each was fastest. */
+		double PelvisDownAtS = -1.0;
+		double HeadDownAtS = -1.0;
+		/** How it ended: "lowered", "at_once", or the other reason the attempt was given up. */
+		FString Ended;
+	};
+	TArray<FLowering> Lowerings;
+	/**
+	 * Step 6 in part (behaviour.protect; C34): each cover of the head after a hit on it while lying or getting up: when, the hit's sum,
+	 * whether it gave an attempt up, and how soon the nearer forearm or hand came within 10 cm of the head and both within 15 cm (the gap
+	 * between the head's sphere, perception.head_radius_cm, and the limb's, 4 cm), the least gaps, s and cm; below 0 not reached.
+	 */
+	struct FCover
+	{
+		/** "head", "trunk", "groin" or "leg". */
+		FString Place;
+		double HitS = 0.0;
+		double HitNs = 0.0;
+		bool bGaveUp = false;
+		double OneWithinS = -1.0;
+		double BothWithinS = -1.0;
+		/** The least gaps, left and right; a limb over the face reads below 0; the largest double until measured. */
+		double GapCm[2] = { TNumericLimits<double>::Max(), TNumericLimits<double>::Max() };
+		/** The head's fastest way down from 0.1 s after the hit while covered, m/s. */
+		double HeadDownMps = 0.0;
+	};
+	TArray<FCover> Covers;
+	/**
+	 * Step 8 in part (behaviour.commands; C39): every command told, when, its answer ("accepted", "done", "stopped", "refused: <why>",
+	 * "given up: <why>") and when it was given, when the body first moved for it (a get-up begun), and how often a hit interrupted it.
+	 */
+	struct FCommand
+	{
+		FString Name;
+		double TellS = 0.0;
+		FString Answer;
+		double AnsweredS = -1.0;
+		double FirstMotionS = -1.0;
+		int32 Interrupted = 0;
+	};
+	TArray<FCommand> Commands;
+};
+
+/** R10, step 8 in part: what a session or a run may ask of the body (FR-51, FR-52). give_hand and the M4b actions are not built. */
+enum class ESandboxCommand : uint8
+{
+	GetUp,
+	Stop
 };
 /** A thing the body took for a threat, at the moment it did. */
 struct FSandboxThreatEvent
@@ -357,6 +454,10 @@ enum class ESandboxGiveUp : uint8
 	Dragged,
 	/** The carry's springs could not be made: the get-up cannot be led and the body stays down (decision 17). */
 	NotLed,
+	/** R10, step 5 (behaviour.stay_down): afraid, with the player near; lowered by its clip run back, or at once. */
+	Afraid,
+	/** R10, step 6 in part (behaviour.protect): hit on the head at or above protect_from_head_ns; it covers its head. */
+	Protect,
 	Count
 };
 SANDBOXBODY_API const TCHAR* GiveUpName(ESandboxGiveUp Kind);
@@ -607,6 +708,25 @@ public:
 	void SetPerceptionAllowed(bool bAllowed) { bPerceptionAllowed = bAllowed; }
 	const FSandboxPerceptionView& GetPerceptionView() const { return PerceptionView; }
 	const FSandboxGetUpView& GetGetUpView() const { return GetUpView; }
+	/** R10: the viewer, and later fear and the behaviours (FSandboxBehaviourView). */
+	const FSandboxBehaviourView& GetBehaviourView() const { return BehaviourView; }
+	/**
+	 * R10, step 2: the seed the body's choices draw from (FSandboxChance), told by the run (a scenario's "seed") or the session (a counter
+	 * of its own) as the body starts; 0, the default, draws nothing. Nothing draws yet (the struggle of step 7 will).
+	 */
+	void SetChanceSeed(int32 Seed) { Chance.Reset(Seed); }
+	const FSandboxChance& GetChance() const { return Chance; }
+	/**
+	 * R10, step 8 in part (behaviour.commands): a command from whoever knows the player (a session, a run). get_up: up at once, the player
+	 * near or not; refused while the body stands, falls, is held by two hands or pressed down, or is held up; done when it stands. stop:
+	 * ends the command in force. Every command and its answer is kept (FSandboxBehaviourView::Commands). With the switch at 0: refused, off.
+	 */
+	void TellCommand(ESandboxCommand Command);
+	/**
+	 * R10, step 1: the nearest viewer told this frame (ESandboxSeenKind::Viewer), its distance over the floor to the nearest body of the
+	 * character, cm; below 0 when none is told. Read only: it reads the bodies and what it was told.
+	 */
+	double NearestViewerCm() const;
 
 	/** Lets the clip's pose go: the target goes back to the state's pose within poses.blend_s. */
 	void ReleaseClipPose();
@@ -1023,6 +1143,14 @@ private:
 		bool bRollPushed = false;
 		bool bRollOnLeft = false;
 		bool bRollToFront = false;
+		/** R10, step 5: turned back (behaviour.stay_down): the clip runs back to LowerToS, then the attempt is given up. */
+		bool bLowering = false;
+		double LowerToS = 0.0;
+		/** The clip's pace as it was turned back, which goes over to the pace back over behaviour.lower_turn_s. */
+		double LowerFromRate = 0.0;
+		/** R10, step 8 in part: a lowering ended by get_up; the clip's pace goes from RaiseFromRate back to its own over lower_turn_s. */
+		double RaiseFromS = -1.0;
+		double RaiseFromRate = 0.0;
 		double ClipStartedS = 0.0;
 		int32 StartIndex = INDEX_NONE;
 		/**
@@ -1496,6 +1624,68 @@ private:
 	TArray<FSeenTrack> SeenTracks;
 	bool bPerceptionAllowed = false;
 	FSandboxPerceptionView PerceptionView;
+	/** R10: what the behaviours keep for result files, and the step that measures the viewer every tick (read only). */
+	FSandboxBehaviourView BehaviourView;
+	FSandboxChance Chance;
+	double ViewerSeriesNextS = 0.0;
+	void MeasureViewer();
+	/**
+	 * R10, step 4 (behaviour.fear): fear as it was at its last rise and when that was (it falls to 0 over fear_fade_s from then); the
+	 * largest hit of the contact under way already counted, so that a contact is counted once by its whole hit.
+	 */
+	double FearAtLast = 0.0;
+	double FearLastS = -1.0;
+	double FearContactNs = 0.0;
+	double FearSeriesNextS = 0.0;
+	void AddFear(double Amount, bool bHit);
+	void UpdateFear();
+	/**
+	 * R10, step 5 (behaviour.stay_down): whether a viewer is near (with near_margin_cm going out), whether the body wants to stay down,
+	 * when that last stopped, since when a get-up under way has had it, and the protective pose's share and whether it is asked for.
+	 */
+	bool bViewerNear = false;
+	bool bStayDownWanted = false;
+	double StayDownReleasedS = -1.0;
+	double StayDownNearSinceS = -1.0;
+	double ProtectShare = 0.0;
+	bool bProtectPose = false;
+	/** The last attempt was given up because the body was afraid: its fall and its lying are protected. Reset when it stands. */
+	bool bAfraidGivenUp = false;
+	/**
+	 * R10, step 6 (behaviour.protect): the place covered after a hit on it, its struck bone, until when (below 0: never); the attempt given
+	 * up for it; the head's contact counted; the trunk's, the groin's and the legs' sums of one contact, when each was last felt, and
+	 * whether each contact has been counted; the place whose pose the body holds now.
+	 */
+	enum class ECoverPlace : uint8 { Head, Trunk, Groin, Leg };
+	ECoverPlace CoverPlace = ECoverPlace::Head;
+	FName CoverBone;
+	double ProtectUntilS = -1.0;
+	bool bProtectGivenUp = false;
+	bool bHeadCoverCounted = false;
+	double PlaceHitNs[3] = { 0.0, 0.0, 0.0 };
+	double PlaceFeltS[3] = { -1.0e9, -1.0e9, -1.0e9 };
+	bool bPlaceCounted[3] = { false, false, false };
+	ECoverPlace ProtectPosePlace = ECoverPlace::Head;
+	/** R10, step 8 in part: the get_up command in force, and its record in BehaviourView.Commands (INDEX_NONE: none). */
+	bool bGetUpCommanded = false;
+	int32 CommandRecord = INDEX_NONE;
+	/** When the command in force was last interrupted (one blow interrupts once). */
+	double CommandInterruptedS = -1.0e9;
+	void EndCommand(const FString& Answer);
+	/** A get_up in force interrupted (a cover after a hit, an attempt given up): ended after behaviour.command_tries times. */
+	void InterruptCommand(const TCHAR* What);
+	void StartCover(ECoverPlace Place, double HitNs, FName Bone);
+	void MeasureCover();
+	/** Whether a hit with this impulse comes at the trunk from its front (the belly's rule, IsIntoBelly, without its band). */
+	bool IsFromFront(const FVector& HitNs) const;
+	/** The trunk's forward, a unit vector (zero when its bodies are missing). */
+	FVector TrunkForward() const;
+	/** Blend for the next ApplyPose instead of the state's, below 0 none (the protective pose comes and goes over its own). */
+	double PoseBlendOverrideS = -1.0;
+	/** Seconds after a lowering's end during which the pelvis's and the head's fall is still counted to it. */
+	double LoweringWatchUntilS = -1.0;
+	bool IsAfraid() const;
+	void UpdateStayDown(double DeltaTime);
 	/** Where the head body faces, in its own frame (the mesh faces +y in the reference pose). */
 	FVector HeadForwardLocal = FVector::YAxisVector;
 	/** Gaze (N5): the neck's and the chest's reference rotations in the component, the neck's bone, what it looks at and since when, and the turn now. */

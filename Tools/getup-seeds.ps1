@@ -12,6 +12,8 @@
 #                               against 87 s): in one queue a stand's trials drawn again wait for a process the other
 #                               stands keep busy (docs/testing.md, "Faster checks, stage 1")
 #   ... -PressN 300, -HoldHands 1, -Only "table,chair", -StopStandingS 0     passed on to every stand
+#   ... -Near 70                 passed on as well (R10, step 5: a viewer by every fallen body; its line is printed for each seed)
+#   ... -CommandAtS 3            passed on with -Near (R10, step 8 in part: get_up told with the viewer near; C39's line for each seed)
 #
 # Prints, for each seed: the falls that end standing, those at the first attempt, attempts a fall, and the
 # assist's mean share of body weight while getting up; then the sums. Exit code: 0 every stand met its criterion,
@@ -25,7 +27,9 @@ param(
     [double]$PressN = 0,
     [int]$HoldHands = 0,
     [string]$Only,
-    [double]$StopStandingS = -1
+    [double]$StopStandingS = -1,
+    [double]$Near = 0,
+    [double]$CommandAtS = -1
 )
 . "$PSScriptRoot\common.ps1"
 
@@ -48,6 +52,8 @@ foreach ($seedText in $seedList) {
     if ($HoldHands -gt 0) { $arguments += " -HoldHands $HoldHands" }
     if ($Only) { $arguments += " -Only `"$Only`"" }
     if ($StopStandingS -ge 0) { $arguments += " -StopStandingS $StopStandingS" }
+    if ($Near -gt 0) { $arguments += " -Near $Near" }
+    if ($Near -gt 0 -and $CommandAtS -ge 0) { $arguments += " -CommandAtS $CommandAtS" }
     $printed = Join-Path $root "seed_$seedNumber.txt"
     $process = Start-Process powershell -ArgumentList $arguments -RedirectStandardOutput $printed -WindowStyle Hidden -PassThru
     $running += [pscustomobject]@{ seed = $seedNumber; process = $process; dir = $outDir; printed = $printed }
@@ -80,6 +86,12 @@ foreach ($one in $running) {
     }
     if ($HoldHands -gt 0) {
         $line = Get-Content $one.printed | Where-Object { $_ -match 'pulled free and stood' } | Select-Object -First 1
+        if ($line) { $pressed += '; ' + $line.Trim() }
+    }
+    if ($Near -gt 0) {
+        $line = Get-Content $one.printed | Where-Object { $_ -match 'a viewer .* cm from every fallen pelvis' } | Select-Object -First 1
+        if ($line) { $pressed += '; ' + $line.Trim() }
+        $line = Get-Content $one.printed | Where-Object { $_ -match 'get_up told .* after the viewer came' } | Select-Object -First 1
         if ($line) { $pressed += '; ' + $line.Trim() }
     }
     $line = Get-Content $one.printed | Where-Object { $_ -match 'from the first attempt to the first standing' } | Select-Object -First 1

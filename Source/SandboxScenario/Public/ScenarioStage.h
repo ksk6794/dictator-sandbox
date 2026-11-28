@@ -7,6 +7,7 @@ class ASandboxEffectorRig;
 class ASandboxRagdollActor;
 class UWorld;
 struct FScenarioSpec;
+struct FSandboxSeen;
 
 /**
  * Builds in a world what a scenario file describes: the floor and lights (unless the scenario's map brings
@@ -54,6 +55,11 @@ struct SANDBOXSCENARIO_API FScenarioStage
 	 * call this once a frame. Either may be null.
 	 */
 	static void TellBodyOfHolds(const ASandboxEffectorRig* Rig, ASandboxRagdollActor* Body);
-	/** Tells the body what moves near it (N5): the hands and feet of the rig and the things with mass, where they are and how fast. */
-	static void TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArrayView<TObjectPtr<AActor>> Props, ASandboxRagdollActor* Body);
+	/**
+	 * Tells the body what moves near it (N5): the hands (with their grips) and feet of the rig and the things with mass, where they are and
+	 * how fast; the player's body (the effector "body") and the viewers given (the player's head: a scenario's "viewer", a session's camera
+	 * or headset) as ESandboxSeenKind::Viewer (R10, step 1).
+	 */
+	static void TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArrayView<TObjectPtr<AActor>> Props, ASandboxRagdollActor* Body,
+		TConstArrayView<FSandboxSeen> Viewers = {}, bool bViewersOnly = false);
 };

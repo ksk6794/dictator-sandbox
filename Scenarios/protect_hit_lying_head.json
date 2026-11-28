@@ -1,0 +1,62 @@
+{
+    "name":  "protect_hit_lying_head",
+    "duration_s":  20,
+    "body":  {
+                 "mesh":  "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+                 "physics_asset":  "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+                 "attached_meshes":  [
+                                         "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+                                     ],
+                 "control":  "active",
+                 "get_up":  true,
+                 "location_cm":  [
+                                     0,
+                                     90,
+                                     0
+                                 ],
+                 "laid_deg":  0
+             },
+    "events":  [
+                   {
+                       "t":  0,
+                       "type":  "console",
+                       "command":  "Sandbox.Tune behaviour.protect=1"
+                   },
+                   {
+                       "t":  1,
+                       "type":  "impulse",
+                       "body":  "head",
+                       "impulse_ns":  15,
+                       "direction":  [
+                                         1,
+                                         0,
+                                         0
+                                     ]
+                   }
+               ],
+    "expect":  {
+                   "tuning_changes":  1,
+                   "max_joint_stretch_cm":  2,
+                   "measures":  {
+                                    "control.behaviour.covers.0.one_within_s":  {
+                                                                                    "min":  0,
+                                                                                    "max":  0.6
+                                                                                },
+                                    "control.behaviour.covers.0.both_within_s":  {
+                                                                                     "min":  0,
+                                                                                     "max":  0.6
+                                                                                 },
+                                    "control.behaviour.covers.0.head_down_mps":  {
+                                                                                     "max":  2
+                                                                                 },
+                                    "control.behaviour.protect_s":  {
+                                                                        "min":  2.5
+                                                                    },
+                                    "control.pose.target_step_max_deg":  {
+                                                                             "max":  110
+                                                                         }
+                                },
+                   "end_state":  "standing",
+                   "min_get_ups":  1
+               }
+}

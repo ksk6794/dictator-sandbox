@@ -623,6 +623,18 @@ struct FSandboxPoseTuning
 	FSandboxPose FallSit;
 	FSandboxPose FallTurn;
 	/**
+	 * R10, step 5 (behaviour.stay_down): a body that lies and stays down while the player stands over it covers its head: both forearms
+	 * over the face and the head, the knees drawn up, the chin in. The pose itself, not added on top.
+	 */
+	FSandboxPose ProtectHead;
+	/**
+	 * R10, step 6 (behaviour.protect): the covers after a hit on the trunk (the forearms across the chest and the belly, the knees up),
+	 * the groin (the hands at the groin, the hips and knees flexed) and a leg (the knees drawn in, the hands to the knees). Poses themselves.
+	 */
+	FSandboxPose ProtectTrunk;
+	FSandboxPose ProtectGroin;
+	FSandboxPose ProtectLeg;
+	/**
 	 * The clip whose motion a standing body carries on top of its stance: breathing, the shoulders, a slow sway
 	 * (FSandboxIdleMotion; "poses.idle.animation", an asset path, empty for none). Read when the body starts; a
 	 * change while it runs is not followed.
@@ -859,6 +871,74 @@ struct FSandboxPerceptionTuning
 	double GuardReachCm = 0.0;
 	double GuardHoldS = 0.0;
 	double GuardBlendS = 0.0;
+};
+
+/** R10's behaviours ("behaviour.*", docs/recon/r10_plan.md): fear (step 4), staying down and lowering (step 5). Every switch 0: none. */
+struct FSandboxBehaviourTuning
+{
+	/**
+	 * Fear (step 4; decision 41): 1 keeps one number from 0 to 1 that rises by fear_per_ns for each N*s of a hit from something that moves
+	 * (a contact's whole hit, as the body counts it; the static world is no such hit) and by fear_per_threat for each threat N5 sees, and
+	 * falls to 0 over fear_fade_s from the last of them, whether or not the player is near. Read only by the behaviours below. 0 none.
+	 */
+	double Fear = 0.0;
+	double FearPerNs = 0.0;
+	double FearPerThreat = 0.0;
+	double FearFadeS = 0.0;
+	/**
+	 * Staying down (step 5; FR-48, FR-49, FR-51; C33): 1 holds back a get-up while the body's fear is at least fear_stay_down and a viewer
+	 * (the player, ESandboxSeenKind::Viewer) is within near_cm of it over the floor; it may begin again once the viewer is beyond near_cm
+	 * and near_margin_cm, or its fear is below the line, and getup.rest_s has gone since. A get-up under way when that becomes true is
+	 * turned back after perception.react_s: its clip runs back to where the attempt began at lower_rate of its pace, led as it rose
+	 * (lowered, not dropped), and the attempt is then given up (ESandboxGiveUp::Afraid); lower_rate 0 gives it up at once, the world's
+	 * pull let go over getup.carry_release_s. Lying so, the body holds poses.protect_head, its muscles at the protect_* stiffnesses (the
+	 * lying state's are too weak to hold a pose), eased in and out over protect_blend_s. 0 none.
+	 */
+	double StayDown = 0.0;
+	double FearStayDown = 0.0;
+	double NearCm = 0.0;
+	double NearMarginCm = 0.0;
+	double LowerRate = 0.0;
+	/**
+	 * The lowering ends, and the attempt is given up, once the chest is this near the floor (cm; 0: only at the clip's start): run back
+	 * further, the clip's first frames swing the legs up and hold the body off the floor on the world's pull (R10, step 5, measured).
+	 */
+	double LowerEndCm = 0.0;
+	/** The clip's pace turns from forward to back over this long (s): turned in one frame, the reference's speed reverses at once. */
+	double LowerTurnS = 0.0;
+	/**
+	 * The fastest the clip's pelvis may come down as it is run back, m/s: its pace back is lowered where the clip rose faster (0: no bound).
+	 * At 0.7 of the pace alone a body that began sitting against a wall came down at 1.02 m/s (C33's limit 1.0).
+	 */
+	double LowerMaxMps = 0.0;
+	/** After an attempt given up afraid, the world's pull goes over this long (s) instead of getup.carry_release_s; 0: that. */
+	double LowerReleaseS = 0.0;
+	/**
+	 * Commands (step 8 in part; FR-51, FR-52; C39): 1 answers get_up (up at once, the disposition set aside: the player may be near; a
+	 * cover after a hit or an attempt given up interrupts it and it goes on, at most command_tries times) and stop (ends the command in
+	 * force); 0 refuses every command ("off"). Told by a session or a run (USandboxBodyController::TellCommand, the console's Sandbox.Command).
+	 */
+	double Commands = 0.0;
+	double CommandTries = 0.0;
+	/** From a get_up to the first attempt for it, at least, s (C39: a person answers a spoken word in 0.2 to 1.0 s; a light in 0.15). */
+	double CommandReactS = 0.0;
+	/**
+	 * The cover after a hit (step 6, in part: the head; C34; decision 45): 1 makes a hit on the head that sums protect_from_head_ns or more
+	 * in one contact, while the body lies or gets up, give an attempt up (ESandboxGiveUp::Protect) and cover the head (poses.protect_head)
+	 * for protect_hold_s; no get-up begins meanwhile. The body's own landing is no such hit (the static world is not felt as one). 0 none.
+	 */
+	double Protect = 0.0;
+	double ProtectFromHeadNs = 0.0;
+	/** The same for the trunk, the groin and the legs (decision 45: 40 N*s, the doubling over's line); each covered by its pose. */
+	double ProtectFromNs = 0.0;
+	double ProtectHoldS = 0.0;
+	double ProtectBlendS = 0.0;
+	/** N*m/rad of the spine's, the neck's, the arms' and the legs' muscles while the body protects itself lying; their damping, s. */
+	double ProtectSpineNmPerRad = 0.0;
+	double ProtectNeckNmPerRad = 0.0;
+	double ProtectArmsNmPerRad = 0.0;
+	double ProtectLegsNmPerRad = 0.0;
+	double ProtectDampingS = 0.0;
 };
 
 /** How the weight torques are worked out ("muscles.weight_*"). */
@@ -1111,6 +1191,7 @@ struct SANDBOXBODY_API FSandboxBodyTuning
 	FSandboxToneTuning Tone;
 	FSandboxFallAimTuning FallAim;
 	FSandboxPerceptionTuning Perception;
+	FSandboxBehaviourTuning Behaviour;
 	/** The values of the joint whose child is this bone (its kind with the side taken off); null for a bone of no kind. */
 	const FSandboxJointScale* JointScale(FName ChildBone) const;
 

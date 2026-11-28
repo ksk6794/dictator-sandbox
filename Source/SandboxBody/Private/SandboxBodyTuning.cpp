@@ -106,6 +106,33 @@ namespace
 		Visitor(FString(TEXT("perception.guard_reach_cm")), Tuning.Perception.GuardReachCm);
 		Visitor(FString(TEXT("perception.guard_hold_s")), Tuning.Perception.GuardHoldS);
 		Visitor(FString(TEXT("perception.guard_blend_s")), Tuning.Perception.GuardBlendS);
+		// R10 (docs/recon/r10_plan.md): fear (step 4), staying down and lowering (step 5).
+		Visitor(FString(TEXT("behaviour.fear")), Tuning.Behaviour.Fear);
+		Visitor(FString(TEXT("behaviour.fear_per_ns")), Tuning.Behaviour.FearPerNs);
+		Visitor(FString(TEXT("behaviour.fear_per_threat")), Tuning.Behaviour.FearPerThreat);
+		Visitor(FString(TEXT("behaviour.fear_fade_s")), Tuning.Behaviour.FearFadeS);
+		Visitor(FString(TEXT("behaviour.stay_down")), Tuning.Behaviour.StayDown);
+		Visitor(FString(TEXT("behaviour.fear_stay_down")), Tuning.Behaviour.FearStayDown);
+		Visitor(FString(TEXT("behaviour.near_cm")), Tuning.Behaviour.NearCm);
+		Visitor(FString(TEXT("behaviour.near_margin_cm")), Tuning.Behaviour.NearMarginCm);
+		Visitor(FString(TEXT("behaviour.lower_rate")), Tuning.Behaviour.LowerRate);
+		Visitor(FString(TEXT("behaviour.lower_end_cm")), Tuning.Behaviour.LowerEndCm);
+		Visitor(FString(TEXT("behaviour.lower_turn_s")), Tuning.Behaviour.LowerTurnS);
+		Visitor(FString(TEXT("behaviour.lower_max_mps")), Tuning.Behaviour.LowerMaxMps);
+		Visitor(FString(TEXT("behaviour.lower_release_s")), Tuning.Behaviour.LowerReleaseS);
+		Visitor(FString(TEXT("behaviour.commands")), Tuning.Behaviour.Commands);
+		Visitor(FString(TEXT("behaviour.command_tries")), Tuning.Behaviour.CommandTries);
+		Visitor(FString(TEXT("behaviour.command_react_s")), Tuning.Behaviour.CommandReactS);
+		Visitor(FString(TEXT("behaviour.protect")), Tuning.Behaviour.Protect);
+		Visitor(FString(TEXT("behaviour.protect_from_head_ns")), Tuning.Behaviour.ProtectFromHeadNs);
+		Visitor(FString(TEXT("behaviour.protect_from_ns")), Tuning.Behaviour.ProtectFromNs);
+		Visitor(FString(TEXT("behaviour.protect_hold_s")), Tuning.Behaviour.ProtectHoldS);
+		Visitor(FString(TEXT("behaviour.protect_blend_s")), Tuning.Behaviour.ProtectBlendS);
+		Visitor(FString(TEXT("behaviour.protect_spine_nm_per_rad")), Tuning.Behaviour.ProtectSpineNmPerRad);
+		Visitor(FString(TEXT("behaviour.protect_neck_nm_per_rad")), Tuning.Behaviour.ProtectNeckNmPerRad);
+		Visitor(FString(TEXT("behaviour.protect_arms_nm_per_rad")), Tuning.Behaviour.ProtectArmsNmPerRad);
+		Visitor(FString(TEXT("behaviour.protect_legs_nm_per_rad")), Tuning.Behaviour.ProtectLegsNmPerRad);
+		Visitor(FString(TEXT("behaviour.protect_damping_s")), Tuning.Behaviour.ProtectDampingS);
 		Visitor(FString(TEXT("fall.aim")), Tuning.FallAim.Aim);
 		Visitor(FString(TEXT("fall.reach_ahead_cm")), Tuning.FallAim.ReachAheadCm);
 		Visitor(FString(TEXT("fall.hand_height_cm")), Tuning.FallAim.HandHeightCm);
@@ -288,6 +315,10 @@ namespace
 		Pose(TEXT("fall_curl"), Tuning.Poses.FallCurl);
 		Pose(TEXT("fall_sit"), Tuning.Poses.FallSit);
 		Pose(TEXT("fall_turn"), Tuning.Poses.FallTurn);
+		Pose(TEXT("protect_head"), Tuning.Poses.ProtectHead);
+		Pose(TEXT("protect_trunk"), Tuning.Poses.ProtectTrunk);
+		Pose(TEXT("protect_groin"), Tuning.Poses.ProtectGroin);
+		Pose(TEXT("protect_leg"), Tuning.Poses.ProtectLeg);
 		Visitor(FString(TEXT("poses.fingers.weight")), Tuning.Poses.Fingers.Weight);
 		Visitor(FString(TEXT("poses.fingers.blend_s")), Tuning.Poses.Fingers.BlendS);
 		const auto Fingers = [&Visitor](const TCHAR* Name, auto& Values)
@@ -660,6 +691,42 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		OutError = TEXT("perception.anticipate_pose_s must be above 0 while perception.anticipate is on");
 		return false;
 	}
+	// R10: fear and staying down.
+	if (!CheckRange(Behaviour.Fear, 1.0, TEXT("behaviour"), TEXT("fear"), OutError) || !CheckRange(Behaviour.FearPerNs, 1.0, TEXT("behaviour"), TEXT("fear_per_ns"), OutError) ||
+		!CheckRange(Behaviour.FearPerThreat, 1.0, TEXT("behaviour"), TEXT("fear_per_threat"), OutError) || !CheckRange(Behaviour.FearFadeS, 600.0, TEXT("behaviour"), TEXT("fear_fade_s"), OutError) ||
+		!CheckRange(Behaviour.StayDown, 1.0, TEXT("behaviour"), TEXT("stay_down"), OutError) || !CheckRange(Behaviour.FearStayDown, 1.0, TEXT("behaviour"), TEXT("fear_stay_down"), OutError) ||
+		!CheckRange(Behaviour.NearCm, 1000.0, TEXT("behaviour"), TEXT("near_cm"), OutError) || !CheckRange(Behaviour.NearMarginCm, 500.0, TEXT("behaviour"), TEXT("near_margin_cm"), OutError) ||
+		!CheckRange(Behaviour.LowerRate, 2.0, TEXT("behaviour"), TEXT("lower_rate"), OutError) || !CheckRange(Behaviour.ProtectBlendS, 5.0, TEXT("behaviour"), TEXT("protect_blend_s"), OutError) ||
+		!CheckRange(Behaviour.LowerEndCm, 100.0, TEXT("behaviour"), TEXT("lower_end_cm"), OutError) ||
+		!CheckRange(Behaviour.LowerTurnS, 2.0, TEXT("behaviour"), TEXT("lower_turn_s"), OutError) ||
+		!CheckRange(Behaviour.LowerMaxMps, 5.0, TEXT("behaviour"), TEXT("lower_max_mps"), OutError) ||
+		!CheckRange(Behaviour.LowerReleaseS, 5.0, TEXT("behaviour"), TEXT("lower_release_s"), OutError) ||
+		!CheckRange(Behaviour.Commands, 1.0, TEXT("behaviour"), TEXT("commands"), OutError) ||
+		!CheckRange(Behaviour.CommandTries, 100.0, TEXT("behaviour"), TEXT("command_tries"), OutError) ||
+		!CheckRange(Behaviour.CommandReactS, 5.0, TEXT("behaviour"), TEXT("command_react_s"), OutError) ||
+		!CheckRange(Behaviour.Protect, 1.0, TEXT("behaviour"), TEXT("protect"), OutError) ||
+		!CheckRange(Behaviour.ProtectFromHeadNs, 500.0, TEXT("behaviour"), TEXT("protect_from_head_ns"), OutError) ||
+		!CheckRange(Behaviour.ProtectFromNs, 1000.0, TEXT("behaviour"), TEXT("protect_from_ns"), OutError) ||
+		!CheckRange(Behaviour.ProtectHoldS, 30.0, TEXT("behaviour"), TEXT("protect_hold_s"), OutError) ||
+		!CheckRange(Behaviour.ProtectSpineNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_spine_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.ProtectNeckNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_neck_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.ProtectArmsNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_arms_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.ProtectLegsNmPerRad, 3000.0, TEXT("behaviour"), TEXT("protect_legs_nm_per_rad"), OutError) ||
+		!CheckRange(Behaviour.ProtectDampingS, 2.0, TEXT("behaviour"), TEXT("protect_damping_s"), OutError))
+	{
+		return false;
+	}
+	if (Behaviour.StayDown > 0.5 && (Behaviour.Fear <= 0.5 || Behaviour.FearFadeS <= 0.0 || Behaviour.ProtectBlendS < 0.02))
+	{
+		// Without fear nothing is ever afraid; a pose that comes in faster than 0.02 s is a jump of the target (C25).
+		OutError = TEXT("behaviour.stay_down needs behaviour.fear on, fear_fade_s above 0 and protect_blend_s of at least 0.02 s");
+		return false;
+	}
+	if (Behaviour.Protect > 0.5 && (Behaviour.ProtectBlendS < 0.02 || Behaviour.ProtectFromHeadNs <= 0.0 || Behaviour.ProtectFromNs <= 0.0))
+	{
+		OutError = TEXT("behaviour.protect needs protect_blend_s of at least 0.02 s and protect_from_head_ns and protect_from_ns above 0");
+		return false;
+	}
 	if (!CheckRange(FallAim.Aim, 1.0, TEXT("fall"), TEXT("aim"), OutError) || !CheckRange(FallAim.ReachAheadCm, 200.0, TEXT("fall"), TEXT("reach_ahead_cm"), OutError) ||
 		!CheckRange(FallAim.HandHeightCm, 50.0, TEXT("fall"), TEXT("hand_height_cm"), OutError) || !CheckRange(FallAim.ReachBlendS, 2.0, TEXT("fall"), TEXT("reach_blend_s"), OutError) ||
 		!CheckRange(FallAim.WayFollowS, 2.0, TEXT("fall"), TEXT("way_follow_s"), OutError) || !CheckRange(FallAim.ReachStiffness, 20.0, TEXT("fall"), TEXT("arm_reach_stiffness"), OutError) ||
@@ -988,7 +1055,9 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		{ TEXT("fall_back"), &Poses.FallBack }, { TEXT("fall_forward"), &Poses.FallForward }, { TEXT("fall_side"), &Poses.FallSide },
 		{ TEXT("balance_back"), &Poses.BalanceBack }, { TEXT("balance_forward"), &Poses.BalanceForward }, { TEXT("balance_side"), &Poses.BalanceSide },
 		{ TEXT("roll_to_back"), &Poses.RollToBack }, { TEXT("roll_to_front"), &Poses.RollToFront },
-		{ TEXT("fall_curl"), &Poses.FallCurl }, { TEXT("fall_sit"), &Poses.FallSit }, { TEXT("fall_turn"), &Poses.FallTurn } };
+		{ TEXT("fall_curl"), &Poses.FallCurl }, { TEXT("fall_sit"), &Poses.FallSit }, { TEXT("fall_turn"), &Poses.FallTurn },
+		{ TEXT("protect_head"), &Poses.ProtectHead }, { TEXT("protect_trunk"), &Poses.ProtectTrunk }, { TEXT("protect_groin"), &Poses.ProtectGroin },
+		{ TEXT("protect_leg"), &Poses.ProtectLeg } };
 	for (const TPair<const TCHAR*, const FSandboxPose*>& Entry : PoseList)
 	{
 		for (int32 Index = 0; Index < SandboxPoseJointCount; ++Index)

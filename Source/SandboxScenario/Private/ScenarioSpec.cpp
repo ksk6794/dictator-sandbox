@@ -230,10 +230,22 @@ namespace
 			return true;
 		}
 
-		if (OutEvent.Type == TEXT("effector"))
+		// R10, step 1: "viewer" is the player's head as the body is told of it, a path as an effector's (a single key: a place), with
+		// "at_bone" (its keys after the first measured from where that body is as the event begins); it has no hand, no grip, no follow.
+		if (OutEvent.Type == TEXT("effector") || OutEvent.Type == TEXT("viewer"))
 		{
+			const bool bViewer = OutEvent.Type == TEXT("viewer");
 			FString Effector;
-			if (!Json->TryGetStringField(TEXT("effector"), Effector) || !SandboxEffectors::IsKnown(FName(*Effector)))
+			if (bViewer)
+			{
+				Effector = ScenarioViewer::Name.ToString();
+				if (Json->HasField(TEXT("effector")) || Json->HasField(TEXT("follow_bone_s")))
+				{
+					OutError = FString::Printf(TEXT("events[%d]: a viewer has no 'effector' and no 'follow_bone_s'"), Index);
+					return false;
+				}
+			}
+			else if (!Json->TryGetStringField(TEXT("effector"), Effector) || !SandboxEffectors::IsKnown(FName(*Effector)))
 			{
 				OutError = FString::Printf(TEXT("events[%d].effector must be \"hand_left\", \"hand_right\", \"foot_left\" or \"foot_right\""), Index);
 				return false;
@@ -573,6 +585,16 @@ bool FScenarioSpec::FromJson(const TSharedPtr<FJsonObject>& Json, FScenarioSpec&
 			return false;
 		}
 		OutSpec.bPerception = Perception->AsBool();
+	}
+	// R10, step 2: the seed the body's choices draw from (0, or none: nothing is drawn, each choice its fixed answer).
+	if (const TSharedPtr<FJsonValue> Seed = Json->TryGetField(TEXT("seed")))
+	{
+		if (Seed->Type != EJson::Number || Seed->AsNumber() < 0.0 || Seed->AsNumber() > 2147483647.0 || Seed->AsNumber() != FMath::FloorToDouble(Seed->AsNumber()))
+		{
+			OutError = TEXT("'seed' must be a whole number from 0 (nothing drawn) up");
+			return false;
+		}
+		OutSpec.Seed = static_cast<int32>(Seed->AsNumber());
 	}
 
 	if ((*Body)->HasField(TEXT("control")))

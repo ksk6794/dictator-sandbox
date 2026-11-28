@@ -22,6 +22,13 @@ struct SANDBOXINTERACTION_API FSandboxTargetRecording
 	TArray<FName> Effectors;
 	/** Frame after frame, one target for each effector. */
 	TArray<FSandboxEffectorTarget> Targets;
+	/**
+	 * R10, step 1: where the player's head was in each frame (the camera on the desktop, the head in a headset), world, cm; one a frame,
+	 * kept with that frame's targets, so that a replay tells the body of the viewer its session had. Empty in a recording made before.
+	 */
+	TArray<FVector> Heads;
+	/** R10, step 8 in part: the commands a person gave the body while it was recorded (the console's Sandbox.Command), each at its frame. */
+	TArray<TPair<int32, FString>> Commands;
 
 	int32 NumFrames() const { return Effectors.Num() > 0 ? Targets.Num() / Effectors.Num() : 0; }
 

@@ -222,6 +222,9 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **Check a limit against today's body before it judges a change.** "No joint faster than 30 rad/s in the knockdowns" was written
   for N6 and today's neck reaches 36 after the blow at 90 degrees; the plan said "the arms, when they meet the floor". Read today's
   figure of a new limit before the runs it is to judge.
+- **`film.ps1 -Around` is where a film begins (0.1 s before it), not its middle.** On 28 November two films of the commands were asked
+  for "around" the moment to be seen with half the span on each side; they began there and missed the lowering and the first motion
+  they were made for. Give `-Around` the first moment to be seen, and read the sheet's first time before the film is looked at.
 
 ## Muscles, poses and the standing body
 
@@ -537,6 +540,20 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **An arm that props a falling body is part of how it comes to rest.** Letting R3's catch go the moment the trunk touched (so that no arm
   stayed out under a lying body) kept the sideways knockdowns from rest for 6.3 s and for good: the near arm held the body on its side,
   and its sudden return to the fall pose rocked it. The catch is let go as the body lies.
+- **A get-up clip run backward is not a body lying down.** R10's lowering (28 November) runs the clip back, led as it rose: from a
+  standing rise the clip's first frames swing the legs up and hold the body a few centimetres off the floor on the world's pull, the body
+  is "held up", and it drops when let go; and an attempt the matcher began late (0.8 to 0.97 s into its clip, a body sitting against a wall
+  or the chair) ends its run back sitting, its chest 43 cm up, and the trunk falls (head 2.5 m/s) unless the world's pull is let go
+  slowly; run back further, to the clip's own start, the clip's lying place was 40 cm off and the body was lost and dropped (3.1 m/s).
+  Measure a reversed motion on the stand's late starts by furniture, not only on bodies laid in the open.
+- **A rule of a limb's user meets every other user of that limb.** R2's held arm, answering a hand that took the forearm of a body R10
+  lowered, turned the upper arm's target over by 159 degrees in a frame (`protect_phase_lowering_hold`); the C26 scenario of the new
+  phase found it, the suite could not. Until the arbiter of limbs (R10, step 3), a new behaviour that moves the body under a held arm is
+  run with a hold in its phase.
+- **A shortcut for the first attempt reaches every attempt after it unless it says otherwise.** The command `get_up` shortened the rest
+  before a get-up to the reaction time; the scenarios made for it began one attempt and passed. On the stand of 150 a body by the chair
+  failed, and the short rest sent it up again before it lay still, seven times; it never stood (with the usual rest it stood after
+  three). A change to when a get-up begins is run on the stand, not on the scenarios that show it.
 
 ## Hands, the grab and blows
 
@@ -776,6 +793,14 @@ that can spoil any part without a sign goes into `CLAUDE.md` instead.
 - **`@(, @(1, 2), @(3, 4))` is not a list of two pairs in PowerShell.** The comma binds to the first item only and wraps it
   once more; the first pair of every such row was never judged. And `Measure-Object` over the `$null` that an empty
   list becomes reads 0, which is within most limits: say what a figure that is missing means.
+- **`git diff > file` in PowerShell 5.1 writes a patch `git apply` refuses.** The redirection writes UTF-8 with a byte-order mark and
+  turns every line ending into CRLF; the blobs have LF, and every hunk "does not apply" (`--ignore-whitespace` applies it and turns whole
+  files into changes). Write patches with `git diff --output=<file>` (R10, 28 November: the start's patch had to be normalised before the
+  R10 diff could be made against a temporary index of the start, `GIT_INDEX_FILE`).
+- **A file copied back keeps its old time, and the build calls the binary current.** After a patch was taken back, built, and put on
+  again, the files were restored by `Copy-Item` from a backup: their times were older than the binary built from the reverted code, the
+  build took 1 s, and the tests ran on the reverted code (62 tests instead of 63; a parser test failed on the new event). Touch restored
+  files (`(Get-Item f).LastWriteTime = Get-Date`) and check the test count after such a build.
 
 ## Assets, the MetaHuman, maps and lighting
 

@@ -56,6 +56,14 @@ public:
 	bool SetRecording(TSharedPtr<FSandboxTargetRecording> InRecording, FString& OutError);
 	bool IsRecording() const { return Recording.IsValid(); }
 
+	/**
+	 * R10, step 1: where the player's head is for the coming UpdateTargets (the camera on the desktop, the headset's head), world, cm. A
+	 * recording keeps it with that frame's targets once it has been given; nothing else reads it here.
+	 */
+	void SetViewer(const FVector& InHeadCm) { ViewerCm = InHeadCm; bHasViewer = true; }
+	/** R10, step 8 in part: a command given now, kept with the frame the recording is at (the next frame's targets). Nothing without a recording. */
+	void NoteCommand(const FString& Name);
+
 	const TArray<TObjectPtr<USandboxEffectorComponent>>& GetEffectors() const { return Effectors; }
 	USandboxEffectorComponent* FindEffector(FName Id) const;
 	const FSandboxInteractionTuning& GetTuning() const { return Tuning; }
@@ -68,6 +76,8 @@ private:
 
 	TSharedPtr<const ISandboxTargetSource> Source;
 	TSharedPtr<FSandboxTargetRecording> Recording;
+	FVector ViewerCm = FVector::ZeroVector;
+	bool bHasViewer = false;
 	FSandboxInteractionTuning Tuning;
 	const FSandboxParamStore* Params = nullptr;
 	uint32 ParamsRevision = 0;

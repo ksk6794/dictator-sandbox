@@ -288,6 +288,8 @@ void ASandboxPawn::Tick(float DeltaTime)
 		HandSource->SetFootRestStrength(Tuning.Foot.MaxForceN > 0.0 ? Tuning.Tools.KickRestForceN / Tuning.Foot.MaxForceN : 1.0);
 		HandSource->Update(HandAnchor, bHands && bSecondaryDown, bHands && bPrimaryDown, Tuning.Tools, ReachCm, DeltaTime, bSteppedLastFrame);
 		RemakeHandsForTake();
+		// R10, step 1: the camera is the player's head on the desktop; a recording keeps it.
+		Rig->SetViewer(GetHeadLocation());
 		Rig->UpdateTargets(DeltaTime);
 	}
 	if (bStepping && DragHandle.IsHolding())
@@ -439,6 +441,8 @@ void ASandboxPawn::UpdateHeadset(float DeltaTime)
 	Motion.bJumped = Locomotion.HasSnapped();
 	TrackedSource->Update(*Tracker, OriginTransform(), Tuning.Hand, Tuning.Tools, DeltaTime, bSteppedLastFrame, Motion);
 	RemakeHandsForTake();
+	// R10, step 1: the headset's head, where the play space has it now; a recording keeps it.
+	Rig->SetViewer(GetHeadLocation());
 	Rig->UpdateTargets(DeltaTime);
 	AnnounceTracking();
 
@@ -744,6 +748,24 @@ void ASandboxPawn::ToggleCameraDetached()
 	LastAction = bCameraDetached ? TEXT("camera free: the hands stay where they are") : TEXT("hands back in front of the camera");
 }
 
+void ASandboxPawn::CommandGetUp()
+{
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->ConsoleCommand(TEXT("Sandbox.Command get_up"));
+		LastAction = TEXT("told the body: get up (answered with behaviour.commands on)");
+	}
+}
+
+void ASandboxPawn::CommandStop()
+{
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->ConsoleCommand(TEXT("Sandbox.Command stop"));
+		LastAction = TEXT("told the body: stop (answered with behaviour.commands on)");
+	}
+}
+
 void ASandboxPawn::ToggleOverlays()
 {
 	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
@@ -943,7 +965,7 @@ void ASandboxPawn::GetHudLines(TArray<FString>& OutLines) const
 	{
 		ExtraHudLines(OutLines);
 	}
-	OutLines.Add(TEXT("1 2 3 tool | buttons use | G open hands | F kick | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | K record | N new take | Esc quit"));
+	OutLines.Add(TEXT("1 2 3 tool | buttons use | G open hands | F kick | wheel adjust | P pause | O step | T slow | R reset | C free camera | V overlays | K record | N new take | U get up | J stop | Esc quit"));
 }
 
 void ASandboxPawn::OnMove(const FInputActionValue& Value)
@@ -1066,6 +1088,8 @@ void ASandboxPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	Input->BindAction(MakeKey(TEXT("Overlays"), EKeys::V), ETriggerEvent::Started, this, &ASandboxPawn::ToggleOverlays);
 	Input->BindAction(MakeKey(TEXT("Record"), EKeys::K), ETriggerEvent::Started, this, &ASandboxPawn::ToggleRecording);
 	Input->BindAction(MakeKey(TEXT("NewTake"), EKeys::N), ETriggerEvent::Started, this, &ASandboxPawn::RequestNewTake);
+	Input->BindAction(MakeKey(TEXT("CommandGetUp"), EKeys::U), ETriggerEvent::Started, this, &ASandboxPawn::CommandGetUp);
+	Input->BindAction(MakeKey(TEXT("CommandStop"), EKeys::J), ETriggerEvent::Started, this, &ASandboxPawn::CommandStop);
 	Input->BindAction(MakeKey(TEXT("Quit"), EKeys::Escape), ETriggerEvent::Started, this, &ASandboxPawn::OnQuit);
 
 	Subsystem->AddMappingContext(MappingContext, 0);

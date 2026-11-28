@@ -20,6 +20,16 @@
 #                               and the bodies that pulled free and stood before the hold's time was up (a body
 #                               cannot stand with a grip on it that keeps its place near the floor). Not
 #                               together with -PressN
+#   ... -Near 70                R10, step 5 (C33): a viewer (the player's head, a scenario's "viewer") comes to this many cm
+#                               over the floor from every fallen body's pelvis at -NearFromS 5 (it walks in over 1 s from
+#                               3 m away), stays -NearForS 8 seconds and walks away; with -Tune "behaviour.fear=1,
+#                               behaviour.stay_down=1" the body stays down or lowers itself while it is near. The stand then
+#                               also counts the attempts begun afraid with the viewer near (C33: none), the attempts turned
+#                               back and how fast the pelvis and the head came down, and the time from the viewer gone to standing
+#   ... -CommandAtS 3           R10, step 8 in part (C39): with -Near, the console command "Sandbox.Command get_up" this many
+#                               seconds after the viewer has come; with -Tune "...,behaviour.commands=1" every body is told to get
+#                               up with the viewer near. The stand then also counts the commands answered and the time from each to
+#                               its first motion (C39: 0.2 to 1.0 s)
 #   ... -PropsFile <file.json>  a list of things with mass (a scenario's "props") put into every trial on the bare
 #                               floor: the stand among movable furniture (with -Only floor -Floor 50, and
 #                               -Tune "reactions.thing_support=1" for a body that can stand on things)
@@ -63,6 +73,10 @@ param(
     [string]$HoldBone = 'spine_04',
     [double]$HoldFromS = 5.5,
     [double]$HoldForS = 15.0,
+    [double]$Near = 0,
+    [double]$NearFromS = 5.0,
+    [double]$NearForS = 8.0,
+    [double]$CommandAtS = -1,
     [string]$Tune,
     [string]$TuningDir,
     [string]$Film,
@@ -82,6 +96,7 @@ if ($PropsFile) {
 }
 if ($HoldHands -lt 0 -or $HoldHands -gt 2) { Write-Output 'GETUP STAND ERROR: -HoldHands is 0, 1 or 2'; exit 2 }
 if ($HoldHands -gt 0 -and $PressN -gt 0) { Write-Output 'GETUP STAND ERROR: -HoldHands and -PressN each count the bodies that stood in their own time; give one of them'; exit 2 }
+if ($CommandAtS -ge 0 -and $Near -le 0) { Write-Output 'GETUP STAND ERROR: -CommandAtS is timed from the viewer of -Near; give -Near as well'; exit 2 }
 if ($HoldHands -gt 0 -and $HoldForS -lt 2.0) { Write-Output 'GETUP STAND ERROR: -HoldForS has to be 2 s or more (the hands take 1.4 s to come down and close)'; exit 2 }
 
 if (-not $Out) { $Out = Join-Path $RepoRoot 'Saved\Matrix\getup_stand' }
@@ -264,9 +279,25 @@ function New-Trial([string]$kind, [int]$number) {
                 [ordered]@{ t = ($HoldForS + 0.6); location_cm = @($sides[$h], 0, 120); grip = 0 }) }
         }
     }
+    if ($Near -gt 0) {
+        # R10, step 5: the viewer waits 20 m off (3 m was within near_cm of a body that fell that way: the independent reading's find),
+        # appears 3 m from the fallen pelvis, walks in to $Near cm of it over a second, stays, and walks away.
+        $happenings += [ordered]@{ t = $NearFromS; type = 'viewer'; at_bone = 'pelvis'; path = @(
+            [ordered]@{ t = 0.0; location_cm = @(($body.location_cm[0] + 2000), $body.location_cm[1], 165) },
+            [ordered]@{ t = 0.05; location_cm = @(300, 0, 160) },
+            [ordered]@{ t = 1.05; location_cm = @($Near, 0, 160) },
+            [ordered]@{ t = (1.05 + $NearForS); location_cm = @($Near, 0, 160) },
+            [ordered]@{ t = (2.05 + $NearForS); location_cm = @(($Near + 400), 0, 160) }) }
+        if ($CommandAtS -ge 0) {
+            # R10, step 8 in part (C39): told to get up with the viewer near (timed from its coming, so -Near is needed).
+            $happenings += [ordered]@{ t = ($NearFromS + 1.05 + $CommandAtS); type = 'console'; command = 'Sandbox.Command get_up' }
+        }
+    }
     $scenario = [ordered]@{
         name       = $name
         duration_s = $DurationS
+        # R10, step 2: the stand's seed is every trial's, so that three seeds draw three ways (nothing draws yet: the same hashes).
+        seed       = $Seed
         body       = $body
         events     = $happenings
         expect     = [ordered]@{ fell = $true; end_state = 'standing'; min_get_ups = 1 }
@@ -439,6 +470,18 @@ foreach ($trial in $trials) {
         joint_speed_rads    = $run.metrics.max_joint_speed_rads
         penetration_cm      = $run.penetration.max_world_cm
         furniture_clearance_cm = $nearFurniture
+        # R10 (control.behaviour): fear, the attempts begun afraid with the viewer near, how long it stayed down covered, the attempts
+        # turned back with the pelvis's and the head's fastest way down.
+        fear_max            = $(if ($run.control.behaviour) { $run.control.behaviour.fear_max } else { $null })
+        begun_near_afraid   = $(if ($run.control.behaviour) { $run.control.behaviour.begun_near_afraid } else { $null })
+        protect_s           = $(if ($run.control.behaviour) { $run.control.behaviour.protect_s } else { $null })
+        lowerings           = $(if ($run.control.behaviour) { @($run.control.behaviour.lowerings).Count } else { 0 })
+        turned_back_within_s = $(if ($run.control.behaviour) { $run.control.behaviour.turned_back_within_s } else { $null })
+        lowered_head_down_mps = $(if ($run.control.behaviour) { $run.control.behaviour.lowered_head_down_mps } else { $null })
+        lowered_pelvis_down_mps = $(if ($run.control.behaviour) { $run.control.behaviour.lowered_pelvis_down_mps } else { $null })
+        # R10, step 8 in part (C39): the first command's answer and the time from it to the first motion for it.
+        command_answer      = $(if ($run.control.commands -and @($run.control.commands).Count -gt 0) { @($run.control.commands)[0].answer } else { $null })
+        command_motion_s    = $(if ($run.control.commands -and @($run.control.commands).Count -gt 0) { @($run.control.commands)[0].first_motion_after_s } else { $null })
         hash                = $run.hashes.bodies
         file                = $trial.file
     }
@@ -497,6 +540,31 @@ if ($HoldHands -gt 0) {
     $onPart = @($held | Where-Object { $_.hands_on_the_part -ge $HoldHands }).Count
     Write-Output ('  held by {0} hand(s) sent to {1}, grips closed from {2:N1} to {3:N1} s: the hands took hold of {4} of {5} bodies ({6} by {1} itself); a grip came off by itself on {7} of those, {8} pulled free and stood before the time was up, {9} stand in the end' -f `
         $HoldHands, $HoldBone, ($HoldFromS + 1.4), $heldUntil, $held.Count, $results.Count, $onPart, $cameOff, $under, @($held | Where-Object { $_.got_up }).Count)
+}
+if ($Near -gt 0) {
+    # R10, step 5 (C33): no attempt begun afraid with the viewer near; the attempts turned back, how soon and how they came down; from the
+    # viewer gone (it is past near_cm and the margin about 0.4 s after it turns away) to standing.
+    $goneS = $NearFromS + 1.05 + $NearForS
+    $begun = @($results | Where-Object { $null -ne $_.begun_near_afraid -and [int]$_.begun_near_afraid -gt 0 }).Count
+    $covered = @($results | Where-Object { $null -ne $_.protect_s -and [double]$_.protect_s -gt 0 }).Count
+    $turned = @($results | Where-Object { [int]$_.lowerings -gt 0 })
+    $worstOf = { param($field) $v = @($turned | Where-Object { $null -ne $_.$field } | ForEach-Object { [double]$_.$field }); if ($v.Count -gt 0) { ($v | Measure-Object -Maximum).Maximum } else { [double]::NaN } }
+    $afterGone = @($results | Where-Object { $null -ne $_.stood_at_s -and [double]$_.stood_at_s -gt $goneS } | ForEach-Object { [double]$_.stood_at_s - $goneS } | Sort-Object)
+    $standingBefore = @($results | Where-Object { $null -ne $_.stood_at_s -and [double]$_.stood_at_s -le $goneS }).Count
+    Write-Output ('  a viewer {0:N0} cm from every fallen pelvis from {1:N1} to {2:N1} s: {3} of {4} bodies began an attempt afraid with it near (C33: 0); {5} lay covered; {6} attempts turned back (within {7:N2} s at most; the pelvis down at {8:N2} m/s at most, the head at {9:N2}); {10} stood before it went, {11} after it (median {12:N2} s after it went)' -f `
+        $Near, ($NearFromS + 1.05), $goneS, $begun, $results.Count, $covered, $turned.Count, (& $worstOf 'turned_back_within_s'), (& $worstOf 'lowered_pelvis_down_mps'), (& $worstOf 'lowered_head_down_mps'),
+        $standingBefore, $afterGone.Count, $(if ($afterGone.Count -gt 0) { $afterGone[[int][Math]::Floor(($afterGone.Count - 1) / 2)] } else { [double]::NaN }))
+}
+if ($Near -gt 0 -and $CommandAtS -ge 0) {
+    # R10, step 8 in part (C39): the answers, and from each command to its first motion.
+    $answers = @($results | Where-Object { $_.command_answer } | ForEach-Object { [string]$_.command_answer } | Group-Object | Sort-Object Count -Descending | ForEach-Object { '{0} {1}' -f $_.Count, $_.Name })
+    $motions = @($results | Where-Object { $null -ne $_.command_motion_s } | ForEach-Object { [double]$_.command_motion_s } | Sort-Object)
+    Write-Output ('  get_up told {0:N1} s after the viewer came: answers {1}; the first motion after it in {2} bodies: median {3:N2} s, 10th percentile {4:N2}, 90th {5:N2}, at most {6:N2} (C39: 0.2 to 1.0 s); {7} beyond 1.0 s' -f `
+        $CommandAtS, ($answers -join ', '), $motions.Count,
+        $(if ($motions.Count -gt 0) { $motions[[int][Math]::Floor(($motions.Count - 1) / 2)] } else { [double]::NaN }),
+        $(if ($motions.Count -gt 0) { $motions[[int][Math]::Floor(($motions.Count - 1) / 10)] } else { [double]::NaN }),
+        $(if ($motions.Count -gt 0) { $motions[[int][Math]::Floor(9 * ($motions.Count - 1) / 10)] } else { [double]::NaN }),
+        $(if ($motions.Count -gt 0) { $motions[-1] } else { [double]::NaN }), @($motions | Where-Object { $_ -gt 1.0 }).Count)
 }
 # From the first attempt to the first standing, the median (the run's log and control.get_up.first_started_s).
 $spans = @($results | Where-Object { $null -ne $_.to_stand_s } | ForEach-Object { [double]$_.to_stand_s } | Sort-Object)

@@ -478,6 +478,47 @@ bool FInteractionRecordingTest::RunTest(const FString& Parameters)
 	FSandboxTargetRecording Empty;
 	TestFalse(TEXT("an empty recording has no target"), Empty.Find(SandboxEffectors::HandLeft, 0, Target));
 	TestFalse(TEXT("and is not written"), Empty.Save(File, Error));
+	TestTrue(TEXT("a recording without a head (made before R10) has none when read"), Read.Heads.Num() == 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteractionRecordingHeadTest, "DictatorSandbox.Interaction.Source.RecordingKeepsTheHead", InteractionTestFlags)
+bool FInteractionRecordingHeadTest::RunTest(const FString& Parameters)
+{
+	// R10, step 1: the player's head, one a frame with the hands' targets, comes back bit for bit; one missing for a frame is refused.
+	FSandboxTargetRecording Made;
+	Made.Fps = 90;
+	Made.Effectors = { SandboxEffectors::HandLeft };
+	for (int32 Frame = 0; Frame < 4; ++Frame)
+	{
+		FSandboxEffectorTarget Target;
+		Target.Location = FVector(Frame, 2.0, 100.0);
+		Made.Targets.Add(Target);
+		Made.Heads.Add(FVector(1.0 / 3.0 + Frame, -170.1, 165.0 + Frame * UE_DOUBLE_PI));
+	}
+	const FString File = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Tests"), TEXT("recording_heads.json"));
+	FString Error;
+	FSandboxTargetRecording Read;
+	if (!TestTrue(TEXT("a recording with a head is written"), Made.Save(File, Error)) ||
+		!TestTrue(TEXT("and read again"), FSandboxTargetRecording::Load(File, Read, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	TestTrue(TEXT("every head comes back bit for bit"), Read.Heads == Made.Heads);
+	TestEqual(TEXT("a recording without commands reads none"), Read.Commands.Num(), 0);
+	// R10, step 8 in part: the commands given, each at its frame, come back in their order.
+	Made.Commands = { TPair<int32, FString>(1, TEXT("get_up")), TPair<int32, FString>(3, TEXT("stop")) };
+	if (!TestTrue(TEXT("a recording with commands is written"), Made.Save(File, Error)) ||
+		!TestTrue(TEXT("and read again"), FSandboxTargetRecording::Load(File, Read, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	TestTrue(TEXT("every command comes back at its frame"), Read.Commands.Num() == 2 && Read.Commands[0].Key == 1 &&
+		Read.Commands[0].Value == TEXT("get_up") && Read.Commands[1].Key == 3 && Read.Commands[1].Value == TEXT("stop"));
+	Made.Heads.Pop();
+	TestFalse(TEXT("a head for fewer frames than the targets is not written"), Made.Save(File, Error));
 	return true;
 }
 

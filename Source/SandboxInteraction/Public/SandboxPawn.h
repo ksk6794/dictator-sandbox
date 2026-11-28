@@ -42,6 +42,7 @@ enum class ESandboxTool : uint8
  *   T                slow motion on / off      R           put the character back on its feet
  *   V                debug overlays on / off   Escape      quit
  *   K                record the hands / end    N           a new take: character back, a new recording
+ *   U                tell the body: get up    J           tell the body: stop (R10; answered with behaviour.commands on)
  *
  * Input is made in C++ when the pawn is possessed; there are no input assets. Every key calls one of the
  * public functions below, which a test can call just as well.
@@ -109,6 +110,12 @@ public:
 	 * command "Sandbox.Overlay toggle", as a person could.
 	 */
 	void ToggleOverlays();
+	/**
+	 * R10, step 8 in part (decision 42): tells the body a command through the console command "Sandbox.Command get_up" or "stop", as
+	 * a person could; the pawn knows nothing of the body, and the session keeps the command in a recording that runs.
+	 */
+	void CommandGetUp();
+	void CommandStop();
 	/**
 	 * Begins to keep what the hands are asked for in every stepped frame, or ends it. A recording that ends is
 	 * handed on through OnRecordingStopped; the pawn writes no file. Quitting ends a recording too.

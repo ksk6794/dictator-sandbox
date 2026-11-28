@@ -438,6 +438,18 @@ bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 		{
 			return false;
 		}
+		// R10, step 1: the viewer's path goes into a scripted source of its own; it has no effector and nothing collides with it.
+		if (Event.Type == TEXT("viewer"))
+		{
+			if (!ViewerSource)
+			{
+				ViewerSource = MakeShared<FSandboxScriptedTargetSource>();
+			}
+			if (!ViewerSource->AddPath(ScenarioViewer::Name, Event.TimeS, Event.Path, OutError))
+			{
+				return false;
+			}
+		}
 	}
 	TArray<FName> Names;
 	Source->GetEffectors(Names);
@@ -466,6 +478,25 @@ bool UScenarioRunnerSubsystem::SpawnEffectors(UWorld& World, FString& OutError)
 		Names = Recording->Effectors;
 		RecordingStartFrame = FMath::RoundToInt32(Spec.RecordingStartS * Spec.FixedFps);
 		UE_LOG(LogSandbox, Display, TEXT("Scenario '%s': the hands replay %d frames of '%s' from frame %d"), *Spec.Name, Recording->NumFrames(), *Spec.Recording, RecordingStartFrame);
+		// R10, step 1: the head the session kept is the viewer of the replay; a recording made before kept none, and the replay says so.
+		if (ViewerSource)
+		{
+			OutError = TEXT("a scenario with a 'recording' has its viewer from the recording, not from 'viewer' events");
+			return false;
+		}
+		ViewerFrom = Recording->Heads.Num() > 0 ? TEXT("recording") : TEXT("none: the recording has no head (made before R10)");
+		if (Recording->Heads.Num() == 0)
+		{
+			UE_LOG(LogSandbox, Display, TEXT("Scenario '%s': the recording has no head (it was made before R10): the body is told of no viewer"), *Spec.Name);
+		}
+	}
+	if (ViewerSource)
+	{
+		ViewerFrom = TEXT("scenario");
+	}
+	else if (ViewerFrom.IsEmpty())
+	{
+		ViewerFrom = TEXT("none");
 	}
 	if (Names.Num() == 0)
 	{
@@ -574,6 +605,8 @@ bool UScenarioRunnerSubsystem::SpawnBody(UWorld& World, FString& OutError)
 		Controller->SetGetUpAllowed(Spec.bGetUp);
 		// And it judges what moves near it only when the scenario is about that (N5).
 		Controller->SetPerceptionAllowed(Spec.bPerception);
+		// R10, step 2: the run's seed (0: nothing is drawn).
+		Controller->SetChanceSeed(Spec.Seed);
 	}
 
 	// Where the body starts: the reference for the drift metrics. The pelvis is the root body.
@@ -872,9 +905,18 @@ void UScenarioRunnerSubsystem::SampleFrame(float DeltaTime)
 		PreviousBodies = Bodies;
 	}
 	FScenarioStage::TellBodyOfHolds(EffectorRig, Ragdoll);
-	if (Spec.bPerception)
+	// R10, step 1: the viewer is told whether or not the body perceives (only what a behaviour's switch asks reads it); the hands, the
+	// feet and the things only to a body that perceives, as before.
+	FSandboxSeen Viewer;
+	// Where the viewer was at the start of the step just made: a path written from a body is put there by ApplyDueEvents, after this, in
+	// the frame its event falls due, so a frame later is the first time it can be told where it is (the independent reading's find: one
+	// frame of a path not yet put at its body).
+	const bool bViewer = TellViewer(FrameIndex * FixedDt, Viewer);
+	if (Spec.bPerception || bViewer || EffectorRig)
 	{
-		FScenarioStage::TellBodyWhatMoves(EffectorRig, Props, Ragdoll);
+		// Without perception the rig gives only the player's capsule (a viewer), if it has one.
+		FScenarioStage::TellBodyWhatMoves(EffectorRig.Get(), Spec.bPerception ? TConstArrayView<TObjectPtr<AActor>>(Props) : TConstArrayView<TObjectPtr<AActor>>(),
+			Ragdoll, bViewer ? TConstArrayView<FSandboxSeen>(&Viewer, 1) : TConstArrayView<FSandboxSeen>(), !Spec.bPerception);
 	}
 
 	// The scenario's things with mass: part of the run and of its hash. (A run without any hashes what it did before.)
@@ -1496,6 +1538,36 @@ void UScenarioRunnerSubsystem::MoveProps(double SimTimeS)
 	}
 }
 
+bool UScenarioRunnerSubsystem::TellViewer(double SimTimeS, FSandboxSeen& OutViewer)
+{
+	OutViewer = FSandboxSeen();
+	OutViewer.Name = ScenarioViewer::Name;
+	OutViewer.Kind = ESandboxSeenKind::Viewer;
+	if (ViewerSource)
+	{
+		FSandboxEffectorTarget Target;
+		if (!ViewerSource->Evaluate(ScenarioViewer::Name, SimTimeS, Target))
+		{
+			return false;
+		}
+		OutViewer.LocationCm = Target.Location;
+		OutViewer.VelocityCmS = Target.Velocity;
+		return true;
+	}
+	// A replay: the head its session kept with the hands' targets of the step just made (the run's step FrameIndex). Before the recording
+	// began the session showed the body no viewer (USandboxPlaySubsystem::TellPerception), and after its end the head stays where it was.
+	const FSandboxTargetRecording* Recording = RecordedSource ? &RecordedSource->GetRecording() : nullptr;
+	const int32 Frame = FrameIndex - RecordingStartFrame;
+	if (!Recording || Recording->Heads.Num() == 0 || Frame < 0)
+	{
+		return false;
+	}
+	const int32 Clamped = FMath::Min(Frame, Recording->Heads.Num() - 1);
+	OutViewer.LocationCm = Recording->Heads[Clamped];
+	OutViewer.VelocityCmS = Clamped > 0 && Clamped == Frame ? (Recording->Heads[Clamped] - Recording->Heads[Clamped - 1]) / FixedDt : FVector::ZeroVector;
+	return true;
+}
+
 void UScenarioRunnerSubsystem::FollowBones(double SimTimeS)
 {
 	// A trajectory that follows a body is moved by where the body went since the last frame (the source's keys are moved as a
@@ -1552,6 +1624,22 @@ void UScenarioRunnerSubsystem::ApplyDueEvents(double SimTimeS)
 			PropMoves.Add(FPropMove{ PropIndex, Event.VelocityMps * 100.0, Event.TimeS, Event.TimeS + Event.DurationS, Event.RampS });
 			++EventsApplied;
 			bInputPending = true;
+			continue;
+		}
+		if (Event.Type == TEXT("viewer"))
+		{
+			// R10, step 1: as an effector's trajectory, in the viewer's own source; one written from a part of the body is put there now.
+			if (!Event.AtBone.IsNone())
+			{
+				const USkeletalMeshComponent* BodyMesh = Ragdoll ? Ragdoll->GetBodyMesh() : nullptr;
+				const FBodyInstance* Part = BodyMesh ? BodyMesh->GetBodyInstance(Event.AtBone) : nullptr;
+				if (!Part || !Part->IsValidBodyInstance() || !ViewerSource.IsValid() || !ViewerSource->ShiftPath(ScenarioViewer::Name, Event.TimeS, Part->GetCOMPosition()))
+				{
+					UE_LOG(LogSandbox, Error, TEXT("Scenario: event at t=%.3f: the viewer's path could not be put at '%s'"), Event.TimeS, *Event.AtBone.ToString());
+					continue;
+				}
+			}
+			++EventsApplied;
 			continue;
 		}
 		if (Event.Type == TEXT("effector"))
@@ -2857,6 +2945,115 @@ void UScenarioRunnerSubsystem::Finish()
 			PerceptionJson->SetNumberField(TEXT("false_alarms"), Perceived.FalseAlarms);
 			PerceptionJson->SetNumberField(TEXT("gaze_hold_error_mean_deg"), Perceived.GazeHoldFrames > 0 ? Perceived.GazeHoldErrorSumDeg / Perceived.GazeHoldFrames : 0.0);
 			ControlJson->SetObjectField(TEXT("perception"), PerceptionJson);
+		}
+
+		// R10: the player as the body was told of it (step 1, read only), in every run.
+		{
+			const FSandboxBehaviourView& Behaviour = Controller->GetBehaviourView();
+			const TSharedRef<FJsonObject> BehaviourJson = MakeShared<FJsonObject>();
+			BehaviourJson->SetStringField(TEXT("viewer_from"), ViewerFrom);
+			BehaviourJson->SetNumberField(TEXT("viewer_frames"), Behaviour.ViewerFrames);
+			BehaviourJson->SetField(TEXT("viewer_cm"), Behaviour.ViewerLastCm >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Behaviour.ViewerLastCm)) : MakeShared<FJsonValueNull>());
+			BehaviourJson->SetField(TEXT("viewer_min_cm"), Behaviour.ViewerMinCm >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Behaviour.ViewerMinCm)) : MakeShared<FJsonValueNull>());
+			TArray<TSharedPtr<FJsonValue>> ViewerSeries;
+			for (const FVector2D& Each : Behaviour.ViewerSeries)
+			{
+				ViewerSeries.Add(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{ MakeShared<FJsonValueNumber>(Each.X), MakeShared<FJsonValueNumber>(Each.Y) }));
+			}
+			BehaviourJson->SetArrayField(TEXT("viewer_series"), ViewerSeries);
+			// Step 4 (behaviour.fear): the fear at the end and at most, what raised it, and its series.
+			BehaviourJson->SetNumberField(TEXT("fear"), Behaviour.Fear);
+			BehaviourJson->SetNumberField(TEXT("fear_max"), Behaviour.FearMax);
+			BehaviourJson->SetNumberField(TEXT("fear_hits"), Behaviour.FearHits);
+			BehaviourJson->SetNumberField(TEXT("fear_hit_ns"), Behaviour.FearHitNs);
+			BehaviourJson->SetNumberField(TEXT("fear_threats"), Behaviour.FearThreats);
+			TArray<TSharedPtr<FJsonValue>> FearSeries;
+			for (const FVector2D& Each : Behaviour.FearSeries)
+			{
+				FearSeries.Add(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{ MakeShared<FJsonValueNumber>(Each.X), MakeShared<FJsonValueNumber>(Each.Y) }));
+			}
+			BehaviourJson->SetArrayField(TEXT("fear_series"), FearSeries);
+			// Step 5 (behaviour.stay_down; C33): attempts begun afraid with the player near, held back, protected, and every attempt turned back.
+			BehaviourJson->SetNumberField(TEXT("begun_near_afraid"), Behaviour.BegunNearAfraid);
+			BehaviourJson->SetNumberField(TEXT("held_back_s"), Behaviour.HeldBackS);
+			BehaviourJson->SetNumberField(TEXT("protect_s"), Behaviour.ProtectS);
+			TArray<TSharedPtr<FJsonValue>> Lowerings;
+			double LoweredWithinS = -1.0;
+			double HeadDownMps = 0.0;
+			double PelvisDownMps = 0.0;
+			for (const FSandboxBehaviourView::FLowering& Each : Behaviour.Lowerings)
+			{
+				const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+				One->SetNumberField(TEXT("near_s"), Each.NearS);
+				One->SetNumberField(TEXT("decided_s"), Each.DecidedS);
+				One->SetNumberField(TEXT("ended_s"), Each.EndedS);
+				One->SetNumberField(TEXT("from_clip_s"), Each.FromClipS);
+				One->SetNumberField(TEXT("to_clip_s"), Each.ToClipS);
+				One->SetNumberField(TEXT("from_pelvis_cm"), Each.FromPelvisCm);
+				One->SetNumberField(TEXT("pelvis_down_mps"), Each.PelvisDownMps);
+				One->SetNumberField(TEXT("head_down_mps"), Each.HeadDownMps);
+				One->SetNumberField(TEXT("pelvis_down_at_s"), Each.PelvisDownAtS);
+				One->SetNumberField(TEXT("head_down_at_s"), Each.HeadDownAtS);
+				One->SetStringField(TEXT("ended"), Each.Ended);
+				Lowerings.Add(MakeShared<FJsonValueObject>(One));
+				// C33: the attempt stops rising when it is turned back (decided), counted from when the player came near.
+				LoweredWithinS = FMath::Max(LoweredWithinS, Each.DecidedS - Each.NearS);
+				HeadDownMps = FMath::Max(HeadDownMps, Each.HeadDownMps);
+				PelvisDownMps = FMath::Max(PelvisDownMps, Each.PelvisDownMps);
+			}
+			BehaviourJson->SetArrayField(TEXT("lowerings"), Lowerings);
+			BehaviourJson->SetField(TEXT("turned_back_within_s"), Behaviour.Lowerings.Num() > 0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(LoweredWithinS)) : MakeShared<FJsonValueNull>());
+			BehaviourJson->SetField(TEXT("lowered_head_down_mps"), Behaviour.Lowerings.Num() > 0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(HeadDownMps)) : MakeShared<FJsonValueNull>());
+			BehaviourJson->SetField(TEXT("lowered_pelvis_down_mps"), Behaviour.Lowerings.Num() > 0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(PelvisDownMps)) : MakeShared<FJsonValueNull>());
+			// Step 6 in part (behaviour.protect; C34): every cover of the head after a hit on it.
+			TArray<TSharedPtr<FJsonValue>> Covers;
+			for (const FSandboxBehaviourView::FCover& Each : Behaviour.Covers)
+			{
+				const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+				One->SetStringField(TEXT("place"), Each.Place);
+				One->SetNumberField(TEXT("hit_s"), Each.HitS);
+				One->SetNumberField(TEXT("hit_ns"), Each.HitNs);
+				One->SetBoolField(TEXT("gave_up"), Each.bGaveUp);
+				One->SetNumberField(TEXT("one_within_s"), Each.OneWithinS);
+				One->SetNumberField(TEXT("both_within_s"), Each.BothWithinS);
+				One->SetField(TEXT("gap_left_cm"), Each.GapCm[0] < TNumericLimits<double>::Max() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.GapCm[0])) : MakeShared<FJsonValueNull>());
+				One->SetField(TEXT("gap_right_cm"), Each.GapCm[1] < TNumericLimits<double>::Max() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.GapCm[1])) : MakeShared<FJsonValueNull>());
+				One->SetNumberField(TEXT("head_down_mps"), Each.HeadDownMps);
+				Covers.Add(MakeShared<FJsonValueObject>(One));
+			}
+			BehaviourJson->SetArrayField(TEXT("covers"), Covers);
+			ControlJson->SetObjectField(TEXT("behaviour"), BehaviourJson);
+			// Step 8 in part (C39): every command and its answer.
+			TArray<TSharedPtr<FJsonValue>> CommandList;
+			for (const FSandboxBehaviourView::FCommand& Each : Behaviour.Commands)
+			{
+				const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+				One->SetStringField(TEXT("command"), Each.Name);
+				One->SetNumberField(TEXT("tell_s"), Each.TellS);
+				One->SetStringField(TEXT("answer"), Each.Answer);
+				One->SetNumberField(TEXT("answered_s"), Each.AnsweredS);
+				One->SetNumberField(TEXT("first_motion_s"), Each.FirstMotionS);
+				One->SetField(TEXT("first_motion_after_s"), Each.FirstMotionS >= 0.0 ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueNumber>(Each.FirstMotionS - Each.TellS)) : MakeShared<FJsonValueNull>());
+				One->SetNumberField(TEXT("interrupted"), Each.Interrupted);
+				CommandList.Add(MakeShared<FJsonValueObject>(One));
+			}
+			ControlJson->SetArrayField(TEXT("commands"), CommandList);
+			// Step 2: the run's seed and every draw with its purpose (none yet: nothing draws before the struggle of step 7).
+			const FSandboxChance& Chance = Controller->GetChance();
+			const TSharedRef<FJsonObject> ChanceJson = MakeShared<FJsonObject>();
+			ChanceJson->SetNumberField(TEXT("seed"), Chance.GetSeed());
+			TArray<TSharedPtr<FJsonValue>> Draws;
+			for (const FSandboxChance::FDraw& Drawn : Chance.GetDraws())
+			{
+				const TSharedRef<FJsonObject> One = MakeShared<FJsonObject>();
+				One->SetStringField(TEXT("purpose"), FSandboxChance::PurposeName(Drawn.Purpose));
+				One->SetNumberField(TEXT("index"), Drawn.Index);
+				One->SetNumberField(TEXT("value"), Drawn.Value);
+				Draws.Add(MakeShared<FJsonValueObject>(One));
+			}
+			ChanceJson->SetArrayField(TEXT("draws"), Draws);
+			ChanceJson->SetNumberField(TEXT("draw_count"), Draws.Num());
+			ControlJson->SetObjectField(TEXT("chance"), ChanceJson);
 		}
 
 		// The get-ups: how many the body began and how many ended standing, the last one's clip and times, and what

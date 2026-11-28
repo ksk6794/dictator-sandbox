@@ -506,6 +506,12 @@ void USandboxBodyController::ApplyPose()
 		{
 			Pose = &Tuning.Poses.FallCurl;
 		}
+		// R10, step 5 (behaviour.stay_down): lying, or going down from an attempt it gave up afraid, while it stays down: the head covered.
+		if (bProtectPose)
+		{
+			Pose = ProtectPosePlace == ECoverPlace::Trunk ? &Tuning.Poses.ProtectTrunk : ProtectPosePlace == ECoverPlace::Groin ? &Tuning.Poses.ProtectGroin :
+				ProtectPosePlace == ECoverPlace::Leg ? &Tuning.Poses.ProtectLeg : &Tuning.Poses.ProtectHead;
+		}
 	}
 	// R2, step 9 (getup.roll): a body that rolls before its clip holds the roll's pose, written for its left side down, mirrored for
 	// the right; it comes in as a pose does, not as a fall's.
@@ -534,7 +540,8 @@ void USandboxBodyController::ApplyPose()
 		return;
 	}
 	const double RollBlendS = GetUpRun.bRollPushed ? FMath::Max(Tuning.GetUp.RollS - Tuning.GetUp.RollBlendS, 0.1) : Tuning.GetUp.RollBlendS;
-	Animation->SetTargetPose(Bones, bRoll ? RollBlendS : bDown ? Tuning.Poses.FallBlendS : Tuning.Poses.BlendS);
+	// The protective pose comes and goes over its own blend (PoseBlendOverrideS, R10): over the fall's 0.15 s it would be a jump.
+	Animation->SetTargetPose(Bones, PoseBlendOverrideS >= 0.0 ? PoseBlendOverrideS : bRoll ? RollBlendS : bDown ? Tuning.Poses.FallBlendS : Tuning.Poses.BlendS);
 }
 
 void USandboxBodyController::ChooseFallWay()
@@ -2747,6 +2754,8 @@ const TCHAR* GiveUpName(ESandboxGiveUp Kind)
 	case ESandboxGiveUp::Waited: return TEXT("waited");
 	case ESandboxGiveUp::Dragged: return TEXT("dragged");
 	case ESandboxGiveUp::NotLed: return TEXT("not_led");
+	case ESandboxGiveUp::Afraid: return TEXT("afraid");
+	case ESandboxGiveUp::Protect: return TEXT("protect");
 	default: return TEXT("other");
 	}
 }
@@ -2759,7 +2768,415 @@ bool USandboxBodyController::CanBeginGetUp(FString& OutWhy) const
 		OutWhy = FString::Printf(TEXT("it is dragged (%.2f s ago)"), ElapsedS - DraggedLastS);
 		return false;
 	}
+	// R10, step 6 in part (behaviour.protect): not while it covers its head after a hit.
+	if (Tuning.Behaviour.Protect > 0.5 && ElapsedS < ProtectUntilS)
+	{
+		OutWhy = FString::Printf(TEXT("it covers where it was hit (%.2f s more)"), ProtectUntilS - ElapsedS);
+		return false;
+	}
+	// R10: nor while the protective pose's muscles are still let go (begun then, the get-up's muscles would be blended toward them for
+	// protect_blend_s; the independent reading's find). 0 whenever every behaviour's switch is 0.
+	if (ProtectShare > 0.0)
+	{
+		OutWhy = FString::Printf(TEXT("its cover is being let go (%.2f)"), ProtectShare);
+		return false;
+	}
+	// R10, step 5 (behaviour.stay_down; decision 41): not while it is afraid and the player stands near, nor for getup.rest_s after that.
+	if (Tuning.Behaviour.StayDown > 0.5)
+	{
+		if (bStayDownWanted)
+		{
+			OutWhy = FString::Printf(TEXT("it is afraid (%.2f) and the player is %.0f cm away"), BehaviourView.Fear, BehaviourView.ViewerLastCm);
+			return false;
+		}
+		if (StayDownReleasedS >= 0.0 && ElapsedS - StayDownReleasedS < Tuning.GetUp.RestS && !bGetUpCommanded)
+		{
+			OutWhy = FString::Printf(TEXT("the player went away or its fear went down %.2f s ago"), ElapsedS - StayDownReleasedS);
+			return false;
+		}
+	}
 	return true;
+}
+
+void USandboxBodyController::StartCover(ECoverPlace Place, double HitNs, FName Bone)
+{
+	static const TCHAR* const PlaceNames[] = { TEXT("head"), TEXT("trunk"), TEXT("groin"), TEXT("leg") };
+	FSandboxBehaviourView::FCover& Cover = BehaviourView.Covers.AddDefaulted_GetRef();
+	Cover.Place = PlaceNames[static_cast<int32>(Place)];
+	Cover.HitS = ElapsedS;
+	Cover.HitNs = HitNs;
+	CoverPlace = Place;
+	CoverBone = Bone;
+	ProtectUntilS = ElapsedS + Tuning.Behaviour.ProtectHoldS;
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: hit of %.1f N*s on the %s (%s) at %.2f s while %s: it covers it until %.2f s"),
+		HitNs, *Cover.Place, *Bone.ToString(), ElapsedS, FSandboxBodyTuning::StateName(State), ProtectUntilS);
+	// A get_up in force is interrupted: it protects, then goes on, at most behaviour.command_tries times (an attempt given up for it is
+	// counted in GiveUpGetUp).
+	if (State != ESandboxBodyState::GetUp)
+	{
+		InterruptCommand(TEXT("hit"));
+	}
+	if (State == ESandboxBodyState::GetUp)
+	{
+		Cover.bGaveUp = true;
+		GiveUpGetUp(ESandboxGiveUp::Protect, FString::Printf(TEXT("hit on the %s with %.1f N*s"), *Cover.Place, HitNs));
+		bProtectGivenUp = true;
+	}
+}
+
+FVector USandboxBodyController::TrunkForward() const
+{
+	// The trunk's own forward: across the line of the hips (left to right) and the line of the trunk (the belly's rule, IsIntoBelly).
+	static const FName PelvisName(TEXT("pelvis"));
+	static const FName NeckName(TEXT("neck_01"));
+	static const FName ThighLeftName(TEXT("thigh_l"));
+	static const FName ThighRightName(TEXT("thigh_r"));
+	const FBodyInstance* Pelvis = Mesh->GetBodyInstance(PelvisName);
+	const FBodyInstance* Neck = Mesh->GetBodyInstance(NeckName);
+	const FBodyInstance* ThighLeft = Mesh->GetBodyInstance(ThighLeftName);
+	const FBodyInstance* ThighRight = Mesh->GetBodyInstance(ThighRightName);
+	if (!Pelvis || !Neck || !ThighLeft || !ThighRight || !Pelvis->IsValidBodyInstance() || !Neck->IsValidBodyInstance() ||
+		!ThighLeft->IsValidBodyInstance() || !ThighRight->IsValidBodyInstance())
+	{
+		return FVector::ZeroVector;
+	}
+	const FVector Line = Neck->GetUnrealWorldTransform().GetLocation() - Pelvis->GetUnrealWorldTransform().GetLocation();
+	const FVector Hips = ThighRight->GetUnrealWorldTransform().GetLocation() - ThighLeft->GetUnrealWorldTransform().GetLocation();
+	return FVector::CrossProduct(Hips, Line).GetSafeNormal();
+}
+
+bool USandboxBodyController::IsFromFront(const FVector& HitNs) const
+{
+	const FVector Forward = TrunkForward();
+	return !Forward.IsZero() && FVector::DotProduct(HitNs.GetSafeNormal(), Forward) < -0.5;
+}
+
+void USandboxBodyController::MeasureCover()
+{
+	// C34 (read only): the gap from the nearer of each side's forearm and hand to the place covered after a hit, while the cover is held
+	// (the place's points below); a limb is taken as 4 cm thick.
+	if (BehaviourView.Covers.Num() == 0 || ElapsedS > ProtectUntilS)
+	{
+		return;
+	}
+	static const FName Limbs[2][2] = { { FName(TEXT("lowerarm_l")), FName(TEXT("hand_l")) }, { FName(TEXT("lowerarm_r")), FName(TEXT("hand_r")) } };
+	static const FName Thighs[2] = { FName(TEXT("thigh_l")), FName(TEXT("thigh_r")) };
+	static const FName Calves[2] = { FName(TEXT("calf_l")), FName(TEXT("calf_r")) };
+	const FBodyInstance* HeadBody = Mesh->GetBodyInstance(Tuning.Rig.Head);
+	const FBodyInstance* ChestBody = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+	if (!HeadBody || !HeadBody->IsValidBodyInstance() || !ChestBody || !ChestBody->IsValidBodyInstance())
+	{
+		return;
+	}
+	// The place as points with a radius: the head's middle; the chest's; the groin, between the hip joints (the thighs' origins), 8 cm;
+	// a leg, the nearer of the struck side's thigh and calf, 7 cm.
+	TArray<FVector, TInlineAllocator<2>> Points;
+	double PlaceRadiusCm = 7.0;
+	if (CoverPlace == ECoverPlace::Head)
+	{
+		Points.Add(HeadBody->GetCOMPosition());
+		PlaceRadiusCm = Tuning.Perception.HeadRadiusCm;
+	}
+	else if (CoverPlace == ECoverPlace::Trunk)
+	{
+		Points.Add(ChestBody->GetCOMPosition());
+		PlaceRadiusCm = Tuning.Perception.TrunkRadiusCm;
+	}
+	else if (CoverPlace == ECoverPlace::Groin)
+	{
+		// The front of the groin: 8 cm forward of the point between the hip joints, which lies deep in the pelvis (measured there, a hand
+		// on the groin read 14 to 16 cm off).
+		Points.Add((Mesh->GetBoneLocation(Thighs[0]) + Mesh->GetBoneLocation(Thighs[1])) * 0.5 + TrunkForward() * 8.0);
+		PlaceRadiusCm = 5.0;
+	}
+	else
+	{
+		const int32 Side = CoverBone.ToString().EndsWith(TEXT("_r")) ? 1 : 0;
+		for (const FName& Segment : { Thighs[Side], Calves[Side] })
+		{
+			const FBodyInstance* SegmentBody = Mesh->GetBodyInstance(Segment);
+			if (SegmentBody && SegmentBody->IsValidBodyInstance())
+			{
+				Points.Add(SegmentBody->GetCOMPosition());
+			}
+		}
+	}
+	constexpr double LimbRadiusCm = 4.0;
+	FSandboxBehaviourView::FCover& Cover = BehaviourView.Covers.Last();
+	double Gaps[2] = { TNumericLimits<double>::Max(), TNumericLimits<double>::Max() };
+	for (int32 Side = 0; Side < 2; ++Side)
+	{
+		for (const FName& Limb : Limbs[Side])
+		{
+			const FBodyInstance* LimbBody = Mesh->GetBodyInstance(Limb);
+			if (LimbBody && LimbBody->IsValidBodyInstance())
+			{
+				for (const FVector& Point : Points)
+				{
+					Gaps[Side] = FMath::Min(Gaps[Side], FVector::Dist(LimbBody->GetCOMPosition(), Point) - PlaceRadiusCm - LimbRadiusCm);
+				}
+			}
+		}
+		Cover.GapCm[Side] = FMath::Min(Cover.GapCm[Side], Gaps[Side]);
+	}
+	if (Cover.OneWithinS < 0.0 && FMath::Min(Gaps[0], Gaps[1]) <= 10.0)
+	{
+		Cover.OneWithinS = ElapsedS - Cover.HitS;
+	}
+	if (Cover.BothWithinS < 0.0 && FMath::Max(Gaps[0], Gaps[1]) <= 15.0)
+	{
+		Cover.BothWithinS = ElapsedS - Cover.HitS;
+	}
+	// The head's fastest way down from 0.1 s after the hit (the hit's own throw left out) while covered: C16's limit at the floor.
+	if (ElapsedS - Cover.HitS >= 0.1)
+	{
+		Cover.HeadDownMps = FMath::Max(Cover.HeadDownMps, -HeadBody->GetUnrealWorldVelocity().Z * 0.01);
+	}
+}
+
+void USandboxBodyController::TellCommand(ESandboxCommand Command)
+{
+	FSandboxBehaviourView::FCommand& Record = BehaviourView.Commands.AddDefaulted_GetRef();
+	Record.Name = Command == ESandboxCommand::GetUp ? TEXT("get_up") : TEXT("stop");
+	Record.TellS = ElapsedS;
+	const int32 Index = BehaviourView.Commands.Num() - 1;
+	const auto Answer = [this, Index](const FString& Text)
+	{
+		BehaviourView.Commands[Index].Answer = Text;
+		BehaviourView.Commands[Index].AnsweredS = ElapsedS;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the command %s is %s"), ElapsedS, *BehaviourView.Commands[Index].Name, *Text);
+	};
+	if (Tuning.Behaviour.Commands <= 0.5)
+	{
+		Answer(TEXT("refused: off"));
+		return;
+	}
+	if (Command == ESandboxCommand::Stop)
+	{
+		if (bGetUpCommanded)
+		{
+			EndCommand(TEXT("stopped"));
+		}
+		Answer(TEXT("done"));
+		return;
+	}
+	// get_up: from the floor only, and not while something keeps it there (decision 41's cases: held by two, pressed, held up).
+	const FString Why = IsUpright() ? TEXT("standing") : State == ESandboxBodyState::Falling ? TEXT("falling") : Holds.Num() >= 2 ? TEXT("held") :
+		(Tuning.GetUp.HoldForceN > 0.0 && SustainedN.Size() >= Tuning.GetUp.HoldForceN) ? TEXT("pressed") : bHeldUp || !bGetUpAllowed || bGetUpBroken ? TEXT("unable") :
+		FString();
+	if (!Why.IsEmpty())
+	{
+		Answer(FString(TEXT("refused: ")) + Why);
+		return;
+	}
+	if (bGetUpCommanded)
+	{
+		EndCommand(TEXT("replaced"));
+	}
+	bGetUpCommanded = true;
+	CommandRecord = Index;
+	CommandInterruptedS = -1.0e9;
+	// C39: the reaction is timed from the command; a body that had lain still for long would otherwise begin in the next tick (the
+	// independent reading of 28 November: 0.011 s, under a person's 0.2).
+	LyingS = 0.0;
+	BehaviourView.Commands[Index].Answer = TEXT("accepted");
+	UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the command get_up is accepted"), ElapsedS);
+	// Already getting up: that is its motion. The disposition set aside: a get-up turned back goes on up.
+	if (State == ESandboxBodyState::GetUp)
+	{
+		BehaviourView.Commands[Index].FirstMotionS = ElapsedS;
+	}
+	if (State == ESandboxBodyState::GetUp && GetUpRun.bLowering)
+	{
+		GetUpRun.bLowering = false;
+		// Turned up again as it was turned back: over lower_turn_s, never in one frame (found by the independent reading).
+		GetUpRun.RaiseFromS = ElapsedS;
+		GetUpRun.RaiseFromRate = ClipHold.Rate;
+		if (BehaviourView.Lowerings.Num() > 0 && BehaviourView.Lowerings.Last().EndedS < 0.0)
+		{
+			BehaviourView.Lowerings.Last().EndedS = ElapsedS;
+			BehaviourView.Lowerings.Last().Ended = TEXT("commanded up");
+		}
+	}
+}
+
+void USandboxBodyController::InterruptCommand(const TCHAR* What)
+{
+	// One blow that covers two places, or gives an attempt up and then covers, interrupts once (the independent reading of the fixes).
+	if (bGetUpCommanded && BehaviourView.Commands.IsValidIndex(CommandRecord) && ElapsedS - CommandInterruptedS > Tuning.Perception.ReactS)
+	{
+		CommandInterruptedS = ElapsedS;
+		const int32 Times = ++BehaviourView.Commands[CommandRecord].Interrupted;
+		if (Times > FMath::RoundToInt32(Tuning.Behaviour.CommandTries))
+		{
+			EndCommand(FString::Printf(TEXT("given up: interrupted %d times, the last by a %s"), Times, What));
+		}
+	}
+}
+
+void USandboxBodyController::EndCommand(const FString& Answer)
+{
+	if (bGetUpCommanded && BehaviourView.Commands.IsValidIndex(CommandRecord))
+	{
+		BehaviourView.Commands[CommandRecord].Answer = Answer;
+		BehaviourView.Commands[CommandRecord].AnsweredS = ElapsedS;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the command get_up is %s"), ElapsedS, *Answer);
+	}
+	bGetUpCommanded = false;
+	CommandRecord = INDEX_NONE;
+}
+
+bool USandboxBodyController::IsAfraid() const
+{
+	return Tuning.Behaviour.Fear > 0.5 && BehaviourView.Fear > 0.0 && BehaviourView.Fear >= Tuning.Behaviour.FearStayDown;
+}
+
+void USandboxBodyController::AddFear(double Amount, bool bHit)
+{
+	// From what is left of it now, to at most 1; it falls from here over fear_fade_s (UpdateFear).
+	UpdateFear();
+	FearAtLast = FMath::Min(BehaviourView.Fear + Amount, 1.0);
+	FearLastS = ElapsedS;
+	BehaviourView.Fear = FearAtLast;
+	BehaviourView.FearMax = FMath::Max(BehaviourView.FearMax, FearAtLast);
+	// Hits are counted by contact where they are felt (FeelFrame); a threat here.
+	if (!bHit)
+	{
+		++BehaviourView.FearThreats;
+	}
+}
+
+void USandboxBodyController::UpdateFear()
+{
+	// Read only of its own clock: the fear at its last rise, gone in a straight line over fear_fade_s from then.
+	const FSandboxBehaviourTuning& Limits = Tuning.Behaviour;
+	if (FearLastS < 0.0)
+	{
+		BehaviourView.Fear = 0.0;
+		return;
+	}
+	const double Since = ElapsedS - FearLastS;
+	const double Left = Limits.FearFadeS > 0.0 ? FMath::Clamp(1.0 - Since / Limits.FearFadeS, 0.0, 1.0) : (Since <= KINDA_SMALL_NUMBER ? 1.0 : 0.0);
+	BehaviourView.Fear = Limits.Fear > 0.5 ? FearAtLast * Left : 0.0;
+	if (BehaviourView.Fear > 0.0 && ElapsedS >= FearSeriesNextS - KINDA_SMALL_NUMBER)
+	{
+		BehaviourView.FearSeries.Add(FVector2D(ElapsedS, BehaviourView.Fear));
+		FearSeriesNextS = ElapsedS + 0.25;
+	}
+}
+
+void USandboxBodyController::UpdateStayDown(double DeltaTime)
+{
+	const FSandboxBehaviourTuning& Limits = Tuning.Behaviour;
+	// Near, and with the margin once near (so that the line is not crossed back and forth); measured by MeasureViewer this tick.
+	const double ViewerCm = BehaviourView.ViewerLastCm;
+	bViewerNear = ViewerCm >= 0.0 && ViewerCm < Limits.NearCm + (bViewerNear ? Limits.NearMarginCm : 0.0);
+	// get_up (step 8 in part) sets the disposition aside.
+	const bool bWanted = Limits.StayDown > 0.5 && IsAfraid() && bViewerNear && !bGetUpCommanded;
+	if (bStayDownWanted && !bWanted)
+	{
+		StayDownReleasedS = ElapsedS;
+	}
+	bStayDownWanted = bWanted;
+	if (State == ESandboxBodyState::GetUp || IsUpright())
+	{
+		bAfraidGivenUp = false;
+		bProtectGivenUp = false;
+	}
+	MeasureCover();
+	if (bWanted && State == ESandboxBodyState::Lying)
+	{
+		BehaviourView.HeldBackS += DeltaTime;
+	}
+
+	// A get-up under way when the player comes near the afraid body: turned back after the reaction to what it sees (perception.react_s).
+	if (bWanted && State == ESandboxBodyState::GetUp && !GetUpRun.bLowering)
+	{
+		if (StayDownNearSinceS < 0.0)
+		{
+			StayDownNearSinceS = ElapsedS;
+		}
+		if (ElapsedS - StayDownNearSinceS >= Tuning.Perception.ReactS - KINDA_SMALL_NUMBER)
+		{
+			FSandboxBehaviourView::FLowering& Lowering = BehaviourView.Lowerings.AddDefaulted_GetRef();
+			Lowering.NearS = StayDownNearSinceS;
+			Lowering.DecidedS = ElapsedS;
+			Lowering.FromClipS = ClipHold.TimeS;
+			// Back to where the attempt began, the pose it lay in. (Back to the clip's own start instead, a body that began sitting against
+			// a chair, 0.97 s into its clip, was pulled toward where the clip lies, 40 cm off, lost and dropped: its head met the floor at
+			// 3.1 m/s. Where it began sitting, the world's pull is let go slowly after it, behaviour.lower_release_s.)
+			Lowering.ToClipS = GetUpView.Starts.IsValidIndex(GetUpRun.StartIndex) ? GetUpView.Starts[GetUpRun.StartIndex].TimeS : 0.0;
+			if (const FBodyInstance* PelvisNow = Mesh->GetBodyInstance(Tuning.Rig.Pelvis))
+			{
+				Lowering.FromPelvisCm = PelvisNow->IsValidBodyInstance() ? PelvisNow->GetCOMPosition().Z - GetUpFloorZ() : 0.0;
+			}
+			StayDownNearSinceS = -1.0;
+			if (Limits.LowerRate <= 0.0 || GetUpRun.bRolling || GetUpRun.Path.IsEmpty() || ClipHold.Path != GetUpRun.Path || ClipHold.TimeS <= Lowering.ToClipS + KINDA_SMALL_NUMBER)
+			{
+				// At once: in a roll (no clip to run back), or with no way to lower; the world's pull goes over getup.carry_release_s.
+				GiveUpGetUp(ESandboxGiveUp::Afraid, FString::Printf(TEXT("afraid (%.2f), the player %.0f cm away"), BehaviourView.Fear, ViewerCm));
+			}
+			else
+			{
+				GetUpRun.bLowering = true;
+				GetUpRun.LowerToS = Lowering.ToClipS;
+				GetUpRun.LowerFromRate = ClipHold.Rate;
+				UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s the get-up is turned back (afraid %.2f, the player %.0f cm away): the clip runs back from %.2f s to %.2f s"),
+					ElapsedS, BehaviourView.Fear, ViewerCm, ClipHold.TimeS, GetUpRun.LowerToS);
+			}
+		}
+	}
+	else if (State != ESandboxBodyState::GetUp || !bWanted)
+	{
+		StayDownNearSinceS = -1.0;
+	}
+
+	// How fast the pelvis and the head come down while lowered and for a second after (read only).
+	if (BehaviourView.Lowerings.Num() > 0 && ((State == ESandboxBodyState::GetUp && GetUpRun.bLowering) || ElapsedS <= LoweringWatchUntilS))
+	{
+		FSandboxBehaviourView::FLowering& Lowering = BehaviourView.Lowerings.Last();
+		const FBodyInstance* PelvisBody = Mesh->GetBodyInstance(Tuning.Rig.Pelvis);
+		const FBodyInstance* HeadBody = Mesh->GetBodyInstance(Tuning.Rig.Head);
+		if (PelvisBody && PelvisBody->IsValidBodyInstance() && -PelvisBody->GetUnrealWorldVelocity().Z * 0.01 > Lowering.PelvisDownMps)
+		{
+			Lowering.PelvisDownMps = -PelvisBody->GetUnrealWorldVelocity().Z * 0.01;
+			Lowering.PelvisDownAtS = ElapsedS;
+		}
+		if (HeadBody && HeadBody->IsValidBodyInstance() && -HeadBody->GetUnrealWorldVelocity().Z * 0.01 > Lowering.HeadDownMps)
+		{
+			Lowering.HeadDownMps = -HeadBody->GetUnrealWorldVelocity().Z * 0.01;
+			Lowering.HeadDownAtS = ElapsedS;
+		}
+	}
+
+	// The protective pose: lying (or going down from an attempt it gave up afraid or for a hit on the head) while it stays down, or for
+	// protect_hold_s after a hit on the head (step 6 in part).
+	const bool bDownNow = State == ESandboxBodyState::Lying || (State == ESandboxBodyState::Falling && (bAfraidGivenUp || bProtectGivenUp));
+	const bool bCovering = Limits.Protect > 0.5 && ElapsedS < ProtectUntilS;
+	const bool bPose = (bWanted || bCovering) && bDownNow && !bHeldUp;
+	// Covering after a hit, the struck place's pose; staying down, the head's.
+	const ECoverPlace WantedPlace = bCovering ? CoverPlace : ECoverPlace::Head;
+	if (bPose != bProtectPose || (bPose && WantedPlace != ProtectPosePlace))
+	{
+		bProtectPose = bPose;
+		ProtectPosePlace = WantedPlace;
+		UE_LOG(LogSandbox, Display, TEXT("Body controller: at %.2f s %s"), ElapsedS, bPose ? TEXT("the body covers itself") : TEXT("the body lets its cover go"));
+		PoseBlendOverrideS = Limits.ProtectBlendS;
+		ApplyPose();
+		PoseBlendOverrideS = -1.0;
+	}
+	if (bPose)
+	{
+		BehaviourView.ProtectS += DeltaTime;
+	}
+	// Its muscles come up to hold the pose and go down again over the pose's blend (exact: nothing while the share is 0).
+	const double WantedShare = bPose ? 1.0 : 0.0;
+	if (ProtectShare != WantedShare)
+	{
+		const double Step = Limits.ProtectBlendS > 0.0 ? DeltaTime / Limits.ProtectBlendS : 1.0;
+		ProtectShare = WantedShare > ProtectShare ? FMath::Min(ProtectShare + Step, 1.0) : FMath::Max(ProtectShare - Step, 0.0);
+		PushTuningToControls();
+	}
 }
 
 FVector USandboxBodyController::HoldsPullN() const
@@ -2826,8 +3243,11 @@ void USandboxBodyController::UpdateHeldArms(double DeltaTime)
 	static const FName Chain[2][3] = { { FName(TEXT("hand_l")), FName(TEXT("lowerarm_l")), FName(TEXT("upperarm_l")) },
 		{ FName(TEXT("hand_r")), FName(TEXT("lowerarm_r")), FName(TEXT("upperarm_r")) } };
 	const FSandboxGetUpTuning& Limits = Tuning.GetUp;
-	// Only while a clip leads the body (not in a roll, not standing: R5 and R6 take the standing and the lying body).
-	const bool bGettingUp = State == ESandboxBodyState::GetUp && !GetUpRun.bRolling && !GetUpRun.Path.IsEmpty();
+	// Only while a clip leads the body (not in a roll, not standing: R5 and R6 take the standing and the lying body). Nor while a get-up
+	// turned back is lowered (R10, step 5): the arm that yielded to a hand there had its upper arm's target turn over by 159 degrees in a
+	// frame as the body went down under it (protect_phase_lowering_hold); the held arm goes with the body until the limbs' arbiter (R10,
+	// step 3) gives it to one of the two.
+	const bool bGettingUp = State == ESandboxBodyState::GetUp && !GetUpRun.bRolling && !GetUpRun.Path.IsEmpty() && !GetUpRun.bLowering;
 	bool bChanged = false;
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
@@ -2923,6 +3343,21 @@ void USandboxBodyController::GiveUpGetUp(ESandboxGiveUp Kind, const FString& Rea
 	}
 	++GetUpView.GivenUpBy[static_cast<int32>(Kind)];
 	GetUpView.GivenUp = Reason;
+	// R10, step 8 in part: an attempt made for get_up and given up interrupts the command.
+	InterruptCommand(TEXT("get-up given up"));
+	// R10, step 5: a turned-back attempt ends here, lowered or not; its fall is watched for a second more, and an attempt given up afraid
+	// is protected while it goes down.
+	if (Kind == ESandboxGiveUp::Afraid || GetUpRun.bLowering)
+	{
+		if (BehaviourView.Lowerings.Num() > 0 && BehaviourView.Lowerings.Last().EndedS < 0.0)
+		{
+			BehaviourView.Lowerings.Last().EndedS = ElapsedS;
+			BehaviourView.Lowerings.Last().Ended = Kind == ESandboxGiveUp::Afraid ? (GetUpRun.bLowering ? TEXT("lowered") : TEXT("at_once")) : Reason;
+		}
+		LoweringWatchUntilS = ElapsedS + 1.0;
+		bAfraidGivenUp = Kind == ESandboxGiveUp::Afraid;
+		GetUpRun.bLowering = false;
+	}
 	if (GetUpView.Starts.IsValidIndex(GetUpRun.StartIndex))
 	{
 		GetUpView.Starts[GetUpRun.StartIndex].EndedS = ElapsedS;
@@ -2934,10 +3369,16 @@ void USandboxBodyController::GiveUpGetUp(ESandboxGiveUp Kind, const FString& Rea
 		GetUpView.Rolls.Last().DurationS = ElapsedS - StateEnteredS;
 		GetUpView.Rolls.Last().Ended = Reason;
 	}
-	GivenUpRollWay = GetUpRun.bRolling || GetUpRun.bRolled ? (GetUpRun.bRollToFront ? 1 : 0) : INDEX_NONE;
+	// R10: an attempt given up afraid or for a hit on the head is no failure of its clip or its roll: the next attempt is not pushed off
+	// them (found by the independent reading of 28 November: the matcher charged the clip that fit, and the next roll went the other way).
+	const bool bClipFailed = Kind != ESandboxGiveUp::Afraid && Kind != ESandboxGiveUp::Protect;
+	if (bClipFailed)
+	{
+		GivenUpRollWay = GetUpRun.bRolling || GetUpRun.bRolled ? (GetUpRun.bRollToFront ? 1 : 0) : INDEX_NONE;
+	}
 	GetUpRun.bRolling = false;
 	// An attempt given up in its roll had no clip: the clip given up before it keeps its penalty.
-	if (!GetUpRun.Path.IsEmpty())
+	if (!GetUpRun.Path.IsEmpty() && bClipFailed)
 	{
 		GivenUpClip = GetUpRun.Path;
 	}
@@ -2966,6 +3407,14 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	}
 	if (bHeldUp)
 	{
+		// R10, step 5: a body lowered by its clip run back that touches nothing hangs on the world's pull near the floor at the lowering's
+		// end (the clip's start laid a few centimetres up by the fit to the floor): it is let down there, as lowered. One a hand holds up
+		// is held up, as any get-up.
+		if (GetUpRun.bLowering && Holds.Num() == 0)
+		{
+			GiveUpGetUp(ESandboxGiveUp::Afraid, FString::Printf(TEXT("lowered back to %.2f s of its clip, where it hung on the world's pull"), ClipHold.TimeS));
+			return;
+		}
 		GiveUpGetUp(ESandboxGiveUp::HeldUp, TEXT("the body is held up"));
 		return;
 	}
@@ -3066,6 +3515,43 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 		GiveUpGetUp(ESandboxGiveUp::Lost, FString::Printf(TEXT("the pelvis is %.0f cm from where the clip has it"), LagCm));
 		return;
 	}
+	// R10, step 5 (behaviour.stay_down): turned back, the clip runs back to where the attempt began at lower_rate of its pace, led as it
+	// rose (the body is lowered, not dropped), and the attempt is then given up. A hit acts on it as on any get-up above (decision 20, and
+	// the lost pelvis); a press or a hold takes the world's pull away in proportion (UpdateCarry) but does not slow the clip's way back,
+	// and a hold that drags gives it up (UpdateDrag). Bounded by getup.wait_s as a waiting clip is.
+	if (GetUpRun.bLowering)
+	{
+		if (BehaviourView.Lowerings.Num() > 0 && Limits.WaitS > 0.0 && ElapsedS - BehaviourView.Lowerings.Last().DecidedS > Limits.WaitS)
+		{
+			GiveUpGetUp(ESandboxGiveUp::Afraid, FString::Printf(TEXT("lowered for %.1f s without reaching where it began"), ElapsedS - BehaviourView.Lowerings.Last().DecidedS));
+			return;
+		}
+		// From the pace it had to its pace back, over lower_turn_s (the reference slows, stops and turns, never reversed in one frame).
+		const double TurnShare = Tuning.Behaviour.LowerTurnS > 0.0 && BehaviourView.Lowerings.Num() > 0 ?
+			FMath::SmoothStep(0.0, 1.0, FMath::Clamp((ElapsedS - BehaviourView.Lowerings.Last().DecidedS) / Tuning.Behaviour.LowerTurnS, 0.0, 1.0)) : 1.0;
+		// The pace back is bounded so that the clip's pelvis comes down no faster than lower_max_mps (where the recording rose fast).
+		double BackRate = Limits.Rate * Tuning.Behaviour.LowerRate;
+		if (Tuning.Behaviour.LowerMaxMps > 0.0 && ClipHold.TimeS > 0.05)
+		{
+			const double ClipRiseCmPerS = (Clip->PelvisAt(ClipHold.TimeS).GetLocation().Z - Clip->PelvisAt(ClipHold.TimeS - 0.05).GetLocation().Z) / 0.05;
+			if (ClipRiseCmPerS > 1.0)
+			{
+				BackRate = FMath::Min(BackRate, Tuning.Behaviour.LowerMaxMps * 100.0 / ClipRiseCmPerS);
+			}
+		}
+		ClipHold.Rate = FMath::Lerp(GetUpRun.LowerFromRate, -BackRate, TurnShare);
+		// Down to the clip's start, or until the chest is lower_end_cm over the floor (the trunk laid back down; the clip's first frames,
+		// run back, swing the legs up and hold the body off the floor on the world's pull): from there the muscles take it down. (Ended by
+		// the pelvis's height instead, a body let go kneeling dropped its trunk and its head met the floor at 2.0 to 2.9 m/s.)
+		const FBodyInstance* ChestNow = Mesh->GetBodyInstance(Tuning.Rig.Chest);
+		const double ChestUpCm = ChestNow && ChestNow->IsValidBodyInstance() ? ChestNow->GetCOMPosition().Z - GetUpFloorZ() : TNumericLimits<double>::Max();
+		if (ClipHold.TimeS <= GetUpRun.LowerToS + KINDA_SMALL_NUMBER || (Tuning.Behaviour.LowerEndCm > 0.0 && ChestUpCm <= Tuning.Behaviour.LowerEndCm))
+		{
+			GiveUpGetUp(ESandboxGiveUp::Afraid, FString::Printf(TEXT("lowered back to %.2f s of its clip, the chest %.0f cm up, afraid (%.2f) with the player %.0f cm away"),
+				ClipHold.TimeS, ChestUpCm, BehaviourView.Fear, BehaviourView.ViewerLastCm));
+		}
+		return;
+	}
 	// How far each foot is from where the clip has it (for the log and the reasons; a led body is brought to the clip, feet and all,
 	// and the clip is not laid over where the body happens to be).
 	double FootLagCm[2] = { 0.0, 0.0 };
@@ -3129,6 +3615,28 @@ void USandboxBodyController::UpdateGetUp(double DeltaTime)
 	const bool bBehind = bHeldDown;
 	const bool bThrough = ClipHold.TimeS >= FMath::Min(Limits.EndS, Clip->GetLengthS()) - KINDA_SMALL_NUMBER;
 	ClipHold.Rate = Ease < 1.0 || bBehind || bThrough ? 0.0 : bPaceByForce ? Limits.Rate * HoldPace : Limits.Rate;
+	// R10, step 8 in part: a lowering ended by get_up turns up again over lower_turn_s; a clip held still (pressed down, through its end)
+	// stays still, and the way back never goes below where the attempt began (the independent reading of the fixes).
+	if (GetUpRun.RaiseFromS >= 0.0)
+	{
+		if (ClipHold.Rate <= 0.0)
+		{
+			GetUpRun.RaiseFromS = -1.0;
+		}
+		else
+		{
+			const double RaiseShare = Tuning.Behaviour.LowerTurnS > 0.0 ? FMath::Clamp((ElapsedS - GetUpRun.RaiseFromS) / Tuning.Behaviour.LowerTurnS, 0.0, 1.0) : 1.0;
+			ClipHold.Rate = FMath::Lerp(GetUpRun.RaiseFromRate, ClipHold.Rate, FMath::SmoothStep(0.0, 1.0, RaiseShare));
+			if (ClipHold.Rate < 0.0 && ClipHold.TimeS <= GetUpRun.LowerToS + KINDA_SMALL_NUMBER)
+			{
+				ClipHold.Rate = 0.0;
+			}
+			if (RaiseShare >= 1.0)
+			{
+				GetUpRun.RaiseFromS = -1.0;
+			}
+		}
+	}
 	if (FMath::Abs(ClipHold.Rate) < 0.1 * Limits.Rate)
 	{
 		GetUpView.PausedS += DeltaTime;
@@ -3318,7 +3826,12 @@ void USandboxBodyController::UpdateCarry(double DeltaTime)
 		{
 			Carry.ForgetTargets();
 		}
-		CarryShare = Tuning.GetUp.CarryReleaseS > 0.0 ? FMath::Max(CarryShare - DeltaTime / Tuning.GetUp.CarryReleaseS, 0.0) : 0.0;
+		// R10, step 5: after an attempt given up afraid the world's pull goes over behaviour.lower_release_s, so that a body lowered to a
+		// pose it began from sitting sinks the rest of the way instead of dropping (exact otherwise: the get-up's own release).
+		// (Not after a hit on the head, behaviour.protect: a hit takes authority away, and the get-up's own release is kept; the independent
+		// reading's find.)
+		const double ReleaseS = bAfraidGivenUp && Tuning.Behaviour.LowerReleaseS > 0.0 ? Tuning.Behaviour.LowerReleaseS : Tuning.GetUp.CarryReleaseS;
+		CarryShare = ReleaseS > 0.0 ? FMath::Max(CarryShare - DeltaTime / ReleaseS, 0.0) : 0.0;
 	}
 	bCarryAimed = Clip != nullptr;
 	// A press or a hold from outside takes the world's pull away, in proportion: what a hand does to a body getting up is for the
@@ -3499,6 +4012,11 @@ void USandboxBodyController::EnterState(ESandboxBodyState NewState, const FStrin
 	const ESandboxBodyState OldState = State;
 	State = NewState;
 	StateEnteredS = ElapsedS;
+	// R10, step 8 in part: a get_up in force is done when the body stands from its get-up.
+	if (bGetUpCommanded && NewState == ESandboxBodyState::Standing && OldState == ESandboxBodyState::GetUp)
+	{
+		EndCommand(TEXT("done"));
+	}
 	RestS = 0.0;
 	StateLog.Add(FSandboxStateChange{ ElapsedS, NewState, Reason });
 	UE_LOG(LogSandbox, Display, TEXT("Body controller: %s at %.3f s (%s)"), FSandboxBodyTuning::StateName(NewState), ElapsedS, *Reason);
@@ -5002,9 +5520,20 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		{
 			EventHitNs = FVector::ZeroVector;
 			bEventHitTold = false;
+			FearContactNs = 0.0;
 		}
 		EventFeltS = ElapsedS;
 		EventHitNs += HitNs;
+		// R10, step 4 (behaviour.fear): a contact that is a hit (as large as makes a standing body flinch) raises fear by its whole hit,
+		// counted once as its sum grows. The static world never reaches here (OnBodyHit), so the body's own landing is no such hit.
+		if (Tuning.Behaviour.Fear > 0.5 && EventHitNs.Size() >= Tuning.Thresholds.FlinchImpulseNs && EventHitNs.Size() > FearContactNs)
+		{
+			const double NewNs = EventHitNs.Size() - FearContactNs;
+			BehaviourView.FearHits += FearContactNs <= 0.0 ? 1 : 0;
+			FearContactNs = EventHitNs.Size();
+			BehaviourView.FearHitNs += NewNs;
+			AddFear(NewNs * Tuning.Behaviour.FearPerNs, true);
+		}
 		if (bEventHitTold && (HitNs | Felt) <= 0.0)
 		{
 			bEventRiseOver = true;
@@ -5088,18 +5617,58 @@ void USandboxBodyController::FeelFrame(double DeltaTime)
 		{
 			HeadHitNs = 0.0;
 			bHeadFelled = false;
+			bHeadCoverCounted = false;
 		}
 		if ((HitNs | Felt) > 0.0 && FSandboxBodyTuning::GroupOfBone(FrameBone) == ESandboxMuscleGroup::Neck)
 		{
 			HeadFeltS = ElapsedS;
 			HeadHitNs += HitNs.Size();
 			MaxHeadHitNs = FMath::Max(MaxHeadHitNs, HeadHitNs);
+			// R10, step 6 in part (behaviour.protect; decision 45): a hit on the head of protect_from_head_ns or more in one contact, while
+			// the body lies or gets up (or goes down from an attempt it gave up so), gives the attempt up and covers the head.
+			const bool bDownOrRising = State == ESandboxBodyState::Lying || State == ESandboxBodyState::GetUp ||
+				(State == ESandboxBodyState::Falling && (bProtectGivenUp || bAfraidGivenUp));
+			if (Tuning.Behaviour.Protect > 0.5 && !bHeadCoverCounted && bDownOrRising && HeadHitNs >= Tuning.Behaviour.ProtectFromHeadNs)
+			{
+				bHeadCoverCounted = true;
+				StartCover(ECoverPlace::Head, HeadHitNs, FrameBone);
+			}
 			const bool bUpright = State == ESandboxBodyState::Standing || State == ESandboxBodyState::Flinch || State == ESandboxBodyState::Stagger;
 			if (Reactions.KnockdownHeadNs > 0.0 && !bHeadFelled && bUpright && HeadHitNs >= Reactions.KnockdownHeadNs)
 			{
 				bHeadFelled = true;
 				++Knockdowns;
 				EnterState(ESandboxBodyState::Falling, FString::Printf(TEXT("knocked down by a hit of %.1f N*s on the head"), HeadHitNs));
+			}
+		}
+
+		// R10, step 6 (behaviour.protect; decision 45): the trunk, the groin (the pelvis struck from the front) and the legs, each a sum of
+		// one contact as the head's is, from protect_from_ns; while lying or getting up the struck place is covered.
+		if (Tuning.Behaviour.Protect > 0.5)
+		{
+			static const FName PelvisName(TEXT("pelvis"));
+			for (int32 Place = 0; Place < 3; ++Place)
+			{
+				if (ElapsedS - PlaceFeltS[Place] > Tuning.Thresholds.FlinchWindowS)
+				{
+					PlaceHitNs[Place] = 0.0;
+					bPlaceCounted[Place] = false;
+				}
+			}
+			const ESandboxMuscleGroup Group = FSandboxBodyTuning::GroupOfBone(FrameBone);
+			const int32 Place = FrameBone == PelvisName ? (IsFromFront(HitNs) ? 1 : 0) : Group == ESandboxMuscleGroup::Spine ? 0 :
+				Group == ESandboxMuscleGroup::Legs ? 2 : INDEX_NONE;
+			if (Place != INDEX_NONE && (HitNs | Felt) > 0.0)
+			{
+				PlaceFeltS[Place] = ElapsedS;
+				PlaceHitNs[Place] += HitNs.Size();
+				const bool bDownOrRising = State == ESandboxBodyState::Lying || State == ESandboxBodyState::GetUp ||
+					(State == ESandboxBodyState::Falling && (bProtectGivenUp || bAfraidGivenUp));
+				if (!bPlaceCounted[Place] && bDownOrRising && PlaceHitNs[Place] >= Tuning.Behaviour.ProtectFromNs)
+				{
+					bPlaceCounted[Place] = true;
+					StartCover(Place == 0 ? ECoverPlace::Trunk : Place == 1 ? ECoverPlace::Groin : ECoverPlace::Leg, PlaceHitNs[Place], FrameBone);
+				}
 			}
 		}
 
@@ -5408,11 +5977,26 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 	bTrunkTouched = false;
 
 	// A body that has lain still for a while gets up, unless something holds it up or it has been told to stay down.
+	// R10, step 8 in part: a get_up in force ends when the body can no longer get up (its get-up broken where the attempt was given up),
+	// or when commands are switched off.
+	if (bGetUpCommanded && (bGetUpBroken || Tuning.Behaviour.Commands <= 0.5))
+	{
+		EndCommand(bGetUpBroken ? TEXT("given up: unable") : TEXT("ended: commands switched off"));
+	}
 	if (State == ESandboxBodyState::Lying)
 	{
+		// R10, step 8 in part: told to get up, before the first attempt for the command it waits behaviour.command_react_s from the command
+		// (C39) and lies still for perception.react_s (begun while it still moved after its cover was let go, the largest target step went from
+		// 44 to 99 degrees); after an attempt given up it rests as always (with the short rest every time, a body by the chair tried seven
+		// times in quick succession and never stood: the stand of 150 with a command, 28 November).
 		LyingS = IsAtRest() && !bHeldUp ? LyingS + DeltaTime : 0.0;
+		const bool bQuickRest = bGetUpCommanded && BehaviourView.Commands.IsValidIndex(CommandRecord) && BehaviourView.Commands[CommandRecord].FirstMotionS < 0.0;
+		const bool bRested = bQuickRest
+			? LyingS >= FMath::Min(Tuning.Perception.ReactS, GetUpRestS()) - KINDA_SMALL_NUMBER &&
+				ElapsedS - BehaviourView.Commands[CommandRecord].TellS >= Tuning.Behaviour.CommandReactS - KINDA_SMALL_NUMBER
+			: LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER;
 		FString Why;
-		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER &&
+		if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && bRested &&
 			!CanBeginGetUp(Why))
 		{
 			// Held back (decision 18; R10 adds its reasons in CanBeginGetUp): it begins as soon as it may, its rest already lain.
@@ -5422,8 +6006,13 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 			}
 			HeldBackWhy = Why;
 		}
-		else if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && LyingS >= GetUpRestS() - KINDA_SMALL_NUMBER)
+		else if (bGetUpAllowed && !bGetUpBroken && !IsPosedFromOutside() && Tuning.GetUp.RestS > 0.0 && bRested)
 		{
+			// R10, C33 (read only, whenever fear is on): an attempt begun while afraid with the player near (not one it was told to make).
+			if (Tuning.Behaviour.Fear > 0.5 && IsAfraid() && bViewerNear && !bGetUpCommanded)
+			{
+				++BehaviourView.BegunNearAfraid;
+			}
 			HeldBackWhy.Reset();
 			LyingS = 0.0;
 			FString Error;
@@ -5431,6 +6020,15 @@ void USandboxBodyController::UpdateState(float DeltaTime)
 			{
 				bGetUpBroken = true;
 				UE_LOG(LogSandbox, Error, TEXT("Body controller: the body cannot get up and stays down: %s"), *Error);
+				if (bGetUpCommanded)
+				{
+					EndCommand(TEXT("given up: unable"));
+				}
+			}
+			else if (bGetUpCommanded && BehaviourView.Commands.IsValidIndex(CommandRecord) && BehaviourView.Commands[CommandRecord].FirstMotionS < 0.0)
+			{
+				// C39: the first motion for the command.
+				BehaviourView.Commands[CommandRecord].FirstMotionS = ElapsedS;
 			}
 		}
 	}
@@ -6101,6 +6699,11 @@ void USandboxBodyController::UpdatePerception(double DeltaTime)
 			Worst.Name = Thing.Name;
 			Worst.TimeS = ElapsedS;
 			PerceptionView.Threats.Add(Worst);
+			// R10, step 4 (behaviour.fear): each threat seen raises fear.
+			if (Tuning.Behaviour.Fear > 0.5)
+			{
+				AddFear(Tuning.Behaviour.FearPerThreat, false);
+			}
 			if (Look.Guard > 0.5 && Worst.Part == Tuning.Rig.Head && (Worst.bNear || Worst.TimeToContactS >= Look.GuardTimeS) && GuardSide < 0 &&
 				Look.Anticipate > 0.5 && AnticipateDueS < 0.0 && ElapsedS >= AnticipateUntilS)
 			{
@@ -6135,6 +6738,46 @@ void USandboxBodyController::UpdatePerception(double DeltaTime)
 	if (Look.Gaze > 0.5)
 	{
 		UpdateGaze(DeltaTime, Facing);
+	}
+}
+
+double USandboxBodyController::NearestViewerCm() const
+{
+	// Over the floor, to the nearest body: a player who stands 60 cm from a body that lies is 60 cm from it, whatever the head's height.
+	double BestCm = -1.0;
+	for (const FSandboxSeen& Thing : Seen)
+	{
+		if (Thing.Kind != ESandboxSeenKind::Viewer || !Mesh)
+		{
+			continue;
+		}
+		for (const FBodyInstance* Body : Mesh->Bodies)
+		{
+			if (Body && Body->IsValidBodyInstance())
+			{
+				const double DistanceCm = FVector::Dist2D(Thing.LocationCm, Body->GetCOMPosition());
+				BestCm = BestCm < 0.0 ? DistanceCm : FMath::Min(BestCm, DistanceCm);
+			}
+		}
+	}
+	return BestCm;
+}
+
+void USandboxBodyController::MeasureViewer()
+{
+	// Read only: what it was told and where its bodies are.
+	const double ViewerCm = NearestViewerCm();
+	BehaviourView.ViewerLastCm = ViewerCm;
+	if (ViewerCm < 0.0)
+	{
+		return;
+	}
+	++BehaviourView.ViewerFrames;
+	BehaviourView.ViewerMinCm = BehaviourView.ViewerMinCm < 0.0 ? ViewerCm : FMath::Min(BehaviourView.ViewerMinCm, ViewerCm);
+	if (ElapsedS >= ViewerSeriesNextS - KINDA_SMALL_NUMBER)
+	{
+		BehaviourView.ViewerSeries.Add(FVector2D(ElapsedS, ViewerCm));
+		ViewerSeriesNextS = ElapsedS + 0.25;
 	}
 }
 
@@ -6499,6 +7142,18 @@ void USandboxBodyController::PushTuningToControls()
 	for (FMuscle& Muscle : Muscles)
 	{
 		FSandboxMuscleTuning Group = Tuning.Muscle(Muscle.Group);
+		// R10, step 5: a body that covers itself lying holds the pose with the protect_* muscles, in by its share (none at 0: exact).
+		if (ProtectShare > 0.0)
+		{
+			const FSandboxBehaviourTuning& Behaviour = Tuning.Behaviour;
+			const double Wanted = Muscle.Group == ESandboxMuscleGroup::Spine ? Behaviour.ProtectSpineNmPerRad : Muscle.Group == ESandboxMuscleGroup::Neck ? Behaviour.ProtectNeckNmPerRad :
+				Muscle.Group == ESandboxMuscleGroup::Arms ? Behaviour.ProtectArmsNmPerRad : Muscle.Group == ESandboxMuscleGroup::Legs ? Behaviour.ProtectLegsNmPerRad : -1.0;
+			if (Wanted >= 0.0)
+			{
+				Group.StiffnessNmPerRad = FMath::Lerp(Group.StiffnessNmPerRad, Wanted, ProtectShare);
+				Group.DampingS = FMath::Lerp(Group.DampingS, Behaviour.ProtectDampingS, ProtectShare);
+			}
+		}
 		// The leg of a step under way is stiffer, so that the foot keeps up with its point.
 		const bool bSwingLeg = Swing.bActive &&
 			(Muscle.ChildBone == ThighBoneName[Swing.Side] || Muscle.ChildBone == CalfBoneName[Swing.Side] || Muscle.ChildBone == FootBoneName[Swing.Side]);
@@ -6660,6 +7315,8 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		UpdatePerception(DeltaTime);
 	}
+	// R10, step 1: the player as a viewer, measured (read only; nothing reads it with every behaviour's switch at 0).
+	MeasureViewer();
 	// A gaze switched off while the head is turned brings it back at the gaze's own pace, not at once and not never.
 	if ((GazeYawDeg != 0.0 || GazePitchDeg != 0.0 || GazeYawRateDps != 0.0 || GazePitchRateDps != 0.0) &&
 		!(bPerceptionAllowed && Tuning.Perception.Enabled > 0.5 && Tuning.Perception.Gaze > 0.5))
@@ -6692,6 +7349,12 @@ void USandboxBodyController::TickComponent(float DeltaTime, ELevelTick TickType,
 	if (Tuning.GetUp.Drag > 0.5)
 	{
 		UpdateDrag(DeltaTime);
+	}
+	// R10, steps 4 and 5: fear, and a body that stays down or lowers itself while the player is near (nothing at all with both at 0).
+	if (Tuning.Behaviour.Fear > 0.5 || Tuning.Behaviour.StayDown > 0.5 || Tuning.Behaviour.Protect > 0.5 || FearLastS >= 0.0 || bProtectPose || ProtectShare > 0.0)
+	{
+		UpdateFear();
+		UpdateStayDown(DeltaTime);
 	}
 	UpdateState(DeltaTime);
 	UpdateHeld(DeltaTime);

@@ -186,6 +186,16 @@ private:
 	/** The scene's things with mass, put back where the scenario has them whenever the character is. */
 	TArray<TWeakObjectPtr<AActor>> Props;
 	void RespawnProps();
+public:
+	/** R10, step 8 in part: a command given in this session (the console's Sandbox.Command), kept in the recording while one runs. */
+	void NoteCommand(const FString& Name);
+private:
+	/** R10, step 2: the seed of the body's choices in this session, from a counter of the sessions' own (NextSessionSeed). */
+	int32 SessionSeed = 0;
+	static int32 NextSessionSeed();
+	/** R10, step 1: where the player's head was told as the viewer last frame, for its velocity. */
+	FVector LastViewerCm = FVector::ZeroVector;
+	bool bViewerToldLastFrame = false;
 
 	bool bSmoke = false;
 	bool bSmokePass = true;

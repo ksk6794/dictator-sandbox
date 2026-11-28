@@ -188,6 +188,13 @@ private:
 	/** Or, with a "recording": the hands of a session, frame for frame, from RecordingStartFrame on. */
 	TSharedPtr<FSandboxRecordedTargetSource> RecordedSource;
 	int32 RecordingStartFrame = 0;
+	/**
+	 * R10, step 1: the viewer (the player's head) told to the body every frame: a scenario's "viewer" events, or the head a recording
+	 * kept frame by frame; null and none without them. Where it was told last, for its velocity, and what the result file says of it.
+	 */
+	TSharedPtr<FSandboxScriptedTargetSource> ViewerSource;
+	bool TellViewer(double SimTimeS, FSandboxSeen& OutViewer);
+	FString ViewerFrom;
 	/** Per effector, in the rig's order: the frame of its first contact, -1 while it has touched nothing. */
 	TArray<int32> EffectorFirstContactFrame;
 	FDelegateHandle GameModeInitializedHandle;

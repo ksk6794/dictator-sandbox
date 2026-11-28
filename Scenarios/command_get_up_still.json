@@ -1,0 +1,56 @@
+{
+    "name":  "command_get_up_still",
+    "duration_s":  12,
+    "body":  {
+                 "mesh":  "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+                 "physics_asset":  "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+                 "attached_meshes":  [
+                                         "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+                                     ],
+                 "control":  "active",
+                 "get_up":  true,
+                 "location_cm":  [
+                                     0,
+                                     90,
+                                     0
+                                 ],
+                 "laid_deg":  0
+             },
+    "events":  [
+                   {
+                       "t":  0,
+                       "type":  "console",
+                       "command":  "Sandbox.Tune behaviour.commands=1,getup.rest_s=10"
+                   },
+                   {
+                       "t":  0.6,
+                       "type":  "impulse",
+                       "body":  "pelvis",
+                       "impulse_ns":  40,
+                       "direction":  [
+                                         0,
+                                         0,
+                                         -1
+                                     ]
+                   },
+                   {
+                       "t":  5,
+                       "type":  "console",
+                       "command":  "Sandbox.Command get_up"
+                   }
+               ],
+    "expect":  {
+                   "tuning_changes":  1,
+                   "max_joint_stretch_cm":  2,
+                   "measures":  {
+                                    "control.commands.0.answer":  {
+                                                                      "equals":  "done"
+                                                                  },
+                                    "control.commands.0.first_motion_after_s":  {
+                                                                                    "min":  0.2,
+                                                                                    "max":  1
+                                                                                }
+                                },
+                   "end_state":  "standing"
+               }
+}

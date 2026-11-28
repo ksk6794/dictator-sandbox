@@ -1,0 +1,223 @@
+{
+    "name":  "viewer_with_gaze",
+    "duration_s":  12.0,
+    "body":  {
+                 "mesh":  "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+                 "physics_asset":  "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+                 "attached_meshes":  [
+                                         "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+                                     ],
+                 "location_cm":  [
+                                     0,
+                                     0,
+                                     0
+                                 ],
+                 "control":  "active",
+                 "perception":  true
+             },
+    "events":  [
+                   {
+                       "t":  0.0,
+                       "type":  "console",
+                       "command":  "Sandbox.Tune perception.gaze=1"
+                   },
+                   {
+                       "t":  0.5,
+                       "type":  "viewer",
+                       "path":  [
+                                    {
+                                        "t":  0,
+                                        "location_cm":  [
+                                                            -40,
+                                                            70,
+                                                            165
+                                                        ]
+                                    },
+                                    {
+                                        "t":  3,
+                                        "location_cm":  [
+                                                            40,
+                                                            70,
+                                                            165
+                                                        ]
+                                    },
+                                    {
+                                        "t":  6,
+                                        "location_cm":  [
+                                                            -40,
+                                                            70,
+                                                            165
+                                                        ]
+                                    }
+                                ]
+                   },
+                   {
+                       "t":  1.0,
+                       "type":  "effector",
+                       "effector":  "hand_right",
+                       "path":  [
+                                    {
+                                        "t":  0.0,
+                                        "location_cm":  [
+                                                            50.0,
+                                                            108.0,
+                                                            160.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  1.785,
+                                        "location_cm":  [
+                                                            35.36,
+                                                            108.0,
+                                                            195.36
+                                                        ]
+                                    },
+                                    {
+                                        "t":  2.571,
+                                        "location_cm":  [
+                                                            0.0,
+                                                            108.0,
+                                                            210.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  3.356,
+                                        "location_cm":  [
+                                                            -35.36,
+                                                            108.0,
+                                                            195.36
+                                                        ]
+                                    },
+                                    {
+                                        "t":  4.142,
+                                        "location_cm":  [
+                                                            -50.0,
+                                                            108.0,
+                                                            160.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  4.927,
+                                        "location_cm":  [
+                                                            -35.36,
+                                                            108.0,
+                                                            124.64
+                                                        ]
+                                    },
+                                    {
+                                        "t":  5.712,
+                                        "location_cm":  [
+                                                            0.0,
+                                                            108.0,
+                                                            110.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  6.498,
+                                        "location_cm":  [
+                                                            35.36,
+                                                            108.0,
+                                                            124.64
+                                                        ]
+                                    },
+                                    {
+                                        "t":  7.283,
+                                        "location_cm":  [
+                                                            50.0,
+                                                            108.0,
+                                                            160.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  8.069,
+                                        "location_cm":  [
+                                                            35.36,
+                                                            108.0,
+                                                            195.36
+                                                        ]
+                                    },
+                                    {
+                                        "t":  8.854,
+                                        "location_cm":  [
+                                                            0.0,
+                                                            108.0,
+                                                            210.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  9.639,
+                                        "location_cm":  [
+                                                            -35.36,
+                                                            108.0,
+                                                            195.36
+                                                        ]
+                                    },
+                                    {
+                                        "t":  10.425,
+                                        "location_cm":  [
+                                                            -50.0,
+                                                            108.0,
+                                                            160.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  11.21,
+                                        "location_cm":  [
+                                                            -35.36,
+                                                            108.0,
+                                                            124.64
+                                                        ]
+                                    },
+                                    {
+                                        "t":  11.996,
+                                        "location_cm":  [
+                                                            0.0,
+                                                            108.0,
+                                                            110.0
+                                                        ]
+                                    },
+                                    {
+                                        "t":  12.781,
+                                        "location_cm":  [
+                                                            35.36,
+                                                            108.0,
+                                                            124.64
+                                                        ]
+                                    },
+                                    {
+                                        "t":  13.566,
+                                        "location_cm":  [
+                                                            50.0,
+                                                            108.0,
+                                                            160.0
+                                                        ]
+                                    }
+                                ]
+                   }
+               ],
+    "expect":  {
+                   "tuning_changes":  1,
+                   "fell":  false,
+                   "max_joint_stretch_cm":  2.0,
+                   "measures":  {
+                                    "control.perception.gaze_error_mean_deg":  {
+                                                                                   "max":  15
+                                                                               },
+                                    "control.perception.gaze_at_limit_frames":  {
+                                                                                    "max":  0
+                                                                                },
+                                    "control.pose.target_jump_max_deg":  {
+                                                                             "max":  1.0
+                                                                         },
+                                    "control.recovery_step_count":  {
+                                                                        "max":  0
+                                                                    },
+                                    "control.behaviour.viewer_from":  {
+                                                                          "equals":  "scenario"
+                                                                      },
+                                    "control.behaviour.viewer_min_cm":  {
+                                                                            "max":  70
+                                                                        }
+                                }
+               }
+}

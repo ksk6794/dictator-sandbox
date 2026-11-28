@@ -209,7 +209,8 @@ void FScenarioStage::TellBodyOfHolds(const ASandboxEffectorRig* Rig, ASandboxRag
 	}
 }
 
-void FScenarioStage::TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArrayView<TObjectPtr<AActor>> Props, ASandboxRagdollActor* Body)
+void FScenarioStage::TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArrayView<TObjectPtr<AActor>> Props, ASandboxRagdollActor* Body,
+	TConstArrayView<FSandboxSeen> Viewers, bool bViewersOnly)
 {
 	USandboxBodyController* Controller = Body ? Body->GetController() : nullptr;
 	if (!Controller)
@@ -221,17 +222,34 @@ void FScenarioStage::TellBodyWhatMoves(const ASandboxEffectorRig* Rig, TConstArr
 	{
 		for (const USandboxEffectorComponent* Effector : Rig->GetEffectors())
 		{
-			// The player's own body is no hand coming at the body: it is not told of (seeing the player is R5's).
-			if (Effector && Effector->GetId() != SandboxEffectors::Body)
+			// A body that does not perceive is told of the player alone (the capsule), never of the hands (R10, step 1).
+			if (!Effector || (bViewersOnly && Effector->GetId() != SandboxEffectors::Body))
 			{
-				FSandboxSeen& Thing = Seen.AddDefaulted_GetRef();
-				Thing.Name = Effector->GetId();
-				Thing.Kind = Effector->GetId().ToString().StartsWith(TEXT("foot")) ? ESandboxSeenKind::Foot : ESandboxSeenKind::Hand;
-				Thing.LocationCm = Effector->GetHandTransform().GetLocation();
-				Thing.VelocityCmS = Effector->GetHandVelocity();
+				continue;
+			}
+			FSandboxSeen& Thing = Seen.AddDefaulted_GetRef();
+			Thing.Name = Effector->GetId();
+			Thing.LocationCm = Effector->GetHandTransform().GetLocation();
+			Thing.VelocityCmS = Effector->GetHandVelocity();
+			if (Effector->GetId() == SandboxEffectors::Body)
+			{
+				// The player's own body is no hand coming at the body: it is the player, a viewer (R10, step 1), which N5's perception
+				// does not judge.
+				Thing.Kind = ESandboxSeenKind::Viewer;
+			}
+			else if (Effector->GetId().ToString().StartsWith(TEXT("foot")))
+			{
+				Thing.Kind = ESandboxSeenKind::Foot;
+			}
+			else
+			{
+				// R10, step 1: a hand with its grip as its target has it (open or a fist).
+				Thing.Kind = ESandboxSeenKind::Hand;
+				Thing.Grip = Effector->GetTarget().Grip;
 			}
 		}
 	}
+	Seen.Append(Viewers.GetData(), Viewers.Num());
 	for (const TObjectPtr<AActor>& Prop : Props)
 	{
 		const UPrimitiveComponent* Box = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;

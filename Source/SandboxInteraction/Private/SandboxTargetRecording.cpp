@@ -37,6 +37,11 @@ bool FSandboxTargetRecording::Save(const FString& FilePath, FString& OutError) c
 		OutError = TEXT("a recording needs its frame rate and at least one effector");
 		return false;
 	}
+	if (Heads.Num() > 0 && Heads.Num() != NumFrames())
+	{
+		OutError = FString::Printf(TEXT("the head was kept for %d of the recording's %d frames"), Heads.Num(), NumFrames());
+		return false;
+	}
 	// Written by hand, one line a frame, so that a recording can be read, cut and compared as text. 17
 	// significant digits give every number back bit for bit.
 	FString Text;
@@ -61,7 +66,28 @@ bool FSandboxTargetRecording::Save(const FString& FilePath, FString& OutError) c
 		}
 		Text += Frame + 1 < Frames ? TEXT("],\n") : TEXT("]\n");
 	}
-	Text += TEXT("  ]\n}\n");
+	Text += TEXT("  ]");
+	// R10, step 1: the head, one a frame, after the frames (a reader made before skips a field it does not know).
+	if (Heads.Num() > 0)
+	{
+		Text += TEXT(",\n  \"heads\": [\n");
+		for (int32 Frame = 0; Frame < Heads.Num(); ++Frame)
+		{
+			Text += FString::Printf(TEXT("[%.17g,%.17g,%.17g]%s"), Heads[Frame].X, Heads[Frame].Y, Heads[Frame].Z, Frame + 1 < Heads.Num() ? TEXT(",\n") : TEXT("\n"));
+		}
+		Text += TEXT("  ]");
+	}
+	// R10, step 8 in part: the commands, each with its frame.
+	if (Commands.Num() > 0)
+	{
+		Text += TEXT(",\n  \"commands\": [");
+		for (int32 Index = 0; Index < Commands.Num(); ++Index)
+		{
+			Text += FString::Printf(TEXT("%s[%d, \"%s\"]"), Index > 0 ? TEXT(", ") : TEXT(""), Commands[Index].Key, *Commands[Index].Value);
+		}
+		Text += TEXT("]");
+	}
+	Text += TEXT("\n}\n");
 
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(FilePath), /*Tree*/ true);
 	if (!FFileHelper::SaveStringToFile(Text, *FilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
@@ -149,6 +175,64 @@ bool FSandboxTargetRecording::Load(const FString& FilePath, FSandboxTargetRecord
 			Target.Grip = static_cast<float>(Values[10]);
 			Target.Strength = static_cast<float>(FMath::Clamp(Values[11], 0.0, 1.0));
 			Read.Targets.Add(Target);
+		}
+	}
+	// R10, step 1: the head, if the session kept it (a recording made before has none): one a frame, or none at all.
+	const TArray<TSharedPtr<FJsonValue>>* Heads = nullptr;
+	if (Json->HasField(TEXT("heads")))
+	{
+		if (!Json->TryGetArrayField(TEXT("heads"), Heads) || Heads->Num() != Frames->Num())
+		{
+			return Fail(FString::Printf(TEXT("'heads' must hold one point [x, y, z] for each of the %d frames"), Frames->Num()));
+		}
+		Read.Heads.Reserve(Heads->Num());
+		for (int32 Frame = 0; Frame < Heads->Num(); ++Frame)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Point = nullptr;
+			double Values[3] = {};
+			bool bGood = (*Heads)[Frame].IsValid() && (*Heads)[Frame]->TryGetArray(Point) && Point->Num() == 3;
+			for (int32 Index = 0; bGood && Index < 3; ++Index)
+			{
+				bGood = (*Point)[Index].IsValid() && (*Point)[Index]->Type == EJson::Number && (*Point)[Index]->TryGetNumber(Values[Index]) && FMath::IsFinite(Values[Index]);
+			}
+			if (!bGood)
+			{
+				return Fail(FString::Printf(TEXT("heads[%d] must be [x, y, z]"), Frame));
+			}
+			Read.Heads.Add(FVector(Values[0], Values[1], Values[2]));
+		}
+	}
+	// R10, step 8 in part: the commands, if the session gave any.
+	const TArray<TSharedPtr<FJsonValue>>* CommandList = nullptr;
+	if (Json->HasField(TEXT("commands")))
+	{
+		if (!Json->TryGetArrayField(TEXT("commands"), CommandList))
+		{
+			return Fail(TEXT("'commands' must be a list of [frame, \"name\"]"));
+		}
+		for (int32 Index = 0; Index < CommandList->Num(); ++Index)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Pair = nullptr;
+			double FrameNumber = 0.0;
+			FString Name;
+			if (!(*CommandList)[Index].IsValid() || !(*CommandList)[Index]->TryGetArray(Pair) || Pair->Num() != 2 || !(*Pair)[0].IsValid() ||
+				(*Pair)[0]->Type != EJson::Number || !(*Pair)[0]->TryGetNumber(FrameNumber) || !(*Pair)[1].IsValid() || !(*Pair)[1]->TryGetString(Name) || Name.IsEmpty())
+			{
+				return Fail(FString::Printf(TEXT("commands[%d] must be [frame, \"name\"]"), Index));
+			}
+			if (FrameNumber < 0.0 || FrameNumber > static_cast<double>(TNumericLimits<int32>::Max()) || FrameNumber != FMath::FloorToDouble(FrameNumber))
+			{
+				return Fail(FString::Printf(TEXT("commands[%d]: the frame %g is no frame"), Index, FrameNumber));
+			}
+			// A name is a word of small letters and underscores (it goes into a console line when replayed).
+			for (const TCHAR Letter : Name)
+			{
+				if (!((Letter >= TEXT('a') && Letter <= TEXT('z')) || Letter == TEXT('_')))
+				{
+					return Fail(FString::Printf(TEXT("commands[%d]: '%s' is no command's name"), Index, *Name));
+				}
+			}
+			Read.Commands.Emplace(static_cast<int32>(FrameNumber), Name);
 		}
 	}
 	OutRecording = MoveTemp(Read);

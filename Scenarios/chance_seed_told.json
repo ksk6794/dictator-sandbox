@@ -1,0 +1,46 @@
+{
+    "name":  "chance_seed_told",
+    "duration_s":  10.0,
+    "body":  {
+                 "mesh":  "/Game/MetaHumans/SandboxNPC/Body/SKM_SandboxNPC_BodyMesh.SKM_SandboxNPC_BodyMesh",
+                 "physics_asset":  "/Game/Generated/Physics/PA_SandboxNPC.PA_SandboxNPC",
+                 "attached_meshes":  [
+                                         "/Game/MetaHumans/SandboxNPC/Face/SKM_SandboxNPC_FaceMesh.SKM_SandboxNPC_FaceMesh"
+                                     ],
+                 "location_cm":  [
+                                     0,
+                                     0,
+                                     0
+                                 ],
+                 "control":  "active"
+             },
+    "expect":  {
+                   "hit_events":  0,
+                   "max_assist_force_share_mean":  0.0093,
+                   "min_capture_margin_cm":  5.0,
+                   "max_body_penetration_cm":  0.5,
+                   "max_self_penetration_cm":  0.5,
+                   "fell":  false,
+                   "state_sequence":  "standing",
+                   "max_joint_limit_violation_deg":  1.0,
+                   "tuning_changes":  0,
+                   "max_pelvis_drift_cm":  5.0,
+                   "min_head_height_cm":  150.0,
+                   "max_joint_stretch_cm":  2.0,
+                   "max_settled_speed_mps":  0.15,
+                   "min_settled_head_travel_cm":  2.0,
+                   "max_settled_angular_speed_rads":  0.3,
+                   "max_joint_speed_rads":  30.0,
+                   "max_physics_step_mean_ms":  1.5,
+                   "measures":  {
+                                    "control.chance.seed":  {
+                                                                "min":  5,
+                                                                "max":  5
+                                                            },
+                                    "control.chance.draw_count":  {
+                                                                      "max":  0
+                                                                  }
+                                }
+               },
+    "seed":  5
+}

@@ -2,12 +2,15 @@
 
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -131,6 +134,14 @@ void USandboxPlaySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		Fail(Error);
 		return;
+	}
+	// R10, step 2: the session's seed, from a counter of its own (never the clock): said in the log, written into every recording's
+	// replay, told to every character the session puts into the world.
+	SessionSeed = NextSessionSeed();
+	UE_LOG(LogSandbox, Display, TEXT("Play session: the seed of the body's choices is %d"), SessionSeed);
+	if (USandboxBodyController* Seeded = Character->GetController())
+	{
+		Seeded->SetChanceSeed(SessionSeed);
 	}
 	if (const FBodyInstance* Root = Character->GetBodyMesh()->GetBodyInstance())
 	{
@@ -264,16 +275,111 @@ void USandboxPlaySubsystem::ResetCharacter()
 	Character = FScenarioStage::SpawnBody(GetWorldRef(), Spec, Error);
 	++Resets;
 	BodySpawnFrame = Pawn.IsValid() ? Pawn->GetSimulatedFrames() : 0;
+	if (USandboxBodyController* Seeded = Character ? Character->GetController() : nullptr)
+	{
+		Seeded->SetChanceSeed(SessionSeed);
+	}
 	if (!Character)
 	{
 		UE_LOG(LogSandbox, Error, TEXT("Play session: the character could not be put back: %s"), *Error);
 	}
 }
 
+namespace
+{
+	// R10, step 8 in part (decision 42: the console in any session; a scenario's console event in a run): tells every body of the world the
+	// command, and a session that records keeps it with its frame.
+	FAutoConsoleCommandWithWorldAndArgs SandboxCommandCommand(
+		TEXT("Sandbox.Command"),
+		TEXT("Tells the body a command (R10): Sandbox.Command get_up | stop. Answered only with behaviour.commands on."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (!World)
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Sandbox.Command: there is no world to tell"));
+				return;
+			}
+			// The name as the body and a recording know it, whatever case it was typed in (a recording refuses another).
+			const FString Name = Args.Num() == 1 ? Args[0].ToLower() : FString();
+			if (Name != TEXT("get_up") && Name != TEXT("stop"))
+			{
+				UE_LOG(LogSandbox, Error, TEXT("Sandbox.Command: give one of get_up, stop"));
+				return;
+			}
+			const ESandboxCommand Command = Name == TEXT("get_up") ? ESandboxCommand::GetUp : ESandboxCommand::Stop;
+			int32 Told = 0;
+			for (TActorIterator<ASandboxRagdollActor> It(World); It; ++It)
+			{
+				if (USandboxBodyController* Controller = It->GetController())
+				{
+					Controller->TellCommand(Command);
+					++Told;
+				}
+			}
+			if (USandboxPlaySubsystem* Play = World->GetSubsystem<USandboxPlaySubsystem>())
+			{
+				Play->NoteCommand(Name);
+			}
+			UE_LOG(LogSandbox, Display, TEXT("Sandbox.Command: %s told to %d body(ies)"), *Name, Told);
+		}));
+}
+
+void USandboxPlaySubsystem::NoteCommand(const FString& Name)
+{
+	if (Pawn.IsValid() && Pawn->IsRecording() && Pawn->GetRig())
+	{
+		Pawn->GetRig()->NoteCommand(Name);
+	}
+}
+
+int32 USandboxPlaySubsystem::NextSessionSeed()
+{
+	// A counter of the sessions' own in Saved\Play\session_seed.txt: each session takes the next number (1 the first), never the clock.
+	const FString File = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Play"), TEXT("session_seed.txt"));
+	FString Text;
+	int32 Last = 0;
+	if (FFileHelper::LoadFileToString(Text, *File))
+	{
+		Last = FCString::Atoi(*Text.TrimStartAndEnd());
+	}
+	const int32 Seed = FMath::Max(Last, 0) + 1;
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(File), /*Tree*/ true);
+	if (!FFileHelper::SaveStringToFile(FString::FromInt(Seed), *File))
+	{
+		UE_LOG(LogSandbox, Warning, TEXT("Play session: the seed counter %s could not be written; the next session takes the same seed"), *File);
+	}
+	return Seed;
+}
+
 void USandboxPlaySubsystem::TellPerception()
 {
-	if (!bPerception || !Character)
+	if (!Character)
 	{
+		return;
+	}
+	// A session that records sees the hands while a recording runs. Before the first one they fly from where the pawn made
+	// them to where the recording begins, which its replay cannot know: watched, that flight turned the session's head and
+	// the replay's body ended 2 cm off the session's. The viewer the same way: a replay has the head only from its first frame.
+	const bool bHandsSeen = RecordName.IsEmpty() || (Pawn.IsValid() && Pawn->IsRecording());
+	// R10, step 1: the player's head (the camera on the desktop, the head in a headset) is told as a viewer in every session, whether
+	// or not the body perceives; with every behaviour's switch at 0 nothing reads it.
+	FSandboxSeen Viewer;
+	const bool bViewer = bHandsSeen && Pawn.IsValid();
+	if (bViewer)
+	{
+		Viewer.Name = TEXT("head");
+		Viewer.Kind = ESandboxSeenKind::Viewer;
+		Viewer.LocationCm = Pawn->GetHeadLocation();
+		// Per frame of the session's fixed step (a paused frame that moves the camera reads as a speed; nothing reads it yet).
+		Viewer.VelocityCmS = bViewerToldLastFrame ? (Viewer.LocationCm - LastViewerCm) / Spec.FixedDt() : FVector::ZeroVector;
+		LastViewerCm = Viewer.LocationCm;
+	}
+	bViewerToldLastFrame = bViewer;
+	if (!bPerception)
+	{
+		// The head, and the player's capsule in a headset (a viewer too), never the hands: the body does not perceive.
+		FScenarioStage::TellBodyWhatMoves(bHandsSeen && Pawn.IsValid() ? Pawn->GetRig() : nullptr, {}, Character,
+			bViewer ? TConstArrayView<FSandboxSeen>(&Viewer, 1) : TConstArrayView<FSandboxSeen>(), /*bViewersOnly*/ true);
 		return;
 	}
 	// Every frame, as a scenario's run does: a character put back after a reset starts without it.
@@ -289,11 +395,8 @@ void USandboxPlaySubsystem::TellPerception()
 			Things.Add(Prop.Get());
 		}
 	}
-	// A session that records sees the hands while a recording runs. Before the first one they fly from where the pawn made
-	// them to where the recording begins, which its replay cannot know: watched, that flight turned the session's head and
-	// the replay's body ended 2 cm off the session's.
-	const bool bHandsSeen = RecordName.IsEmpty() || (Pawn.IsValid() && Pawn->IsRecording());
-	FScenarioStage::TellBodyWhatMoves(bHandsSeen && Pawn.IsValid() ? Pawn->GetRig() : nullptr, Things, Character);
+	FScenarioStage::TellBodyWhatMoves(bHandsSeen && Pawn.IsValid() ? Pawn->GetRig() : nullptr, Things, Character,
+		bViewer ? TConstArrayView<FSandboxSeen>(&Viewer, 1) : TConstArrayView<FSandboxSeen>());
 }
 
 void USandboxPlaySubsystem::TellNotLed()
@@ -436,11 +539,53 @@ void USandboxPlaySubsystem::SaveRecording(const TSharedRef<FSandboxTargetRecordi
 			}
 		}
 	}
+	// R10: a session whose body was afraid or stayed down (switched on by -Tune) is replayed so; both in one command, as stay_down needs
+	// fear on to be taken.
+	if (const USandboxBodyController* Choosing = Character ? Character->GetController() : nullptr)
+	{
+		const FSandboxBehaviourTuning& Behaviour = Choosing->GetTuning().Behaviour;
+		TArray<FString> On;
+		if (Behaviour.Fear > 0.5)
+		{
+			On.Add(TEXT("behaviour.fear=1"));
+		}
+		if (Behaviour.StayDown > 0.5)
+		{
+			On.Add(TEXT("behaviour.stay_down=1"));
+		}
+		if (Behaviour.Protect > 0.5)
+		{
+			On.Add(TEXT("behaviour.protect=1"));
+		}
+		if (Behaviour.Commands > 0.5)
+		{
+			On.Add(TEXT("behaviour.commands=1"));
+		}
+		if (On.Num() > 0)
+		{
+			const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
+			Event->SetNumberField(TEXT("t"), 0.0);
+			Event->SetStringField(TEXT("type"), TEXT("console"));
+			Event->SetStringField(TEXT("command"), FString(TEXT("Sandbox.Tune ")) + FString::Join(On, TEXT(",")));
+			ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
+		}
+	}
+	// R10, step 8 in part: the commands given while it was recorded, at their frames.
+	for (const TPair<int32, FString>& Given : Recording->Commands)
+	{
+		const TSharedRef<FJsonObject> Event = MakeShared<FJsonObject>();
+		Event->SetNumberField(TEXT("t"), static_cast<double>(StartFrame + Given.Key) / Spec.FixedFps);
+		Event->SetStringField(TEXT("type"), TEXT("console"));
+		Event->SetStringField(TEXT("command"), FString(TEXT("Sandbox.Command ")) + Given.Value);
+		ReplayEvents.Add(MakeShared<FJsonValueObject>(Event));
+	}
 	Scenario->SetArrayField(TEXT("events"), ReplayEvents);
 	Scenario->SetObjectField(TEXT("expect"), MakeShared<FJsonObject>());
 	Scenario->RemoveField(TEXT("end_when_standing_s"));
 	Scenario->SetStringField(TEXT("recording"), RelativeRecording);
 	Scenario->SetNumberField(TEXT("recording_start_s"), static_cast<double>(StartFrame) / Spec.FixedFps);
+	// R10, step 2: the replay draws as the session did.
+	Scenario->SetNumberField(TEXT("seed"), SessionSeed);
 	const TSharedPtr<FJsonObject>* Body = nullptr;
 	if (Spec.Control == EScenarioBodyControl::Active && Scenario->TryGetObjectField(TEXT("body"), Body))
 	{
@@ -1327,6 +1472,15 @@ void USandboxPlaySubsystem::TickSmoke()
 		const double OffCm = FVector::Dist(Pelvis().GetLocation(), SmokeSpawnPelvis);
 		Check(TEXT("reset_puts_the_character_back"), Resets == 1 && Controller && Controller->GetState() == ESandboxBodyState::Standing && Controller->GetStateLog().Num() == 1 && OffCm < 3.0,
 			FString::Printf(TEXT("resets %d, states %s, pelvis %.2f cm from where it started"), Resets, *StateNames(Controller), OffCm));
+		// R10, step 8 in part: the U key's way to the body, through the console (refused here: commands are off in the files, and it stands).
+		Player->CommandGetUp();
+		break;
+	}
+	case 471:
+	{
+		const TArray<FSandboxBehaviourView::FCommand>& Told = Controller ? Controller->GetBehaviourView().Commands : TArray<FSandboxBehaviourView::FCommand>();
+		Check(TEXT("command_key_reaches_the_body"), Told.Num() == 1 && Told[0].Name == TEXT("get_up") && Told[0].Answer.StartsWith(TEXT("refused")),
+			Told.Num() > 0 ? FString::Printf(TEXT("%d command(s); the first %s: %s"), Told.Num(), *Told[0].Name, *Told[0].Answer) : FString(TEXT("no command reached the body")));
 		break;
 	}
 	case 480:
