@@ -116,7 +116,6 @@ namespace
 		Visitor(FString(TEXT("behaviour.near_cm")), Tuning.Behaviour.NearCm);
 		Visitor(FString(TEXT("behaviour.near_margin_cm")), Tuning.Behaviour.NearMarginCm);
 		Visitor(FString(TEXT("behaviour.lower_rate")), Tuning.Behaviour.LowerRate);
-		Visitor(FString(TEXT("behaviour.lower_end_cm")), Tuning.Behaviour.LowerEndCm);
 		Visitor(FString(TEXT("behaviour.lower_turn_s")), Tuning.Behaviour.LowerTurnS);
 		Visitor(FString(TEXT("behaviour.lower_max_mps")), Tuning.Behaviour.LowerMaxMps);
 		Visitor(FString(TEXT("behaviour.lower_release_s")), Tuning.Behaviour.LowerReleaseS);
@@ -243,7 +242,6 @@ namespace
 		Visitor(FString(TEXT("balance.replant_air_s")), Tuning.Balance.ReplantAirS);
 		Visitor(FString(TEXT("balance.lift_grace_s")), Tuning.Balance.LiftGraceS);
 		Visitor(FString(TEXT("balance.ankle_gain")), Tuning.Balance.AnkleGain);
-		Visitor(FString(TEXT("balance.ankle_side_gain")), Tuning.Balance.AnkleSideGain);
 		Visitor(FString(TEXT("balance.ankle_integral_s")), Tuning.Balance.AnkleIntegralS);
 		Visitor(FString(TEXT("balance.ankle_integral_max_cm")), Tuning.Balance.AnkleIntegralMaxCm);
 		Visitor(FString(TEXT("balance.ankle_max_deg")), Tuning.Balance.AnkleMaxDeg);
@@ -378,7 +376,6 @@ namespace
 		Visitor(FString(TEXT("getup.carry_max_nm_per_kg")), Tuning.GetUp.CarryMaxNmPerKg);
 		Visitor(FString(TEXT("getup.carry_release_s")), Tuning.GetUp.CarryReleaseS);
 		Visitor(FString(TEXT("getup.carry_yield_ns")), Tuning.GetUp.CarryYieldNs);
-		Visitor(FString(TEXT("getup.hold_by_body")), Tuning.GetUp.HoldByBody);
 		Visitor(FString(TEXT("getup.hold_chain")), Tuning.GetUp.HoldChain);
 		Visitor(FString(TEXT("getup.hold_chain_falloff")), Tuning.GetUp.HoldChainFalloff);
 		Visitor(FString(TEXT("getup.hold_chain_full_n")), Tuning.GetUp.HoldChainFullN);
@@ -387,7 +384,6 @@ namespace
 		Visitor(FString(TEXT("getup.hold_slow_from_n")), Tuning.GetUp.HoldSlowFromN);
 		Visitor(FString(TEXT("getup.hold_sum")), Tuning.GetUp.HoldSum);
 		Visitor(FString(TEXT("getup.hold_press_pace")), Tuning.GetUp.HoldPressPace);
-		Visitor(FString(TEXT("getup.hit_by_impulse")), Tuning.GetUp.HitByImpulse);
 		Visitor(FString(TEXT("getup.hit_back_s")), Tuning.GetUp.HitBackS);
 		Visitor(FString(TEXT("getup.hit_overflow")), Tuning.GetUp.HitOverflow);
 		Visitor(FString(TEXT("getup.start_blend_s")), Tuning.GetUp.StartBlendS);
@@ -720,7 +716,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Behaviour.StayDown, 1.0, TEXT("behaviour"), TEXT("stay_down"), OutError) || !CheckRange(Behaviour.FearStayDown, 1.0, TEXT("behaviour"), TEXT("fear_stay_down"), OutError) ||
 		!CheckRange(Behaviour.NearCm, 1000.0, TEXT("behaviour"), TEXT("near_cm"), OutError) || !CheckRange(Behaviour.NearMarginCm, 500.0, TEXT("behaviour"), TEXT("near_margin_cm"), OutError) ||
 		!CheckRange(Behaviour.LowerRate, 2.0, TEXT("behaviour"), TEXT("lower_rate"), OutError) || !CheckRange(Behaviour.ProtectBlendS, 5.0, TEXT("behaviour"), TEXT("protect_blend_s"), OutError) ||
-		!CheckRange(Behaviour.LowerEndCm, 100.0, TEXT("behaviour"), TEXT("lower_end_cm"), OutError) ||
 		!CheckRange(Behaviour.LowerTurnS, 2.0, TEXT("behaviour"), TEXT("lower_turn_s"), OutError) ||
 		!CheckRange(Behaviour.LowerMaxMps, 5.0, TEXT("behaviour"), TEXT("lower_max_mps"), OutError) ||
 		!CheckRange(Behaviour.LowerReleaseS, 5.0, TEXT("behaviour"), TEXT("lower_release_s"), OutError) ||
@@ -762,10 +757,17 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 	{
 		return false;
 	}
-	if (Behaviour.StayDown > 0.5 && (Behaviour.Fear <= 0.5 || Behaviour.FearFadeS <= 0.0 || Behaviour.ProtectBlendS < 0.02))
+	if (Behaviour.StayDown > 0.5 && (Behaviour.Fear <= 0.5 || Behaviour.FearFadeS <= 0.0 || Behaviour.ProtectBlendS < 0.02 || Behaviour.LowerTurnS < 0.02))
 	{
-		// Without fear nothing is ever afraid; a pose that comes in faster than 0.02 s is a jump of the target (C25).
-		OutError = TEXT("behaviour.stay_down needs behaviour.fear on, fear_fade_s above 0 and protect_blend_s of at least 0.02 s");
+		// Without fear nothing is ever afraid; a pose that comes in faster than 0.02 s is a jump of the target (C25), and a clip whose
+		// pace turns back in no time reverses the reference's speed at once.
+		OutError = TEXT("behaviour.stay_down needs behaviour.fear on, fear_fade_s above 0 and protect_blend_s and lower_turn_s of at least 0.02 s");
+		return false;
+	}
+	if (Behaviour.GiveHand > 0.5 && Behaviour.OfferBlendS < 0.02)
+	{
+		// An offered arm that comes in no time is a jump of its target and its muscles.
+		OutError = TEXT("behaviour.give_hand needs offer_blend_s of at least 0.02 s");
 		return false;
 	}
 	if (Behaviour.Protect > 0.5 && (Behaviour.ProtectBlendS < 0.02 || Behaviour.ProtectFromHeadNs <= 0.0 || Behaviour.ProtectFromNs <= 0.0))
@@ -885,7 +887,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.CarryMaxNmPerKg, 1000.0, TEXT("getup"), TEXT("carry_max_nm_per_kg"), OutError) ||
 		!CheckRange(GetUp.CarryReleaseS, 5.0, TEXT("getup"), TEXT("carry_release_s"), OutError) ||
 		!CheckRange(GetUp.CarryYieldNs, 10000.0, TEXT("getup"), TEXT("carry_yield_ns"), OutError) ||
-		!CheckRange(GetUp.HoldByBody, 1.0, TEXT("getup"), TEXT("hold_by_body"), OutError) ||
 		!CheckRange(GetUp.HoldChain, 3.0, TEXT("getup"), TEXT("hold_chain"), OutError) ||
 		!CheckRange(GetUp.HoldRestFullN, 100000.0, TEXT("getup"), TEXT("hold_rest_full_n"), OutError) ||
 		!CheckRange(GetUp.HoldChainFalloff, 1.0, TEXT("getup"), TEXT("hold_chain_falloff"), OutError) ||
@@ -894,7 +895,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(GetUp.HoldSlowFromN, 100000.0, TEXT("getup"), TEXT("hold_slow_from_n"), OutError) ||
 		!CheckRange(GetUp.HoldSum, 1.0, TEXT("getup"), TEXT("hold_sum"), OutError) ||
 		!CheckRange(GetUp.HoldPressPace, 1.0, TEXT("getup"), TEXT("hold_press_pace"), OutError) ||
-		!CheckRange(GetUp.HitByImpulse, 1.0, TEXT("getup"), TEXT("hit_by_impulse"), OutError) ||
 		!CheckRange(GetUp.HitBackS, 10.0, TEXT("getup"), TEXT("hit_back_s"), OutError) ||
 		!CheckRange(GetUp.HitOverflow, 1.0, TEXT("getup"), TEXT("hit_overflow"), OutError) ||
 		!CheckRange(GetUp.StartBlendS, 10.0, TEXT("getup"), TEXT("start_blend_s"), OutError) ||
@@ -950,14 +950,14 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		OutError = TEXT("getup.roll needs roll_s above 0 and roll_done_deg below roll_side_deg");
 		return false;
 	}
-	if (GetUp.HoldByBody > 0.5 && (GetUp.HoldChainFullN <= 0.0 || (GetUp.HoldForceN > 0.0 && GetUp.HoldSlowFromN >= GetUp.HoldForceN)))
+	if (GetUp.HoldChainFullN <= 0.0 || (GetUp.HoldForceN > 0.0 && GetUp.HoldSlowFromN >= GetUp.HoldForceN))
 	{
-		OutError = TEXT("getup.hold_by_body needs hold_chain_full_n above 0 and hold_slow_from_n below hold_force_n");
+		OutError = TEXT("a hold of a led get-up needs getup.hold_chain_full_n above 0 and hold_slow_from_n below hold_force_n");
 		return false;
 	}
-	if (GetUp.HitByImpulse > 0.5 && GetUp.CarryYieldNs <= 0.0)
+	if (GetUp.CarryYieldNs <= 0.0)
 	{
-		OutError = TEXT("getup.hit_by_impulse needs carry_yield_ns above 0: it is the impulse that takes all of the authority");
+		OutError = TEXT("getup.carry_yield_ns must be above 0: it is the impulse that takes all of the authority");
 		return false;
 	}
 
@@ -1020,7 +1020,6 @@ bool FSandboxBodyTuning::Validate(FString& OutError) const
 		!CheckRange(Balance.ReplantAirS, 2.0, TEXT("balance"), TEXT("replant_air_s"), OutError) ||
 		!CheckRange(Balance.LiftGraceS, 2.0, TEXT("balance"), TEXT("lift_grace_s"), OutError) ||
 		!CheckRange(Balance.AnkleGain, 20.0, TEXT("balance"), TEXT("ankle_gain"), OutError) ||
-		!CheckRange(Balance.AnkleSideGain, 20.0, TEXT("balance"), TEXT("ankle_side_gain"), OutError) ||
 		!CheckRange(Balance.AnkleIntegralS, 60.0, TEXT("balance"), TEXT("ankle_integral_s"), OutError) ||
 		!CheckRange(Balance.AnkleIntegralMaxCm, 30.0, TEXT("balance"), TEXT("ankle_integral_max_cm"), OutError) ||
 		!CheckRange(Balance.AnkleMaxDeg, 30.0, TEXT("balance"), TEXT("ankle_max_deg"), OutError) ||

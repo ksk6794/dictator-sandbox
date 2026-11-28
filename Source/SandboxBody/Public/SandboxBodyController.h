@@ -100,7 +100,7 @@ struct FSandboxSeen
 	double RadiusCm = 0.0;
 	/**
 	 * R10, step 1: a hand's grip as its target has it, 0 an open hand to 1 a fist, so that an open hand held out is not taken for a fist;
-	 * 1 for what is not a hand. Nothing reads it yet.
+	 * 1 for what is not a hand. The offered hand reads it (UpdateOffer: the player's hand held open).
 	 */
 	double Grip = 1.0;
 };
@@ -484,7 +484,7 @@ enum class ESandboxGiveUp : uint8
 	HeldUp,
 	/** No clip could be had (after a roll), or the clip went. */
 	NoClip,
-	/** A hit took the attempt (the old rule of carry_yield_ns, without getup.hit_by_impulse). */
+	/** A hit took the attempt (the old rule of carry_yield_ns; given no more since decision 20's rule is the only one, 28 November 2026). */
 	Hit,
 	/** The pelvis was thrown off its clip (getup.lost_cm). */
 	Lost,
@@ -573,14 +573,14 @@ struct FSandboxGetUpView
 	FString NotLed;
 	/**
 	 * The hold (decision 14): how long a hand held the body while it got up, the largest pull of a hold then (N), the slowest pace
-	 * of the clip (getup.hold_by_body; 1 without it), and when the first attempt began (s since Start; below 0 before it).
+	 * of the clip (decision 14), and when the first attempt began (s since Start; below 0 before it).
 	 */
 	double HeldS = 0.0;
 	double HoldMaxN = 0.0;
 	double PaceMin = 1.0;
 	double FirstStartedS = -1.0;
 	/**
-	 * A hit while led (decision 20): the least of the carry's share the hits left (getup.hit_by_impulse; 1 without it), and the
+	 * A hit while led (decision 20): the least of the carry's share the hits left, and the
 	 * farthest a struck body's centre of mass got from where the carry has it within a second of a hit, cm (read only, in every mode).
 	 */
 	double HitFreeMin = 1.0;
@@ -714,10 +714,6 @@ public:
 	 */
 	bool SetFootTarget(FName Foot, const FVector& WorldLocation, double Weight, FString& OutError, double BlendS = -1.0);
 
-	/** Times a fall reached for the floor (fall.aim), and when a hand first touched it in the last one (-1 never). */
-	int32 GetFallReachCount() const { return FallReaches; }
-	double GetFallHandTouchS() const { return FallHandTouchS; }
-
 	/**
 	 * Makes a step with one foot to a point of the floor (x and y; the foot comes down at the height it stands
 	 * at), as a recovery step is made: swing, landing, the foot planted there. For testing the swing on its own.
@@ -756,7 +752,7 @@ public:
 	const FSandboxLimbClaims& GetLimbClaims() const { return LimbClaims; }
 	/**
 	 * R10, step 2: the seed the body's choices draw from (FSandboxChance), told by the run (a scenario's "seed") or the session (a counter
-	 * of its own) as the body starts; 0, the default, draws nothing. Nothing draws yet (the struggle of step 7 will).
+	 * of its own) as the body starts; 0, the default, draws nothing. The struggle of step 7 draws from it (behaviour.struggle).
 	 */
 	void SetChanceSeed(int32 Seed) { Chance.Reset(Seed); }
 	const FSandboxChance& GetChance() const { return Chance; }
@@ -798,9 +794,8 @@ public:
 	 */
 	double GetContactImpulseNs() const { return ContactImpulseNs; }
 	int32 GetContactReportCount() const { return ContactReports; }
-	/** Times the body doubled over (reactions.double_over_*), how much of that pose it has now, 0 to 1, and the largest hit a contact brought into the belly, N*s. */
+	/** Times the body doubled over (reactions.double_over_*), and the largest hit a contact brought into the belly, N*s. */
 	int32 GetDoubleOverCount() const { return DoubleOvers; }
-	double GetDoubledWeight() const { return DoubledWeight; }
 	double GetMaxBellyHitNs() const { return MaxBellyHitNs; }
 	/** Times a hit on the head took the legs from under the body (reactions.knockdown_head_ns), and the largest hit a contact brought onto the head, N*s. */
 	int32 GetKnockdownCount() const { return Knockdowns; }
@@ -811,10 +806,6 @@ public:
 	 * time constants. Seconds 0 lets go of a level asked for.
 	 */
 	void RequestTone(ESandboxTone Level, double Seconds);
-	/** Times a hit braced the body. */
-	int32 GetBraceCount() const { return Braces; }
-	/** Each group's tone now, as a factor on its stiffness (spine, neck, arms, legs, toes). */
-	double GetToneStiffness(ESandboxMuscleGroup Group) const { return ToneStiffness[static_cast<int32>(Group)]; }
 
 	/** Whether the muscles give weight torques now; the largest one so far and the largest change of one in a frame, N*m, with its joint and time. */
 	bool IsCarryingWeight() const { return bWeightOn; }
@@ -823,7 +814,6 @@ public:
 	/** The share of the weight that the world holds up, as the weight torques take it. */
 	double GetWeightHeld() const { return WeightHeld; }
 
-	bool IsStarted() const { return bStarted; }
 	/** The values of the current state, as the tuning files and overrides give them. */
 	const FSandboxBodyTuning& GetTuning() const { return Tuning; }
 	/** How many times an edited file or an override changed the values of the state the body was in. */
@@ -933,9 +923,6 @@ public:
 	/** Whether a step is under way, and where its foot is meant to be now (the point the swing has reached). */
 	bool IsStepping() const { return Swing.bActive; }
 	FVector GetSwingPoint() const { return Swing.Point; }
-	/** Where each foot is held by the pose after its steps (empty while the feet are where the pose puts them). */
-	bool IsFootPlanted(int32 Side) const { return Side >= 0 && Side < 2 && Placement[Side].Mode != EPlacement::None; }
-	FVector GetFootPoint(int32 Side) const { return Side >= 0 && Side < 2 ? Placement[Side].Point : FVector::ZeroVector; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void OnUnregister() override;
@@ -1071,7 +1058,7 @@ private:
 	 */
 	FVector SustainedN = FVector::ZeroVector;
 	FVector2D SustainedMomentNCm = FVector2D::ZeroVector;
-	/** The same from contacts alone, the holds left out (getup.hold_by_body: a press, apart from a hold), N, and its frames. */
+	/** The same from contacts alone, the holds left out (decision 14: a press, apart from a hold), N, and its frames. */
 	FVector SustainedContactN = FVector::ZeroVector;
 	TArray<FVector> RecentContactN;
 	/** The force and moment of each of the last frames, for SustainedN, oldest overwritten first. */
@@ -1259,6 +1246,12 @@ private:
 	/** The carry's ease: GetUpEase(), or after a roll the same ease counted from when the clip began. 0 to 1. */
 	double CarryEase() const;
 	/**
+	 * The share of the old balance assist a state gives: 1 but while getting up, where the pull that helps the body up comes up from
+	 * nothing as its muscles do (CarryEase); led, the carry pulls instead (FSandboxCarry), and a body that rolls (getup.roll) is
+	 * pulled by nothing.
+	 */
+	double AssistStateEase() const;
+	/**
 	 * R2, step 8: the motion library's list (text), the library itself (at the first get-up), the matcher's weights, the body as the matcher sees it, and its choice: a clip's key, the time to start
 	 * at and the clip's root in the world. False with a reason.
 	 */
@@ -1310,8 +1303,8 @@ private:
 	FVector HeldArmReleaseInChest[2] = { FVector::ZeroVector, FVector::ZeroVector };
 	/** The held arm's elbow pole, chosen across the reach as the answer begins and kept to its release (ArmPoleAcross). */
 	FVector HeldArmPole[2] = { FVector::ZeroVector, FVector::ZeroVector };
-	/** A held arm placed as R3's catch places an arm: the pole kept, the anatomical hinge, blended by the joints' turns. */
-	void PlaceHeldArm(int32 Side, const FVector& Point, double Weight, bool bNewPole);
+	/** A held arm placed as R3's catch places an arm: the pole kept (chosen once, HeldArmPole), the anatomical hinge, blended by the joints' turns. */
+	void PlaceHeldArm(int32 Side, const FVector& Point, double Weight);
 	/** Whether the body braces now (an asked tone, a brace, anticipation): what decides an arm's answer by state. */
 	bool IsBraced() const;
 	/** The holds' pull together, as vectors (N), and whether they pull or move the pelvis as a drag does now. */
@@ -1329,11 +1322,11 @@ private:
 	bool bCarryBroken = false;
 	/** Why the carry could not be made, when it could not. */
 	FString CarryBrokenReason;
-	/** getup.hold_by_body: what the holds leave of each body's springs, 0 to 1, by the carry's body index; down at once, back by carry_release_s. */
+	/** Decision 14: what the holds leave of each body's springs, 0 to 1, by the carry's body index; down at once, back by carry_release_s. */
 	TArray<double> CarryBodyFree;
-	/** getup.hold_by_body: the clip's pace under a press and the holds, 0 to 1; down at once, back by carry_release_s. */
+	/** Decision 14: the clip's pace under a press and the holds, 0 to 1; down at once, back by carry_release_s. */
 	double HoldPace = 1.0;
-	/** getup.hit_by_impulse: what the hits left of the carry's share, 0 to 1; back by getup.hit_back_s. */
+	/** Decision 20: what the hits left of the carry's share, 0 to 1; back by getup.hit_back_s. */
 	double HitFree = 1.0;
 	/** The body struck last while led and until when its distance from the carry's target is watched (GetUpView.HitOffCm). */
 	FName HitWatchBone;
@@ -1645,7 +1638,6 @@ private:
 	/** A brace after a hit (tone.brace_*): from when to when. */
 	double BraceFromS = -1.0;
 	double BraceUntilS = -1.0;
-	int32 Braces = 0;
 	bool bToneMoving = false;
 	/** Follows the level asked for, and hands the controls the strengths while they change. */
 	void UpdateTone(double DeltaTime);
@@ -1878,7 +1870,6 @@ private:
 	double FallFloorZ = 0.0;
 	bool bHandTouchedFrame[2] = { false, false };
 	double HandTouchedS[2] = { -1.0, -1.0 };
-	int32 FallReaches = 0;
 	double FallHandTouchS = -1.0;
 
 	/** Hands a muscle's weight torque to its drive. */
@@ -2013,7 +2004,6 @@ private:
 	FVector StanceError(FVector OutFootAt[2], FVector& OutStance) const;
 	int32 RegroupLeft = 0;
 	double RegroupQuietS = 0.0;
-	bool bRegroupAsked = false;
 	/** Where the right foot stood from the left one at the start, in the support's frame, cm. */
 	FVector2D StanceRightFromLeft = FVector2D::ZeroVector;
 	/** A regrouping step: the point the capture point is brought to before the foot lifts and held at while it swings (world x, y, cm). */

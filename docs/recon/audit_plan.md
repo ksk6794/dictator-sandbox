@@ -104,3 +104,6 @@ moves is not the audit: taken back, or a finding in the report. Before every par
 - 15:57 backup `20261128_155703_audit_before_commits`, `Saved\Backups\audit_commit2_part3.patch` and `audit_all.patch`; part 3's
   files set aside (`git stash`, `audit_part3`); 15:57 to 16:00 the bootstrap at commit 1's tree: OK, 16 of 16 in 212 s. The
   bootstrap's figure in CLAUDE.md and PRD's Status (and the tab), and the audit's findings for the owner in Status.
+- 16:01 commit 1 `0ad1441` (parts 1, 2 and 4, the register, this plan); part 3 brought back from the stash, its diff the same as its
+  patch byte for byte. 16:02 to 16:07 the bootstrap at the final tree: OK, 16 of 16 in 205 s; the suite 220 of 220 with every hash of
+  `audit_before`. Then commit 2 (part 3) and the report. No push.

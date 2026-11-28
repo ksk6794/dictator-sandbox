@@ -1485,7 +1485,7 @@ void USandboxPlaySubsystem::TickSmoke()
 		const double OffCm = FVector::Dist(Pelvis().GetLocation(), SmokeSpawnPelvis);
 		Check(TEXT("reset_puts_the_character_back"), Resets == 1 && Controller && Controller->GetState() == ESandboxBodyState::Standing && Controller->GetStateLog().Num() == 1 && OffCm < 3.0,
 			FString::Printf(TEXT("resets %d, states %s, pelvis %.2f cm from where it started"), Resets, *StateNames(Controller), OffCm));
-		// R10, step 8 in part: the U key's way to the body, through the console (refused here: commands are off in the files, and it stands).
+		// R10, step 8 in part: the U key's way to the body, through the console (refused here: the body stands, and a standing body does not get up).
 		Player->CommandGetUp();
 		break;
 	}

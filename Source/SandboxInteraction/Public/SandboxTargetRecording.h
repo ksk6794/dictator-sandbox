@@ -54,7 +54,6 @@ public:
 
 	/** The frame of the recording whose targets are answered with; it may lie before its start or after its end. */
 	void SetFrame(int32 InFrame) { Frame = InFrame; }
-	int32 GetFrame() const { return Frame; }
 	const FSandboxTargetRecording& GetRecording() const { return *Recording; }
 
 	virtual bool GetTarget(FName Effector, FSandboxEffectorTarget& OutTarget) const override { return Recording->Find(Effector, Frame, OutTarget); }

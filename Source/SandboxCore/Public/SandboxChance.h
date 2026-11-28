@@ -34,7 +34,6 @@ public:
 	/** Starts every stream again from this seed; 0 draws nothing. */
 	void Reset(int32 InSeed);
 	int32 GetSeed() const { return Seed; }
-	bool IsOn() const { return Seed != 0; }
 
 	/** A value in [0, 1) from the purpose's stream; with seed 0, FixedAnswer, and nothing is drawn or kept. */
 	double Draw(EPurpose Purpose, double FixedAnswer);

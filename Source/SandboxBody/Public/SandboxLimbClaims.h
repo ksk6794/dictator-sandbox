@@ -69,9 +69,6 @@ public:
 		}
 	}
 
-	/** Starts again: nobody asks for anything, the record is empty. */
-	void Reset();
-
 	/** This tick's asks begin: every ask of the last tick is forgotten (a user asks again every tick it wants a limb). */
 	void BeginTick();
 	/** A user asks for a limb in this tick. */

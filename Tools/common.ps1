@@ -198,14 +198,27 @@ function Invoke-ScenarioBatch {
     # set's; jobs with console variables or a renderer still run in processes of their own. -Alone: a run that has to be
     # alone for its timing (the suite's second run of a scenario over the step limit): inside a set it waits until every
     # process of the set has ended.
-    # -TimeoutSec: the processes of a queue are ended after that long and their jobs reported lost (0: no limit; a film's).
+    # -TimeoutSec: the processes of a queue are ended after that long and their jobs reported lost (0: no limit; a film's); in a
+    # check set or the pool, the process that holds a job past it is ended and the job reported lost.
     param([array]$Jobs, [int]$Parallel = 8, [switch]$Alone, [int]$TimeoutSec = 0)
+    # A scenario at a frame rate of its own (`fixed_fps`) is a job at that rate: it goes to a queue of its own, never to the set's
+    # or the pool's processes, which run at 90.
+    foreach ($job in $Jobs) {
+        if ($job.Fps) { continue }
+        $file = $job.File
+        if (-not $file -and $job.Name) { $file = Join-Path $RepoRoot "Scenarios\$($job.Name).json" }
+        if (-not $file -or -not (Test-Path $file)) { continue }
+        $rate = $null
+        try { $rate = (Get-Content $file -Raw | ConvertFrom-Json).fixed_fps } catch {}
+        if ($rate -and [int]$rate -ne 90) { $job.Fps = [int]$rate }
+    }
     if ($env:SANDBOX_SEPARATE_PROCESSES -ne '1') {
         if ($env:SANDBOX_CHECK_QUEUE -and (Test-Path (Join-Path $env:SANDBOX_CHECK_QUEUE 'owner.pid'))) {
             if ($Alone) { Invoke-AloneInCheckQueue -Jobs $Jobs; return }
-            $inSet = @($Jobs | Where-Object { -not $_.CVars -and -not $_.Rendered -and -not $_.Shot })
-            $ofTheirOwn = @($Jobs | Where-Object { $_.CVars -or $_.Rendered -or $_.Shot })
-            if ($inSet.Count -gt 0) { Submit-CheckJobs -Jobs $inSet }
+            # The set's processes and the pool's run at 90 frames a second: a job at another rate keeps processes of its own.
+            $inSet = @($Jobs | Where-Object { -not $_.CVars -and -not $_.Rendered -and -not $_.Shot -and (-not $_.Fps -or [int]$_.Fps -eq 90) })
+            $ofTheirOwn = @($Jobs | Where-Object { $_.CVars -or $_.Rendered -or $_.Shot -or ($_.Fps -and [int]$_.Fps -ne 90) })
+            if ($inSet.Count -gt 0) { Submit-CheckJobs -Jobs $inSet -TimeoutSec $TimeoutSec }
             if ($ofTheirOwn.Count -gt 0) { Invoke-ScenarioQueue -Jobs $ofTheirOwn -Parallel $Parallel -TimeoutSec $TimeoutSec }
             return
         }
@@ -215,12 +228,12 @@ function Invoke-ScenarioBatch {
         $poolDir = $null
         if (-not $Alone -and -not ($Parallel -le 1 -and @($Jobs).Count -gt 1)) { $poolDir = Get-LivePool }
         if ($poolDir) {
-            $inPool = @($Jobs | Where-Object { -not $_.CVars -and -not $_.Rendered -and -not $_.Shot })
-            $ofTheirOwn = @($Jobs | Where-Object { $_.CVars -or $_.Rendered -or $_.Shot })
+            $inPool = @($Jobs | Where-Object { -not $_.CVars -and -not $_.Rendered -and -not $_.Shot -and (-not $_.Fps -or [int]$_.Fps -eq 90) })
+            $ofTheirOwn = @($Jobs | Where-Object { $_.CVars -or $_.Rendered -or $_.Shot -or ($_.Fps -and [int]$_.Fps -ne 90) })
             if ($inPool.Count -gt 0) {
                 $env:SANDBOX_CHECK_QUEUE = $poolDir
                 $script:PoolMode = $true
-                try { Submit-CheckJobs -Jobs $inPool } finally { $env:SANDBOX_CHECK_QUEUE = $null; $script:PoolMode = $false }
+                try { Submit-CheckJobs -Jobs $inPool -TimeoutSec $TimeoutSec } finally { $env:SANDBOX_CHECK_QUEUE = $null; $script:PoolMode = $false }
             }
             if ($ofTheirOwn.Count -gt 0) { Invoke-ScenarioQueue -Jobs $ofTheirOwn -Parallel $Parallel -TimeoutSec $TimeoutSec }
             return
@@ -420,6 +433,8 @@ function Invoke-ScenarioQueue {
     # A job without a result was lost: its process took it and ended before writing one. The queue's logs are kept
     # for a look (Saved\Queue\<id>\process_<n>.log), and so are those of a queue that still holds jobs.
     $lost = @($Jobs | Where-Object { -not (Test-Path (Join-Path ([System.IO.Path]::GetFullPath($_.Out)) 'metrics.json')) })
+    # What the call lost, for a caller that has to tell a time limit from a crash (Tools\scenario.ps1), as Submit-CheckJobs says it.
+    $script:LastBatchLost = $lost.Count
     foreach ($queue in $queues) {
         if ($lost.Count -eq 0 -and @(Get-ChildItem $queue -Filter '*.json' -File).Count -eq 0) { Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -514,6 +529,8 @@ function Update-CheckQueue {
             # minutes at most, so that another session's long batch cannot hold the set.
             if (-not $q.aloneSince) { $q.aloneSince = Get-Date }
             $others = @(Get-Process -Name 'UnrealEditor-Cmd' -ErrorAction SilentlyContinue).Count
+            # A pool's idle processes are asked to give way, or the run waits the whole two minutes beside them.
+            if ($others -gt 0 -and (Test-Path (Get-PoolFile))) { [void](Request-PoolYield -Count 9) }
             if ($others -eq 0 -or ((Get-Date) - $q.aloneSince).TotalSeconds -gt 120) {
                 [System.IO.File]::WriteAllText($grantFile, $requests[0].BaseName)
                 $q.aloneSince = $null
@@ -589,8 +606,12 @@ $script:CheckBatch = 0
 function Submit-CheckJobs {
     # Invoke-ScenarioBatch inside a check set: the jobs into the set's queue, each file written whole before it can be taken and
     # named by its length (the longest first) and its batch; then waits for every result. A job that its process took and ended
-    # without a result is lost (QUEUE WARNING), and never run again in silence.
-    param([array]$Jobs)
+    # without a result is lost (QUEUE WARNING), and never run again in silence. -TimeoutSec: a job with no result after that long is
+    # given up as lost, its process left to the set or the pool (0: no limit).
+    param([array]$Jobs, [int]$TimeoutSec = 0)
+    $script:LastBatchLost = 0
+    $deadline = $null
+    if ($TimeoutSec -gt 0) { $deadline = (Get-Date).AddSeconds($TimeoutSec) }
     $queue = $env:SANDBOX_CHECK_QUEUE
     $script:CheckBatch++
     $tool = 'tool'
@@ -639,6 +660,34 @@ function Submit-CheckJobs {
             Write-Output "QUEUE WARNING: the process that keeps the check set's queue ($ownerPid) has ended"
             break
         }
+        # The time is the call's, counted from its start (a job that waited in the shared queue waited within it).
+        if ($deadline -and (Get-Date) -gt $deadline) {
+            foreach ($item in @($mine | Where-Object { -not $_.done -and -not $_.lost })) {
+                $doneMarker = Join-Path $queue "taken\$($item.name).done"
+                if (Test-Path $doneMarker) { $item.done = $true; continue }
+                # One nobody has taken is taken back, so that no process runs it after its caller has gone; the process of one that
+                # was taken is ended, as a queue's processes are past their time (the set or the pool starts another). A process
+                # writes the marker after it takes the job's lock: an empty or missing marker of a job whose file is gone is read
+                # again for a moment.
+                if (-not (Receive-PoolJobBack -Queue $queue -Name $item.name)) {
+                    $holder = 0
+                    for ($try = 0; $try -lt 10 -and $holder -le 0; $try++) {
+                        try { $holder = [int]([System.IO.File]::ReadAllText((Join-Path $queue "taken\$($item.name).taken")).Trim()) } catch {}
+                        if ($holder -le 0) { Start-Sleep -Milliseconds 100 }
+                    }
+                    # Its result may have come meanwhile: then the process is on another job, which is not this call's to end.
+                    if (Test-Path $doneMarker) { $item.done = $true; continue }
+                    $process = $null
+                    if ($holder -gt 0) { $process = Get-Process -Id $holder -ErrorAction SilentlyContinue }
+                    if ($process -and $process.ProcessName -like 'UnrealEditor*') { try { $process.Kill(); $process.WaitForExit(10000) | Out-Null } catch {} }
+                }
+                $item.lost = $true
+                $script:LastBatchLost++
+                [System.IO.File]::WriteAllText((Join-Path $queue "lost_$($item.name).txt"), "no result within $TimeoutSec s for $($item.out)")
+            }
+            Write-Output "QUEUE WARNING: the batch had no result within $TimeoutSec s"
+            break
+        }
         # A pool that ended with jobs of this batch nobody took (stopped, or its file gone, and no process of it left): they are taken
         # back and run in processes of their own. (While a process of it runs, it may still be taking one: not before.)
         if ($script:PoolMode -and (Test-PoolEnding) -and @(Get-PoolAlive (Read-Pool)).Count -eq 0) {
@@ -667,7 +716,12 @@ function Submit-CheckJobs {
         $wasPool = $script:PoolMode
         $env:SANDBOX_CHECK_QUEUE = $null
         $script:PoolMode = $false
-        try { Invoke-ScenarioQueue -Jobs @($back | ForEach-Object { $_.job }) -Parallel 8 } finally { $env:SANDBOX_CHECK_QUEUE = $inPool; $script:PoolMode = $wasPool }
+        # Within what is left of the call's time; what they lose is the call's loss too.
+        $left = 0
+        if ($deadline) { $left = [int][Math]::Max(1, ($deadline - (Get-Date)).TotalSeconds) }
+        $lostBefore = $script:LastBatchLost
+        try { Invoke-ScenarioQueue -Jobs @($back | ForEach-Object { $_.job }) -Parallel 8 -TimeoutSec $left } finally { $env:SANDBOX_CHECK_QUEUE = $inPool; $script:PoolMode = $wasPool }
+        $script:LastBatchLost = $lostBefore + [int]$script:LastBatchLost
     }
     $lost = @($mine | Where-Object { $_.lost })
     if ($lost.Count -gt 0) {
@@ -862,9 +916,12 @@ function Update-Pool {
             $more = [Math]::Min([int]$pool.parallel - $alive.Count, $waiting)
             if ($more -le 0) { return }
             $pool.processes = $alive
+            # The pool's processes started in the last 20 s, by this call or an earlier one, have not taken their memory yet: it is
+            # counted as taken, as the check set's queue counts its own (Update-CheckQueue).
+            $young = @($alive | Where-Object { $_.start -and ((Get-Date) - [datetime]$_.start).TotalSeconds -lt 20 }).Count
             for ($i = 0; $i -lt $more; $i++) {
                 # Each start looks again: a stop that began meanwhile (Stop-Pool's draining) gets no new process.
-                if ((Test-PoolEnding) -or (Test-EngineRoom -PendingGB (1.7 * $i) -NoYield)) { break }
+                if ((Test-PoolEnding) -or (Test-EngineRoom -PendingGB (1.7 * ($young + $i)) -NoYield)) { break }
                 [void](Start-PoolProcess $pool)
                 Write-Pool $pool
             }
@@ -910,8 +967,15 @@ function Stop-PoolNow {
     New-Item -ItemType Directory -Force $dir | Out-Null
     $draining = Join-Path $dir 'draining'
     [System.IO.File]::WriteAllText($draining, "$PID")
-    # A top-up under way (Update-Pool holds the lock while it starts processes) ends before the processes are counted.
-    $barrier = Lock-Pool
+    # A top-up under way (Update-Pool holds the lock while it starts processes) ends before the processes are counted. A lock that
+    # cannot be had leaves the pool as it was, taking batches again.
+    try { $barrier = Lock-Pool } catch {
+        # Taken away only if it is this stop's: another stop under way keeps the pool draining.
+        $writer = ''
+        try { $writer = [System.IO.File]::ReadAllText($draining).Trim() } catch {}
+        if ($writer -eq "$PID") { Remove-Item $draining -Force -ErrorAction SilentlyContinue }
+        throw
+    }
     $barrier.Dispose()
     $deadline = (Get-Date).AddSeconds($WaitS)
     while ($true) {
@@ -920,7 +984,10 @@ function Stop-PoolNow {
         $open = @(Get-PoolOpenJobs).Count
         if ($waiting -eq 0 -and $open -eq 0) { break }
         if ((Get-Date) -gt $deadline) {
-            Remove-Item $draining -Force -ErrorAction SilentlyContinue
+            # Taken away only if it is this stop's, as on a failed lock above.
+            $writer = ''
+            try { $writer = [System.IO.File]::ReadAllText($draining).Trim() } catch {}
+            if ($writer -eq "$PID") { Remove-Item $draining -Force -ErrorAction SilentlyContinue }
             return "the pool still has $waiting job(s) waiting and $open running after $WaitS s"
         }
         Start-Sleep -Milliseconds 500

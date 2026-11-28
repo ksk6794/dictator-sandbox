@@ -1,10 +1,5 @@
 #include "SandboxLimbClaims.h"
 
-void FSandboxLimbClaims::Reset()
-{
-	*this = FSandboxLimbClaims();
-}
-
 void FSandboxLimbClaims::BeginTick()
 {
 	for (uint16& Bits : Asked)

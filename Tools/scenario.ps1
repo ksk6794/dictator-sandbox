@@ -88,14 +88,20 @@ if ($CVars) { $arguments += " -dpcvars=`"$CVars`"" }
 if ($Overlay) { $arguments += " -Overlay=`"$Overlay`"" }
 
 # A running pool takes a headless run (Tools\pool.ps1; SP-4): the same warm-up and the same hashes, without the engine's start.
+# The pool's processes run at 90 frames a second: a scenario at another rate keeps a process of its own.
 $poolDir = $null
-if (-not $VR -and -not $Rendered -and -not $CVars -and -not $Overlay) { $poolDir = Get-LivePool }
+if (-not $VR -and -not $Rendered -and -not $CVars -and -not $Overlay -and $fps -eq 90) { $poolDir = Get-LivePool }
 if ($poolDir) {
     Remove-Item $queue -Recurse -Force -ErrorAction SilentlyContinue
-    $poolNotes = @(Invoke-ScenarioBatch -Jobs @($job) -Parallel 1)
+    $poolStarted = Get-Date
+    $poolNotes = @(Invoke-ScenarioBatch -Jobs @($job) -Parallel 1 -TimeoutSec $TimeoutSec)
     foreach ($note in $poolNotes) { [Console]::Error.WriteLine($note) }
-    $processLog = Join-Path (Get-PoolDir) 'process_*.log'
-    $run = [pscustomobject]@{ TimedOut = $false; ExitCode = 0 }
+    # The job's own log; a crash of the process itself is in the pool's process logs, which hold every job they ran.
+    $processLog = Join-Path $Out 'run.log'
+    # Past its time the job is given up and its process ended (Submit-CheckJobs).
+    $timedOut = $script:LastBatchLost -gt 0 -and ((Get-Date) - $poolStarted).TotalSeconds -ge $TimeoutSec
+    if ($timedOut) { $metrics = $null; Remove-Item $metricsFile -Force -ErrorAction SilentlyContinue }
+    $run = [pscustomobject]@{ TimedOut = $timedOut; ExitCode = 0 }
 } else {
     # Without the Zen server and the platform check (SP-2), but in the headset.
     $run = Invoke-Editor -ArgumentString $arguments -LogFile $processLog -TimeoutSec $TimeoutSec -VR:$VR -FastStart:(-not $VR)
@@ -110,6 +116,7 @@ if ($run.TimedOut) {
 if (-not $metrics) {
     Write-Output "SCENARIO ERROR: $Name wrote no metrics.json (process exit code $($run.ExitCode)). Log: $processLog"
     Get-LogErrors $processLog | ForEach-Object { Write-Output "  $_" }
+    if ($poolDir) { Write-Output "  It was handed to the pool: a crash of its process is in $(Join-Path $poolDir 'process_*.log') (or, if the pool was ending, under Saved\Queue)" }
     exit 2
 }
 if (-not $metrics.ok) {

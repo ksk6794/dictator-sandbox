@@ -186,16 +186,11 @@ public:
 	/** Lines the session wants on the HUD below the pawn's own (the character's state, for one). */
 	TFunction<void(TArray<FString>& /*OutLines*/)> ExtraHudLines;
 
-	// State, for the HUD and for tests.
+	// State, for the session.
 
-	ESandboxTool GetTool() const { return Tool; }
-	bool IsUserPaused() const { return bUserPaused; }
-	bool IsSlowMotion() const { return bSlowMotion; }
-	bool IsCameraDetached() const { return bCameraDetached; }
 	/** Frames on which the world made a physics step since the pawn began to play. */
 	int64 GetSimulatedFrames() const { return SimulatedFrames; }
 	double GetImpulseNs() const { return ImpulseNs; }
-	double GetReachCm() const { return ReachCm; }
 	ASandboxEffectorRig* GetRig() const { return Rig; }
 	/** The source that follows the headset's controllers; null on the desktop. */
 	const FSandboxTrackedTargetSource* GetTrackedSource() const { return TrackedSource.Get(); }

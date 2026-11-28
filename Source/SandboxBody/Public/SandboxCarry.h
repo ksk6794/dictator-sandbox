@@ -54,8 +54,6 @@ public:
 	int32 IndexOf(FName Bone) const { return Bodies.IndexOfByPredicate([Bone](const FBody& Body) { return Body.Bone == Bone; }); }
 	/** For each body the index of the body it hangs from (the nearest ancestor bone with a body), INDEX_NONE for the root (the pelvis). */
 	const TArray<int32>& GetParents() const { return Parents; }
-	/** The share of its springs each body was last given (Apply), 1 unless a hold took some away. */
-	double GetBodyShare(int32 Index) const { return Bodies[Index].BodyShare; }
 
 	/**
 	 * How far a hold on one body reaches (decision 14 of docs/active-ragdoll.md): the held body, and toward the root the bodies of

@@ -170,7 +170,6 @@ public:
 	/** The pull of a hold on what is held, N, world: along the way the hand's spring pulls it, as strong as the joint carries. Zero while it holds nothing. */
 	FVector GetGrabPullN() const;
 	UPrimitiveComponent* GetGrabbedComponent() const { return Grab.GetComponent(); }
-	bool IsStarted() const { return bStarted; }
 	const FSandboxEffectorTuning& GetTuning() const { return Tuning; }
 	const FSandboxEffectorStats& GetStats() const { return Stats; }
 	/** Largest net contact force over one frame so far, N. */

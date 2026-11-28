@@ -213,14 +213,12 @@ struct FSandboxBalanceTuning
 	 * mass was at Start, in the frame of the feet) by shifting its centre of pressure: the ankles' targets
 	 * turn, so the muscles press the toes or the heels down, or, sideways, the legs lean like a parallelogram.
 	 * AnkleGain is the extra shift of the centre of pressure per cm of capture-point error (dimensionless);
-	 * the turn that gives it follows from the body's weight and the legs' stiffness. 0 switches it off.
+	 * the turn that gives it follows from the body's weight and the legs' stiffness. 0 switches it off. Forward and back only:
+	 * measured on this body, a sideways turn of the ankles after a blow took the load off the far foot and made the capture
+	 * point leave the support, whichever way it turned (balance.ankle_side_gain, at 0 since M3, taken out in the audit of
+	 * 28 November 2026).
 	 */
 	double AnkleGain = 0.0;
-	/**
-	 * The same sideways. Measured on this body, a sideways turn of the ankles after a blow took the load off the
-	 * far foot and made the capture point leave the support, whichever way it turned; so it stands at 0.
-	 */
-	double AnkleSideGain = 0.0;
 	/**
 	 * Time over which the strategy's slow part takes up a steady offset of the pelvis from its assist anchor
 	 * (what the assist would otherwise hold): the centre of pressure moves by the offset once per this time. 0 = none. Seconds.
@@ -899,11 +897,6 @@ struct FSandboxBehaviourTuning
 	double NearCm = 0.0;
 	double NearMarginCm = 0.0;
 	double LowerRate = 0.0;
-	/**
-	 * The lowering ends, and the attempt is given up, once the chest is this near the floor (cm; 0: only at the clip's start): run back
-	 * further, the clip's first frames swing the legs up and hold the body off the floor on the world's pull (R10, step 5, measured).
-	 */
-	double LowerEndCm = 0.0;
 	/** The clip's pace turns from forward to back over this long (s): turned in one frame, the reference's speed reverses at once. */
 	double LowerTurnS = 0.0;
 	/**
@@ -1060,7 +1053,7 @@ struct FSandboxGetUpTuning
 	 * CarryNmPerRadPerKg), their damping as a time (CarryDampingS), their caps in weights of the body and in N*m per kg
 	 * (CarryMaxWeights over the floor, CarryMaxUpWeights upward: what the world may carry of each body's weight; it never pushes a body
 	 * down; CarryMaxNmPerKg). They come up with the get-up's ease and go over CarryReleaseS, by their own clock, once the get-up has
-	 * ended. A hit felt of CarryYieldNs or more takes all of the pull (HitByImpulse) or gives the attempt up (without it).
+	 * ended. A hit felt of CarryYieldNs or more takes all of the pull (below, HitBackS).
 	 */
 	double CarryNPerMPerKg = 0.0;
 	double CarryNmPerRadPerKg = 0.0;
@@ -1071,8 +1064,9 @@ struct FSandboxGetUpTuning
 	double CarryReleaseS = 0.0;
 	double CarryYieldNs = 0.0;
 	/**
-	 * R2, decision 14 of docs/active-ragdoll.md: the hold of a led get-up taken body by body, and the clip slowed by the force.
-	 * HoldByBody 1: each hold (a hand's grip, told by TellHolds) takes the carry's springs off its chain: the held body and, by
+	 * R2, decision 14 of docs/active-ragdoll.md: the hold of a led get-up taken body by body, and the clip slowed by the force
+	 * (getup.hold_by_body, which chose R1's hold of the whole body instead, went in the audit of 28 November 2026).
+	 * Each hold (a hand's grip, told by TellHolds) takes the carry's springs off its chain: the held body and, by
 	 * HoldChain (0 the held body alone, 1 its chain to the pelvis without the pelvis, 2 with it, 3 with it and everything that hangs
 	 * from the held body), the bodies toward the pelvis, each further one counting HoldChainFalloff less (0: alike). A chain's hold
 	 * is the pull over HoldChainFullN (at most 1); a body keeps 1 - (1 - HoldChainShare) * hold of its springs. Every body, in a
@@ -1081,9 +1075,8 @@ struct FSandboxGetUpTuning
 	 * HoldForceN. The clip runs at Rate times a pace that is 1 below HoldSlowFromN of force and 0 at HoldForceN, in proportion
 	 * between; the force is the press, counted at HoldPressPace of itself (1: as a hold), and the holds together, as vectors added
 	 * (HoldSum 0) or by their sizes (1). Shares and the
-	 * pace go down at once and back by CarryReleaseS. 0: the led get-up as R1 made it, bit for bit. N, shares, modes.
+	 * pace go down at once and back by CarryReleaseS. N, shares, modes.
 	 */
-	double HoldByBody = 0.0;
 	double HoldChain = 0.0;
 	double HoldChainFalloff = 0.0;
 	double HoldChainFullN = 0.0;
@@ -1093,13 +1086,12 @@ struct FSandboxGetUpTuning
 	double HoldSum = 0.0;
 	double HoldPressPace = 0.0;
 	/**
-	 * R2, decision 20 of docs/active-ragdoll.md: HitByImpulse 1, while led every hit the body feels takes impulse / CarryYieldNs of
-	 * the carry's share away (all of it at CarryYieldNs; hits that follow each other add up) and it comes back over HitBackS (a whole
-	 * share in that time); no attempt is given up for the size of a hit: the blow moves the body and the get-up's own rules decide
-	 * (lost_cm, stall_s). 0: a hit of CarryYieldNs or more lets the body go and gives the attempt up, a smaller one leaves the pull as
-	 * it was, bit for bit. s.
+	 * R2, decision 20 of docs/active-ragdoll.md: while led every hit the body feels takes impulse / CarryYieldNs of the carry's share
+	 * away (all of it at CarryYieldNs; hits that follow each other add up) and it comes back over HitBackS (a whole share in that
+	 * time); no attempt is given up for the size of a hit: the blow moves the body and the get-up's own rules decide (lost_cm,
+	 * stall_s). (getup.hit_by_impulse, which chose giving the attempt up at CarryYieldNs instead, went in the audit of 28 November
+	 * 2026.) s.
 	 */
-	double HitByImpulse = 0.0;
 	double HitBackS = 0.0;
 	/**
 	 * R2, decision 22: above 0, a get-up starts from where the body is: the muscles' targets cross from the body's own pose to the

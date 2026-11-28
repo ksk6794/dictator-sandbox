@@ -1,6 +1,6 @@
 # Two videos of one scenario side by side, the same camera and the same times: the body as the files have it (or with -TuneA) on
 # the left, with -TuneB on the right. What docs/active-ragdoll.md, section 9, asks of every part: its video beside the one before.
-#   powershell -ExecutionPolicy Bypass -File Tools\film-pair.ps1 -Name getup_push_weak -Around 8.3 -Span 3 -TuneB "getup.hit_by_impulse=1" -LabelA "switch 0" -LabelB "switch 1"
+#   powershell -ExecutionPolicy Bypass -File Tools\film-pair.ps1 -Name drag_lying_ankles_still -Around 1 -Span 6 -TuneB "behaviour.struggle=1" -LabelA "switch 0" -LabelB "switch 1"
 #   ... -File <path.json>            a scenario file from anywhere instead of Scenarios\<Name>.json
 #   ... -Around 8.3 -Span 3 -Every 0.033   the times, as Tools\film.ps1 takes them (a picture every 0.033 s is real time at 30 per second)
 #   ... -Camera side|front|back|quarter|"x,y,z;x,y,z"   as Tools\film.ps1
